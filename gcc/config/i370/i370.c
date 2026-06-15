@@ -1992,8 +1992,7 @@ i370_print_operand (FILE *fh, rtx XV, int CODE)
 	      {
 		int xx = INTVAL (XEXP (XEXP (XV, 0), 1));
 		fprintf (fh, "=V(");
-		ASM_OUTPUT_LABELREF (fh,
-				  XSTR (XEXP (XEXP (XV, 0), 0), 0));
+		output_addr_const (fh, XEXP (XEXP (XV, 0), 0));
 		if ((unsigned)xx < 4096)
 		  fprintf (fh, ")\n\tLA\t%s,%d(0,%s)", curreg,
 				  xx,
@@ -2268,8 +2267,7 @@ i370_print_operand (FILE *fh, rtx XV, int CODE)
 	    if (SYMBOL_REF_EXTERNAL_P (XEXP (XEXP (XV, 0), 0)))
 	      {
 		fprintf (fh, "=V(");
-		ASM_OUTPUT_LABELREF (fh,
-				  XSTR (XEXP (XEXP (XV, 0), 0), 0));
+		output_addr_const (fh, XEXP (XEXP (XV, 0), 0));
 		fprintf (fh, ")\n\tA\t%s,=F'" HOST_WIDE_INT_PRINT_DEC "'",
 			 curreg, INTVAL (XEXP (XEXP (XV, 0), 1)));
 	      }
