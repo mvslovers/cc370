@@ -24,7 +24,7 @@
 #define MAXREL 131072
 #define TEXTMAX (1024 * 1024)
 
-enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC };
+enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC };
 
 struct opc { const char *name; int fmt; int op; int m1; };  /* m1 = implied mask for branch pseudos */
 static const struct opc optab[] = {
@@ -34,7 +34,7 @@ static const struct opc optab[] = {
     { "BE", F_BC, 0x47, 8 }, { "BNE", F_BC, 0x47, 7 }, { "BH", F_BC, 0x47, 2 }, { "BL", F_BC, 0x47, 4 },
     { "BNH", F_BC, 0x47, 13 }, { "BNL", F_BC, 0x47, 11 }, { "BZ", F_BC, 0x47, 8 }, { "BNZ", F_BC, 0x47, 7 },
     { "BP", F_BC, 0x47, 2 }, { "BM", F_BC, 0x47, 4 }, { "BO", F_BC, 0x47, 1 }, { "BNO", F_BC, 0x47, 14 },
-    { "BCT", F_RX, 0x46, 0 },
+    { "BCT", F_RX, 0x46, 0 }, { "SVC", F_SVC, 0x0A, 0 },
     { "BR",  F_BR, 0x07, 15 }, { "BER", F_BR, 0x07, 8 }, { "BNER", F_BR, 0x07, 7 }, { "NOPR", F_BR, 0x07, 0 },
     { "BHR", F_BR, 0x07, 2 }, { "BLR", F_BR, 0x07, 4 }, { "BNHR", F_BR, 0x07, 13 }, { "BNLR", F_BR, 0x07, 11 },
     { "BZR", F_BR, 0x07, 8 }, { "BNZR", F_BR, 0x07, 7 }, { "BPR", F_BR, 0x07, 2 }, { "BMR", F_BR, 0x07, 4 },
@@ -251,7 +251,7 @@ static void add_reloc(long at, const char *target, int isV) {
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
     rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; nrel++;
 }
-static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR) ? 2 : (fmt == F_SS) ? 6 : 4; }
+static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
 /* ---- WP-4 macro preprocessor --------------------------------------------- */
 #define MAXLINES 131072
@@ -441,11 +441,37 @@ static int lib_path(const char *name, char *path) {
     }
     return 0;
 }
+/* join assembler continuation lines: a non-blank in column 72 continues the
+ * statement on the next line starting at column 16. Comment lines (* / .*) are
+ * never continued. Operates on raw[] and on every macro/COPY library read. */
+static int rawlen(const char *l) { int n = (int)strlen(l); while (n > 0 && (l[n-1] == '\n' || l[n-1] == '\r')) n--; return n; }
+static int join_cont(char **in, int n, char **out, int maxout) {
+    int i = 0, no = 0;
+    while (i < n && no < maxout) {
+        const char *l = in[i];
+        if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) { out[no++] = strdup(l); i++; continue; }
+        char acc[8192]; int a = 0, len = rawlen(l), copy = len > 71 ? 71 : len;
+        memcpy(acc, l, copy); a = copy;
+        int cont = (len > 71 && l[71] != ' ');
+        i++;
+        while (cont && i < n) {
+            const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
+            for (; s < e && a < 8190; s++) acc[a++] = c[s];
+            cont = (cl > 71 && c[71] != ' ');
+            i++;
+        }
+        acc[a++] = '\n'; acc[a] = 0;
+        out[no++] = strdup(acc);
+    }
+    return no;
+}
 static int lib_readlines(const char *name, char *buf[], int max) {
     char path[256]; if (!lib_path(name, path)) return -1;
     FILE *f = fopen(path, "r"); if (!f) return -1;
-    char lb[256]; int n = 0; while (fgets(lb, sizeof lb, f) && n < max) buf[n++] = strdup(lb);
-    fclose(f); return n;
+    static char *tmp[16384]; char lb[256]; int n = 0;
+    while (fgets(lb, sizeof lb, f) && n < 16384) tmp[n++] = strdup(lb);
+    fclose(f);
+    return join_cont(tmp, n, buf, max);
 }
 static struct macro *capture_macro(char **in, int nin, int *ip) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
@@ -501,8 +527,9 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     if (m->endlbl[0] && nseq < 128) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
     int pc = 0, guard = 0;
     while (pc < m->nbody && guard++ < 100000) {
-        char bb[256], bl[16], bo[16], bod[128];
-        strncpy(bb, m->body[pc], 255); bb[255] = 0; parse(bb, bl, bo, bod);
+        char bb[512], bl[16], bo[16], bod[384];
+        if (m->body[pc][0] == '*' || (m->body[pc][0] == '.' && m->body[pc][1] == '*')) { pc++; continue; }  /* macro comment */
+        strncpy(bb, m->body[pc], 511); bb[511] = 0; parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
         if (!strcmp(bo, "ANOP") || !strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE")) { pc++; continue; }
@@ -515,7 +542,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
-        char ex[300]; msub(&c, m->body[pc], ex);
+        char ex[512]; msub(&c, m->body[pc], ex);
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
@@ -621,6 +648,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                     put(lc, (o->op << 8) | ((int)expr_val(F[0], 0) << 4) | (int)expr_val(F[1], 0), 2); lc += 2; break;
                 case F_BR:
                     put(lc, (o->op << 8) | (o->m1 << 4) | (int)expr_val(F[0], 0), 2); lc += 2; break;
+                case F_SVC:
+                    put(lc, (o->op << 8) | ((int)expr_val(F[0], 0) & 0xff), 2); lc += 2; break;
                 case F_RX: case F_BC: {
                     int r1 = (o->fmt == F_BC) ? o->m1 : (int)expr_val(F[0], 0);
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
@@ -852,9 +881,10 @@ int main(int argc, char **argv) {
     }
     if (!src) { fprintf(stderr, "usage: as370 [-I maclib]... [-o obj] file.s\n"); return 2; }
     FILE *f = fopen(src, "r"); if (!f) { perror(src); return 2; }
-    static char *raw[MAXLINES]; int n = 0; char lb[256];
-    while (fgets(lb, sizeof lb, f) && n < MAXLINES) raw[n++] = strdup(lb);
+    static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
+    while (fgets(lb, sizeof lb, f) && nr < MAXLINES) raw0[nr++] = strdup(lb);
     fclose(f);
+    int n = join_cont(raw0, nr, raw, MAXLINES);   /* fold column-72 continuations */
 
     static char *lines[MAXLINES];
     int nl = macro_pass(raw, n, lines);
