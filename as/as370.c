@@ -498,7 +498,7 @@ static struct macro *lib_load(const char *name) {
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
     const char *d[] = { "CSECT", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
-                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", NULL };
+                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", NULL };
     int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
 
@@ -705,6 +705,10 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (pass == 2) { using_reg = (int)expr_val(F[1], 0); using_base = (F[0][0] == '*') ? lc : expr_val(F[0], 0); }
         } else if (!strcmp(op, "DROP")) {
             if (pass == 2) using_reg = -1;
+        } else if (!strcmp(op, "CNOP")) {                      /* align with NOPR (0x0700) fill */
+            char F[2][64]; split_fields(opnd, F, 2);
+            int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0), g = 0;
+            if (nn > 0) while ((lc % nn) != b && g++ < 64) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; }
         } else if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
             static char ops[256][1024]; int nops = dc_split(opnd, ops, 256), oi;
             int emit_dc = (pass == 2 && !strcmp(op, "DC"));
