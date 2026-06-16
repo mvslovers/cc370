@@ -786,7 +786,8 @@ static void emit_obj(FILE *f) {
             else { esd_ent(c, slot, s->name, 0x01, s->val, main_sect_esdid, 0); }   /* LD entry */
             n++;
         }
-        cbe(c, 10, n * 16, 2); cbe(c, 14, cardfirst, 2);
+        cbe(c, 10, n * 16, 2);
+        if (cardfirst) cbe(c, 14, cardfirst, 2);   /* LD-only card: ESDID field stays blank */
         cseq(c, ++seq); fwrite(c, 1, 80, f);
     } }
 
