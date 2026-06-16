@@ -88,7 +88,12 @@ static struct lit *lit_get(const char *t) {
 
 static long expr_val(const char *e, int *reloc) {
     if (reloc) *reloc = 0;
-    if (*e == '*') return lc;
+    if (*e == '*') {                       /* location counter, optionally *+N / *-N */
+        long v = lc;
+        if (e[1] == '+' || e[1] == '-') v += strtol(e + 1, NULL, 10);
+        if (reloc) *reloc = 1;             /* the location counter is relocatable */
+        return v;
+    }
     if (isdigit((unsigned char)*e) || *e == '-') return strtol(e, NULL, 10);
     struct sym *s = sym_find(e);
     if (s) { if (reloc && s->type == S_REL) *reloc = 1; return s->val; }
