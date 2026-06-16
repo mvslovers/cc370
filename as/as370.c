@@ -121,6 +121,24 @@ static int split_fields(const char *s, char f[][64], int max) {
     }
     return n;
 }
+/* split a DC/DS operand list at top-level commas, respecting 'quoted' strings
+ * ('' is an embedded quote) and (parenthesised) sub-expressions */
+static int dc_split(const char *s, char f[][1024], int max) {
+    int n = 0, depth = 0, inq = 0; const char *start = s, *p = s;
+    for (;; p++) {
+        char c = *p;
+        if (inq) { if (c == '\'') { if (p[1] == '\'') { p++; continue; } inq = 0; } }
+        else if (c == '\'') inq = 1;
+        else if (c == '(') depth++;
+        else if (c == ')') depth--;
+        if ((c == ',' && depth == 0 && !inq) || c == 0) {
+            int len = (int)(p - start); if (len > 1023) len = 1023;
+            if (n < max) { memcpy(f[n], start, len); f[n][len] = 0; n++; }
+            if (c == 0) break; start = p + 1;
+        }
+    }
+    return n;
+}
 static long imm_val(const char *s) {
     if (s[0] == 'C' && s[1] == '\'') return a2e((unsigned char)s[2]);
     if (s[0] == 'X' && s[1] == '\'') return strtol(s + 2, NULL, 16);
@@ -555,50 +573,55 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "DROP")) {
             if (pass == 2) using_reg = -1;
         } else if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
-            const char *p = opnd; int cnt = 0, hascnt = 0;
-            while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
-            if (!hascnt) cnt = 1;
-            int ty = *p ? toupper((unsigned char)*p++) : 0, k;
-            int blen = 0, haslen = 0;            /* explicit length modifier Ln */
-            if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
-            if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y') {
-                int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
-                if (!haslen) { blen = base; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc); }
-                if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                long val = 0; char ename[64] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
-                if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
-                    if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
-                    struct sym *es = sym_find(ename);
-                    isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER); }
-                else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
-                for (k = 0; k < cnt; k++) {
-                    if (pass == 2 && !strcmp(op, "DC")) {
-                        if (isaddr) { put(lc, expr_val(ename, NULL), blen); if (isrel) add_reloc(lc, ename, 0); }
-                        else put(lc, val, blen);
+            static char ops[256][1024]; int nops = dc_split(opnd, ops, 256), oi;
+            int emit_dc = (pass == 2 && !strcmp(op, "DC"));
+            for (oi = 0; oi < nops; oi++) {
+                const char *p = ops[oi]; int cnt = 0, hascnt = 0, k;
+                while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
+                if (!hascnt) cnt = 1;
+                int ty = *p ? toupper((unsigned char)*p++) : 0;
+                int blen = 0, haslen = 0;            /* explicit length modifier Ln */
+                if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
+                int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
+                if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y') {
+                    int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
+                    if (!haslen) { blen = base; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc); }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    long val = 0; char ename[64] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
+                    if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
+                        if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
+                        struct sym *es = sym_find(ename);
+                        isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER); }
+                    else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
+                    for (k = 0; k < cnt; k++) {
+                        if (emit_dc) {
+                            if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) add_reloc(lc, ename, 0); }
+                            else put(lc, val, blen);
+                        }
+                        lc += blen;
                     }
-                    lc += blen;
-                }
-            } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
-                if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                const char *q = strchr(p, '\''); char body[256]; int slen = 0;
-                if (q) { const char *e = q + 1;
-                    while (*e && slen < 255) {
-                        if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
-                        body[slen++] = *e++;
-                    } }
-                int emit = haslen ? blen : slen;
-                for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (pass == 2 && !strcmp(op, "DC")) put(lc, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
-            } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
-                if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
-                if (q) { char h[520]; int hl = 0, s0 = 0; const char *e = q + 1;
-                    while (*e && *e != '\'' && hl < 519) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
-                    if (hl & 1) { by[nb++] = (unsigned char)hexv(h[0]); s0 = 1; }
-                    for (; s0 + 1 < hl; s0 += 2) by[nb++] = (unsigned char)((hexv(h[s0]) << 4) | hexv(h[s0 + 1]));
-                }
-                int emit = haslen ? blen : nb, pad = emit - nb;
-                for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (pass == 2 && !strcmp(op, "DC")) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
-            } else if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    const char *q = strchr(p, '\''); char body[1024]; int slen = 0;
+                    if (q) { const char *e = q + 1;
+                        while (*e && slen < 1023) {
+                            if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
+                            body[slen++] = *e++;
+                        } }
+                    int emit = haslen ? blen : slen;
+                    for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
+                } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    const char *q = strchr(p, '\''); unsigned char by[1024]; int nb = 0;
+                    if (q) { char h[2056]; int hl = 0, s0 = 0; const char *e = q + 1;
+                        while (*e && *e != '\'' && hl < 2055) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
+                        if (hl & 1) { by[nb++] = (unsigned char)hexv(h[0]); s0 = 1; }
+                        for (; s0 + 1 < hl && nb < 1024; s0 += 2) by[nb++] = (unsigned char)((hexv(h[s0]) << 4) | hexv(h[s0 + 1]));
+                    }
+                    int emit = haslen ? blen : nb, pad = emit - nb;
+                    for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
+                } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+            }
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = (opnd[0] == '*') ? lc : expr_val(opnd, NULL); s->defined = 1; }
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
