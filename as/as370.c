@@ -26,21 +26,7 @@ enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC };
 
 struct opc { const char *name; int fmt; int op; int m1; };  /* m1 = implied mask for branch pseudos */
 static const struct opc optab[] = {
-    { "BALR", F_RR, 0x05, 0 }, { "BCR",  F_RR, 0x07, 0 }, { "BASR", F_RR, 0x0D, 0 },
-    { "LR",   F_RR, 0x18, 0 }, { "LTR",  F_RR, 0x12, 0 }, { "AR",   F_RR, 0x1A, 0 },
-    { "SR",   F_RR, 0x1B, 0 }, { "CR",   F_RR, 0x19, 0 }, { "NR",   F_RR, 0x14, 0 },
-    { "OR",   F_RR, 0x16, 0 }, { "XR",   F_RR, 0x17, 0 }, { "MR",   F_RR, 0x1C, 0 }, { "DR", F_RR, 0x1D, 0 },
-    { "L",    F_RX, 0x58, 0 }, { "LA",   F_RX, 0x41, 0 }, { "ST",   F_RX, 0x50, 0 },
-    { "A",    F_RX, 0x5A, 0 }, { "C",    F_RX, 0x59, 0 }, { "S",    F_RX, 0x5B, 0 },
-    { "AH",   F_RX, 0x4A, 0 }, { "SH",   F_RX, 0x4B, 0 }, { "MH",   F_RX, 0x4C, 0 },
-    { "M",    F_RX, 0x5C, 0 }, { "D",    F_RX, 0x5D, 0 }, { "N", F_RX, 0x54, 0 }, { "O", F_RX, 0x56, 0 }, { "X", F_RX, 0x57, 0 },
-    { "LH",   F_RX, 0x48, 0 }, { "STH",  F_RX, 0x40, 0 }, { "IC", F_RX, 0x43, 0 }, { "STC", F_RX, 0x42, 0 },
-    { "CL",   F_RX, 0x55, 0 }, { "AL", F_RX, 0x5E, 0 }, { "SL", F_RX, 0x5F, 0 },
-    { "STM",  F_RS, 0x90, 0 }, { "LM",   F_RS, 0x98, 0 }, { "SLL", F_RS, 0x89, 0 }, { "SRL", F_RS, 0x88, 0 },
-    { "SLA",  F_RS, 0x8B, 0 }, { "SRA", F_RS, 0x8A, 0 }, { "SLDL", F_RS, 0x8D, 0 }, { "SRDL", F_RS, 0x8C, 0 },
-    { "MVI",  F_SI, 0x92, 0 }, { "CLI",  F_SI, 0x95, 0 }, { "NI", F_SI, 0x94, 0 }, { "OI", F_SI, 0x96, 0 }, { "XI", F_SI, 0x97, 0 }, { "TM", F_SI, 0x91, 0 },
-    { "MVC",  F_SS, 0xD2, 0 }, { "CLC", F_SS, 0xD5, 0 }, { "NC", F_SS, 0xD4, 0 }, { "OC", F_SS, 0xD6, 0 }, { "XC", F_SS, 0xD7, 0 }, { "MVN", F_SS, 0xD1, 0 }, { "MVZ", F_SS, 0xD3, 0 }, { "TR", F_SS, 0xDC, 0 },
-    { "SVC",  F_RR, 0x0A, 0 },
+#include "opc_table.h"
     /* extended branches: BC (RX, op 0x47) / BCR (RR-ish, op 0x07) with implied mask */
     { "B",  F_BC, 0x47, 15 }, { "NOP", F_BC, 0x47, 0 },
     { "BE", F_BC, 0x47, 8 }, { "BNE", F_BC, 0x47, 7 }, { "BH", F_BC, 0x47, 2 }, { "BL", F_BC, 0x47, 4 },

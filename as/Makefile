@@ -3,7 +3,7 @@ CC      ?= cc
 CFLAGS  ?= -g -O0 -Wall -Wextra -std=gnu99
 PROG     = as370
 
-$(PROG): as370.c
+$(PROG): as370.c opc_table.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 .PHONY: test clean
