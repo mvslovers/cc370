@@ -207,7 +207,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
         char *tok = inside;
         while (1) { char *cm = strchr(tok, ','); int len = cm ? (int)(cm - tok) : (int)strlen(tok);
             char t[32]; if (len > 31) len = 31; memcpy(t, tok, len); t[len] = 0;
-            if (*nsub < 4) sub[(*nsub)++] = t[0] ? atol(t) : 0;
+            if (*nsub < 4) sub[(*nsub)++] = t[0] ? expr_val(t, NULL) : 0;   /* base/index may be a symbol (R13 EQU 13) */
             if (!cm) break; tok = cm + 1; }
     } else {
         int reloc = 0; long v = expr_val(f, &reloc);
