@@ -4,7 +4,7 @@
 # IFOX00 reference in tests/ref/.
 cd "$(dirname "$0")/.." || exit 2
 fail=0
-for s in sample1 sample2 sample3 sample4 sample5 sample6; do
+for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7; do
     ./as370 "tests/$s.s" -I maclib -o "/tmp/$s.obj" >/dev/null 2>&1 || { echo "$s: ASSEMBLE FAILED"; fail=1; continue; }
     ref="tests/ref/$s.obj"
     nbe=$(( ($(wc -c < "$ref") / 80 - 1) * 80 ))

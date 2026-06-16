@@ -24,23 +24,38 @@
 
 enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC };
 
-struct opc { const char *name; int fmt; int op; };
+struct opc { const char *name; int fmt; int op; int m1; };  /* m1 = implied mask for branch pseudos */
 static const struct opc optab[] = {
-    { "BALR", F_RR, 0x05 }, { "BCR",  F_RR, 0x07 }, { "BR",   F_BR, 0x07 },
-    { "LR",   F_RR, 0x18 }, { "LTR",  F_RR, 0x12 }, { "AR",   F_RR, 0x1A },
-    { "L",    F_RX, 0x58 }, { "LA",   F_RX, 0x41 }, { "ST",   F_RX, 0x50 },
-    { "A",    F_RX, 0x5A }, { "C",    F_RX, 0x59 },
-    { "STM",  F_RS, 0x90 }, { "LM",   F_RS, 0x98 },
-    { "MVI",  F_SI, 0x92 }, { "CLI",  F_SI, 0x95 },
-    { "MVC",  F_SS, 0xD2 },
-    { "B",    F_BC, 0x47 },
-    { NULL, 0, 0 }
+    { "BALR", F_RR, 0x05, 0 }, { "BCR",  F_RR, 0x07, 0 }, { "BASR", F_RR, 0x0D, 0 },
+    { "LR",   F_RR, 0x18, 0 }, { "LTR",  F_RR, 0x12, 0 }, { "AR",   F_RR, 0x1A, 0 },
+    { "SR",   F_RR, 0x1B, 0 }, { "CR",   F_RR, 0x19, 0 }, { "NR",   F_RR, 0x14, 0 },
+    { "OR",   F_RR, 0x16, 0 }, { "XR",   F_RR, 0x17, 0 }, { "MR",   F_RR, 0x1C, 0 }, { "DR", F_RR, 0x1D, 0 },
+    { "L",    F_RX, 0x58, 0 }, { "LA",   F_RX, 0x41, 0 }, { "ST",   F_RX, 0x50, 0 },
+    { "A",    F_RX, 0x5A, 0 }, { "C",    F_RX, 0x59, 0 }, { "S",    F_RX, 0x5B, 0 },
+    { "AH",   F_RX, 0x4A, 0 }, { "SH",   F_RX, 0x4B, 0 }, { "MH",   F_RX, 0x4C, 0 },
+    { "M",    F_RX, 0x5C, 0 }, { "D",    F_RX, 0x5D, 0 }, { "N", F_RX, 0x54, 0 }, { "O", F_RX, 0x56, 0 }, { "X", F_RX, 0x57, 0 },
+    { "LH",   F_RX, 0x48, 0 }, { "STH",  F_RX, 0x40, 0 }, { "IC", F_RX, 0x43, 0 }, { "STC", F_RX, 0x42, 0 },
+    { "CL",   F_RX, 0x55, 0 }, { "AL", F_RX, 0x5E, 0 }, { "SL", F_RX, 0x5F, 0 },
+    { "STM",  F_RS, 0x90, 0 }, { "LM",   F_RS, 0x98, 0 }, { "SLL", F_RS, 0x89, 0 }, { "SRL", F_RS, 0x88, 0 },
+    { "SLA",  F_RS, 0x8B, 0 }, { "SRA", F_RS, 0x8A, 0 }, { "SLDL", F_RS, 0x8D, 0 }, { "SRDL", F_RS, 0x8C, 0 },
+    { "MVI",  F_SI, 0x92, 0 }, { "CLI",  F_SI, 0x95, 0 }, { "NI", F_SI, 0x94, 0 }, { "OI", F_SI, 0x96, 0 }, { "XI", F_SI, 0x97, 0 }, { "TM", F_SI, 0x91, 0 },
+    { "MVC",  F_SS, 0xD2, 0 }, { "CLC", F_SS, 0xD5, 0 }, { "NC", F_SS, 0xD4, 0 }, { "OC", F_SS, 0xD6, 0 }, { "XC", F_SS, 0xD7, 0 }, { "MVN", F_SS, 0xD1, 0 }, { "MVZ", F_SS, 0xD3, 0 }, { "TR", F_SS, 0xDC, 0 },
+    { "SVC",  F_RR, 0x0A, 0 },
+    /* extended branches: BC (RX, op 0x47) / BCR (RR-ish, op 0x07) with implied mask */
+    { "B",  F_BC, 0x47, 15 }, { "NOP", F_BC, 0x47, 0 },
+    { "BE", F_BC, 0x47, 8 }, { "BNE", F_BC, 0x47, 7 }, { "BH", F_BC, 0x47, 2 }, { "BL", F_BC, 0x47, 4 },
+    { "BNH", F_BC, 0x47, 13 }, { "BNL", F_BC, 0x47, 11 }, { "BZ", F_BC, 0x47, 8 }, { "BNZ", F_BC, 0x47, 7 },
+    { "BP", F_BC, 0x47, 2 }, { "BM", F_BC, 0x47, 4 }, { "BO", F_BC, 0x47, 1 }, { "BNO", F_BC, 0x47, 14 },
+    { "BCT", F_RX, 0x46, 0 },
+    { "BR",  F_BR, 0x07, 15 }, { "BER", F_BR, 0x07, 8 }, { "BNER", F_BR, 0x07, 7 }, { "NOPR", F_BR, 0x07, 0 },
+    { NULL, 0, 0, 0 }
 };
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
 struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; };
 static struct sym syms[MAXSYM];
 static int nsym;
+static struct sym *esdord[MAXSYM]; static int nesdord;   /* ESD entries in declaration order */
 
 struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; };
 static struct lit lits[MAXLIT];
@@ -72,6 +87,10 @@ static struct sym *sym_get(const char *n) {
     s = &syms[nsym++]; memset(s, 0, sizeof *s); strncpy(s->name, n, 8); s->type = S_REL;
     return s;
 }
+static void esd_add(struct sym *s) {
+    int i; for (i = 0; i < nesdord; i++) if (esdord[i] == s) return;
+    if (nesdord < MAXSYM) esdord[nesdord++] = s;
+}
 static struct lit *lit_get(const char *t) {
     int i; for (i = 0; i < nlit; i++) if (!strcmp(lits[i].text, t)) return &lits[i];
     if (nlit >= MAXLIT) { fprintf(stderr, "as370: literal table full\n"); exit(2); }
@@ -93,6 +112,7 @@ static void put(long at, long v, int n) {
 }
 static long align4(long x) { return (x + 3) & ~3L; }
 static long align8(long x) { return (x + 7) & ~7L; }
+static int hexv(int c) { if (c >= '0' && c <= '9') return c - '0'; c = toupper((unsigned char)c); if (c >= 'A' && c <= 'F') return c - 'A' + 10; return 0; }
 
 /* split operand into fields at top-level (depth-0) commas */
 static int split_fields(const char *s, char f[][64], int max) {
@@ -392,7 +412,7 @@ static struct macro *lib_load(const char *name) {
 }
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
-    const char *d[] = { "CSECT", "ENTRY", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
+    const char *d[] = { "CSECT", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
                         "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", NULL };
     int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
@@ -469,6 +489,15 @@ static int macro_pass(char **in, int nin, char **out) {
     return nout;
 }
 
+static char unkops[128][12]; static int nunk;
+static void note_unknown(const char *o) {
+    static const char *skip[] = { "SETA","SETB","SETC","GBLA","GBLB","GBLC","LCLA","LCLB","LCLC",
+        "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","CXD","COPY","MACRO","MEND",
+        "EXTRN","WXTRN", NULL };
+    int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
+    for (i = 0; i < nunk; i++) if (!strcmp(unkops[i], o)) return;
+    if (nunk < 128) { strncpy(unkops[nunk], o, 11); unkops[nunk][11] = 0; nunk++; }
+}
 static void do_pass(int pass, char **lines, int nlines) {
     int i, ltidx = 0;
     lc = 0;
@@ -481,6 +510,7 @@ static void do_pass(int pass, char **lines, int nlines) {
 
         const struct opc *o = op_find(op);
         if (o) {
+            while (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }   /* instructions are halfword-aligned */
             char F[4][64]; int nf = split_fields(opnd, F, 4); (void)nf;
             if (pass == 1) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
@@ -492,9 +522,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                 case F_RR:
                     put(lc, (o->op << 8) | ((int)expr_val(F[0], 0) << 4) | (int)expr_val(F[1], 0), 2); lc += 2; break;
                 case F_BR:
-                    put(lc, (o->op << 8) | (15 << 4) | (int)expr_val(F[0], 0), 2); lc += 2; break;
+                    put(lc, (o->op << 8) | (o->m1 << 4) | (int)expr_val(F[0], 0), 2); lc += 2; break;
                 case F_RX: case F_BC: {
-                    int r1 = (o->fmt == F_BC) ? 15 : (int)expr_val(F[0], 0);
+                    int r1 = (o->fmt == F_BC) ? o->m1 : (int)expr_val(F[0], 0);
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
                     int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : 0);
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
@@ -516,10 +546,13 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (!strcmp(op, "CSECT")) {
             lc = 0;
             if (pass == 1) { struct sym *s = lbl[0] ? sym_get(lbl) : sym_get("");
-                s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; }
+                s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s); }
             if (pass == 2) { struct sym *s = sym_find(lbl[0] ? lbl : ""); if (s) cur_sect_esdid = s->esdid; }
         } else if (!strcmp(op, "ENTRY")) {
-            if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; }
+            if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s); }
+        } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
+            if (pass == 1 && opnd[0]) { char f[8][64]; int nf = split_fields(opnd, f, 8), j;
+                for (j = 0; j < nf; j++) { struct sym *s = sym_get(f[j]); s->type = S_ER; esd_add(s); } }
         } else if (!strcmp(op, "USING")) {
             char F[4][64]; split_fields(opnd, F, 4);
             if (pass == 2) { using_reg = (int)expr_val(F[1], 0); using_base = (F[0][0] == '*') ? lc : expr_val(F[0], 0); }
@@ -548,12 +581,26 @@ static void do_pass(int pass, char **lines, int nlines) {
                     }
                     lc += blen;
                 }
-            } else if (ty == 'C') {                     /* EBCDIC characters, byte-aligned */
+            } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
                 if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                const char *q = strchr(p, '\''); char body[128] = ""; int slen = 0;
-                if (q) { const char *e = q + 1; while (*e && *e != '\'' && slen < 127) body[slen++] = *e++; body[slen] = 0; }
+                const char *q = strchr(p, '\''); char body[256]; int slen = 0;
+                if (q) { const char *e = q + 1;
+                    while (*e && slen < 255) {
+                        if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
+                        body[slen++] = *e++;
+                    } }
                 int emit = haslen ? blen : slen;
                 for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (pass == 2 && !strcmp(op, "DC")) put(lc, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
+            } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
+                if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
+                if (q) { char h[520]; int hl = 0, s0 = 0; const char *e = q + 1;
+                    while (*e && *e != '\'' && hl < 519) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
+                    if (hl & 1) { by[nb++] = (unsigned char)hexv(h[0]); s0 = 1; }
+                    for (; s0 + 1 < hl; s0 += 2) by[nb++] = (unsigned char)((hexv(h[s0]) << 4) | hexv(h[s0 + 1]));
+                }
+                int emit = haslen ? blen : nb, pad = emit - nb;
+                for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (pass == 2 && !strcmp(op, "DC")) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
             } else if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = (opnd[0] == '*') ? lc : expr_val(opnd, NULL); s->defined = 1; }
@@ -575,7 +622,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         char *lp = strchr(tmp, '('), *rp = strchr(tmp, ')');
                         if (lp && rp) { *rp = 0; strncpy(lits[k].ext, lp + 1, 8); }
                         lits[k].isV = 1; lits[k].val = 0;
-                        struct sym *s = sym_get(lits[k].ext); s->type = S_ER;
+                        struct sym *s = sym_get(lits[k].ext); s->type = S_ER; esd_add(s);
                     } else if (tmp[1] == 'A' || tmp[1] == 'a') {
                         char *lp = strchr(tmp, '('), *rp = strrchr(tmp, ')');
                         if (lp && rp && rp > lp) { *rp = 0; strncpy(lits[k].ext, lp + 1, 8); }
@@ -595,23 +642,33 @@ static void do_pass(int pass, char **lines, int nlines) {
                 lc += 4;
             }
             ltidx++;
-        }
+        } else if (pass == 1) note_unknown(op);
     }
 }
 
 /* ---- OS/360 OBJ writer ---------------------------------------------------- */
-static unsigned char a2e(int c) {
-    if (c >= 'A' && c <= 'I') return 0xC1 + (c - 'A');
-    if (c >= 'J' && c <= 'R') return 0xD1 + (c - 'J');
-    if (c >= 'S' && c <= 'Z') return 0xE2 + (c - 'S');
-    if (c >= 'a' && c <= 'i') return 0x81 + (c - 'a');
-    if (c >= 'j' && c <= 'r') return 0x91 + (c - 'j');
-    if (c >= 's' && c <= 'z') return 0xA2 + (c - 's');
-    if (c >= '0' && c <= '9') return 0xF0 + (c - '0');
-    switch (c) { case ' ': return 0x40; case '@': return 0x7C; case '#': return 0x7B;
-                 case '$': return 0x5B; case '_': return 0x6D; }
-    return 0x40;
-}
+/* ASCII -> EBCDIC, CP037 + ecosystem NEL (\n -> 0x15). Verbatim from the
+ * c2asm370 compiler's i370_ascii_to_ebcdic, so DC C output is byte-identical to
+ * the mvsMF upload (which uses the same table) and hence to what IFOX assembled. */
+static const unsigned char a2e_tab[256] = {
+  0x00,0x01,0x02,0x03,0x37,0x2D,0x2E,0x2F, 0x16,0x05,0x15,0x0B,0x0C,0x0D,0x0E,0x0F,
+  0x10,0x11,0x12,0x13,0x3C,0x3D,0x32,0x26, 0x18,0x19,0x3F,0x27,0x1C,0x1D,0x1E,0x1F,
+  0x40,0x5A,0x7F,0x7B,0x5B,0x6C,0x50,0x7D, 0x4D,0x5D,0x5C,0x4E,0x6B,0x60,0x4B,0x61,
+  0xF0,0xF1,0xF2,0xF3,0xF4,0xF5,0xF6,0xF7, 0xF8,0xF9,0x7A,0x5E,0x4C,0x7E,0x6E,0x6F,
+  0x7C,0xC1,0xC2,0xC3,0xC4,0xC5,0xC6,0xC7, 0xC8,0xC9,0xD1,0xD2,0xD3,0xD4,0xD5,0xD6,
+  0xD7,0xD8,0xD9,0xE2,0xE3,0xE4,0xE5,0xE6, 0xE7,0xE8,0xE9,0xBA,0xE0,0xBB,0xB0,0x6D,
+  0x79,0x81,0x82,0x83,0x84,0x85,0x86,0x87, 0x88,0x89,0x91,0x92,0x93,0x94,0x95,0x96,
+  0x97,0x98,0x99,0xA2,0xA3,0xA4,0xA5,0xA6, 0xA7,0xA8,0xA9,0xC0,0x4F,0xD0,0xA1,0x07,
+  0x20,0x21,0x22,0x23,0x24,0x15,0x06,0x17, 0x28,0x29,0x2A,0x2B,0x2C,0x09,0x0A,0x1B,
+  0x30,0x31,0x1A,0x33,0x34,0x35,0x36,0x08, 0x38,0x39,0x3A,0x3B,0x04,0x14,0x3E,0xFF,
+  0x41,0xAA,0x4A,0xB1,0x9F,0xB2,0x6A,0xB5, 0xBD,0xB4,0x9A,0x8A,0x5F,0xCA,0xAF,0xBC,
+  0x90,0x8F,0xEA,0xFA,0xBE,0xA0,0xB6,0xB3, 0x9D,0xDA,0x9B,0x8B,0xB7,0xB8,0xB9,0xAB,
+  0x64,0x65,0x62,0x66,0x63,0x67,0x9E,0x68, 0x74,0x71,0x72,0x73,0x78,0x75,0x76,0x77,
+  0xAC,0x69,0xED,0xEE,0xEB,0xEF,0xEC,0xBF, 0x80,0xFD,0xFE,0xFB,0xFC,0xAD,0xAE,0x59,
+  0x44,0x45,0x42,0x46,0x43,0x47,0x9C,0x48, 0x54,0x51,0x52,0x53,0x58,0x55,0x56,0x57,
+  0x8C,0x49,0xCD,0xCE,0xCB,0xCF,0xCC,0xE1, 0x70,0xDD,0xDE,0xDB,0xDC,0x8D,0x8E,0xDF,
+};
+static unsigned char a2e(int c) { return a2e_tab[c & 0xff]; }
 static void cinit(unsigned char *c) { int i; for (i = 0; i < 80; i++) c[i] = 0x40; }
 static void cname(unsigned char *c, const char *n) { c[0] = 0x02; c[1] = a2e(n[0]); c[2] = a2e(n[1]); c[3] = a2e(n[2]); }
 static void cbe(unsigned char *c, int off, long v, int n) { int i; for (i = n - 1; i >= 0; i--) { c[off + i] = (unsigned char)(v & 0xff); v >>= 8; } }
@@ -625,18 +682,22 @@ static void esd_ent(unsigned char *c, int slot, const char *name, int type, long
 }
 
 static void emit_obj(FILE *f) {
-    unsigned char c[80]; int seq = 0, k, slot, first = 0, nesd = 0, nld = 0;
-    for (k = 0; k < nsym; k++) if (syms[k].esdid) { nesd++; if (!first) first = syms[k].esdid; }
-    for (k = 0; k < nsym; k++) if (syms[k].is_entry) nld++;
+    unsigned char c[80]; int seq = 0, k;
 
-    cinit(c); cname(c, "ESD"); cbe(c, 10, (nesd + nld) * 16, 2); cbe(c, 14, first, 2); slot = 16;
-    for (k = 0; k < nsym; k++) if (syms[k].type == S_PC || syms[k].type == S_SD)
-        { esd_ent(c, slot, syms[k].name, syms[k].type == S_PC ? 0x04 : 0x00, syms[k].val, modlen, 0); slot += 16; }
-    for (k = 0; k < nsym; k++) if (syms[k].is_entry)
-        { esd_ent(c, slot, syms[k].name, 0x01, syms[k].val, main_sect_esdid, 0); slot += 16; }
-    for (k = 0; k < nsym; k++) if (syms[k].type == S_ER)
-        { esd_ent(c, slot, syms[k].name, 0x02, 0, 0, 1); slot += 16; }
-    cseq(c, ++seq); fwrite(c, 1, 80, f);
+    /* ESD: declaration order, 3 entries per card */
+    { int e = 0; while (e < nesdord) {
+        cinit(c); cname(c, "ESD");
+        int n = 0, cardfirst = 0;
+        while (n < 3 && e < nesdord) {
+            struct sym *s = esdord[e++]; int slot = 16 + n * 16;
+            if (s->type == S_PC || s->type == S_SD) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, modlen, 0); if (!cardfirst) cardfirst = s->esdid; }
+            else if (s->type == S_ER) { esd_ent(c, slot, s->name, 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
+            else { esd_ent(c, slot, s->name, 0x01, s->val, main_sect_esdid, 0); }   /* LD entry */
+            n++;
+        }
+        cbe(c, 10, n * 16, 2); cbe(c, 14, cardfirst, 2);
+        cseq(c, ++seq); fwrite(c, 1, 80, f);
+    } }
 
     { long off = 0; while (off < modlen) {
         if (!defn[off]) { off++; continue; }           /* skip alignment/DS gaps */
@@ -653,19 +714,22 @@ static void emit_obj(FILE *f) {
     { int a, b; for (a = 1; a < nrel; a++) { struct reloc t = rels[a]; b = a - 1;
         while (b >= 0 && (rels[b].pos > t.pos || (rels[b].pos == t.pos && rels[b].rel > t.rel))) { rels[b + 1] = rels[b]; b--; }
         rels[b + 1] = t; } }
-    if (nrel > 0) {
-        cinit(c); cname(c, "RLD");
-        { int off = 16; k = 0; while (k < nrel) {
+    { k = 0; while (k < nrel) {
+        cinit(c); cname(c, "RLD"); int off = 16;
+        while (k < nrel) {
             int run = k + 1; while (run < nrel && rels[run].rel == rels[k].rel && rels[run].pos == rels[k].pos) run++;
+            int gbytes = 8 + (run - k - 1) * 4;
+            if (off > 16 && off + gbytes > 72) break;          /* group won't fit -> flush card */
             cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
             c[off + 4] = (rels[k].isV ? 0x1C : 0x0C) | (run - k > 1 ? 0x01 : 0); cbe(c, off + 5, rels[k].addr, 3); off += 8;
             int m; for (m = k + 1; m < run; m++) {
                 c[off] = (rels[m].isV ? 0x1C : 0x0C) | (m < run - 1 ? 0x01 : 0); cbe(c, off + 1, rels[m].addr, 3); off += 4;
             }
             k = run;
-        } cbe(c, 10, off - 16, 2); }
-        cseq(c, ++seq); fwrite(c, 1, 80, f);
-    }
+            if (off + 8 > 72) break;
+        }
+        cbe(c, 10, off - 16, 2); cseq(c, ++seq); fwrite(c, 1, 80, f);
+    } }
 
     cinit(c); cname(c, "END"); if (end_has) { cbe(c, 5, end_addr, 3); cbe(c, 14, end_esdid, 2); }
     cseq(c, ++seq); fwrite(c, 1, 80, f);
@@ -690,11 +754,12 @@ int main(int argc, char **argv) {
     if (eonly) { int j; for (j = 0; j < nl; j++) { fputs(lines[j], stdout); if (lines[j][0] && lines[j][strlen(lines[j]) - 1] != '\n') putchar('\n'); } return 0; }
 
     do_pass(1, lines, nl);
-    { int k, id = 0; for (k = 0; k < nsym; k++)
-        if (syms[k].type == S_SD || syms[k].type == S_PC || syms[k].type == S_ER) syms[k].esdid = ++id; }
-    { int k; for (k = 0; k < nsym; k++) if (syms[k].type == S_SD || syms[k].type == S_PC) { main_sect_esdid = syms[k].esdid; break; } }
+    { int k, id = 0; for (k = 0; k < nesdord; k++)
+        if (esdord[k]->type == S_SD || esdord[k]->type == S_PC || esdord[k]->type == S_ER) esdord[k]->esdid = ++id; }
+    { int k; for (k = 0; k < nesdord; k++) if (esdord[k]->type == S_SD || esdord[k]->type == S_PC) { main_sect_esdid = esdord[k]->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     do_pass(2, lines, nl);
+    if (nunk) { int j; fprintf(stderr, "as370: unknown op(s):"); for (j = 0; j < nunk; j++) fprintf(stderr, " %s", unkops[j]); fprintf(stderr, "\n"); }
 
     long i;
     printf("module length: 0x%lX (%ld bytes)\n", modlen, modlen);
