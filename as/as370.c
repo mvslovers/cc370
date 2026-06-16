@@ -551,18 +551,19 @@ static void do_pass(int pass, char **lines, int nlines) {
             int ty = *p ? toupper((unsigned char)*p++) : 0, k;
             int blen = 0, haslen = 0;            /* explicit length modifier Ln */
             if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
-            if (ty == 'F' || ty == 'A') {
-                if (!haslen) { blen = 4; lc = align4(lc); }
+            if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y') {
+                int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
+                if (!haslen) { blen = base; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc); }
                 if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                long val = 0; char ename[64] = ""; int isrel = 0;
-                if (ty == 'A') { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
+                long val = 0; char ename[64] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
+                if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                     if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
                     struct sym *es = sym_find(ename);
                     isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER); }
                 else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                 for (k = 0; k < cnt; k++) {
                     if (pass == 2 && !strcmp(op, "DC")) {
-                        if (ty == 'A') { put(lc, expr_val(ename, NULL), blen); if (isrel) add_reloc(lc, ename, 0); }
+                        if (isaddr) { put(lc, expr_val(ename, NULL), blen); if (isrel) add_reloc(lc, ename, 0); }
                         else put(lc, val, blen);
                     }
                     lc += blen;

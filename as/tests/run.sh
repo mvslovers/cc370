@@ -3,9 +3,12 @@
 # card, which legitimately differs only in the IDR) is byte-identical to the
 # IFOX00 reference in tests/ref/.
 cd "$(dirname "$0")/.." || exit 2
+# Macro library = crent370/maclib (PDP macros + the IBM SYS1.MACLIB macros the
+# host build needs). Override with MACLIB=... ; default assumes the sibling repo.
+MACLIB=${MACLIB:-../../crent370/maclib}
 fail=0
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7; do
-    ./as370 "tests/$s.s" -I maclib -o "/tmp/$s.obj" >/dev/null 2>&1 || { echo "$s: ASSEMBLE FAILED"; fail=1; continue; }
+    ./as370 "tests/$s.s" -I "$MACLIB" -o "/tmp/$s.obj" >/dev/null 2>&1 || { echo "$s: ASSEMBLE FAILED"; fail=1; continue; }
     ref="tests/ref/$s.obj"
     nbe=$(( ($(wc -c < "$ref") / 80 - 1) * 80 ))
     head -c "$nbe" "/tmp/$s.obj" > /tmp/_a.$$; head -c "$nbe" "$ref" > /tmp/_b.$$
