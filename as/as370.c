@@ -429,7 +429,10 @@ static void aif_split(const char *opnd, char *cond, char *seq) {
     int d = 0, q = 0; const char *cs = p + 1;
     for (; *p; p++) { if (*p == '\'') { if (q || p == opnd || !strchr("KNLT", p[-1])) q = !q; }  /* K'/N'/L'/T' attribute apostrophe */
         else if (!q && *p == '(') { d++; if (d == 1) cs = p + 1; }
-        else if (!q && *p == ')') { if (--d == 0) { int L = (int)(p - cs); memcpy(cond, cs, L); cond[L] = 0; strcpy(seq, p + 1); return; } } }
+        else if (!q && *p == ')') { if (--d == 0) {
+            int L = (int)(p - cs); if (L > 126) L = 126; memcpy(cond, cs, L); cond[L] = 0;
+            const char *s = p + 1; int si = 0; while (*s && !isspace((unsigned char)*s) && si < 18) seq[si++] = *s++;  /* sequence symbol only */
+            seq[si] = 0; return; } } }
 }
 
 /* ---- macro library (-I dirs): COPY members + macro lookup by name -------- */
@@ -522,12 +525,12 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         }
     }
     /* prescan sequence-symbol labels */
-    char seqn[128][20]; int seqi[128], nseq = 0;
+    char seqn[256][20]; int seqi[256], nseq = 0;   /* stack-local: mexp_macro recurses for nested macros */
     for (k = 0; k < m->nbody; k++) if (m->body[k][0] == '.' && m->body[k][1] != '*') {
         char sl[20]; int j = 0; const char *q = m->body[k]; while (*q && !isspace((unsigned char)*q) && j < 19) sl[j++] = *q++; sl[j] = 0;
-        if (nseq < 128) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
+        if (nseq < 256) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
     }
-    if (m->endlbl[0] && nseq < 128) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
+    if (m->endlbl[0] && nseq < 256) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
     int pc = 0, guard = 0;
     while (pc < m->nbody && guard++ < 100000) {
         char bb[512], bl[16], bo[16], bod[384];
