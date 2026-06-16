@@ -46,7 +46,12 @@ enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
 struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; };
 static struct sym syms[MAXSYM];
 static int nsym;
-static struct sym *esdord[MAXSYM]; static int nesdord;   /* ESD entries in declaration order */
+/* ESD is a list of (symbol, role) events in source order. A name can appear as
+ * BOTH an LD (locally defined entry) and an ER (referenced via =V/EXTRN) — IFOX
+ * emits two ESD entries in that case, so roles are tracked separately. */
+enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
+struct esdent { struct sym *s; int role; };
+static struct esdent esdord[MAXSYM]; static int nesdord;
 
 struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; };
 static struct lit lits[MAXLIT];
@@ -79,9 +84,9 @@ static struct sym *sym_get(const char *n) {
     s = &syms[nsym++]; memset(s, 0, sizeof *s); strncpy(s->name, n, 8); s->type = S_REL;
     return s;
 }
-static void esd_add(struct sym *s) {
-    int i; for (i = 0; i < nesdord; i++) if (esdord[i] == s) return;
-    if (nesdord < MAXSYM) esdord[nesdord++] = s;
+static void esd_add(struct sym *s, int role) {
+    int i; for (i = 0; i < nesdord; i++) if (esdord[i].s == s && esdord[i].role == role) return;
+    if (nesdord < MAXSYM) { esdord[nesdord].s = s; esdord[nesdord].role = role; nesdord++; }
 }
 /* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
@@ -110,6 +115,9 @@ static struct lit *lit_get(const char *t) {
     memset(&lits[nlit], 0, sizeof lits[0]); strncpy(lits[nlit].text, t, sizeof lits[0].text - 1);
     lits[nlit].ltseq = litpool;          /* literal belongs to the current (not-yet-flushed) pool */
     lit_classify(&lits[nlit]);
+    if (lits[nlit].isV) {                /* =V: register an external reference at first use */
+        struct sym *s = sym_get(lits[nlit].ext); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER);
+    }
     return &lits[nlit++];
 }
 
@@ -638,13 +646,13 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (!strcmp(op, "CSECT")) {
             lc = 0;
             if (pass == 1) { struct sym *s = lbl[0] ? sym_get(lbl) : sym_get("");
-                s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s); }
+                s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }
             if (pass == 2) { struct sym *s = sym_find(lbl[0] ? lbl : ""); if (s) cur_sect_esdid = s->esdid; }
         } else if (!strcmp(op, "ENTRY")) {
-            if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s); }
+            if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s, ESD_LD); }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
             if (pass == 1 && opnd[0]) { char f[8][64]; int nf = split_fields(opnd, f, 8), j;
-                for (j = 0; j < nf; j++) { struct sym *s = sym_get(f[j]); s->type = S_ER; esd_add(s); } }
+                for (j = 0; j < nf; j++) { struct sym *s = sym_get(f[j]); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
             char F[4][64]; split_fields(opnd, F, 4);
             if (pass == 2) { using_reg = (int)expr_val(F[1], 0); using_base = (F[0][0] == '*') ? lc : expr_val(F[0], 0); }
@@ -725,8 +733,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             { int mi; for (mi = 0; mi < nmem; mi++) {
                 struct lit *l = &lits[mem[mi]];
                 lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
-                if (pass == 1) { l->loc = lc;
-                    if (l->isV) { struct sym *s = sym_get(l->ext); s->type = S_ER; esd_add(s); } }
+                if (pass == 1) l->loc = lc;   /* =V external refs are registered at first use in lit_get */
                 else emit_lit(l);
                 l->placed = 1;
                 lc += l->size;
@@ -780,9 +787,9 @@ static void emit_obj(FILE *f) {
         cinit(c); cname(c, "ESD");
         int n = 0, cardfirst = 0;
         while (n < 3 && e < nesdord) {
-            struct sym *s = esdord[e++]; int slot = 16 + n * 16;
-            if (s->type == S_PC || s->type == S_SD) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, modlen, 0); if (!cardfirst) cardfirst = s->esdid; }
-            else if (s->type == S_ER) { esd_ent(c, slot, s->name, 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
+            struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
+            if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, modlen, 0); if (!cardfirst) cardfirst = s->esdid; }
+            else if (role == ESD_ER) { esd_ent(c, slot, s->name, 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
             else { esd_ent(c, slot, s->name, 0x01, s->val, main_sect_esdid, 0); }   /* LD entry */
             n++;
         }
@@ -854,9 +861,9 @@ int main(int argc, char **argv) {
     if (eonly) { int j; for (j = 0; j < nl; j++) { fputs(lines[j], stdout); if (lines[j][0] && lines[j][strlen(lines[j]) - 1] != '\n') putchar('\n'); } return 0; }
 
     do_pass(1, lines, nl);
-    { int k, id = 0; for (k = 0; k < nesdord; k++)
-        if (esdord[k]->type == S_SD || esdord[k]->type == S_PC || esdord[k]->type == S_ER) esdord[k]->esdid = ++id; }
-    { int k; for (k = 0; k < nesdord; k++) if (esdord[k]->type == S_SD || esdord[k]->type == S_PC) { main_sect_esdid = esdord[k]->esdid; break; } }
+    { int k, id = 0; for (k = 0; k < nesdord; k++)            /* SD/PC sections and ER refs get an ESDID; LD entries do not */
+        if (esdord[k].role == ESD_SECT || esdord[k].role == ESD_ER) esdord[k].s->esdid = ++id; }
+    { int k; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     do_pass(2, lines, nl);
     if (nunk) { int j; fprintf(stderr, "as370: unknown op(s):"); for (j = 0; j < nunk; j++) fprintf(stderr, " %s", unkops[j]); fprintf(stderr, "\n"); }
