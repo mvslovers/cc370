@@ -16,10 +16,13 @@ First light: the two-pass core assembles the WP-1 macro-free reference
 
 Working so far:
 - two passes (location counter, symbol table, high-water module length)
-- formats **RR**, **RX**; extended mnemonic **BR** (→ `BCR 15,r`)
-- directives **CSECT, USING, DROP, DC A, DS, EQU, LTORG, END**
-- **USING** base+displacement resolution for symbol / literal operands
+- formats **RR, RX, RS, SI, SS**; extended branches **BR** (→ `BCR 15,r`) and **B**
+- directives **CSECT** (named=SD / unnamed=PC), **ENTRY** (LD), **USING/DROP**,
+  **DC A/F/C** (EBCDIC), **DS, EQU, LTORG, END**
+- operands both **explicit** (`d(x,b)`, `d(len,b)`, `d(b)`) and **symbolic via USING**
 - literal pool (`=V`, `=A`, `=F`) with LTORG placement; `=V` registers an ER
+- gap-aware TXT (alignment/DS gaps split TXT records, matching IFOX)
+- validated byte-identical to IFOX on `tests/sample{1,3,4}.s`
 
 Validation oracle = the IFOX00 `PRINT GEN` listing (see Epic / WP-1, TSK-274).
 

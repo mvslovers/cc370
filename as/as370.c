@@ -1,16 +1,16 @@
 /* as370 - host-native MVS assembler for c2asm370 (WP-2/WP-3 skeleton).
  *
- * Reproduces IFOX00 object decks for the WP-1/WP-3 references:
- *   - tests/sample1.s : named CSECT (SD) + ER, single TXT card.
- *   - tests/sample3.s : unnamed CSECT (PC) + ENTRY (LD) + ER, multi-card TXT,
- *                       RLD bit-7 continuation packing.
- * Validation oracle = the IFOX00 PRINT GEN listing + object deck (cards 1..n-1
- * byte-identical; the END card matches except the optional IDR field).
+ * Reproduces IFOX00 object decks for the reference tests (cards before END
+ * byte-identical; END matches except the optional IDR):
+ *   sample1.s  named CSECT (SD) + ER, single TXT card
+ *   sample3.s  unnamed CSECT (PC) + ENTRY (LD), multi-card TXT, RLD packing
+ *   sample4.s  RS (STM/LM), SS (MVC), SI (MVI), B (RX branch), DC C (EBCDIC)
  *
- * Scope: formats RR/RX, extended mnemonic BR; directives CSECT (named=SD /
- * unnamed=PC), ENTRY, USING, DROP, DC A/F, DS, EQU, LTORG, END; literals
- * =V/=A/=F; base+disp via USING. Full opcode-table lift, RS/SI/SS, EBCDIC DC C,
- * and the macro processor are the next steps.
+ * Scope: formats RR/RX/RS/SI/SS + extended branches BR/B; directives CSECT
+ * (named=SD / unnamed=PC), ENTRY, USING, DROP, DC A/F/C, DS, EQU, LTORG, END;
+ * literals =V/=A/=F; explicit d(x,b)/d(len,b)/d(b) operands and symbolic
+ * operands via USING. Next: full opcode-table lift, more DC types, the macro
+ * processor (WP-4).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +22,7 @@
 #define MAXREL 256
 #define TEXTMAX 65536
 
-enum fmt { F_NONE, F_RR, F_RX, F_BR /* pseudo: BCR 15,r2 */ };
+enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC };
 
 struct opc { const char *name; int fmt; int op; };
 static const struct opc optab[] = {
@@ -30,6 +30,10 @@ static const struct opc optab[] = {
     { "LR",   F_RR, 0x18 }, { "LTR",  F_RR, 0x12 }, { "AR",   F_RR, 0x1A },
     { "L",    F_RX, 0x58 }, { "LA",   F_RX, 0x41 }, { "ST",   F_RX, 0x50 },
     { "A",    F_RX, 0x5A }, { "C",    F_RX, 0x59 },
+    { "STM",  F_RS, 0x90 }, { "LM",   F_RS, 0x98 },
+    { "MVI",  F_SI, 0x92 }, { "CLI",  F_SI, 0x95 },
+    { "MVC",  F_SS, 0xD2 },
+    { "B",    F_BC, 0x47 },
     { NULL, 0, 0 }
 };
 
@@ -47,6 +51,7 @@ static struct reloc rels[MAXREL];
 static int nrel;
 
 static unsigned char text[TEXTMAX];
+static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentation) */
 static long lc, modlen;
 static int  using_reg = -1;
 static long using_base;
@@ -54,10 +59,7 @@ static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr;
 static int  errors;
 
-static void err(int line, const char *m, const char *a) {
-    fprintf(stderr, "as370: line %d: %s%s%s\n", line, m, a ? " " : "", a ? a : "");
-    errors++;
-}
+static unsigned char a2e(int c);   /* fwd */
 
 static struct sym *sym_find(const char *n) {
     int i; for (i = 0; i < nsym; i++) if (!strcmp(syms[i].name, n)) return &syms[i];
@@ -86,26 +88,70 @@ static long expr_val(const char *e, int *reloc) {
     return 0;
 }
 static void put(long at, long v, int n) {
-    int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); v >>= 8; }
+    int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
     if (at + n > modlen) modlen = at + n;
-}
-static void split2(const char *s, char *a, char *b) {
-    const char *c = strchr(s, ',');
-    if (c) { size_t n = c - s; memcpy(a, s, n); a[n] = 0; strcpy(b, c + 1); }
-    else   { strcpy(a, s); b[0] = 0; }
 }
 static long align4(long x) { return (x + 3) & ~3L; }
 
-static int parse(char *line, char *lbl, char *op, char *opnd) {
-    char *p = line, *t;
+/* split operand into fields at top-level (depth-0) commas */
+static int split_fields(const char *s, char f[][64], int max) {
+    int n = 0, depth = 0; const char *start = s, *p = s;
+    for (;; p++) {
+        if (*p == '(') depth++;
+        else if (*p == ')') depth--;
+        if ((*p == ',' && depth == 0) || *p == 0) {
+            int len = (int)(p - start); if (len > 63) len = 63;
+            if (n < max) { memcpy(f[n], start, len); f[n][len] = 0; n++; }
+            if (*p == 0) break; start = p + 1;
+        }
+    }
+    return n;
+}
+static long imm_val(const char *s) {
+    if (s[0] == 'C' && s[1] == '\'') return a2e((unsigned char)s[2]);
+    if (s[0] == 'X' && s[1] == '\'') return strtol(s + 2, NULL, 16);
+    return strtol(s, NULL, 10);
+}
+/* resolve a memory operand into displacement d, index/length a, base b */
+static void resolve(const char *f, long *d, int *a, int *b) {
+    *a = 0; *b = 0; *d = 0;
+    if (f[0] == '=') { struct lit *l = lit_get(f); *d = l->loc - using_base; *b = using_reg; return; }
+    const char *lp = strchr(f, '(');
+    if (lp) {
+        *d = strtol(f, NULL, 10);
+        const char *rp = strchr(lp, ')');
+        char inside[64]; int n = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1);
+        if (n > 63) n = 63; memcpy(inside, lp + 1, n); inside[n] = 0;
+        char *cm = strchr(inside, ',');
+        if (cm) { *cm = 0; *a = inside[0] ? atoi(inside) : 0; *b = atoi(cm + 1); }
+        else *b = atoi(inside);
+    } else {
+        struct sym *s = sym_find(f); long tgt = s ? s->val : 0;
+        *d = tgt - using_base; *b = using_reg;
+    }
+}
+
+/* parse a statement into label / opcode / operand. The operand field ends at
+ * the first blank that is NOT inside a quoted string (so DC C'A B' works); the
+ * trailing comment is dropped. */
+static int parse(const char *line, char *lbl, char *op, char *opnd) {
+    const char *p = line; int i;
     lbl[0] = op[0] = opnd[0] = 0;
-    if (line[0] == '*') return 0;
-    if (line[0] != ' ' && line[0] != '\t' && line[0] != '\0' && line[0] != '\n') {
-        t = strtok(p, " \t\n"); if (!t) return 0; strncpy(lbl, t, 8); lbl[8] = 0;
-        t = strtok(NULL, " \t\n");
-    } else t = strtok(p, " \t\n");
-    if (!t) return 0; strncpy(op, t, 8); op[8] = 0;
-    t = strtok(NULL, " \t\n"); if (t) { strncpy(opnd, t, 63); opnd[63] = 0; }
+    if (*p == '*') return 0;
+    if (*p != ' ' && *p != '\t' && *p != '\n' && *p != 0) {
+        i = 0; while (*p && !isspace((unsigned char)*p)) { if (i < 8) lbl[i++] = *p; p++; } lbl[i < 8 ? i : 8] = 0;
+    }
+    while (*p == ' ' || *p == '\t') p++;
+    if (!*p || *p == '\n') return op[0] != 0;
+    i = 0; while (*p && !isspace((unsigned char)*p)) { if (i < 8) op[i++] = *p; p++; } op[i < 8 ? i : 8] = 0;
+    while (*p == ' ' || *p == '\t') p++;
+    if (!*p || *p == '\n') return 1;
+    i = 0; { int q = 0; while (*p && *p != '\n') {
+        if (*p == '\'') q = !q;
+        if (!q && (*p == ' ' || *p == '\t')) break;
+        if (i < 63) opnd[i++] = *p; p++;
+    } }
+    opnd[i] = 0;
     return 1;
 }
 static const struct opc *op_find(const char *n) {
@@ -118,6 +164,7 @@ static void add_reloc(long at, const char *target, int isV) {
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
     rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; nrel++;
 }
+static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
 static void do_pass(int pass, char **lines, int nlines) {
     int i;
@@ -131,27 +178,30 @@ static void do_pass(int pass, char **lines, int nlines) {
 
         const struct opc *o = op_find(op);
         if (o) {
+            char F[4][64]; int nf = split_fields(opnd, F, 4); (void)nf;
             if (pass == 1) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                if (opnd[0]) { char a[64], b[64]; split2(opnd, a, b); if (b[0] == '=') lit_get(b); }
-                lc += (o->fmt == F_RR || o->fmt == F_BR) ? 2 : 4;
+                int k; for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
+                lc += ins_len(o->fmt);
             } else {
-                char a[64], b[64]; split2(opnd, a, b);
-                if (o->fmt == F_RR) {
-                    int r1 = (int)expr_val(a, NULL), r2 = (int)expr_val(b, NULL);
-                    put(lc, (o->op << 8) | (r1 << 4) | r2, 2); lc += 2;
-                } else if (o->fmt == F_BR) {
-                    int r2 = (int)expr_val(a, NULL);
-                    put(lc, (o->op << 8) | (15 << 4) | r2, 2); lc += 2;
-                } else {
-                    int r1 = (int)expr_val(a, NULL), x2 = 0, b2; long disp, tgt;
-                    if (b[0] == '=') { struct lit *l = lit_get(b); tgt = l->loc; }
-                    else            { struct sym *s = sym_find(b); tgt = s ? s->val : 0; }
-                    if (using_reg < 0) err(i + 1, "no active USING for", b);
-                    b2 = using_reg; disp = tgt - using_base;
-                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x2 << 16)
-                            | ((long)b2 << 12) | (disp & 0xfff), 4);
-                    lc += 4;
+                long d, d2; int a, b, a2, b2;
+                switch (o->fmt) {
+                case F_RR:
+                    put(lc, (o->op << 8) | ((int)expr_val(F[0], 0) << 4) | (int)expr_val(F[1], 0), 2); lc += 2; break;
+                case F_BR:
+                    put(lc, (o->op << 8) | (15 << 4) | (int)expr_val(F[0], 0), 2); lc += 2; break;
+                case F_RX: { int r1 = (int)expr_val(F[0], 0); resolve(F[1], &d, &a, &b);
+                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)a << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                case F_BC: { resolve(F[0], &d, &a, &b);
+                    put(lc, ((long)o->op << 24) | ((long)15 << 20) | ((long)a << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                case F_RS: { int r1 = (int)expr_val(F[0], 0), r3 = (int)expr_val(F[1], 0); resolve(F[2], &d, &a, &b);
+                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                case F_SI: { resolve(F[0], &d, &a, &b); long im = imm_val(F[1]);
+                    put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                case F_SS: { resolve(F[0], &d, &a, &b); resolve(F[1], &d2, &a2, &b2); int len = a ? a : 1;
+                    put(lc, o->op, 1); put(lc + 1, (len - 1) & 0xff, 1);
+                    put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6; break; }
+                default: break;
                 }
             }
             continue;
@@ -159,23 +209,21 @@ static void do_pass(int pass, char **lines, int nlines) {
 
         if (!strcmp(op, "CSECT")) {
             lc = 0;
-            if (pass == 1) {
-                struct sym *s = lbl[0] ? sym_get(lbl) : sym_get("");
-                s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1;
-            }
+            if (pass == 1) { struct sym *s = lbl[0] ? sym_get(lbl) : sym_get("");
+                s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; }
             if (pass == 2) { struct sym *s = sym_find(lbl[0] ? lbl : ""); if (s) cur_sect_esdid = s->esdid; }
         } else if (!strcmp(op, "ENTRY")) {
             if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; }
         } else if (!strcmp(op, "USING")) {
-            char a[64], b[64]; split2(opnd, a, b);
-            if (pass == 2) { using_reg = (int)expr_val(b, NULL); using_base = (a[0] == '*') ? lc : expr_val(a, NULL); }
+            char F[4][64]; split_fields(opnd, F, 4);
+            if (pass == 2) { using_reg = (int)expr_val(F[1], 0); using_base = (F[0][0] == '*') ? lc : expr_val(F[0], 0); }
         } else if (!strcmp(op, "DROP")) {
             if (pass == 2) using_reg = -1;
         } else if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
             const char *p = opnd; int cnt = 0, hascnt = 0;
             while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
             if (!hascnt) cnt = 1;
-            int ty = *p ? *p++ : 0;
+            int ty = *p ? *p++ : 0, k;
             if (ty == 'F' || ty == 'f' || ty == 'A' || ty == 'a') {
                 lc = align4(lc);
                 if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
@@ -183,7 +231,6 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (ty == 'A' || ty == 'a') { const char *lp = strchr(p, '('), *rp = strchr(p, ')');
                     if (lp && rp) { size_t n = rp - lp - 1; memcpy(ename, lp + 1, n); ename[n] = 0; } }
                 else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
-                int k;
                 for (k = 0; k < cnt; k++) {
                     if (pass == 2 && !strcmp(op, "DC")) {
                         if (ty == 'A' || ty == 'a') { put(lc, expr_val(ename, NULL), 4); add_reloc(lc, ename, 0); }
@@ -191,6 +238,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                     }
                     lc += 4;
                 }
+            } else if (ty == 'C' || ty == 'c') {       /* byte-aligned EBCDIC characters */
+                if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                const char *q = strchr(p, '\''); char body[128] = "";
+                if (q) { const char *e = q + 1; int bn = 0; while (*e && *e != '\'' && bn < 127) body[bn++] = *e++; body[bn] = 0; }
+                for (k = 0; k < cnt; k++) { const char *e = body; while (*e) { if (pass == 2 && !strcmp(op, "DC")) put(lc, a2e((unsigned char)*e), 1); lc++; e++; } }
             } else if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = (opnd[0] == '*') ? lc : expr_val(opnd, NULL); s->defined = 1; }
@@ -249,42 +301,36 @@ static void cebc(unsigned char *c, int off, const char *s, int w) {
     int i, done = 0; for (i = 0; i < w; i++) { if (!done && (!s || !s[i])) done = 1; c[off + i] = done ? 0x40 : a2e((unsigned char)s[i]); }
 }
 static void cseq(unsigned char *c, int seq) { char b[16]; int i; sprintf(b, "%08d", seq); for (i = 0; i < 8; i++) c[72 + i] = a2e(b[i]); }
-
-/* emit a 16-byte ESD symbol entry into card slot */
 static void esd_ent(unsigned char *c, int slot, const char *name, int type, long addr, long sizeOrId, int blankSize) {
     cebc(c, slot, name, 8); c[slot + 8] = (unsigned char)type; cbe(c, slot + 9, addr, 3); c[slot + 12] = 0x40;
     if (blankSize) { c[slot + 13] = c[slot + 14] = c[slot + 15] = 0x40; } else cbe(c, slot + 13, sizeOrId, 3);
 }
 
 static void emit_obj(FILE *f) {
-    unsigned char c[80]; int seq = 0, k, slot, first = 0, nesd = 0;
+    unsigned char c[80]; int seq = 0, k, slot, first = 0, nesd = 0, nld = 0;
     for (k = 0; k < nsym; k++) if (syms[k].esdid) { nesd++; if (!first) first = syms[k].esdid; }
-    nesd += 0; /* LDs counted below */
-    int nld = 0; for (k = 0; k < nsym; k++) if (syms[k].is_entry) nld++;
-    int total = nesd + nld;
+    for (k = 0; k < nsym; k++) if (syms[k].is_entry) nld++;
 
-    /* ESD: sections (PC/SD) -> LD entries -> ERs, matching IFOX order */
-    cinit(c); cname(c, "ESD"); cbe(c, 10, total * 16, 2); cbe(c, 14, first, 2); slot = 16;
-    for (k = 0; k < nsym; k++) if (syms[k].type == S_PC || syms[k].type == S_SD) {
-        esd_ent(c, slot, syms[k].name, syms[k].type == S_PC ? 0x04 : 0x00, syms[k].val, modlen, 0); slot += 16;
-    }
-    for (k = 0; k < nsym; k++) if (syms[k].is_entry) {
-        esd_ent(c, slot, syms[k].name, 0x01, syms[k].val, main_sect_esdid, 0); slot += 16;
-    }
-    for (k = 0; k < nsym; k++) if (syms[k].type == S_ER) {
-        esd_ent(c, slot, syms[k].name, 0x02, 0, 0, 1); slot += 16;
-    }
+    cinit(c); cname(c, "ESD"); cbe(c, 10, (nesd + nld) * 16, 2); cbe(c, 14, first, 2); slot = 16;
+    for (k = 0; k < nsym; k++) if (syms[k].type == S_PC || syms[k].type == S_SD)
+        { esd_ent(c, slot, syms[k].name, syms[k].type == S_PC ? 0x04 : 0x00, syms[k].val, modlen, 0); slot += 16; }
+    for (k = 0; k < nsym; k++) if (syms[k].is_entry)
+        { esd_ent(c, slot, syms[k].name, 0x01, syms[k].val, main_sect_esdid, 0); slot += 16; }
+    for (k = 0; k < nsym; k++) if (syms[k].type == S_ER)
+        { esd_ent(c, slot, syms[k].name, 0x02, 0, 0, 1); slot += 16; }
     cseq(c, ++seq); fwrite(c, 1, 80, f);
 
-    /* TXT: 56-byte chunks */
     { long off = 0; while (off < modlen) {
-        long len = modlen - off; if (len > 56) len = 56;
-        cinit(c); cname(c, "TXT"); cbe(c, 5, off, 3); cbe(c, 10, len, 2); cbe(c, 14, main_sect_esdid, 2);
-        { long i; for (i = 0; i < len; i++) c[16 + i] = text[off + i]; }
-        cseq(c, ++seq); fwrite(c, 1, 80, f); off += len;
+        if (!defn[off]) { off++; continue; }           /* skip alignment/DS gaps */
+        long rstart = off; while (off < modlen && defn[off]) off++;
+        while (rstart < off) {
+            long len = off - rstart; if (len > 56) len = 56;
+            cinit(c); cname(c, "TXT"); cbe(c, 5, rstart, 3); cbe(c, 10, len, 2); cbe(c, 14, main_sect_esdid, 2);
+            { long i; for (i = 0; i < len; i++) c[16 + i] = text[rstart + i]; }
+            cseq(c, ++seq); fwrite(c, 1, 80, f); rstart += len;
+        }
     } }
 
-    /* RLD with bit-7 continuation packing (consecutive same Reloc+Pos) */
     cinit(c); cname(c, "RLD");
     { int off = 16; k = 0; while (k < nrel) {
         int run = k + 1; while (run < nrel && rels[run].rel == rels[k].rel && rels[run].pos == rels[k].pos) run++;
@@ -297,7 +343,6 @@ static void emit_obj(FILE *f) {
     } cbe(c, 10, off - 16, 2); }
     cseq(c, ++seq); fwrite(c, 1, 80, f);
 
-    /* END: Type-1 (entry addr + ESDID); IDR left blank */
     cinit(c); cname(c, "END"); cbe(c, 5, end_addr, 3); cbe(c, 14, end_esdid, 2);
     cseq(c, ++seq); fwrite(c, 1, 80, f);
 }
@@ -323,10 +368,6 @@ int main(int argc, char **argv) {
     long i;
     printf("module length: 0x%lX (%ld bytes)\n", modlen, modlen);
     printf("TXT: "); for (i = 0; i < modlen; i++) printf("%02X", text[i]); printf("\n");
-    { int k; for (k = 0; k < nsym; k++) printf("  %-8s = 0x%04lX  type=%d esdid=%d%s\n",
-        syms[k].name[0] ? syms[k].name : "(PC)", syms[k].val, syms[k].type, syms[k].esdid, syms[k].is_entry ? " ENTRY" : ""); }
-    { int k; for (k = 0; k < nrel; k++) printf("  RLD %s @0x%04lX rel=%d pos=%d\n", rels[k].isV ? "V" : "A", rels[k].addr, rels[k].rel, rels[k].pos); }
-
     if (objfn) {
         FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 2; }
         emit_obj(of); fclose(of); printf("wrote object deck: %s\n", objfn);
