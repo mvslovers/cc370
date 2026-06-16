@@ -600,6 +600,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val; end_esdid = s->esdid ? s->esdid : main_sect_esdid; } }
             }
             int first = 1;
+            if (!strcmp(op, "LTORG")) { lc = align8(lc); first = 0; }  /* LTORG aligns the pool to a doubleword even when it is empty */
             for (k = 0; k < nlit; k++) {
                 if (lits[k].placed) continue;
                 if (pass == 2 && lits[k].ltseq != ltidx) continue;
@@ -741,8 +742,8 @@ int main(int argc, char **argv) {
     }
     if (!src) { fprintf(stderr, "usage: as370 [-I maclib]... [-o obj] file.s\n"); return 2; }
     FILE *f = fopen(src, "r"); if (!f) { perror(src); return 2; }
-    static char *raw[4096]; int n = 0; char lb[256];
-    while (fgets(lb, sizeof lb, f) && n < 4096) raw[n++] = strdup(lb);
+    static char *raw[MAXLINES]; int n = 0; char lb[256];
+    while (fgets(lb, sizeof lb, f) && n < MAXLINES) raw[n++] = strdup(lb);
     fclose(f);
 
     static char *lines[MAXLINES];
