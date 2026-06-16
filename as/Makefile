@@ -8,7 +8,7 @@ $(PROG): as370.c
 
 .PHONY: test clean
 test: $(PROG)
-	./$(PROG) tests/sample1.s
+	@./tests/run.sh
 
 clean:
 	rm -f $(PROG)

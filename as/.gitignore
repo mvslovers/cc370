@@ -2,3 +2,5 @@ as370
 *.o
 *.obj
 *.dSYM/
+a.out
+!tests/ref/*.obj

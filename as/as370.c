@@ -42,7 +42,7 @@ struct sym { char name[9]; long val; int type; int defined; int esdid; int is_en
 static struct sym syms[MAXSYM];
 static int nsym;
 
-struct lit { char text[32]; long loc; long val; int placed; int isV; char ext[9]; };
+struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; };
 static struct lit lits[MAXLIT];
 static int nlit;
 
@@ -56,7 +56,7 @@ static long lc, modlen;
 static int  using_reg = -1;
 static long using_base;
 static int  cur_sect_esdid, main_sect_esdid;
-static int  end_esdid; static long end_addr;
+static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
 
 static unsigned char a2e(int c);   /* fwd */
@@ -92,6 +92,7 @@ static void put(long at, long v, int n) {
     if (at + n > modlen) modlen = at + n;
 }
 static long align4(long x) { return (x + 3) & ~3L; }
+static long align8(long x) { return (x + 7) & ~7L; }
 
 /* split operand into fields at top-level (depth-0) commas */
 static int split_fields(const char *s, char f[][64], int max) {
@@ -179,6 +180,7 @@ struct macro {
     char namep[20], name[16];
     char pname[24][20], pdef[24][40]; int pkey[24]; int nparm;
     char *body[256]; int nbody;
+    char endlbl[20];               /* sequence symbol on the MEND line, if any */
 };
 static struct macro macros[64];
 static int nmac;
@@ -297,32 +299,102 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
         } else { strncpy(out, sub, 95); out[95] = 0; }
     } else msub(c, s, out);
 }
-/* evaluate an AIF condition (single comparison, arithmetic or character) */
+/* a comparison term is character if quoted or a T' (type) attribute */
+static int term_is_str(const char *t) { return t[0] == '\'' || (t[0] == 'T' && t[1] == '\''); }
+static void term_str(struct ctx *c, const char *t, char *out) {
+    if (t[0] == 'T' && t[1] == '\'') {
+        char ref[44], v[96]; const char *p = t + 2; int i = 0;
+        if (*p == '&') { ref[i++] = *p++; while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_')) ref[i++] = *p++;
+            if (*p == '(') { ref[i++] = *p++; int d = 1; while (*p && d) { if (*p=='(')d++; else if(*p==')')d--; ref[i++]=*p++; } } ref[i] = 0; vref(c, ref, v); }
+        else v[0] = 0;
+        if (!v[0]) strcpy(out, "O");
+        else { int alln = 1, j; for (j = 0; v[j]; j++) if (!isdigit((unsigned char)v[j])) { alln = 0; break; } strcpy(out, alln ? "N" : "U"); }
+    } else eval_setc(c, t, out);
+}
+static int rel_apply(const char *rel, int cmp) {
+    if (!strcmp(rel, "EQ")) return cmp == 0; if (!strcmp(rel, "NE")) return cmp != 0;
+    if (!strcmp(rel, "GT")) return cmp > 0;  if (!strcmp(rel, "LT")) return cmp < 0;
+    if (!strcmp(rel, "GE")) return cmp >= 0; if (!strcmp(rel, "LE")) return cmp <= 0;
+    return 0;
+}
+static int eval_comp(struct ctx *c, const char *L, const char *rel, const char *R) {
+    int cmp;
+    if (term_is_str(L) || term_is_str(R)) { char ls[128], rs[128]; term_str(c, L, ls); term_str(c, R, rs); cmp = strcmp(ls, rs); }
+    else { long lv = eval_seta(c, L), rv = eval_seta(c, R); cmp = (lv < rv) ? -1 : (lv > rv) ? 1 : 0; }
+    return rel_apply(rel, cmp);
+}
+/* evaluate an AIF condition: comparisons joined by AND/OR (left to right) */
 static int eval_cond(struct ctx *c, const char *cond) {
-    char toks[12][96]; int nt = 0; const char *p = cond;
+    char toks[24][96]; int nt = 0; const char *p = cond;
     while (*p) {
         while (*p == ' ') p++; if (!*p) break;
         char *o = toks[nt]; int q = 0, d = 0, oi = 0;
-        while (*p && (q || d || *p != ' ')) { if (*p == '\'') q = !q; else if (*p == '(') d++; else if (*p == ')') d--; if (oi < 95) o[oi++] = *p; p++; }
-        o[oi] = 0; if (nt < 11) nt++;
+        while (*p && (q || d || *p != ' ')) { if (*p == '\'') q = !q; else if (!q && *p == '(') d++; else if (!q && *p == ')') d--; if (oi < 95) o[oi++] = *p; p++; }
+        o[oi] = 0; if (nt < 23) nt++;
     }
-    if (nt >= 3) {
-        const char *L = toks[0], *rel = toks[1], *R = toks[2]; int cmp;
-        if (L[0] == '\'' || R[0] == '\'') {
-            char ls[128], rs[128]; eval_setc(c, L, ls); eval_setc(c, R, rs); cmp = strcmp(ls, rs);
-        } else { long lv = eval_seta(c, L), rv = eval_seta(c, R); cmp = (lv < rv) ? -1 : (lv > rv) ? 1 : 0; }
-        if (!strcmp(rel, "EQ")) return cmp == 0; if (!strcmp(rel, "NE")) return cmp != 0;
-        if (!strcmp(rel, "GT")) return cmp > 0;  if (!strcmp(rel, "LT")) return cmp < 0;
-        if (!strcmp(rel, "GE")) return cmp >= 0; if (!strcmp(rel, "LE")) return cmp <= 0;
+    if (nt < 3) return 0;
+    int res = eval_comp(c, toks[0], toks[1], toks[2]); int i = 3;
+    while (i + 2 < nt) {
+        const char *conn = toks[i]; int r = eval_comp(c, toks[i + 1], toks[i + 2], toks[i + 3]);
+        if (!strcmp(conn, "OR")) res = res || r; else if (!strcmp(conn, "AND")) res = res && r;
+        i += 4;
     }
-    return 0;
+    return res;
 }
 /* split "(cond)seqsym" -> cond (no outer parens), seqsym */
 static void aif_split(const char *opnd, char *cond, char *seq) {
     cond[0] = seq[0] = 0; const char *p = opnd; if (*p != '(') return;
-    int d = 0; const char *cs = p + 1;
-    for (; *p; p++) { if (*p == '(') { d++; if (d == 1) cs = p + 1; }
-        else if (*p == ')') { if (--d == 0) { int L = (int)(p - cs); memcpy(cond, cs, L); cond[L] = 0; strcpy(seq, p + 1); return; } } }
+    int d = 0, q = 0; const char *cs = p + 1;
+    for (; *p; p++) { if (*p == '\'') q = !q;
+        else if (!q && *p == '(') { d++; if (d == 1) cs = p + 1; }
+        else if (!q && *p == ')') { if (--d == 0) { int L = (int)(p - cs); memcpy(cond, cs, L); cond[L] = 0; strcpy(seq, p + 1); return; } } }
+}
+
+/* ---- macro library (-I dirs): COPY members + macro lookup by name -------- */
+static char *maclib_dirs[8]; static int nmaclib;
+static int lib_path(const char *name, char *path) {
+    const char *exts[] = { ".macro", ".copy", ".mac", ".asm", "", NULL };
+    char low[40]; int i; for (i = 0; name[i] && i < 39; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
+    int di, e;
+    for (di = 0; di < nmaclib; di++) for (e = 0; exts[e]; e++) {
+        snprintf(path, 256, "%s/%s%s", maclib_dirs[di], low, exts[e]);
+        FILE *f = fopen(path, "r"); if (f) { fclose(f); return 1; }
+    }
+    return 0;
+}
+static int lib_readlines(const char *name, char *buf[], int max) {
+    char path[256]; if (!lib_path(name, path)) return -1;
+    FILE *f = fopen(path, "r"); if (!f) return -1;
+    char lb[256]; int n = 0; while (fgets(lb, sizeof lb, f) && n < max) buf[n++] = strdup(lb);
+    fclose(f); return n;
+}
+static struct macro *capture_macro(char **in, int nin, int *ip) {
+    int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
+    char pb[256], pl[16], po[16], pp[128]; strncpy(pb, in[i], 255); pb[255] = 0; parse(pb, pl, po, pp);
+    struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
+    strncpy(m->namep, pl, sizeof m->namep - 1); strncpy(m->name, po, sizeof m->name - 1);
+    if (pp[0]) { char flds[24][64]; int nf = split_fields(pp, flds, 24), k;
+        for (k = 0; k < nf && k < 24; k++) { char *eq = strchr(flds[k], '=');
+            if (eq) { *eq = 0; strncpy(m->pname[k], flds[k], 19); strncpy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
+            else strncpy(m->pname[k], flds[k], 19); m->nparm++; } }
+    while (++i < nin) { char bb[256], bl[16], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
+        if (!strcmp(bo, "MEND")) { if (bl[0] == '.') strncpy(m->endlbl, bl, 19); break; }
+        if (m->nbody < 256) m->body[m->nbody++] = strdup(in[i]); }
+    *ip = i; return m;
+}
+static struct macro *lib_load(const char *name) {
+    struct macro *m = mac_find(name); if (m) return m;
+    static char *buf[1024]; int n = lib_readlines(name, buf, 1024); if (n < 0) return NULL;
+    int i = 0; for (; i < n; i++) { char b[256], l[16], o[16], od[128]; strncpy(b, buf[i], 255); b[255] = 0;
+        if (!parse(b, l, o, od) || !o[0]) continue; if (strcmp(o, "MACRO")) return NULL; break; }
+    if (i >= n) return NULL;
+    return capture_macro(buf, n, &i);
+}
+static int known_op(const char *o) {
+    if (op_find(o)) return 1;
+    const char *d[] = { "CSECT", "ENTRY", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
+                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", NULL };
+    int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
 
 static void mexp_line(const char *line, char **out, int *nout, int depth);
@@ -347,6 +419,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         char sl[20]; int j = 0; const char *q = m->body[k]; while (*q && !isspace((unsigned char)*q) && j < 19) sl[j++] = *q++; sl[j] = 0;
         if (nseq < 128) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
     }
+    if (m->endlbl[0] && nseq < 128) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
     int pc = 0, guard = 0;
     while (pc < m->nbody && guard++ < 100000) {
         char bb[256], bl[16], bo[16], bod[128];
@@ -373,7 +446,12 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
     char buf[256], lbl[16], op[16], opnd[128];
     strncpy(buf, line, 255); buf[255] = 0; parse(buf, lbl, op, opnd);
-    struct macro *m = (op[0] && depth <= 40) ? mac_find(op) : NULL;
+    if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
+        char *cb[512]; int n = lib_readlines(opnd, cb, 512);
+        if (n >= 0) { int j; for (j = 0; j < n; j++) mexp_line(cb[j], out, nout, depth + 1); return; }
+    }
+    struct macro *m = NULL;
+    if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
     if (m) { mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return; }
     if (*nout >= MAXLINES) return;
     if (lbl[0] == '.') { char r[300]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
@@ -385,30 +463,14 @@ static int macro_pass(char **in, int nin, char **out) {
     for (i = 0; i < nin; i++) {
         char buf[256], lbl[16], op[16], opnd[128];
         strncpy(buf, in[i], 255); buf[255] = 0; parse(buf, lbl, op, opnd);
-        if (!strcmp(op, "MACRO")) {
-            if (++i >= nin) break;
-            char pb[256], pl[16], po[16], pp[128];
-            strncpy(pb, in[i], 255); pb[255] = 0; parse(pb, pl, po, pp);
-            struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
-            strncpy(m->namep, pl, sizeof m->namep - 1); strncpy(m->name, po, sizeof m->name - 1);
-            if (pp[0]) { char flds[24][64]; int nf = split_fields(pp, flds, 24), k;
-                for (k = 0; k < nf && k < 24; k++) { char *eq = strchr(flds[k], '=');
-                    if (eq) { *eq = 0; strncpy(m->pname[k], flds[k], 19); strncpy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
-                    else strncpy(m->pname[k], flds[k], 19);
-                    m->nparm++; } }
-            while (++i < nin) { char bb[256], bl[16], bo[16], bd[128];
-                strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
-                if (!strcmp(bo, "MEND")) break;
-                if (m->nbody < 256) m->body[m->nbody++] = strdup(in[i]); }
-            continue;
-        }
+        if (!strcmp(op, "MACRO")) { capture_macro(in, nin, &i); continue; }
         mexp_line(in[i], out, &nout, 0);
     }
     return nout;
 }
 
 static void do_pass(int pass, char **lines, int nlines) {
-    int i;
+    int i, ltidx = 0;
     lc = 0;
     if (pass == 2) { using_reg = -1; nrel = 0; }
     for (i = 0; i < nlines; i++) {
@@ -467,60 +529,72 @@ static void do_pass(int pass, char **lines, int nlines) {
             const char *p = opnd; int cnt = 0, hascnt = 0;
             while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
             if (!hascnt) cnt = 1;
-            int ty = *p ? *p++ : 0, k;
-            if (ty == 'F' || ty == 'f' || ty == 'A' || ty == 'a') {
-                lc = align4(lc);
+            int ty = *p ? toupper((unsigned char)*p++) : 0, k;
+            int blen = 0, haslen = 0;            /* explicit length modifier Ln */
+            if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
+            if (ty == 'F' || ty == 'A') {
+                if (!haslen) { blen = 4; lc = align4(lc); }
                 if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                long val = 0; char ename[64] = "";
-                if (ty == 'A' || ty == 'a') { const char *lp = strchr(p, '('), *rp = strchr(p, ')');
-                    if (lp && rp) { size_t n = rp - lp - 1; memcpy(ename, lp + 1, n); ename[n] = 0; } }
+                long val = 0; char ename[64] = ""; int isrel = 0;
+                if (ty == 'A') { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
+                    if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
+                    struct sym *es = sym_find(ename);
+                    isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER); }
                 else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                 for (k = 0; k < cnt; k++) {
                     if (pass == 2 && !strcmp(op, "DC")) {
-                        if (ty == 'A' || ty == 'a') { put(lc, expr_val(ename, NULL), 4); add_reloc(lc, ename, 0); }
-                        else put(lc, val, 4);
+                        if (ty == 'A') { put(lc, expr_val(ename, NULL), blen); if (isrel) add_reloc(lc, ename, 0); }
+                        else put(lc, val, blen);
                     }
-                    lc += 4;
+                    lc += blen;
                 }
-            } else if (ty == 'C' || ty == 'c') {       /* byte-aligned EBCDIC characters */
+            } else if (ty == 'C') {                     /* EBCDIC characters, byte-aligned */
                 if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                const char *q = strchr(p, '\''); char body[128] = "";
-                if (q) { const char *e = q + 1; int bn = 0; while (*e && *e != '\'' && bn < 127) body[bn++] = *e++; body[bn] = 0; }
-                for (k = 0; k < cnt; k++) { const char *e = body; while (*e) { if (pass == 2 && !strcmp(op, "DC")) put(lc, a2e((unsigned char)*e), 1); lc++; e++; } }
+                const char *q = strchr(p, '\''); char body[128] = ""; int slen = 0;
+                if (q) { const char *e = q + 1; while (*e && *e != '\'' && slen < 127) body[slen++] = *e++; body[slen] = 0; }
+                int emit = haslen ? blen : slen;
+                for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (pass == 2 && !strcmp(op, "DC")) put(lc, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
             } else if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = (opnd[0] == '*') ? lc : expr_val(opnd, NULL); s->defined = 1; }
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
-            if (pass == 2 && !strcmp(op, "END") && opnd[0]) {
-                struct sym *s = sym_find(opnd);
-                if (s) { end_addr = s->val; end_esdid = s->esdid ? s->esdid : main_sect_esdid; }
+            if (!strcmp(op, "END") && opnd[0]) {
+                end_has = 1;
+                if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val; end_esdid = s->esdid ? s->esdid : main_sect_esdid; } }
             }
+            int first = 1;
             for (k = 0; k < nlit; k++) {
                 if (lits[k].placed) continue;
-                lc = align4(lc);
+                if (pass == 2 && lits[k].ltseq != ltidx) continue;
+                lc = first ? align8(lc) : align4(lc); first = 0;   /* literal pool starts on a doubleword */
                 if (pass == 1) {
-                    lits[k].loc = lc;
-                    if (lits[k].text[1] == 'V' || lits[k].text[1] == 'v') {
-                        char tmp[32]; strncpy(tmp, lits[k].text, sizeof tmp - 1); tmp[sizeof tmp - 1] = 0;
+                    lits[k].loc = lc; lits[k].ltseq = ltidx;
+                    char tmp[32]; strncpy(tmp, lits[k].text, sizeof tmp - 1); tmp[sizeof tmp - 1] = 0;
+                    if (tmp[1] == 'V' || tmp[1] == 'v') {
                         char *lp = strchr(tmp, '('), *rp = strchr(tmp, ')');
                         if (lp && rp) { *rp = 0; strncpy(lits[k].ext, lp + 1, 8); }
                         lits[k].isV = 1; lits[k].val = 0;
                         struct sym *s = sym_get(lits[k].ext); s->type = S_ER;
-                    } else if (lits[k].text[1] == 'A' || lits[k].text[1] == 'a') {
-                        char e[64]; char *lp = strchr(lits[k].text, '('), *rp = strchr(lits[k].text, ')');
-                        if (lp && rp) { size_t n = rp - lp - 1; memcpy(e, lp + 1, n); e[n] = 0; lits[k].val = expr_val(e, NULL); }
-                    } else if (lits[k].text[1] == 'F' || lits[k].text[1] == 'f') {
-                        char *q = strchr(lits[k].text, '\''); lits[k].val = q ? strtol(q + 1, NULL, 10) : 0;
+                    } else if (tmp[1] == 'A' || tmp[1] == 'a') {
+                        char *lp = strchr(tmp, '('), *rp = strrchr(tmp, ')');
+                        if (lp && rp && rp > lp) { *rp = 0; strncpy(lits[k].ext, lp + 1, 8); }
+                        lits[k].isA = 1;
+                    } else if (tmp[1] == 'F' || tmp[1] == 'f') {
+                        char *q = strchr(tmp, '\''); lits[k].val = q ? strtol(q + 1, NULL, 10) : 0;
                     }
+                    lits[k].placed = 1;
                 } else {
-                    put(lits[k].loc, lits[k].val, 4);
+                    long v = lits[k].isA ? expr_val(lits[k].ext, NULL) : lits[k].val;
+                    put(lits[k].loc, v, 4);
                     if (lits[k].isV) add_reloc(lits[k].loc, lits[k].ext, 1);
+                    else if (lits[k].isA) { struct sym *es = sym_find(lits[k].ext);
+                        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER)) add_reloc(lits[k].loc, lits[k].ext, 0); }
                     lits[k].placed = 1;
                 }
                 lc += 4;
             }
-            if (pass == 1) { for (k = 0; k < nlit; k++) lits[k].placed = 1; }
+            ltidx++;
         }
     }
 }
@@ -575,6 +649,10 @@ static void emit_obj(FILE *f) {
         }
     } }
 
+    /* group relocations by (pos, rel) so same-target entries are adjacent (packing), like IFOX */
+    { int a, b; for (a = 1; a < nrel; a++) { struct reloc t = rels[a]; b = a - 1;
+        while (b >= 0 && (rels[b].pos > t.pos || (rels[b].pos == t.pos && rels[b].rel > t.rel))) { rels[b + 1] = rels[b]; b--; }
+        rels[b + 1] = t; } }
     if (nrel > 0) {
         cinit(c); cname(c, "RLD");
         { int off = 16; k = 0; while (k < nrel) {
@@ -589,16 +667,19 @@ static void emit_obj(FILE *f) {
         cseq(c, ++seq); fwrite(c, 1, 80, f);
     }
 
-    cinit(c); cname(c, "END"); cbe(c, 5, end_addr, 3); cbe(c, 14, end_esdid, 2);
+    cinit(c); cname(c, "END"); if (end_has) { cbe(c, 5, end_addr, 3); cbe(c, 14, end_esdid, 2); }
     cseq(c, ++seq); fwrite(c, 1, 80, f);
 }
 
 int main(int argc, char **argv) {
-    const char *src = NULL, *objfn = NULL; int ai;
+    const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
     for (ai = 1; ai < argc; ai++) {
-        if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai]; else src = argv[ai];
+        if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
+        else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
+        else if (!strcmp(argv[ai], "-E")) eonly = 1;
+        else src = argv[ai];
     }
-    if (!src) { fprintf(stderr, "usage: as370 [-o obj] file.s\n"); return 2; }
+    if (!src) { fprintf(stderr, "usage: as370 [-I maclib]... [-o obj] file.s\n"); return 2; }
     FILE *f = fopen(src, "r"); if (!f) { perror(src); return 2; }
     static char *raw[4096]; int n = 0; char lb[256];
     while (fgets(lb, sizeof lb, f) && n < 4096) raw[n++] = strdup(lb);
@@ -606,6 +687,7 @@ int main(int argc, char **argv) {
 
     static char *lines[MAXLINES];
     int nl = macro_pass(raw, n, lines);
+    if (eonly) { int j; for (j = 0; j < nl; j++) { fputs(lines[j], stdout); if (lines[j][0] && lines[j][strlen(lines[j]) - 1] != '\n') putchar('\n'); } return 0; }
 
     do_pass(1, lines, nl);
     { int k, id = 0; for (k = 0; k < nsym; k++)

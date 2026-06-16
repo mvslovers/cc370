@@ -24,18 +24,27 @@ Working so far:
 - gap-aware TXT (alignment/DS gaps split TXT records, matching IFOX); the RLD
   card is omitted when there are no relocations (matching IFOX)
 
-## Status — WP-4a (macro preprocessor, started)
+## Status — WP-4 (macro processor) — real compiler output assembles!
 
-A preprocessing pass expands macros into flat open code before the two-pass
-core (z390-style split). Working: inline `MACRO`/`MEND` capture, **name-field +
-positional + keyword params (with defaults)**, `&`-substitution (incl. inside
-literals, with `&x.` concatenation), and **nested expansion**. `tests/sample5.s`
-(OUTER→INNER nesting, `V=` keyword/default) assembles byte-identical to IFOX.
-Pending (WP-4b+): conditional assembly (`GBLx`/`SETx`/`AIF`/`AGO`/`ANOP`, AIF
-expression eval, `T'`/`L'`), `COPY` + library-macro lookup, then nested
-`SAVE`/`RETURN` to expand PDPPRLG/PDPEPIL and assemble the raw compiler `.s`.
+A macro/conditional-assembly preprocessor expands macros into flat open code
+before the two-pass core (z390-style split). **`tests/sample2.s` — actual
+`c2asm370` compiler output** (`COPY PDPTOP` + `PDPPRLG`/`PDPEPIL` → nested
+`SAVE`/`RETURN` from SYS1.MACLIB) — assembles **byte-identical to IFOX00** (all
+cards before END; END differs only in the optional IDR).
 
-Validated byte-identical to IFOX on `tests/sample{1,3,4,5}.s`.
+Working:
+- inline `MACRO`/`MEND` **and** library lookup (`-I dir`, by member name);
+  `COPY` member inclusion
+- name-field + positional + keyword params (defaults); `&`-substitution incl.
+  inside literals + `&x.` concatenation; **nested** expansion
+- conditional assembly: `GBLx`/`LCLx`, `SETA`/`SETB`/`SETC`, `AIF` (`AND`/`OR`,
+  string/arith compares, `T'`/`N'`/`K'`/`L'` attributes, substrings), `AGO`,
+  `ANOP`, `MEXIT`, sequence symbols (incl. on `MEND`)
+- sublist params `&R(n)`, attribute-driven expansion (the real SAVE/RETURN)
+- literal pool aligned to a doubleword; RLD grouped by target for bit-7 packing
+
+Run `make test` (self-validating against the IFOX00 reference decks in
+`tests/ref/`): all of `tests/sample{1..6}.s` byte-identical to IFOX00.
 
 Validation oracle = the IFOX00 `PRINT GEN` listing (see Epic / WP-1, TSK-274).
 
