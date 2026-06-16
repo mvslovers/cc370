@@ -113,21 +113,26 @@ static long imm_val(const char *s) {
     return strtol(s, NULL, 10);
 }
 /* resolve a memory operand into displacement d, index/length a, base b */
-static void resolve(const char *f, long *d, int *a, int *b) {
-    *a = 0; *b = 0; *d = 0;
-    if (f[0] == '=') { struct lit *l = lit_get(f); *d = l->loc - using_base; *b = using_reg; return; }
+/* parse a memory operand: displacement *d, explicit subscripts sub[0..*nsub),
+ * *sym=1 for a symbol/literal resolved through USING (then sub[0]=base reg).
+ * Subscript->field mapping is format-specific (RX: sub0=index; RS/SI/SS: base). */
+static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
+    *nsub = 0; *sym = 0; *d = 0;
+    if (f[0] == '=') { struct lit *l = lit_get(f); *d = l->loc - using_base; *sym = 1; sub[0] = using_reg; return; }
     const char *lp = strchr(f, '(');
     if (lp) {
         *d = strtol(f, NULL, 10);
         const char *rp = strchr(lp, ')');
-        char inside[64]; int n = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1);
-        if (n > 63) n = 63; memcpy(inside, lp + 1, n); inside[n] = 0;
-        char *cm = strchr(inside, ',');
-        if (cm) { *cm = 0; *a = inside[0] ? atoi(inside) : 0; *b = atoi(cm + 1); }
-        else *b = atoi(inside);
+        int n = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1);
+        char inside[64]; if (n > 63) n = 63; memcpy(inside, lp + 1, n); inside[n] = 0;
+        char *tok = inside;
+        while (1) { char *cm = strchr(tok, ','); int len = cm ? (int)(cm - tok) : (int)strlen(tok);
+            char t[32]; if (len > 31) len = 31; memcpy(t, tok, len); t[len] = 0;
+            if (*nsub < 4) sub[(*nsub)++] = t[0] ? atol(t) : 0;
+            if (!cm) break; tok = cm + 1; }
     } else {
         struct sym *s = sym_find(f); long tgt = s ? s->val : 0;
-        *d = tgt - using_base; *b = using_reg;
+        *d = tgt - using_base; *sym = 1; sub[0] = using_reg;
     }
 }
 
@@ -146,10 +151,12 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
     i = 0; while (*p && !isspace((unsigned char)*p)) { if (i < 8) op[i++] = *p; p++; } op[i < 8 ? i : 8] = 0;
     while (*p == ' ' || *p == '\t') p++;
     if (!*p || *p == '\n') return 1;
-    i = 0; { int q = 0; while (*p && *p != '\n') {
+    i = 0; { int q = 0, d = 0; while (*p && *p != '\n') {
         if (*p == '\'') q = !q;
-        if (!q && (*p == ' ' || *p == '\t')) break;
-        if (i < 63) opnd[i++] = *p; p++;
+        else if (!q && *p == '(') d++;
+        else if (!q && *p == ')') { if (d) d--; }
+        if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
+        if (i < 127) opnd[i++] = *p; p++;
     } }
     opnd[i] = 0;
     return 1;
@@ -171,7 +178,7 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR) ? 2 : (fmt == 
 struct macro {
     char namep[20], name[16];
     char pname[24][20], pdef[24][40]; int pkey[24]; int nparm;
-    char *body[128]; int nbody;
+    char *body[256]; int nbody;
 };
 static struct macro macros[64];
 static int nmac;
@@ -179,52 +186,208 @@ static struct macro *mac_find(const char *n) {
     int i; for (i = 0; i < nmac; i++) if (!strcmp(macros[i].name, n)) return &macros[i];
     return NULL;
 }
-/* substitute &params (and the name-field param) in a model statement */
-static void subst(const char *src, char *dst, struct macro *m, char val[][64], const char *namepval) {
+/* ---- macro expansion context + conditional assembly --------------------- */
+struct ctx {
+    struct macro *m;
+    char pv[24][96];                       /* parameter values (may be sublists) */
+    const char *namepval;
+    char sn[64][20], sv[64][96]; int nset;  /* local SET symbols */
+};
+static char *set_find(struct ctx *c, const char *n) {
+    int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
+    return NULL;
+}
+static void set_put(struct ctx *c, const char *n, const char *v) {
+    char *e = set_find(c, n);
+    if (e) { strncpy(e, v, 95); e[95] = 0; return; }
+    if (c->nset < 64) { strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
+                        strncpy(c->sv[c->nset], v, 95); c->sv[c->nset][95] = 0; c->nset++; }
+}
+/* sublist value "(a,b,c)" -> element count / 1-based element */
+static int sub_count(const char *v) {
+    if (!v[0]) return 0; if (v[0] != '(') return 1;
+    int n = 1; const char *p; for (p = v + 1; *p && *p != ')'; p++) if (*p == ',') n++; return n;
+}
+static void sub_elem(const char *v, int idx, char *out) {
+    out[0] = 0;
+    if (v[0] != '(') { if (idx == 1) { strncpy(out, v, 95); out[95] = 0; } return; }
+    const char *s = v + 1; int n = 1; const char *p = s;
+    for (;; p++) if (*p == ',' || *p == ')' || !*p) {
+        if (n == idx) { int L = (int)(p - s); if (L > 95) L = 95; memcpy(out, s, L); out[L] = 0; return; }
+        n++; s = p + 1; if (*p == ')' || !*p) return;
+    }
+}
+/* value of a "&name" / "&name(idx)" reference (param, then SET symbol) */
+static void vref(struct ctx *c, const char *ref, char *out) {
+    out[0] = 0;
+    const char *p = ref + 1; char nm[24]; int i = 0;
+    while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 22) nm[i++] = *p++;
+    nm[i] = 0;
+    char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
+    const char *base = NULL; int k;
+    if (c->m->namep[0] && !strcmp(amp, c->m->namep)) base = c->namepval ? c->namepval : "";
+    else for (k = 0; k < c->m->nparm; k++) if (!strcmp(amp, c->m->pname[k])) { base = c->pv[k]; break; }
+    if (!base) base = set_find(c, amp);
+    if (!base) base = "";
+    if (*p == '(') { sub_elem(base, atoi(p + 1), out); }
+    else { strncpy(out, base, 95); out[95] = 0; }
+}
+/* substitute all & references in a model statement (with &x. concatenation) */
+static void msub(struct ctx *c, const char *src, char *dst) {
     int di = 0; const char *s = src;
     while (*s) {
+        if (*s == '&' && (s[1] == '&')) { dst[di++] = '&'; s += 2; continue; }
         if (*s == '&') {
-            const char *p = s + 1; char nm[24]; int ni = 0;
-            while (*p && (isalnum((unsigned char)*p) || *p == '@' || *p == '#' || *p == '$' || *p == '_') && ni < 22) nm[ni++] = *p++;
-            nm[ni] = 0;
-            char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
-            const char *rep = NULL; int k;
-            if (m->namep[0] && !strcmp(amp, m->namep)) rep = namepval ? namepval : "";
-            else for (k = 0; k < m->nparm; k++) if (!strcmp(amp, m->pname[k])) { rep = val[k]; break; }
-            if (rep) { int r; for (r = 0; rep[r]; r++) dst[di++] = rep[r]; s = p; if (*s == '.') s++; }
-            else dst[di++] = *s++;
+            char ref[44]; int ri = 0; ref[ri++] = *s; const char *p = s + 1;
+            while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && ri < 30) ref[ri++] = *p++;
+            if (*p == '(') { ref[ri++] = '('; p++; int d = 1; while (*p && d && ri < 42) { if (*p=='(')d++; else if(*p==')'){d--; if(!d){p++;break;}} ref[ri++]=*p++; } ref[ri++] = ')'; }
+            ref[ri] = 0;
+            char v[96]; vref(c, ref, v); int r; for (r = 0; v[r]; r++) dst[di++] = v[r];
+            s = p; if (*s == '.') s++;
         } else dst[di++] = *s++;
     }
     dst[di] = 0;
 }
-/* expand one statement: if it is a macro call, bind args and expand the body
- * (recursively, so nested macro calls expand too); else copy it through. */
-static void mexp_line(const char *line, char **out, int *nout, int depth) {
-    char buf[256], lbl[16], op[16], opnd[64];
-    strncpy(buf, line, 255); buf[255] = 0; parse(buf, lbl, op, opnd);
-    struct macro *m = op[0] ? mac_find(op) : NULL;
-    if (!m || depth > 30) { if (*nout < MAXLINES) out[(*nout)++] = strdup(line); return; }
-    char val[24][64]; int k;
-    for (k = 0; k < m->nparm; k++) { strncpy(val[k], m->pkey[k] ? m->pdef[k] : "", 63); val[k][63] = 0; }
-    char args[24][64]; int na = opnd[0] ? split_fields(opnd, args, 24) : 0, pos = 0;
-    for (k = 0; k < na; k++) {
-        char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
-        if (iskw) { char *c; for (c = args[k]; c < eq; c++) if (!isalnum((unsigned char)*c) && *c != '@' && *c != '#' && *c != '$' && *c != '_') { iskw = 0; break; } }
-        if (iskw) { *eq = 0; int j; char nm[26]; snprintf(nm, sizeof nm, "&%s", args[k]);
-            for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(val[j], eq + 1, 63); val[j][63] = 0; break; } }
-        else { int j, c = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (c == pos) { strncpy(val[j], args[k], 63); val[j][63] = 0; break; } c++; } pos++; }
+/* SETA arithmetic evaluator: numbers, &refs, N'/K'/L' attributes, + - * / ( ) */
+static const char *ep_; static struct ctx *ec_;
+static long e_expr(void);
+static void e_sp(void) { while (*ep_ == ' ') ep_++; }
+static void e_readref(char *ref) {
+    int i = 0; ref[i++] = *ep_++;
+    while (*ep_ && (isalnum((unsigned char)*ep_) || *ep_=='@'||*ep_=='#'||*ep_=='$'||*ep_=='_')) ref[i++] = *ep_++;
+    if (*ep_ == '(') { ref[i++] = *ep_++; int d = 1; while (*ep_ && d) { if (*ep_=='(')d++; else if(*ep_==')')d--; ref[i++]=*ep_++; } }
+    ref[i] = 0;
+}
+static long e_prim(void) {
+    e_sp();
+    if (*ep_ == '(') { ep_++; long v = e_expr(); e_sp(); if (*ep_ == ')') ep_++; return v; }
+    if ((*ep_ == 'N' || *ep_ == 'K' || *ep_ == 'L') && ep_[1] == '\'') {
+        int kind = *ep_; ep_ += 2; char ref[44], v[96];
+        if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); } else v[0] = 0;
+        return (kind == 'N') ? sub_count(v) : (long)strlen(v);
     }
-    int b; for (b = 0; b < m->nbody; b++) { char ex[256]; subst(m->body[b], ex, m, val, lbl); mexp_line(ex, out, nout, depth + 1); }
+    if (*ep_ == '&') { char ref[44], v[96]; e_readref(ref); vref(ec_, ref, v); return atol(v); }
+    return strtol(ep_, (char **)&ep_, 10);
+}
+static long e_term(void) {
+    long v = e_prim();
+    for (;;) { e_sp(); if (*ep_ == '*') { ep_++; v *= e_prim(); } else if (*ep_ == '/') { ep_++; long r = e_prim(); v = r ? v / r : 0; } else break; }
+    return v;
+}
+static long e_expr(void) {
+    e_sp(); int neg = 0; if (*ep_ == '+') ep_++; else if (*ep_ == '-') { neg = 1; ep_++; }
+    long v = e_term(); if (neg) v = -v;
+    for (;;) { e_sp(); if (*ep_ == '+') { ep_++; v += e_term(); } else if (*ep_ == '-') { ep_++; v -= e_term(); } else break; }
+    return v;
+}
+static long eval_seta(struct ctx *c, const char *s) { ec_ = c; ep_ = s; return e_expr(); }
+/* SETC: 'string'(with subst, optional substring (s,l)) or a bare &ref */
+static void eval_setc(struct ctx *c, const char *s, char *out) {
+    out[0] = 0;
+    if (s[0] == '\'') {
+        const char *q = strchr(s + 1, '\''); int L = q ? (int)(q - s - 1) : (int)strlen(s + 1);
+        char inner[128]; if (L > 127) L = 127; memcpy(inner, s + 1, L); inner[L] = 0;
+        char sub[128]; msub(c, inner, sub);
+        if (q && q[1] == '(') {           /* substring (start,len) */
+            ec_ = c; ep_ = q + 2; long st = e_expr(); e_sp(); long ln = 0;
+            if (*ep_ == ',') { ep_++; ln = e_expr(); }
+            int n = (int)strlen(sub), a = (int)st - 1; if (a < 0) a = 0; if (a > n) a = n;
+            int take = (int)ln; if (take > n - a) take = n - a; if (take < 0) take = 0;
+            memcpy(out, sub + a, take); out[take] = 0;
+        } else { strncpy(out, sub, 95); out[95] = 0; }
+    } else msub(c, s, out);
+}
+/* evaluate an AIF condition (single comparison, arithmetic or character) */
+static int eval_cond(struct ctx *c, const char *cond) {
+    char toks[12][96]; int nt = 0; const char *p = cond;
+    while (*p) {
+        while (*p == ' ') p++; if (!*p) break;
+        char *o = toks[nt]; int q = 0, d = 0, oi = 0;
+        while (*p && (q || d || *p != ' ')) { if (*p == '\'') q = !q; else if (*p == '(') d++; else if (*p == ')') d--; if (oi < 95) o[oi++] = *p; p++; }
+        o[oi] = 0; if (nt < 11) nt++;
+    }
+    if (nt >= 3) {
+        const char *L = toks[0], *rel = toks[1], *R = toks[2]; int cmp;
+        if (L[0] == '\'' || R[0] == '\'') {
+            char ls[128], rs[128]; eval_setc(c, L, ls); eval_setc(c, R, rs); cmp = strcmp(ls, rs);
+        } else { long lv = eval_seta(c, L), rv = eval_seta(c, R); cmp = (lv < rv) ? -1 : (lv > rv) ? 1 : 0; }
+        if (!strcmp(rel, "EQ")) return cmp == 0; if (!strcmp(rel, "NE")) return cmp != 0;
+        if (!strcmp(rel, "GT")) return cmp > 0;  if (!strcmp(rel, "LT")) return cmp < 0;
+        if (!strcmp(rel, "GE")) return cmp >= 0; if (!strcmp(rel, "LE")) return cmp <= 0;
+    }
+    return 0;
+}
+/* split "(cond)seqsym" -> cond (no outer parens), seqsym */
+static void aif_split(const char *opnd, char *cond, char *seq) {
+    cond[0] = seq[0] = 0; const char *p = opnd; if (*p != '(') return;
+    int d = 0; const char *cs = p + 1;
+    for (; *p; p++) { if (*p == '(') { d++; if (d == 1) cs = p + 1; }
+        else if (*p == ')') { if (--d == 0) { int L = (int)(p - cs); memcpy(cond, cs, L); cond[L] = 0; strcpy(seq, p + 1); return; } } }
+}
+
+static void mexp_line(const char *line, char **out, int *nout, int depth);
+static int g_sysndx;
+/* expand a macro invocation, interpreting conditional assembly */
+static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
+    struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; g_sysndx++;
+    int k;
+    for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
+    if (opnd[0]) { char args[24][64]; int na = split_fields(opnd, args, 24), pos = 0;
+        for (k = 0; k < na; k++) {
+            char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
+            if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
+            if (iskw) { *eq = 0; int j; char nm[26]; snprintf(nm, sizeof nm, "&%s", args[k]);
+                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c.pv[j], eq + 1, 95); c.pv[j][95] = 0; break; } }
+            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { strncpy(c.pv[j], args[k], 95); c.pv[j][95] = 0; break; } cc2++; } pos++; }
+        }
+    }
+    /* prescan sequence-symbol labels */
+    char seqn[128][20]; int seqi[128], nseq = 0;
+    for (k = 0; k < m->nbody; k++) if (m->body[k][0] == '.' && m->body[k][1] != '*') {
+        char sl[20]; int j = 0; const char *q = m->body[k]; while (*q && !isspace((unsigned char)*q) && j < 19) sl[j++] = *q++; sl[j] = 0;
+        if (nseq < 128) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
+    }
+    int pc = 0, guard = 0;
+    while (pc < m->nbody && guard++ < 100000) {
+        char bb[256], bl[16], bo[16], bod[128];
+        strncpy(bb, m->body[pc], 255); bb[255] = 0; parse(bb, bl, bo, bod);
+        if (!bo[0]) { pc++; continue; }
+        if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
+        if (!strcmp(bo, "ANOP") || !strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE")) { pc++; continue; }
+        if (!strncmp(bo, "GBL", 3) || !strncmp(bo, "LCL", 3)) { char fl[8][64]; int nf = split_fields(bod, fl, 8), j; for (j = 0; j < nf; j++) set_put(&c, fl[j], bo[3] == 'C' ? "" : "0"); pc++; continue; }
+        if (!strcmp(bo, "SETA")) { long v = eval_seta(&c, bod); char nb[24]; sprintf(nb, "%ld", v); set_put(&c, bl, nb); pc++; continue; }
+        if (!strcmp(bo, "SETB")) { int v = bod[0] == '(' ? eval_cond(&c, bod + 1) : (int)eval_seta(&c, bod); set_put(&c, bl, v ? "1" : "0"); pc++; continue; }
+        if (!strcmp(bo, "SETC")) { char v[128]; eval_setc(&c, bod, v); set_put(&c, bl, v); pc++; continue; }
+        if (!strcmp(bo, "AIF")) { char cond[128], seq[20]; aif_split(bod, cond, seq);
+            if (eval_cond(&c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
+            pc++; continue; }
+        if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
+        /* model statement (or nested macro call) */
+        char ex[300]; msub(&c, m->body[pc], ex);
+        mexp_line(ex, out, nout, depth + 1);
+        pc++;
+    }
+}
+/* expand one statement: macro call -> interpret; else emit (stripping any
+ * leading sequence-symbol label so it never reaches the core). */
+static void mexp_line(const char *line, char **out, int *nout, int depth) {
+    char buf[256], lbl[16], op[16], opnd[128];
+    strncpy(buf, line, 255); buf[255] = 0; parse(buf, lbl, op, opnd);
+    struct macro *m = (op[0] && depth <= 40) ? mac_find(op) : NULL;
+    if (m) { mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return; }
+    if (*nout >= MAXLINES) return;
+    if (lbl[0] == '.') { char r[300]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
+    else out[(*nout)++] = strdup(line);
 }
 /* macro pass: capture MACRO/MEND defs, expand calls -> flat open code */
 static int macro_pass(char **in, int nin, char **out) {
     int nout = 0, i;
     for (i = 0; i < nin; i++) {
-        char buf[256], lbl[16], op[16], opnd[64];
+        char buf[256], lbl[16], op[16], opnd[128];
         strncpy(buf, in[i], 255); buf[255] = 0; parse(buf, lbl, op, opnd);
         if (!strcmp(op, "MACRO")) {
             if (++i >= nin) break;
-            char pb[256], pl[16], po[16], pp[64];
+            char pb[256], pl[16], po[16], pp[128];
             strncpy(pb, in[i], 255); pb[255] = 0; parse(pb, pl, po, pp);
             struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
             strncpy(m->namep, pl, sizeof m->namep - 1); strncpy(m->name, po, sizeof m->name - 1);
@@ -233,10 +396,10 @@ static int macro_pass(char **in, int nin, char **out) {
                     if (eq) { *eq = 0; strncpy(m->pname[k], flds[k], 19); strncpy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
                     else strncpy(m->pname[k], flds[k], 19);
                     m->nparm++; } }
-            while (++i < nin) { char bb[256], bl[16], bo[16], bd[64];
+            while (++i < nin) { char bb[256], bl[16], bo[16], bd[128];
                 strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
                 if (!strcmp(bo, "MEND")) break;
-                if (m->nbody < 128) m->body[m->nbody++] = strdup(in[i]); }
+                if (m->nbody < 256) m->body[m->nbody++] = strdup(in[i]); }
             continue;
         }
         mexp_line(in[i], out, &nout, 0);
@@ -249,7 +412,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     lc = 0;
     if (pass == 2) { using_reg = -1; nrel = 0; }
     for (i = 0; i < nlines; i++) {
-        char buf[256], lbl[16], op[16], opnd[64];
+        char buf[256], lbl[16], op[16], opnd[128];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (!parse(buf, lbl, op, opnd)) continue;
         if (!op[0]) continue;
@@ -262,23 +425,26 @@ static void do_pass(int pass, char **lines, int nlines) {
                 int k; for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
                 lc += ins_len(o->fmt);
             } else {
-                long d, d2; int a, b, a2, b2;
+                long d, d2, sub[4], sub2[4]; int ns, ns2, sy, sy2;
                 switch (o->fmt) {
                 case F_RR:
                     put(lc, (o->op << 8) | ((int)expr_val(F[0], 0) << 4) | (int)expr_val(F[1], 0), 2); lc += 2; break;
                 case F_BR:
                     put(lc, (o->op << 8) | (15 << 4) | (int)expr_val(F[0], 0), 2); lc += 2; break;
-                case F_RX: { int r1 = (int)expr_val(F[0], 0); resolve(F[1], &d, &a, &b);
-                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)a << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_BC: { resolve(F[0], &d, &a, &b);
-                    put(lc, ((long)o->op << 24) | ((long)15 << 20) | ((long)a << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_RS: { int r1 = (int)expr_val(F[0], 0), r3 = (int)expr_val(F[1], 0); resolve(F[2], &d, &a, &b);
+                case F_RX: case F_BC: {
+                    int r1 = (o->fmt == F_BC) ? 15 : (int)expr_val(F[0], 0);
+                    resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
+                    int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : 0);
+                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                case F_RS: { int r1 = (int)expr_val(F[0], 0), r3 = (int)expr_val(F[1], 0); resolve(F[2], &d, sub, &ns, &sy);
+                    int b = (int)sub[0];
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_SI: { resolve(F[0], &d, &a, &b); long im = imm_val(F[1]);
+                case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (int)sub[0]; long im = imm_val(F[1]);
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_SS: { resolve(F[0], &d, &a, &b); resolve(F[1], &d2, &a2, &b2); int len = a ? a : 1;
+                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); resolve(F[1], &d2, sub2, &ns2, &sy2);
+                    int len = (int)sub[0], b1 = (ns >= 2 ? (int)sub[1] : (int)sub[0]), b2 = (int)sub2[0];
                     put(lc, o->op, 1); put(lc + 1, (len - 1) & 0xff, 1);
-                    put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6; break; }
+                    put(lc + 2, ((long)b1 << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6; break; }
                 default: break;
                 }
             }
