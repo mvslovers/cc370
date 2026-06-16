@@ -605,8 +605,10 @@ static void emit_lit(struct lit *l) {
     if (ty == 'V') { put(l->loc, 0, l->size); add_reloc(l->loc, l->ext, 1); }
     else if (ty == 'A' || ty == 'Y') {
         put(l->loc, l->ext[0] ? expr_val(l->ext, NULL) : 0, l->size);
-        struct sym *es = sym_find(l->ext);
-        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER)) add_reloc(l->loc, l->ext, 0);
+        char sym[16]; int sn = 0; const char *se = l->ext;     /* leading symbol of e.g. @V1-192 */
+        while (*se && !strchr("+-(), ", *se) && sn < 15) sym[sn++] = *se++; sym[sn] = 0;
+        struct sym *es = sym_find(sym);
+        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER)) add_reloc(l->loc, sym, 0);
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         const char *q = strchr(p, '\'');
         if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
@@ -718,15 +720,17 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
                     if (!haslen) { blen = base; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc); }
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
-                    long val = 0; char ename[64] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
+                    long val = 0; char ename[64] = "", rsym[16] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
                     if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
-                        struct sym *es = sym_find(ename);
+                        int sn = 0; const char *se = ename;            /* leading symbol of e.g. @V1-192 */
+                        while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
+                        struct sym *es = sym_find(rsym);
                         isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER); }
                     else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                     for (k = 0; k < cnt; k++) {
                         if (emit_dc) {
-                            if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) add_reloc(lc, ename, 0); }
+                            if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) add_reloc(lc, rsym, 0); }
                             else put(lc, val, blen);
                         }
                         lc += blen;
