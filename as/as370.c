@@ -48,6 +48,7 @@ static struct sym *esdord[MAXSYM]; static int nesdord;   /* ESD entries in decla
 struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; };
 static struct lit lits[MAXLIT];
 static int nlit;
+static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
 
 struct reloc { long addr; int pos, rel, isV; };
 static struct reloc rels[MAXREL];
@@ -101,9 +102,10 @@ static void lit_classify(struct lit *l) {
     if (l->size < 1) l->size = 1;
 }
 static struct lit *lit_get(const char *t) {
-    int i; for (i = 0; i < nlit; i++) if (!strcmp(lits[i].text, t)) return &lits[i];
+    int i; for (i = 0; i < nlit; i++) if (lits[i].ltseq == litpool && !strcmp(lits[i].text, t)) return &lits[i];
     if (nlit >= MAXLIT) { fprintf(stderr, "as370: literal table full\n"); exit(2); }
     memset(&lits[nlit], 0, sizeof lits[0]); strncpy(lits[nlit].text, t, sizeof lits[0].text - 1);
+    lits[nlit].ltseq = litpool;          /* literal belongs to the current (not-yet-flushed) pool */
     lit_classify(&lits[nlit]);
     return &lits[nlit++];
 }
@@ -569,7 +571,7 @@ static void emit_listing(long a, long b, const char *src) {
     fprintf(stderr, "%06lX %-16s %s\n", a, hex, ln);
 }
 static void do_pass(int pass, char **lines, int nlines) {
-    int i, ltidx = 0;
+    int i; litpool = 0;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0;
     if (pass == 2) { using_reg = -1; nrel = 0; }
@@ -691,12 +693,12 @@ static void do_pass(int pass, char **lines, int nlines) {
                 end_has = 1;
                 if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val; end_esdid = s->esdid ? s->esdid : main_sect_esdid; } }
             }
-            /* gather this pool's literals: pass 1 takes every still-unplaced literal,
-             * pass 2 takes those assigned to this pool (ltseq == ltidx) */
+            /* gather this pool's literals (ltseq is assigned at creation = the pool
+             * that was open when the literal was first referenced) */
             static int mem[4096]; int nmem = 0;
             for (k = 0; k < nlit; k++) {
                 if (lits[k].placed) continue;
-                if (pass == 2 && lits[k].ltseq != ltidx) continue;
+                if (lits[k].ltseq != litpool) continue;
                 if (nmem < 4096) mem[nmem++] = k;
             }
             /* order by descending alignment, stable within equal alignment (IFOX
@@ -708,13 +710,13 @@ static void do_pass(int pass, char **lines, int nlines) {
             { int mi; for (mi = 0; mi < nmem; mi++) {
                 struct lit *l = &lits[mem[mi]];
                 lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
-                if (pass == 1) { l->loc = lc; l->ltseq = ltidx;
+                if (pass == 1) { l->loc = lc;
                     if (l->isV) { struct sym *s = sym_get(l->ext); s->type = S_ER; esd_add(s); } }
                 else emit_lit(l);
                 l->placed = 1;
                 lc += l->size;
             } }
-            ltidx++;
+            litpool++;
         } else if (pass == 1) note_unknown(op);
     }
     if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
