@@ -45,7 +45,7 @@ static struct sym syms[MAXSYM];
 static int nsym;
 static struct sym *esdord[MAXSYM]; static int nesdord;   /* ESD entries in declaration order */
 
-struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; };
+struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; };
 static struct lit lits[MAXLIT];
 static int nlit;
 
@@ -79,10 +79,32 @@ static void esd_add(struct sym *s) {
     int i; for (i = 0; i < nesdord; i++) if (esdord[i] == s) return;
     if (nesdord < MAXSYM) esdord[nesdord++] = s;
 }
+/* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
+ * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
+static void lit_classify(struct lit *l) {
+    const char *p = l->text + 1;                 /* past '=' */
+    while (isdigit((unsigned char)*p)) p++;       /* duplication factor (rare) */
+    char ty = toupper((unsigned char)*p++);
+    int len = 0, haslen = 0;
+    if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) len = len * 10 + (*p++ - '0'); }
+    l->isV = (ty == 'V'); l->isA = (ty == 'A' || ty == 'V' || ty == 'Y');
+    if (ty == 'A' || ty == 'V' || ty == 'Y') {
+        const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
+        if (lp && rp && rp > lp) { int n = (int)(rp - lp - 1); if (n > 8) n = 8; memcpy(l->ext, lp + 1, n); l->ext[n] = 0; }
+        l->size = haslen ? len : (ty == 'Y' ? 2 : 4); l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
+    } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
+    } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
+    } else if (ty == 'D') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 8; l->algn = 8;
+    } else if (ty == 'X') { const char *q = strchr(p, '\''); int hd = 0; if (q) { const char *e = q + 1; while (*e && *e != '\'') { if (isxdigit((unsigned char)*e)) hd++; e++; } } l->size = haslen ? len : (hd + 1) / 2; l->algn = 1;
+    } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; } sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
+    } else { l->size = 4; l->algn = 4; }
+    if (l->size < 1) l->size = 1;
+}
 static struct lit *lit_get(const char *t) {
     int i; for (i = 0; i < nlit; i++) if (!strcmp(lits[i].text, t)) return &lits[i];
     if (nlit >= MAXLIT) { fprintf(stderr, "as370: literal table full\n"); exit(2); }
     memset(&lits[nlit], 0, sizeof lits[0]); strncpy(lits[nlit].text, t, sizeof lits[0].text - 1);
+    lit_classify(&lits[nlit]);
     return &lits[nlit++];
 }
 
@@ -510,13 +532,52 @@ static void note_unknown(const char *o) {
     for (i = 0; i < nunk; i++) if (!strcmp(unkops[i], o)) return;
     if (nunk < 128) { strncpy(unkops[nunk], o, 11); unkops[nunk][11] = 0; nunk++; }
 }
+/* emit one literal's bytes at its assigned location (pass 2) */
+static void emit_lit(struct lit *l) {
+    const char *p = l->text + 1;
+    while (isdigit((unsigned char)*p)) p++;
+    char ty = toupper((unsigned char)*p++);
+    if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
+    if (ty == 'V') { put(l->loc, 0, l->size); add_reloc(l->loc, l->ext, 1); }
+    else if (ty == 'A' || ty == 'Y') {
+        put(l->loc, l->ext[0] ? expr_val(l->ext, NULL) : 0, l->size);
+        struct sym *es = sym_find(l->ext);
+        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER)) add_reloc(l->loc, l->ext, 0);
+    } else if (ty == 'F' || ty == 'H' || ty == 'D') {
+        put(l->loc, l->val, l->size);
+    } else if (ty == 'X') {
+        const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
+        if (q) { char h[520]; int hl = 0, s0 = 0; const char *e = q + 1;
+            while (*e && *e != '\'' && hl < 519) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
+            if (hl & 1) { by[nb++] = (unsigned char)hexv(h[0]); s0 = 1; }
+            for (; s0 + 1 < hl && nb < 256; s0 += 2) by[nb++] = (unsigned char)((hexv(h[s0]) << 4) | hexv(h[s0 + 1])); }
+        int pad = l->size - nb, j; for (j = 0; j < l->size; j++) put(l->loc + j, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1);
+    } else if (ty == 'C') {
+        const char *q = strchr(p, '\''); char body[256]; int slen = 0;
+        if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; } body[slen++] = *e++; } }
+        int j; for (j = 0; j < l->size; j++) put(l->loc + j, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1);
+    } else put(l->loc, l->val, l->size);
+}
+static int listing = 0;                 /* -L: print a LOC/object/source listing in pass 2 */
+static void emit_listing(long a, long b, const char *src) {
+    char hex[20]; int hn = 0; long i;
+    for (i = a; i < b && i < a + 8; i++) hn += snprintf(hex + hn, sizeof hex - hn, "%02X", defn[i] ? text[i] : 0);
+    hex[hn] = 0;
+    char ln[90]; int j = 0; const char *p = src;
+    while (*p && *p != '\n' && j < 88) ln[j++] = *p++;
+    ln[j] = 0;
+    fprintf(stderr, "%06lX %-16s %s\n", a, hex, ln);
+}
 static void do_pass(int pass, char **lines, int nlines) {
     int i, ltidx = 0;
+    long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0;
     if (pass == 2) { using_reg = -1; nrel = 0; }
     for (i = 0; i < nlines; i++) {
+        if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         char buf[256], lbl[16], op[16], opnd[128];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
+        if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
         if (!parse(buf, lbl, op, opnd)) continue;
         if (!op[0]) continue;
 
@@ -630,41 +691,33 @@ static void do_pass(int pass, char **lines, int nlines) {
                 end_has = 1;
                 if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val; end_esdid = s->esdid ? s->esdid : main_sect_esdid; } }
             }
-            int first = 1;
-            if (!strcmp(op, "LTORG")) { lc = align8(lc); first = 0; }  /* LTORG aligns the pool to a doubleword even when it is empty */
+            /* gather this pool's literals: pass 1 takes every still-unplaced literal,
+             * pass 2 takes those assigned to this pool (ltseq == ltidx) */
+            static int mem[4096]; int nmem = 0;
             for (k = 0; k < nlit; k++) {
                 if (lits[k].placed) continue;
                 if (pass == 2 && lits[k].ltseq != ltidx) continue;
-                lc = first ? align8(lc) : align4(lc); first = 0;   /* literal pool starts on a doubleword */
-                if (pass == 1) {
-                    lits[k].loc = lc; lits[k].ltseq = ltidx;
-                    char tmp[32]; strncpy(tmp, lits[k].text, sizeof tmp - 1); tmp[sizeof tmp - 1] = 0;
-                    if (tmp[1] == 'V' || tmp[1] == 'v') {
-                        char *lp = strchr(tmp, '('), *rp = strchr(tmp, ')');
-                        if (lp && rp) { *rp = 0; strncpy(lits[k].ext, lp + 1, 8); }
-                        lits[k].isV = 1; lits[k].val = 0;
-                        struct sym *s = sym_get(lits[k].ext); s->type = S_ER; esd_add(s);
-                    } else if (tmp[1] == 'A' || tmp[1] == 'a') {
-                        char *lp = strchr(tmp, '('), *rp = strrchr(tmp, ')');
-                        if (lp && rp && rp > lp) { *rp = 0; strncpy(lits[k].ext, lp + 1, 8); }
-                        lits[k].isA = 1;
-                    } else if (tmp[1] == 'F' || tmp[1] == 'f') {
-                        char *q = strchr(tmp, '\''); lits[k].val = q ? strtol(q + 1, NULL, 10) : 0;
-                    }
-                    lits[k].placed = 1;
-                } else {
-                    long v = lits[k].isA ? expr_val(lits[k].ext, NULL) : lits[k].val;
-                    put(lits[k].loc, v, 4);
-                    if (lits[k].isV) add_reloc(lits[k].loc, lits[k].ext, 1);
-                    else if (lits[k].isA) { struct sym *es = sym_find(lits[k].ext);
-                        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER)) add_reloc(lits[k].loc, lits[k].ext, 0); }
-                    lits[k].placed = 1;
-                }
-                lc += 4;
+                if (nmem < 4096) mem[nmem++] = k;
             }
+            /* order by descending alignment, stable within equal alignment (IFOX
+             * groups doublewords, then fullwords, halfwords, bytes to avoid padding) */
+            { int a, b; for (a = 1; a < nmem; a++) { int t = mem[a]; b = a - 1;
+                while (b >= 0 && lits[mem[b]].algn < lits[t].algn) { mem[b + 1] = mem[b]; b--; }
+                mem[b + 1] = t; } }
+            if (!strcmp(op, "LTORG") || nmem > 0) lc = align8(lc);  /* pool starts on a doubleword */
+            { int mi; for (mi = 0; mi < nmem; mi++) {
+                struct lit *l = &lits[mem[mi]];
+                lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
+                if (pass == 1) { l->loc = lc; l->ltseq = ltidx;
+                    if (l->isV) { struct sym *s = sym_get(l->ext); s->type = S_ER; esd_add(s); } }
+                else emit_lit(l);
+                l->placed = 1;
+                lc += l->size;
+            } }
             ltidx++;
         } else if (pass == 1) note_unknown(op);
     }
+    if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
 }
 
 /* ---- OS/360 OBJ writer ---------------------------------------------------- */
@@ -769,6 +822,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strcmp(argv[ai], "-E")) eonly = 1;
+        else if (!strcmp(argv[ai], "-L")) listing = 1;
         else src = argv[ai];
     }
     if (!src) { fprintf(stderr, "usage: as370 [-I maclib]... [-o obj] file.s\n"); return 2; }
