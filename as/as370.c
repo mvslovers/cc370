@@ -121,30 +121,44 @@ static struct lit *lit_get(const char *t) {
     return &lits[nlit++];
 }
 
-/* evaluate an additive expression (terms joined by + / -): numbers, the location
- * counter '*', and symbols. Sets *reloc if any term is relocatable. Stops at
- * '(' (subscript), ',' or end — so it also serves to evaluate a displacement. */
+/* evaluate an operand expression: numbers, the location counter '*', symbols,
+ * with + - * / (a '*' at the start of a factor is the location counter, a '*'
+ * between factors is multiplication). Sets *reloc if any term is relocatable.
+ * Stops at a top-level '(' (a subscript), ',' or end — so it also evaluates a
+ * displacement like 4+120(13). Not re-entrant (uses parse globals). */
+static const char *xp_; static int xrl_;
+static long x_factor(void) {
+    while (*xp_ == ' ') xp_++;
+    if (*xp_ == '*') { xp_++; xrl_ = 1; return lc; }            /* location counter */
+    if (*xp_ == '-') { xp_++; return -x_factor(); }
+    if (*xp_ == '+') { xp_++; return x_factor(); }
+    if (isdigit((unsigned char)*xp_)) { char *end; long v = strtol(xp_, (char **)&end, 10); xp_ = end; return v; }
+    char nm[64]; int n = 0;
+    while (*xp_ && !strchr("+-*/(), ", *xp_) && n < 63) nm[n++] = *xp_++;
+    nm[n] = 0;
+    struct sym *s = sym_find(nm);
+    if (s) { if (s->type == S_REL) xrl_ = 1; return s->val; }
+    return 0;
+}
+static long x_term(void) {
+    long v = x_factor();
+    for (;;) { while (*xp_ == ' ') xp_++;
+        if (*xp_ == '*') { xp_++; v *= x_factor(); }
+        else if (*xp_ == '/') { xp_++; long r = x_factor(); v = r ? v / r : 0; }
+        else break; }
+    return v;
+}
 static long expr_val(const char *e, int *reloc) {
-    long acc = 0; int rl = 0, op = 1;
-    for (;;) {
-        while (*e == ' ') e++;
-        if (!*e || *e == '(' || *e == ',') break;
-        if (*e == '+') { op = 1; e++; continue; }
-        if (*e == '-') { op = -1; e++; continue; }
-        long t = 0;
-        if (*e == '*') { t = lc; rl = 1; e++; }                 /* location counter */
-        else if (isdigit((unsigned char)*e)) { char *end; t = strtol(e, &end, 10); e = end; }
-        else {                                                  /* symbol */
-            char nm[64]; int n = 0;
-            while (*e && !strchr("+-(), ", *e) && n < 63) nm[n++] = *e++;
-            nm[n] = 0;
-            struct sym *s = sym_find(nm);
-            if (s) { if (s->type == S_REL) rl = 1; t = s->val; }
-        }
-        acc += op * t; op = 1;
-    }
-    if (reloc) *reloc = rl;
-    return acc;
+    xp_ = e; xrl_ = 0;
+    while (*xp_ == ' ') xp_++;
+    if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; return 0; }
+    long v = x_term();
+    for (;;) { while (*xp_ == ' ') xp_++;
+        if (*xp_ == '+') { xp_++; v += x_term(); }
+        else if (*xp_ == '-') { xp_++; v -= x_term(); }
+        else break; }
+    if (reloc) *reloc = xrl_;
+    return v;
 }
 static void put(long at, long v, int n) {
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
