@@ -701,10 +701,10 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (lits[k].ltseq != litpool) continue;
                 if (nmem < 4096) mem[nmem++] = k;
             }
-            /* order by descending alignment, stable within equal alignment (IFOX
-             * groups doublewords, then fullwords, halfwords, bytes to avoid padding) */
+            /* order by descending size, stable within equal size (IFOX groups the
+             * pool by length so e.g. =XL4 sits with the fullwords, =XL1 after them) */
             { int a, b; for (a = 1; a < nmem; a++) { int t = mem[a]; b = a - 1;
-                while (b >= 0 && lits[mem[b]].algn < lits[t].algn) { mem[b + 1] = mem[b]; b--; }
+                while (b >= 0 && lits[mem[b]].size < lits[t].size) { mem[b + 1] = mem[b]; b--; }
                 mem[b + 1] = t; } }
             if (!strcmp(op, "LTORG") || nmem > 0) lc = align8(lc);  /* pool starts on a doubleword */
             { int mi; for (mi = 0; mi < nmem; mi++) {
