@@ -287,6 +287,7 @@ struct ctx {
     char pv[24][96];                       /* parameter values (may be sublists) */
     const char *namepval;
     char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
+    int sysndx;                            /* &SYSNDX for this macro invocation */
 };
 static char *set_find(struct ctx *c, const char *n) {
     int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
@@ -318,6 +319,7 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     const char *p = ref + 1; char nm[24]; int i = 0;
     while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 22) nm[i++] = *p++;
     nm[i] = 0;
+    if (!strcmp(nm, "SYSNDX")) { snprintf(out, 96, "%04d", c->sysndx); return; }   /* unique per macro invocation */
     char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
     const char *base = NULL; int k;
     if (c->m->namep[0] && !strcmp(amp, c->m->namep)) base = c->namepval ? c->namepval : "";
@@ -526,7 +528,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth);
 static int g_sysndx;
 /* expand a macro invocation, interpreting conditional assembly */
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
-    struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; g_sysndx++;
+    struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; c.sysndx = ++g_sysndx;
     int k;
     for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
     if (opnd[0]) { char args[24][64]; int na = split_fields(opnd, args, 24), pos = 0;
