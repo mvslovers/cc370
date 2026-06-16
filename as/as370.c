@@ -408,7 +408,10 @@ static int eval_cond(struct ctx *c, const char *cond) {
     while (*p) {
         while (*p == ' ') p++; if (!*p) break;
         char *o = toks[nt]; int q = 0, d = 0, oi = 0;
-        while (*p && (q || d || *p != ' ')) { if (*p == '\'') q = !q; else if (!q && *p == '(') d++; else if (!q && *p == ')') d--; if (oi < 95) o[oi++] = *p; p++; }
+        while (*p && (q || d || *p != ' ')) {
+            if (*p == '\'') { if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) q = !q; }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
+            else if (!q && *p == '(') d++; else if (!q && *p == ')') d--;
+            if (oi < 95) o[oi++] = *p; p++; }
         o[oi] = 0; if (nt < 23) nt++;
     }
     if (nt < 3) return 0;
@@ -424,7 +427,7 @@ static int eval_cond(struct ctx *c, const char *cond) {
 static void aif_split(const char *opnd, char *cond, char *seq) {
     cond[0] = seq[0] = 0; const char *p = opnd; if (*p != '(') return;
     int d = 0, q = 0; const char *cs = p + 1;
-    for (; *p; p++) { if (*p == '\'') q = !q;
+    for (; *p; p++) { if (*p == '\'') { if (q || p == opnd || !strchr("KNLT", p[-1])) q = !q; }  /* K'/N'/L'/T' attribute apostrophe */
         else if (!q && *p == '(') { d++; if (d == 1) cs = p + 1; }
         else if (!q && *p == ')') { if (--d == 0) { int L = (int)(p - cs); memcpy(cond, cs, L); cond[L] = 0; strcpy(seq, p + 1); return; } } }
 }
