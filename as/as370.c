@@ -140,8 +140,9 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             if (*nsub < 4) sub[(*nsub)++] = t[0] ? atol(t) : 0;
             if (!cm) break; tok = cm + 1; }
     } else {
-        struct sym *s = sym_find(f); long tgt = s ? s->val : 0;
-        *d = tgt - using_base; *sym = 1; sub[0] = using_reg;
+        int reloc = 0; long v = expr_val(f, &reloc);
+        if (reloc) { *d = v - using_base; *sym = 1; sub[0] = using_reg; }  /* relocatable: address via USING */
+        else { *d = v; *sym = 0; sub[0] = 0; }                             /* absolute: displacement value, base 0 */
     }
 }
 
@@ -516,8 +517,10 @@ static void do_pass(int pass, char **lines, int nlines) {
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
                     int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : 0);
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_RS: { int r1 = (int)expr_val(F[0], 0), r3 = (int)expr_val(F[1], 0); resolve(F[2], &d, sub, &ns, &sy);
-                    int b = (int)sub[0];
+                case F_RS: { int r1 = (int)expr_val(F[0], 0), r3, b;
+                    if (nf >= 3) { r3 = (int)expr_val(F[1], 0); resolve(F[2], &d, sub, &ns, &sy); }
+                    else { r3 = 0; resolve(F[1], &d, sub, &ns, &sy); }  /* shift form R1,D2(B2): R3 field unused */
+                    b = (int)sub[0];
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
                 case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (int)sub[0]; long im = imm_val(F[1]);
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
