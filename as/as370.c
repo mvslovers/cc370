@@ -17,10 +17,12 @@
 #include <string.h>
 #include <ctype.h>
 
-#define MAXSYM 256
-#define MAXLIT 256
-#define MAXREL 256
-#define TEXTMAX 65536
+/* as370 runs on the host (not MVS), so these limits are sized for real
+ * modules, not the 24-bit target. Largest rexx370 CSECT is well under these. */
+#define MAXSYM 65536
+#define MAXLIT 8192
+#define MAXREL 131072
+#define TEXTMAX (1024 * 1024)
 
 enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC };
 
@@ -181,14 +183,14 @@ static void add_reloc(long at, const char *target, int isV) {
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
 /* ---- WP-4 macro preprocessor --------------------------------------------- */
-#define MAXLINES 8192
+#define MAXLINES 131072
 struct macro {
     char namep[20], name[16];
     char pname[24][20], pdef[24][40]; int pkey[24]; int nparm;
-    char *body[256]; int nbody;
+    char *body[1024]; int nbody;
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
 };
-static struct macro macros[64];
+static struct macro macros[256];
 static int nmac;
 static struct macro *mac_find(const char *n) {
     int i; for (i = 0; i < nmac; i++) if (!strcmp(macros[i].name, n)) return &macros[i];
@@ -199,7 +201,7 @@ struct ctx {
     struct macro *m;
     char pv[24][96];                       /* parameter values (may be sublists) */
     const char *namepval;
-    char sn[64][20], sv[64][96]; int nset;  /* local SET symbols */
+    char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
 };
 static char *set_find(struct ctx *c, const char *n) {
     int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
@@ -208,7 +210,7 @@ static char *set_find(struct ctx *c, const char *n) {
 static void set_put(struct ctx *c, const char *n, const char *v) {
     char *e = set_find(c, n);
     if (e) { strncpy(e, v, 95); e[95] = 0; return; }
-    if (c->nset < 64) { strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
+    if (c->nset < 256) { strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
                         strncpy(c->sv[c->nset], v, 95); c->sv[c->nset][95] = 0; c->nset++; }
 }
 /* sublist value "(a,b,c)" -> element count / 1-based element */
@@ -385,12 +387,12 @@ static struct macro *capture_macro(char **in, int nin, int *ip) {
             else strncpy(m->pname[k], flds[k], 19); m->nparm++; } }
     while (++i < nin) { char bb[256], bl[16], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') strncpy(m->endlbl, bl, 19); break; }
-        if (m->nbody < 256) m->body[m->nbody++] = strdup(in[i]); }
+        if (m->nbody < 1024) m->body[m->nbody++] = strdup(in[i]); }
     *ip = i; return m;
 }
 static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
-    static char *buf[1024]; int n = lib_readlines(name, buf, 1024); if (n < 0) return NULL;
+    static char *buf[4096]; int n = lib_readlines(name, buf, 4096); if (n < 0) return NULL;
     int i = 0; for (; i < n; i++) { char b[256], l[16], o[16], od[128]; strncpy(b, buf[i], 255); b[255] = 0;
         if (!parse(b, l, o, od) || !o[0]) continue; if (strcmp(o, "MACRO")) return NULL; break; }
     if (i >= n) return NULL;
@@ -453,7 +455,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     char buf[256], lbl[16], op[16], opnd[128];
     strncpy(buf, line, 255); buf[255] = 0; parse(buf, lbl, op, opnd);
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
-        char *cb[512]; int n = lib_readlines(opnd, cb, 512);
+        char *cb[2048]; int n = lib_readlines(opnd, cb, 2048);
         if (n >= 0) { int j; for (j = 0; j < n; j++) mexp_line(cb[j], out, nout, depth + 1); return; }
     }
     struct macro *m = NULL;
@@ -702,18 +704,25 @@ static void emit_obj(FILE *f) {
         while (b >= 0 && (rels[b].pos > t.pos || (rels[b].pos == t.pos && rels[b].rel > t.rel))) { rels[b + 1] = rels[b]; b--; }
         rels[b + 1] = t; } }
     { k = 0; while (k < nrel) {
-        cinit(c); cname(c, "RLD"); int off = 16;
+        cinit(c); cname(c, "RLD"); int off = 16, prevflag = -1; long pr = -1, pp = -1;
         while (k < nrel) {
-            int run = k + 1; while (run < nrel && rels[run].rel == rels[k].rel && rels[run].pos == rels[k].pos) run++;
-            int gbytes = 8 + (run - k - 1) * 4;
-            if (off > 16 && off + gbytes > 72) break;          /* group won't fit -> flush card */
-            cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
-            c[off + 4] = (rels[k].isV ? 0x1C : 0x0C) | (run - k > 1 ? 0x01 : 0); cbe(c, off + 5, rels[k].addr, 3); off += 8;
-            int m; for (m = k + 1; m < run; m++) {
-                c[off] = (rels[m].isV ? 0x1C : 0x0C) | (m < run - 1 ? 0x01 : 0); cbe(c, off + 1, rels[m].addr, 3); off += 4;
+            /* An item reuses the previous R/P pointers (4-byte continuation) only
+             * when it sits on the same card as an identical-(rel,pos) predecessor.
+             * The first item on a card is always a full 8-byte leader, so a group
+             * spanning a card boundary re-emits R/P automatically. */
+            int reuse = (off > 16 && rels[k].rel == pr && rels[k].pos == pp);
+            int need = reuse ? 4 : 8;
+            if (off + need > 72) break;                        /* card full -> flush */
+            if (reuse) {
+                c[prevflag] |= 0x01;                           /* predecessor: next omits R/P */
+                c[off] = (rels[k].isV ? 0x1C : 0x0C); cbe(c, off + 1, rels[k].addr, 3);
+                prevflag = off; off += 4;
+            } else {
+                cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
+                c[off + 4] = (rels[k].isV ? 0x1C : 0x0C); cbe(c, off + 5, rels[k].addr, 3);
+                prevflag = off + 4; off += 8; pr = rels[k].rel; pp = rels[k].pos;
             }
-            k = run;
-            if (off + 8 > 72) break;
+            k++;
         }
         cbe(c, 10, off - 16, 2); cseq(c, ++seq); fwrite(c, 1, 80, f);
     } }
