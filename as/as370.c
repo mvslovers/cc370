@@ -585,6 +585,18 @@ static void note_unknown(const char *o) {
     if (nunk < 128) { strncpy(unkops[nunk], o, 11); unkops[nunk][11] = 0; nunk++; }
 }
 /* emit one literal's bytes at its assigned location (pass 2) */
+/* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
+ * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
+static void emit_float(long at, const char *vstr, int bytes) {
+    double v = strtod(vstr, NULL); int sign = 0;
+    if (v < 0) { sign = 1; v = -v; }
+    int exp = 64;
+    if (v != 0.0) { while (v >= 1.0) { v /= 16.0; exp++; } while (v < 1.0 / 16.0) { v *= 16.0; exp--; } }
+    int fracbits = bytes * 8 - 8;
+    unsigned long long frac = (unsigned long long)(v * (double)(1ULL << fracbits) + 0.5);
+    put(at, (long)((sign ? 0x80 : 0) | (exp & 0x7f)), 1);
+    int i; for (i = bytes - 1; i >= 1; i--) { put(at + i, (long)(frac & 0xff), 1); frac >>= 8; }
+}
 static void emit_lit(struct lit *l) {
     const char *p = l->text + 1;
     while (isdigit((unsigned char)*p)) p++;
@@ -595,7 +607,11 @@ static void emit_lit(struct lit *l) {
         put(l->loc, l->ext[0] ? expr_val(l->ext, NULL) : 0, l->size);
         struct sym *es = sym_find(l->ext);
         if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER)) add_reloc(l->loc, l->ext, 0);
-    } else if (ty == 'F' || ty == 'H' || ty == 'D') {
+    } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
+        const char *q = strchr(p, '\'');
+        if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
+        else put(l->loc, l->val, l->size);
+    } else if (ty == 'F' || ty == 'H') {
         put(l->loc, l->val, l->size);
     } else if (ty == 'X') {
         const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
