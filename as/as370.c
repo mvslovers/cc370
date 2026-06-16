@@ -779,6 +779,16 @@ static void do_pass(int pass, char **lines, int nlines) {
                     }
                     int emit = haslen ? blen : nb, pad = emit - nb;
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
+                } else if (ty == 'B') {                     /* binary, byte-aligned, MSB-first */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
+                    if (q) { char bits[2056]; int bl2 = 0; const char *e = q + 1;
+                        while (*e && *e != '\'' && bl2 < 2048) { if (*e == '0' || *e == '1') bits[bl2++] = *e; e++; }
+                        int pos = 0, rem = bl2 % 8, first = rem ? rem : (bl2 ? 8 : 0);
+                        while (pos < bl2 && nb < 256) { int take = (nb == 0) ? first : 8, v = 0, j; for (j = 0; j < take; j++) v = (v << 1) | (bits[pos++] - '0'); by[nb++] = (unsigned char)v; }
+                    }
+                    int emit = haslen ? blen : nb, pad = emit - nb;
+                    for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
                 } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
             }
         } else if (!strcmp(op, "EQU")) {
