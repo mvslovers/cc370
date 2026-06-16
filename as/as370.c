@@ -166,6 +166,84 @@ static void add_reloc(long at, const char *target, int isV) {
 }
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
+/* ---- WP-4 macro preprocessor --------------------------------------------- */
+#define MAXLINES 8192
+struct macro {
+    char namep[20], name[16];
+    char pname[24][20], pdef[24][40]; int pkey[24]; int nparm;
+    char *body[128]; int nbody;
+};
+static struct macro macros[64];
+static int nmac;
+static struct macro *mac_find(const char *n) {
+    int i; for (i = 0; i < nmac; i++) if (!strcmp(macros[i].name, n)) return &macros[i];
+    return NULL;
+}
+/* substitute &params (and the name-field param) in a model statement */
+static void subst(const char *src, char *dst, struct macro *m, char val[][64], const char *namepval) {
+    int di = 0; const char *s = src;
+    while (*s) {
+        if (*s == '&') {
+            const char *p = s + 1; char nm[24]; int ni = 0;
+            while (*p && (isalnum((unsigned char)*p) || *p == '@' || *p == '#' || *p == '$' || *p == '_') && ni < 22) nm[ni++] = *p++;
+            nm[ni] = 0;
+            char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
+            const char *rep = NULL; int k;
+            if (m->namep[0] && !strcmp(amp, m->namep)) rep = namepval ? namepval : "";
+            else for (k = 0; k < m->nparm; k++) if (!strcmp(amp, m->pname[k])) { rep = val[k]; break; }
+            if (rep) { int r; for (r = 0; rep[r]; r++) dst[di++] = rep[r]; s = p; if (*s == '.') s++; }
+            else dst[di++] = *s++;
+        } else dst[di++] = *s++;
+    }
+    dst[di] = 0;
+}
+/* expand one statement: if it is a macro call, bind args and expand the body
+ * (recursively, so nested macro calls expand too); else copy it through. */
+static void mexp_line(const char *line, char **out, int *nout, int depth) {
+    char buf[256], lbl[16], op[16], opnd[64];
+    strncpy(buf, line, 255); buf[255] = 0; parse(buf, lbl, op, opnd);
+    struct macro *m = op[0] ? mac_find(op) : NULL;
+    if (!m || depth > 30) { if (*nout < MAXLINES) out[(*nout)++] = strdup(line); return; }
+    char val[24][64]; int k;
+    for (k = 0; k < m->nparm; k++) { strncpy(val[k], m->pkey[k] ? m->pdef[k] : "", 63); val[k][63] = 0; }
+    char args[24][64]; int na = opnd[0] ? split_fields(opnd, args, 24) : 0, pos = 0;
+    for (k = 0; k < na; k++) {
+        char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
+        if (iskw) { char *c; for (c = args[k]; c < eq; c++) if (!isalnum((unsigned char)*c) && *c != '@' && *c != '#' && *c != '$' && *c != '_') { iskw = 0; break; } }
+        if (iskw) { *eq = 0; int j; char nm[26]; snprintf(nm, sizeof nm, "&%s", args[k]);
+            for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(val[j], eq + 1, 63); val[j][63] = 0; break; } }
+        else { int j, c = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (c == pos) { strncpy(val[j], args[k], 63); val[j][63] = 0; break; } c++; } pos++; }
+    }
+    int b; for (b = 0; b < m->nbody; b++) { char ex[256]; subst(m->body[b], ex, m, val, lbl); mexp_line(ex, out, nout, depth + 1); }
+}
+/* macro pass: capture MACRO/MEND defs, expand calls -> flat open code */
+static int macro_pass(char **in, int nin, char **out) {
+    int nout = 0, i;
+    for (i = 0; i < nin; i++) {
+        char buf[256], lbl[16], op[16], opnd[64];
+        strncpy(buf, in[i], 255); buf[255] = 0; parse(buf, lbl, op, opnd);
+        if (!strcmp(op, "MACRO")) {
+            if (++i >= nin) break;
+            char pb[256], pl[16], po[16], pp[64];
+            strncpy(pb, in[i], 255); pb[255] = 0; parse(pb, pl, po, pp);
+            struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
+            strncpy(m->namep, pl, sizeof m->namep - 1); strncpy(m->name, po, sizeof m->name - 1);
+            if (pp[0]) { char flds[24][64]; int nf = split_fields(pp, flds, 24), k;
+                for (k = 0; k < nf && k < 24; k++) { char *eq = strchr(flds[k], '=');
+                    if (eq) { *eq = 0; strncpy(m->pname[k], flds[k], 19); strncpy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
+                    else strncpy(m->pname[k], flds[k], 19);
+                    m->nparm++; } }
+            while (++i < nin) { char bb[256], bl[16], bo[16], bd[64];
+                strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
+                if (!strcmp(bo, "MEND")) break;
+                if (m->nbody < 128) m->body[m->nbody++] = strdup(in[i]); }
+            continue;
+        }
+        mexp_line(in[i], out, &nout, 0);
+    }
+    return nout;
+}
+
 static void do_pass(int pass, char **lines, int nlines) {
     int i;
     lc = 0;
@@ -331,17 +409,19 @@ static void emit_obj(FILE *f) {
         }
     } }
 
-    cinit(c); cname(c, "RLD");
-    { int off = 16; k = 0; while (k < nrel) {
-        int run = k + 1; while (run < nrel && rels[run].rel == rels[k].rel && rels[run].pos == rels[k].pos) run++;
-        cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
-        c[off + 4] = (rels[k].isV ? 0x1C : 0x0C) | (run - k > 1 ? 0x01 : 0); cbe(c, off + 5, rels[k].addr, 3); off += 8;
-        int m; for (m = k + 1; m < run; m++) {
-            c[off] = (rels[m].isV ? 0x1C : 0x0C) | (m < run - 1 ? 0x01 : 0); cbe(c, off + 1, rels[m].addr, 3); off += 4;
-        }
-        k = run;
-    } cbe(c, 10, off - 16, 2); }
-    cseq(c, ++seq); fwrite(c, 1, 80, f);
+    if (nrel > 0) {
+        cinit(c); cname(c, "RLD");
+        { int off = 16; k = 0; while (k < nrel) {
+            int run = k + 1; while (run < nrel && rels[run].rel == rels[k].rel && rels[run].pos == rels[k].pos) run++;
+            cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
+            c[off + 4] = (rels[k].isV ? 0x1C : 0x0C) | (run - k > 1 ? 0x01 : 0); cbe(c, off + 5, rels[k].addr, 3); off += 8;
+            int m; for (m = k + 1; m < run; m++) {
+                c[off] = (rels[m].isV ? 0x1C : 0x0C) | (m < run - 1 ? 0x01 : 0); cbe(c, off + 1, rels[m].addr, 3); off += 4;
+            }
+            k = run;
+        } cbe(c, 10, off - 16, 2); }
+        cseq(c, ++seq); fwrite(c, 1, 80, f);
+    }
 
     cinit(c); cname(c, "END"); cbe(c, 5, end_addr, 3); cbe(c, 14, end_esdid, 2);
     cseq(c, ++seq); fwrite(c, 1, 80, f);
@@ -354,16 +434,19 @@ int main(int argc, char **argv) {
     }
     if (!src) { fprintf(stderr, "usage: as370 [-o obj] file.s\n"); return 2; }
     FILE *f = fopen(src, "r"); if (!f) { perror(src); return 2; }
-    static char *lines[4096]; int n = 0; char lb[256];
-    while (fgets(lb, sizeof lb, f) && n < 4096) lines[n++] = strdup(lb);
+    static char *raw[4096]; int n = 0; char lb[256];
+    while (fgets(lb, sizeof lb, f) && n < 4096) raw[n++] = strdup(lb);
     fclose(f);
 
-    do_pass(1, lines, n);
+    static char *lines[MAXLINES];
+    int nl = macro_pass(raw, n, lines);
+
+    do_pass(1, lines, nl);
     { int k, id = 0; for (k = 0; k < nsym; k++)
         if (syms[k].type == S_SD || syms[k].type == S_PC || syms[k].type == S_ER) syms[k].esdid = ++id; }
     { int k; for (k = 0; k < nsym; k++) if (syms[k].type == S_SD || syms[k].type == S_PC) { main_sect_esdid = syms[k].esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
-    do_pass(2, lines, n);
+    do_pass(2, lines, nl);
 
     long i;
     printf("module length: 0x%lX (%ld bytes)\n", modlen, modlen);

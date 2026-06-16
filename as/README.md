@@ -21,8 +21,21 @@ Working so far:
   **DC A/F/C** (EBCDIC), **DS, EQU, LTORG, END**
 - operands both **explicit** (`d(x,b)`, `d(len,b)`, `d(b)`) and **symbolic via USING**
 - literal pool (`=V`, `=A`, `=F`) with LTORG placement; `=V` registers an ER
-- gap-aware TXT (alignment/DS gaps split TXT records, matching IFOX)
-- validated byte-identical to IFOX on `tests/sample{1,3,4}.s`
+- gap-aware TXT (alignment/DS gaps split TXT records, matching IFOX); the RLD
+  card is omitted when there are no relocations (matching IFOX)
+
+## Status — WP-4a (macro preprocessor, started)
+
+A preprocessing pass expands macros into flat open code before the two-pass
+core (z390-style split). Working: inline `MACRO`/`MEND` capture, **name-field +
+positional + keyword params (with defaults)**, `&`-substitution (incl. inside
+literals, with `&x.` concatenation), and **nested expansion**. `tests/sample5.s`
+(OUTER→INNER nesting, `V=` keyword/default) assembles byte-identical to IFOX.
+Pending (WP-4b+): conditional assembly (`GBLx`/`SETx`/`AIF`/`AGO`/`ANOP`, AIF
+expression eval, `T'`/`L'`), `COPY` + library-macro lookup, then nested
+`SAVE`/`RETURN` to expand PDPPRLG/PDPEPIL and assemble the raw compiler `.s`.
+
+Validated byte-identical to IFOX on `tests/sample{1,3,4,5}.s`.
 
 Validation oracle = the IFOX00 `PRINT GEN` listing (see Epic / WP-1, TSK-274).
 
