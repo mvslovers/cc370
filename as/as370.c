@@ -113,18 +113,30 @@ static struct lit *lit_get(const char *t) {
     return &lits[nlit++];
 }
 
+/* evaluate an additive expression (terms joined by + / -): numbers, the location
+ * counter '*', and symbols. Sets *reloc if any term is relocatable. Stops at
+ * '(' (subscript), ',' or end — so it also serves to evaluate a displacement. */
 static long expr_val(const char *e, int *reloc) {
-    if (reloc) *reloc = 0;
-    if (*e == '*') {                       /* location counter, optionally *+N / *-N */
-        long v = lc;
-        if (e[1] == '+' || e[1] == '-') v += strtol(e + 1, NULL, 10);
-        if (reloc) *reloc = 1;             /* the location counter is relocatable */
-        return v;
+    long acc = 0; int rl = 0, op = 1;
+    for (;;) {
+        while (*e == ' ') e++;
+        if (!*e || *e == '(' || *e == ',') break;
+        if (*e == '+') { op = 1; e++; continue; }
+        if (*e == '-') { op = -1; e++; continue; }
+        long t = 0;
+        if (*e == '*') { t = lc; rl = 1; e++; }                 /* location counter */
+        else if (isdigit((unsigned char)*e)) { char *end; t = strtol(e, &end, 10); e = end; }
+        else {                                                  /* symbol */
+            char nm[64]; int n = 0;
+            while (*e && !strchr("+-(), ", *e) && n < 63) nm[n++] = *e++;
+            nm[n] = 0;
+            struct sym *s = sym_find(nm);
+            if (s) { if (s->type == S_REL) rl = 1; t = s->val; }
+        }
+        acc += op * t; op = 1;
     }
-    if (isdigit((unsigned char)*e) || *e == '-') return strtol(e, NULL, 10);
-    struct sym *s = sym_find(e);
-    if (s) { if (reloc && s->type == S_REL) *reloc = 1; return s->val; }
-    return 0;
+    if (reloc) *reloc = rl;
+    return acc;
 }
 static void put(long at, long v, int n) {
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
@@ -180,7 +192,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
     if (f[0] == '=') { struct lit *l = lit_get(f); *d = l->loc - using_base; *sym = 1; sub[0] = using_reg; return; }
     const char *lp = strchr(f, '(');
     if (lp) {
-        *d = strtol(f, NULL, 10);
+        *d = expr_val(f, NULL);            /* displacement may be an expression, e.g. 4+120(13) */
         const char *rp = strchr(lp, ')');
         int n = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1);
         char inside[64]; if (n > 63) n = 63; memcpy(inside, lp + 1, n); inside[n] = 0;
