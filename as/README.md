@@ -23,6 +23,15 @@ Working so far:
 
 Validation oracle = the IFOX00 `PRINT GEN` listing (see Epic / WP-1, TSK-274).
 
+## Status — WP-3 (OS/360 OBJ writer)
+
+`as370 -o deck.obj` emits an 80-col EBCDIC object deck (ESD/TXT/RLD/END). For
+`sample1` the deck is **byte-identical to IFOX00's** on cards 1-3 (ESD + TXT +
+RLD); the END card matches except cols 33-52 (the IDR, which legitimately
+identifies the producing assembler — left blank for now). Covers SD/ER symbols,
+single-card TXT, and A/V-con RLD (`0C`/`1C`). Pending: PC/LD symbols, multi-card
+TXT, RLD bit-7 continuation packing (all needed for compiler output, Sample #2).
+
 ## Build & test
 
 ```sh
