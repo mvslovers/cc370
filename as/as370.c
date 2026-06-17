@@ -595,6 +595,12 @@ static int join_cont(char **in, int n, char **out, int maxout) {
         int cont = (len > 71 && l[71] != ' ');
         i++;
         while (cont && i < n) {
+            /* when the operand list is syntactically continued (the last non-blank
+             * is a comma) the blanks padding to column 72 are not significant — drop
+             * them so the next operand joins on. Otherwise keep them: they separate a
+             * complete operand from a trailing comment, or sit inside a string. */
+            int last = a - 1; while (last >= 0 && acc[last] == ' ') last--;
+            if (last >= 0 && acc[last] == ',') a = last + 1;
             const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
             for (; s < e && a < 8190; s++) acc[a++] = c[s];
             cont = (cl > 71 && c[71] != ' ');
@@ -754,7 +760,8 @@ static void emit_lit(struct lit *l) {
         char sym[16]; int sn = 0; const char *se = l->ext;     /* leading symbol = relocation target (e.g. @V1-192) */
         while (*se && !strchr("+-(), ", *se) && sn < 15) sym[sn++] = *se++; sym[sn] = 0;
         struct sym *es = sym_find(sym);
-        if (rc != 0 && es && !dsect_sect[es->sect & 255]) add_reloc(l->loc, sym, 0);   /* relocate only if net-relocatable and target is in a real section */
+        int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+        if (rc != 0 && tgtreal) add_reloc(l->loc, sym, 0);   /* relocate only if net-relocatable and target ('*' or a symbol) is in a real section */
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         const char *q = strchr(p, '\'');
         if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
@@ -910,7 +917,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                         int sn = 0; const char *se = ename;            /* leading symbol = relocation target (e.g. @V1-192) */
                         while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
                         struct sym *es = sym_find(rsym); int rc = 0; expr_val(ename, &rc);
-                        isrel = (rc != 0) && es && !dsect_sect[es->sect & 255]; }   /* relocate only if net-relocatable and the target is in a real (non-dummy) section */
+                        int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+                        isrel = (rc != 0) && tgtreal; }   /* relocate only if net-relocatable and the target ('*' or a symbol) is in a real (non-dummy) section */
                     else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                     for (k = 0; k < cnt; k++) {
                         if (emit_dc) {
