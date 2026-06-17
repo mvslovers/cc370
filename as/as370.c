@@ -69,6 +69,7 @@ static int  in_dsect; static long main_lc;   /* DSECT: dummy section, own counte
 struct uent { int reg; long base; int sect; };   /* active USING ranges */
 static struct uent usings[32]; static int nusing;
 static int  cur_sect_id, g_sectid;            /* section identity for USING resolution */
+static char dsect_sect[256];                  /* dsect_sect[id]=1 if section id is a DSECT (its symbols are absolute) */
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
@@ -223,12 +224,18 @@ static int using_for(long val, int sect, long *disp) {
 /* parse a memory operand: displacement *d, explicit subscripts sub[0..*nsub),
  * *sym=1 for a symbol/literal resolved through USING (then sub[0]=base reg).
  * Subscript->field mapping is format-specific (RX: sub0=index; RS/SI/SS: base). */
+static int r_ibase;   /* implied base reg from USING when a paren operand's prefix is relocatable, else -1 */
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
-    *nsub = 0; *sym = 0; *d = 0;
+    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1;
     if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; sub[0] = using_for(l->loc, l->sect, d); return; }
     const char *lp = strchr(f, '(');
     if (lp) {
-        *d = expr_val(f, NULL);            /* displacement may be an expression, e.g. 4+120(13) */
+        int reloc = 0; long v = expr_val(f, &reloc);   /* prefix before '(' (expr_val stops there) */
+        if (reloc) {                                   /* SYM(len)/SYM(index): base from the symbol's USING */
+            char nm[64]; int nn = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && nn < 63) nm[nn++] = *e++; nm[nn] = 0;
+            struct sym *s = sym_find(nm); int ssect = s ? s->sect : cur_sect_id;
+            r_ibase = using_for(v, ssect, d);
+        } else *d = v;                                 /* numeric displacement, e.g. 4+120(13) */
         const char *rp = strchr(lp, ')');
         int n = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1);
         char inside[64]; if (n > 63) n = 63; memcpy(inside, lp + 1, n); inside[n] = 0;
@@ -705,7 +712,7 @@ static void emit_lit(struct lit *l) {
         char sym[16]; int sn = 0; const char *se = l->ext;     /* leading symbol of e.g. @V1-192 */
         while (*se && !strchr("+-(), ", *se) && sn < 15) sym[sn++] = *se++; sym[sn] = 0;
         struct sym *es = sym_find(sym);
-        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER)) add_reloc(l->loc, sym, 0);
+        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER) && !dsect_sect[es->sect & 255]) add_reloc(l->loc, sym, 0);
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         const char *q = strchr(p, '\'');
         if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
@@ -771,17 +778,17 @@ static void do_pass(int pass, char **lines, int nlines) {
                 case F_RX: case F_BC: {
                     int r1 = (o->fmt == F_BC) ? o->m1 : (int)expr_val(F[0], 0);
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
-                    int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : 0);
+                    int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : (r_ibase >= 0 ? r_ibase : 0));
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
                 case F_RS: { int r1 = (int)expr_val(F[0], 0), r3, b;
                     if (nf >= 3) { r3 = (int)expr_val(F[1], 0); resolve(F[2], &d, sub, &ns, &sy); }
                     else { r3 = 0; resolve(F[1], &d, sub, &ns, &sy); }  /* shift form R1,D2(B2): R3 field unused */
-                    b = (int)sub[0];
+                    b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (int)sub[0]; long im = imm_val(F[1]);
+                case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); resolve(F[1], &d2, sub2, &ns2, &sy2);
-                    int len = (int)sub[0], b1 = (ns >= 2 ? (int)sub[1] : (int)sub[0]), b2 = (int)sub2[0];
+                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase; resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase;
+                    int len = (int)sub[0], b1 = (ns >= 2 ? (int)sub[1] : (ib1 >= 0 ? ib1 : (int)sub[0])), b2 = (ns2 >= 2 ? (int)sub2[1] : (ib2 >= 0 ? ib2 : (int)sub2[0]));
                     put(lc, o->op, 1); put(lc + 1, (len - 1) & 0xff, 1);
                     put(lc + 2, ((long)b1 << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6; break; }
                 default: break;
@@ -807,6 +814,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
             cur_sect_id = s->sect;
+            if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
             if (pass == 1) { s->val = 0; s->defined = 1; }
         } else if (!strcmp(op, "ENTRY")) {
             if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s, ESD_LD); }
@@ -852,7 +860,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         int sn = 0; const char *se = ename;            /* leading symbol of e.g. @V1-192 */
                         while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
                         struct sym *es = sym_find(rsym);
-                        isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER); }
+                        isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER) && !dsect_sect[es->sect & 255]; }
                     else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                     for (k = 0; k < cnt; k++) {
                         if (emit_dc) {
