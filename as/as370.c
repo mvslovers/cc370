@@ -380,19 +380,42 @@ static long e_expr(void) {
 static long eval_seta(struct ctx *c, const char *s) { ec_ = c; ep_ = s; return e_expr(); }
 /* SETC: 'string'(with subst, optional substring (s,l)) or a bare &ref */
 static void eval_setc(struct ctx *c, const char *s, char *out) {
-    out[0] = 0;
-    if (s[0] == '\'') {
-        const char *q = strchr(s + 1, '\''); int L = q ? (int)(q - s - 1) : (int)strlen(s + 1);
-        char inner[128]; if (L > 127) L = 127; memcpy(inner, s + 1, L); inner[L] = 0;
-        char sub[128]; msub(c, inner, sub);
-        if (q && q[1] == '(') {           /* substring (start,len) */
-            ec_ = c; ep_ = q + 2; long st = e_expr(); e_sp(); long ln = 0;
-            if (*ep_ == ',') { ep_++; ln = e_expr(); }
-            int n = (int)strlen(sub), a = (int)st - 1; if (a < 0) a = 0; if (a > n) a = n;
-            int take = (int)ln; if (take > n - a) take = n - a; if (take < 0) take = 0;
-            memcpy(out, sub + a, take); out[take] = 0;
-        } else { strncpy(out, sub, 95); out[95] = 0; }
-    } else msub(c, s, out);
+    out[0] = 0; int olen = 0; const char *p = s;
+    /* a SETC operand is one or more terms joined by '.' (concatenation); each
+     * term is a 'quoted' string (optionally msub'd, optional (start,len)
+     * substring) or a &variable. */
+    while (*p) {
+        while (*p == ' ') p++;
+        if (!*p) break;
+        char piece[256]; piece[0] = 0;
+        if (*p == '\'') {
+            const char *q = strchr(p + 1, '\'');
+            int L = q ? (int)(q - p - 1) : (int)strlen(p + 1);
+            char inner[256]; if (L > 255) L = 255; memcpy(inner, p + 1, L); inner[L] = 0;
+            char sub[256]; msub(c, inner, sub);
+            p = q ? q + 1 : p + 1 + L;
+            if (*p == '(') {                       /* substring (start,len) */
+                ec_ = c; ep_ = p + 1; long st = e_expr(); e_sp(); long ln = 0;
+                if (*ep_ == ',') { ep_++; ln = e_expr(); }
+                if (*ep_ == ')') ep_++;
+                p = ep_;
+                int n = (int)strlen(sub), a = (int)st - 1; if (a < 0) a = 0; if (a > n) a = n;
+                int take = (int)ln; if (take > n - a) take = n - a; if (take < 0) take = 0;
+                memcpy(piece, sub + a, take); piece[take] = 0;
+            } else { strncpy(piece, sub, 255); piece[255] = 0; }
+        } else if (*p == '&') {
+            char ref[64]; int i = 0; ref[i++] = *p++;
+            while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 62) ref[i++] = *p++;
+            if (*p == '(') { ref[i++] = *p++; int d = 1; while (*p && d && i < 62) { if (*p=='(')d++; else if(*p==')')d--; ref[i++]=*p++; } }
+            ref[i] = 0; vref(c, ref, piece);
+        } else {                                   /* bare text up to a '.' */
+            int i = 0; while (*p && *p != '.' && *p != ' ' && i < 255) piece[i++] = *p++; piece[i] = 0;
+        }
+        int pl = (int)strlen(piece); if (olen + pl > 95) pl = 95 - olen; if (pl < 0) pl = 0;
+        memcpy(out + olen, piece, pl); olen += pl; out[olen] = 0;
+        if (*p == '.') p++;                        /* concatenation */
+        else break;
+    }
 }
 /* a comparison term is character if quoted or a T' (type) attribute */
 static int term_is_str(const char *t) { return t[0] == '\'' || (t[0] == 'T' && t[1] == '\''); }
