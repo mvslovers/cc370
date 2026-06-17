@@ -43,7 +43,7 @@ static const struct opc optab[] = {
 };
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; };
 static struct sym syms[MAXSYM];
 static int nsym;
 /* ESD is a list of (symbol, role) events in source order. A name can appear as
@@ -137,6 +137,15 @@ static long x_factor(void) {
     if (*xp_ == '-') { xp_++; return -x_factor(); }
     if (*xp_ == '+') { xp_++; return x_factor(); }
     if (isdigit((unsigned char)*xp_)) { char *end; long v = strtol(xp_, (char **)&end, 10); xp_ = end; return v; }
+    if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
+        char kind = *xp_; xp_ += 2; long v = 0;
+        if (kind == 'C') { while (*xp_ && *xp_ != '\'') { v = (v << 8) | a2e((unsigned char)*xp_); xp_++; } }
+        else { int base = (kind == 'X') ? 16 : 2; while (*xp_ && *xp_ != '\'') {
+                   int c = toupper((unsigned char)*xp_), dv = (c >= '0' && c <= '9') ? c - '0' : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : 0;
+                   v = v * base + dv; xp_++; } }
+        if (*xp_ == '\'') xp_++;
+        return v;
+    }
     char nm[64]; int n = 0;
     while (*xp_ && !strchr("+-*/(), ", *xp_) && n < 63) nm[n++] = *xp_++;
     nm[n] = 0;
@@ -225,15 +234,17 @@ static int using_for(long val, int sect, long *disp) {
  * *sym=1 for a symbol/literal resolved through USING (then sub[0]=base reg).
  * Subscript->field mapping is format-specific (RX: sub0=index; RS/SI/SS: base). */
 static int r_ibase;   /* implied base reg from USING when a paren operand's prefix is relocatable, else -1 */
+static int r_len;     /* length attribute L' of the symbol resolved by the last resolve() call (for SS implicit length) */
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
-    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1;
-    if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; sub[0] = using_for(l->loc, l->sect, d); return; }
+    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0;
+    if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; r_len = l->size; sub[0] = using_for(l->loc, l->sect, d); return; }
     const char *lp = strchr(f, '(');
     if (lp) {
         int reloc = 0; long v = expr_val(f, &reloc);   /* prefix before '(' (expr_val stops there) */
         if (reloc) {                                   /* SYM(len)/SYM(index): base from the symbol's USING */
             char nm[64]; int nn = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && nn < 63) nm[nn++] = *e++; nm[nn] = 0;
             struct sym *s = sym_find(nm); int ssect = s ? s->sect : cur_sect_id;
+            r_len = s ? s->len : 0;
             r_ibase = using_for(v, ssect, d);
         } else *d = v;                                 /* numeric displacement, e.g. 4+120(13) */
         const char *rp = strchr(lp, ')');
@@ -249,6 +260,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
         if (reloc) {                                   /* relocatable: address via USING (of the symbol's section) */
             char nm[64]; int n = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0;
             struct sym *s = sym_find(nm); int ssect = s ? s->sect : cur_sect_id;
+            r_len = s ? s->len : 0;
             *sym = 1; sub[0] = using_for(v, ssect, d);
         } else { *d = v; *sym = 0; sub[0] = 0; }       /* absolute: displacement value, base 0 */
     }
@@ -793,7 +805,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             while (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }   /* instructions are halfword-aligned */
             char F[4][64]; int nf = split_fields(opnd, F, 4); (void)nf;
             if (pass == 1) {
-                if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
+                if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = ins_len(o->fmt); }
                 int k; for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
                 lc += ins_len(o->fmt);
             } else {
@@ -817,9 +829,14 @@ static void do_pass(int pass, char **lines, int nlines) {
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
                 case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase; resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase;
-                    int len = (int)sub[0], b1 = (ns >= 2 ? (int)sub[1] : (ib1 >= 0 ? ib1 : (int)sub[0])), b2 = (ns2 >= 2 ? (int)sub2[1] : (ib2 >= 0 ? ib2 : (int)sub2[0]));
-                    put(lc, o->op, 1); put(lc + 1, (len - 1) & 0xff, 1);
+                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len; resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len;
+                    int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
+                    int len1 = (ns  >= 1 ? (int)sub[0]  : (l1 ? l1 : 1));
+                    int len2 = (ns2 >= 1 ? (int)sub2[0] : (l2 ? l2 : 1));
+                    int b1 = (ns  >= 2 ? (int)sub[1]  : (ib1 >= 0 ? ib1 : (int)sub[0]));
+                    int b2 = (ns2 >= 2 ? (int)sub2[1] : (ib2 >= 0 ? ib2 : (int)sub2[0]));
+                    int lenb = twol ? ((((len1 - 1) & 0xf) << 4) | ((len2 - 1) & 0xf)) : ((len1 - 1) & 0xff);
+                    put(lc, o->op, 1); put(lc + 1, lenb, 1);
                     put(lc + 2, ((long)b1 << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6; break; }
                 default: break;
                 }
@@ -877,13 +894,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                 while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
                 if (!hascnt) cnt = 1;
                 int ty = *p ? toupper((unsigned char)*p++) : 0;
-                int blen = 0, haslen = 0;            /* explicit length modifier Ln */
-                if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
+                int blen = 0, haslen = 0;            /* explicit length modifier Ln or L(expr) */
+                if (*p == 'L') { p++; haslen = 1;
+                    if (*p == '(') { const char *rp = strchr(p, ')'); char ex[64]; int en = rp ? (int)(rp - p - 1) : 0; if (en > 63) en = 63; memcpy(ex, p + 1, en); ex[en] = 0; blen = (int)expr_val(ex, NULL); p = rp ? rp + 1 : p + strlen(p); }
+                    else while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
                 if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y') {
                     int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
                     if (!haslen) { blen = base; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc); }
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     long val = 0; char ename[64] = "", rsym[16] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
                     if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
@@ -900,7 +919,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         lc += blen;
                     }
                 } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     const char *q = strchr(p, '\''); char body[1024]; int slen = 0;
                     if (q) { const char *e = q + 1;
                         while (*e && slen < 1023) {
@@ -910,7 +929,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int emit = haslen ? blen : slen;
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
                 } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     const char *q = strchr(p, '\''); unsigned char by[1024]; int nb = 0;
                     if (q) { char h[2056]; int hl = 0, s0 = 0; const char *e = q + 1;
                         while (*e && *e != '\'' && hl < 2055) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
@@ -920,7 +939,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int emit = haslen ? blen : nb, pad = emit - nb;
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
                 } else if (ty == 'B') {                     /* binary, byte-aligned, MSB-first */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
                     if (q) { char bits[2056]; int bl2 = 0; const char *e = q + 1;
                         while (*e && *e != '\'' && bl2 < 2048) { if (*e == '0' || *e == '1') bits[bl2++] = *e; e++; }
@@ -929,10 +948,10 @@ static void do_pass(int pass, char **lines, int nlines) {
                     }
                     int emit = haslen ? blen : nb, pad = emit - nb;
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
-                } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
+                } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
             }
         } else if (!strcmp(op, "EQU")) {
-            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = (opnd[0] == '*') ? lc : expr_val(opnd, NULL); s->defined = 1; s->sect = cur_sect_id; }
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = expr_val(opnd, NULL); s->defined = 1; s->sect = cur_sect_id; s->len = 1; }
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
             if (!strcmp(op, "END") && opnd[0]) {
