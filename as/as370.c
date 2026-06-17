@@ -719,6 +719,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0;
+    int pre_csect = 0;                  /* a content statement appeared before the first CSECT */
     if (pass == 2) nrel = 0;
     for (i = 0; i < nlines; i++) {
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
@@ -729,6 +730,8 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (!op[0]) continue;
 
         const struct opc *o = op_find(op);
+        if (cur_sect_id == 0 && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG")))
+            pre_csect = 1;   /* statement before the first CSECT opens the implicit unnamed PC */
         if (o) {
             while (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }   /* instructions are halfword-aligned */
             char F[4][64]; int nf = split_fields(opnd, F, 4); (void)nf;
@@ -769,6 +772,10 @@ static void do_pass(int pass, char **lines, int nlines) {
 
         if (!strcmp(op, "CSECT")) {
             if (in_dsect) { in_dsect = 0; lc = main_lc; } else lc = 0;   /* resume the control section */
+            if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
+                int k, hassect = 0; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) hassect = 1;
+                if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT); }
+            }
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
             cur_sect_id = s->sect;
@@ -946,7 +953,7 @@ static void emit_obj(FILE *f) {
         int n = 0, cardfirst = 0;
         while (n < 3 && e < nesdord) {
             struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
-            if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, modlen, 0); if (!cardfirst) cardfirst = s->esdid; }
+            if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, s->esdid == main_sect_esdid ? modlen : 0, 0); if (!cardfirst) cardfirst = s->esdid; }
             else if (role == ESD_ER) { esd_ent(c, slot, s->name, 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
             else { esd_ent(c, slot, s->name, 0x01, s->val, main_sect_esdid, 0); }   /* LD entry */
             n++;
@@ -1022,7 +1029,9 @@ int main(int argc, char **argv) {
     do_pass(1, lines, nl);
     { int k, id = 0; for (k = 0; k < nesdord; k++)            /* SD/PC sections and ER refs get an ESDID; LD entries do not */
         if (esdord[k].role == ESD_SECT || esdord[k].role == ESD_ER) esdord[k].s->esdid = ++id; }
-    { int k; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
+    { int k; main_sect_esdid = 0;            /* the content section: first named SD, else first section */
+      for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT && esdord[k].s->type == S_SD) { main_sect_esdid = esdord[k].s->esdid; break; }
+      if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     do_pass(2, lines, nl);
     if (nunk) { int j; fprintf(stderr, "as370: unknown op(s):"); for (j = 0; j < nunk; j++) fprintf(stderr, " %s", unkops[j]); fprintf(stderr, "\n"); }
