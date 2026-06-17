@@ -60,7 +60,7 @@ static struct lit lits[MAXLIT];
 static int nlit;
 static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
 
-struct reloc { long addr; int pos, rel, isV; };
+struct reloc { long addr; int pos, rel, isV, len; };
 static struct reloc rels[MAXREL];
 static int nrel;
 
@@ -298,10 +298,11 @@ static const struct opc *op_find(const char *n) {
     return NULL;
 }
 static void add_reloc(long at, const char *target, int isV) {
+    if (in_dsect) return;                       /* a dummy section generates no relocations */
     struct sym *s = sym_find(target);
     int rel = (s && s->esdid) ? s->esdid : cur_sect_esdid;
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
-    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; nrel++;
+    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; rels[nrel].len = 4; nrel++;
 }
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
@@ -660,7 +661,7 @@ static struct macro *lib_load(const char *name) {
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
     const char *d[] = { "CSECT", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
-                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", "PUSH", "POP", NULL };
+                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", "PUSH", "POP", "CCW", NULL };
     int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
 
@@ -1004,6 +1005,17 @@ static void do_pass(int pass, char **lines, int nlines) {
             char F[2][64]; split_fields(opnd, F, 2);
             int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0), g = 0;
             if (nn > 0) while ((lc % nn) != b && g++ < 64) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; }
+        } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
+            { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 8; }
+            if (pass == 2) { char F[4][64]; int nf = split_fields(opnd, F, 4);
+                put(lc, expr_val(F[0], 0) & 0xff, 1);
+                int rc = 0; long av = nf >= 2 ? expr_val(F[1], &rc) : 0; put(lc + 1, av, 3);
+                if (rc != 0) { char rsym[16]; int sn = 0; const char *se = F[1]; while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
+                    struct sym *es = sym_find(rsym); if (es && !dsect_sect[es->sect & 255]) { add_reloc(lc + 1, rsym, 0); rels[nrel - 1].len = 3; } }
+                put(lc + 4, nf >= 3 ? expr_val(F[2], 0) & 0xff : 0, 1); put(lc + 5, 0, 1);
+                put(lc + 6, nf >= 4 ? expr_val(F[3], 0) & 0xffff : 0, 2); }
+            lc += 8;
         } else if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
             static char ops[256][1024]; int nops = dc_split(opnd, ops, 256), oi;
             int emit_dc = (pass == 2 && !strcmp(op, "DC"));
@@ -1027,7 +1039,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
                         int sn = 0; const char *se = ename;            /* leading symbol = relocation target (e.g. @V1-192) */
                         while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
-                        if (isvcon) { if (pass == 1 && rsym[0]) { struct sym *s = sym_get(rsym); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } isrel = 1; }   /* V-con: external reference, always relocated */
+                        if (isvcon) { if (pass == 1 && rsym[0] && !in_dsect) { struct sym *s = sym_get(rsym); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } isrel = 1; }   /* V-con: external reference, always relocated (none in a dummy section) */
                         else { struct sym *es = sym_find(rsym); int rc = 0; expr_val(ename, &rc);
                             int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
                             isrel = (rc != 0) && tgtreal; } }   /* relocate only if net-relocatable and the target ('*' or a symbol) is in a real (non-dummy) section */
@@ -1191,11 +1203,11 @@ static void emit_obj(FILE *f) {
             if (off + need > 72) break;                        /* card full -> flush */
             if (reuse) {
                 c[prevflag] |= 0x01;                           /* predecessor: next omits R/P */
-                c[off] = (rels[k].isV ? 0x1C : 0x0C); cbe(c, off + 1, rels[k].addr, 3);
+                c[off] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2); cbe(c, off + 1, rels[k].addr, 3);
                 prevflag = off; off += 4;
             } else {
                 cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
-                c[off + 4] = (rels[k].isV ? 0x1C : 0x0C); cbe(c, off + 5, rels[k].addr, 3);
+                c[off + 4] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2); cbe(c, off + 5, rels[k].addr, 3);
                 prevflag = off + 4; off += 8; pr = rels[k].rel; pp = rels[k].pos;
             }
             k++;
