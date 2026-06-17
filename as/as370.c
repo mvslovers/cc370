@@ -325,18 +325,32 @@ static void set_put(struct ctx *c, const char *n, const char *v) {
     if (c->nset < 256) { strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
                         strncpy(c->sv[c->nset], v, 95); c->sv[c->nset][95] = 0; c->nset++; }
 }
-/* sublist value "(a,b,c)" -> element count / 1-based element */
+/* sublist value "(a,b,c)" -> element count / 1-based element. Commas and the
+ * closing paren are recognised only at top level, outside 'quotes' (so a
+ * quoted element containing (), commas is kept whole). */
 static int sub_count(const char *v) {
     if (!v[0]) return 0; if (v[0] != '(') return 1;
-    int n = 1; const char *p; for (p = v + 1; *p && *p != ')'; p++) if (*p == ',') n++; return n;
+    int n = 1, d = 0, q = 0; const char *p;
+    for (p = v + 1; *p; p++) {
+        if (*p == '\'') q = !q;
+        else if (q) ;
+        else if (*p == '(') d++;
+        else if (*p == ')') { if (d == 0) break; d--; }
+        else if (*p == ',' && d == 0) n++;
+    }
+    return n;
 }
 static void sub_elem(const char *v, int idx, char *out) {
     out[0] = 0;
     if (v[0] != '(') { if (idx == 1) { strncpy(out, v, 95); out[95] = 0; } return; }
-    const char *s = v + 1; int n = 1; const char *p = s;
-    for (;; p++) if (*p == ',' || *p == ')' || !*p) {
-        if (n == idx) { int L = (int)(p - s); if (L > 95) L = 95; memcpy(out, s, L); out[L] = 0; return; }
-        n++; s = p + 1; if (*p == ')' || !*p) return;
+    const char *s = v + 1, *p = s; int n = 1, d = 0, q = 0;
+    for (;; p++) {
+        if (*p == '\'') { q = !q; continue; }
+        if (!q && *p == '(') { d++; continue; }
+        if ((!q && *p == ',' && d == 0) || (!q && *p == ')' && d == 0) || !*p) {
+            if (n == idx) { int L = (int)(p - s); if (L > 95) L = 95; memcpy(out, s, L); out[L] = 0; return; }
+            n++; s = p + 1; if ((*p == ')' && d == 0) || !*p) return;
+        } else if (!q && *p == ')') d--;
     }
 }
 static long eval_seta(struct ctx *c, const char *s);   /* fwd: vref evaluates subscripts */
