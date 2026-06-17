@@ -1035,6 +1035,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 l->placed = 1;
                 lc += l->size;
             } }
+            if (!in_dsect && lc > modlen) modlen = lc;   /* the pool's doubleword alignment extends the section length (no TXT for the pad) */
             litpool++;
         } else if (pass == 1) note_unknown(op);
     }
