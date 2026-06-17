@@ -330,7 +330,11 @@ static void sub_elem(const char *v, int idx, char *out) {
         n++; s = p + 1; if (*p == ')' || !*p) return;
     }
 }
-/* value of a "&name" / "&name(idx)" reference (param, then SET symbol) */
+static long eval_seta(struct ctx *c, const char *s);   /* fwd: vref evaluates subscripts */
+static const char *ep_; static struct ctx *ec_;        /* SETA parser state (tentative) */
+/* value of a "&name" / "&name(idx)" reference. For a macro parameter the
+ * subscript selects a sublist element; for a SET symbol it selects an array
+ * element &name(idx), stored under the flat name "&name(N)". */
 static void vref(struct ctx *c, const char *ref, char *out) {
     out[0] = 0;
     const char *p = ref + 1; char nm[24]; int i = 0;
@@ -338,13 +342,19 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     nm[i] = 0;
     if (!strcmp(nm, "SYSNDX")) { snprintf(out, 96, "%04d", c->sysndx); return; }   /* unique per macro invocation */
     char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
-    const char *base = NULL; int k;
-    if (c->m->namep[0] && !strcmp(amp, c->m->namep)) base = c->namepval ? c->namepval : "";
-    else for (k = 0; k < c->m->nparm; k++) if (!strcmp(amp, c->m->pname[k])) { base = c->pv[k]; break; }
-    if (!base) base = set_find(c, amp);
-    if (!base) base = "";
-    if (*p == '(') { sub_elem(base, atoi(p + 1), out); }
-    else { strncpy(out, base, 95); out[95] = 0; }
+    const char *base = NULL; int k, is_param = 0;
+    if (c->m->namep[0] && !strcmp(amp, c->m->namep)) { base = c->namepval ? c->namepval : ""; is_param = 1; }
+    else for (k = 0; k < c->m->nparm; k++) if (!strcmp(amp, c->m->pname[k])) { base = c->pv[k]; is_param = 1; break; }
+    if (*p == '(') {
+        char idxs[64]; const char *rp = strchr(p, ')'); int L = rp ? (int)(rp - p - 1) : (int)strlen(p + 1); if (L > 63) L = 63; memcpy(idxs, p + 1, L); idxs[L] = 0;
+        const char *sep = ep_; struct ctx *sec = ec_; long idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec;   /* save/restore parser state */
+        if (is_param) sub_elem(base ? base : "", (int)idx, out);
+        else { char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn); strncpy(out, v ? v : "", 95); out[95] = 0; }
+    } else {
+        if (!is_param) base = set_find(c, amp);
+        if (!base) base = "";
+        strncpy(out, base, 95); out[95] = 0;
+    }
 }
 /* substitute all & references in a model statement (with &x. concatenation) */
 static void msub(struct ctx *c, const char *src, char *dst) {
@@ -395,6 +405,16 @@ static long e_expr(void) {
     return v;
 }
 static long eval_seta(struct ctx *c, const char *s) { ec_ = c; ep_ = s; return e_expr(); }
+/* canonicalise a SET symbol name: a subscripted array label &B(&I2) becomes the
+ * flat name &B(N) with the index evaluated; a scalar name is returned as-is. */
+static void set_canon(struct ctx *c, const char *name, char *out) {
+    const char *lp = strchr(name, '(');
+    if (!lp) { strncpy(out, name, 39); out[39] = 0; return; }
+    int b = (int)(lp - name); if (b > 32) b = 32; memcpy(out, name, b);
+    char idxs[64]; const char *rp = strchr(lp, ')'); int L = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1); if (L > 63) L = 63; memcpy(idxs, lp + 1, L); idxs[L] = 0;
+    const char *sep = ep_; struct ctx *sec = ec_; long v = eval_seta(c, idxs); ep_ = sep; ec_ = sec;
+    snprintf(out + b, 40 - b, "(%ld)", v);
+}
 /* SETC: 'string'(with subst, optional substring (s,l)) or a bare &ref */
 static void eval_setc(struct ctx *c, const char *s, char *out) {
     out[0] = 0; int olen = 0; const char *p = s;
@@ -611,9 +631,9 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
         if (!strcmp(bo, "ANOP") || !strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE")) { pc++; continue; }
         if (!strncmp(bo, "GBL", 3) || !strncmp(bo, "LCL", 3)) { char fl[8][64]; int nf = split_fields(bod, fl, 8), j; for (j = 0; j < nf; j++) set_put(&c, fl[j], bo[3] == 'C' ? "" : "0"); pc++; continue; }
-        if (!strcmp(bo, "SETA")) { long v = eval_seta(&c, bod); char nb[24]; sprintf(nb, "%ld", v); set_put(&c, bl, nb); pc++; continue; }
-        if (!strcmp(bo, "SETB")) { int v = bod[0] == '(' ? eval_cond(&c, bod + 1) : (int)eval_seta(&c, bod); set_put(&c, bl, v ? "1" : "0"); pc++; continue; }
-        if (!strcmp(bo, "SETC")) { char v[128]; eval_setc(&c, bod, v); set_put(&c, bl, v); pc++; continue; }
+        if (!strcmp(bo, "SETA")) { long v = eval_seta(&c, bod); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, nb); pc++; continue; }
+        if (!strcmp(bo, "SETB")) { int v = bod[0] == '(' ? eval_cond(&c, bod + 1) : (int)eval_seta(&c, bod); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, v ? "1" : "0"); pc++; continue; }
+        if (!strcmp(bo, "SETC")) { char v[128]; eval_setc(&c, bod, v); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, v); pc++; continue; }
         if (!strcmp(bo, "AIF")) { char cond[128], seq[20]; aif_split(bod, cond, seq);
             if (eval_cond(&c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
