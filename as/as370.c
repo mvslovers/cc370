@@ -312,6 +312,7 @@ struct ctx {
     const char *namepval;
     char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
     int sysndx;                            /* &SYSNDX for this macro invocation */
+    char syslist[32][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
 };
 static char *set_find(struct ctx *c, const char *n) {
     int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
@@ -350,7 +351,13 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     if (!strcmp(nm, "SYSNDX")) { snprintf(out, 96, "%04d", c->sysndx); return; }   /* unique per macro invocation */
     char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
     const char *base = NULL; int k, is_param = 0;
-    if (c->m->namep[0] && !strcmp(amp, c->m->namep)) { base = c->namepval ? c->namepval : ""; is_param = 1; }
+    char slbuf[1024];
+    if (!strcmp(nm, "SYSLIST")) {                 /* positional operands as a synthetic sublist */
+        int o = 0; slbuf[o++] = '(';
+        for (k = 0; k < c->nsyslist; k++) { if (k) slbuf[o++] = ','; const char *v = c->syslist[k]; while (*v && o < 1022) slbuf[o++] = *v++; }
+        slbuf[o++] = ')'; slbuf[o] = 0; base = slbuf; is_param = 1;
+    }
+    else if (c->m->namep[0] && !strcmp(amp, c->m->namep)) { base = c->namepval ? c->namepval : ""; is_param = 1; }
     else for (k = 0; k < c->m->nparm; k++) if (!strcmp(amp, c->m->pname[k])) { base = c->pv[k]; is_param = 1; break; }
     if (*p == '(') {
         char idxs[64]; const char *rp = strchr(p, ')'); int L = rp ? (int)(rp - p - 1) : (int)strlen(p + 1); if (L > 63) L = 63; memcpy(idxs, p + 1, L); idxs[L] = 0;
@@ -619,7 +626,8 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
             if (iskw) { *eq = 0; int j; char nm[26]; snprintf(nm, sizeof nm, "&%s", args[k]);
                 for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c.pv[j], eq + 1, 95); c.pv[j][95] = 0; break; } }
-            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { strncpy(c.pv[j], args[k], 95); c.pv[j][95] = 0; break; } cc2++; } pos++; }
+            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { strncpy(c.pv[j], args[k], 95); c.pv[j][95] = 0; break; } cc2++; }
+                if (pos < 32) { strncpy(c.syslist[pos], args[k], 127); c.syslist[pos][127] = 0; } pos++; c.nsyslist = pos; }
         }
     }
     /* prescan sequence-symbol labels */
