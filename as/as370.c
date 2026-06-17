@@ -313,6 +313,7 @@ struct ctx {
     char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
     int sysndx;                            /* &SYSNDX for this macro invocation */
     char syslist[32][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
+    char arrb[48][20]; char arrnum[48]; int narr;   /* declared SET arrays: base name + 1 if numeric (A/B) */
 };
 static char *set_find(struct ctx *c, const char *n) {
     int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
@@ -363,7 +364,9 @@ static void vref(struct ctx *c, const char *ref, char *out) {
         char idxs[64]; const char *rp = strchr(p, ')'); int L = rp ? (int)(rp - p - 1) : (int)strlen(p + 1); if (L > 63) L = 63; memcpy(idxs, p + 1, L); idxs[L] = 0;
         const char *sep = ep_; struct ctx *sec = ec_; long idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec;   /* save/restore parser state */
         if (is_param) sub_elem(base ? base : "", (int)idx, out);
-        else { char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn); strncpy(out, v ? v : "", 95); out[95] = 0; }
+        else { char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn);
+            if (v) { strncpy(out, v, 95); out[95] = 0; }
+            else { int a; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; break; } strncpy(out, def, 95); out[95] = 0; } }   /* unset array element -> default */
     } else {
         if (!is_param) base = set_find(c, amp);
         if (!base) base = "";
@@ -645,7 +648,12 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
         if (!strcmp(bo, "ANOP") || !strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
-        if (!strncmp(bo, "GBL", 3) || !strncmp(bo, "LCL", 3)) { char fl[8][64]; int nf = split_fields(bod, fl, 8), j; for (j = 0; j < nf; j++) set_put(&c, fl[j], bo[3] == 'C' ? "" : "0"); pc++; continue; }
+        if (!strncmp(bo, "GBL", 3) || !strncmp(bo, "LCL", 3)) {
+            char fl[24][64]; int nf = split_fields(bod, fl, 24), j;
+            for (j = 0; j < nf; j++) { char *lp = strchr(fl[j], '(');
+                if (lp) { if (c.narr < 48) { int b2 = (int)(lp - fl[j]); if (b2 > 19) b2 = 19; memcpy(c.arrb[c.narr], fl[j], b2); c.arrb[c.narr][b2] = 0; c.arrnum[c.narr] = (bo[3] != 'C'); c.narr++; } }  /* array */
+                else set_put(&c, fl[j], bo[3] == 'C' ? "" : "0"); }
+            pc++; continue; }
         if (!strcmp(bo, "SETA")) { long v = eval_seta(&c, bod); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, nb); pc++; continue; }
         if (!strcmp(bo, "SETB")) { int v = bod[0] == '(' ? eval_cond(&c, bod + 1) : (int)eval_seta(&c, bod); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, v ? "1" : "0"); pc++; continue; }
         if (!strcmp(bo, "SETC")) { char v[128]; eval_setc(&c, bod, v); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, v); pc++; continue; }
