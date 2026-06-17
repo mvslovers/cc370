@@ -72,6 +72,7 @@ static int nrel;
 static unsigned char text[TEXTMAX];
 static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentation) */
 static long lc, modlen;
+static long org_hwm;          /* highest lc reached in the current section (for ORG with no operand) */
 static int  in_dsect; static long main_lc;   /* DSECT: dummy section, own counter, no TXT */
 struct uent { int reg; long base; int sect; };   /* active USING ranges */
 static struct uent usings[32]; static int nusing;
@@ -916,7 +917,7 @@ static void emit_listing(long a, long b, const char *src) {
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
-    lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0;
+    lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
     int pre_csect = 0;                  /* a content statement appeared before the first CSECT */
     if (pass == 2) nrel = 0;
     for (i = 0; i < nlines; i++) {
@@ -979,7 +980,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
 
         if (!strcmp(op, "CSECT")) {
-            if (in_dsect) { in_dsect = 0; lc = main_lc; } else lc = 0;   /* resume the control section */
+            if (in_dsect) { in_dsect = 0; lc = main_lc; } else { lc = 0; org_hwm = 0; }   /* resume the control section */
             if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
                 int k, hassect = 0; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) hassect = 1;
                 if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT); }
@@ -991,7 +992,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (pass == 2) cur_sect_esdid = s->esdid;
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             if (!in_dsect) main_lc = lc;
-            lc = 0; in_dsect = 1;
+            lc = 0; in_dsect = 1; org_hwm = 0;
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
             cur_sect_id = s->sect;
@@ -1026,6 +1027,10 @@ static void do_pass(int pass, char **lines, int nlines) {
             char F[2][64]; split_fields(opnd, F, 2);
             int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0), g = 0;
             if (nn > 0) while ((lc % nn) != b && g++ < 64) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; }
+        } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
+            if (lc > org_hwm) org_hwm = lc;
+            lc = opnd[0] ? expr_val(opnd, NULL) : org_hwm;
+            if (!in_dsect && org_hwm > modlen) modlen = org_hwm;
         } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
             { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 8; }
