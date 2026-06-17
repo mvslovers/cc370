@@ -65,6 +65,7 @@ static int nrel;
 static unsigned char text[TEXTMAX];
 static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentation) */
 static long lc, modlen;
+static int  in_dsect; static long main_lc;   /* DSECT: dummy section, own counter, no TXT */
 static int  using_reg = -1;
 static long using_base;
 static int  cur_sect_esdid, main_sect_esdid;
@@ -161,6 +162,7 @@ static long expr_val(const char *e, int *reloc) {
     return v;
 }
 static void put(long at, long v, int n) {
+    if (in_dsect) return;                       /* a DSECT generates no object text */
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
     if (at + n > modlen) modlen = at + n;
 }
@@ -701,7 +703,7 @@ static void emit_listing(long a, long b, const char *src) {
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
-    lc = 0;
+    lc = 0; in_dsect = 0;
     if (pass == 2) { using_reg = -1; nrel = 0; }
     for (i = 0; i < nlines; i++) {
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
@@ -751,10 +753,14 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
 
         if (!strcmp(op, "CSECT")) {
-            lc = 0;
+            if (in_dsect) { in_dsect = 0; lc = main_lc; } else lc = 0;   /* resume the control section */
             if (pass == 1) { struct sym *s = lbl[0] ? sym_get(lbl) : sym_get("");
                 s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }
             if (pass == 2) { struct sym *s = sym_find(lbl[0] ? lbl : ""); if (s) cur_sect_esdid = s->esdid; }
+        } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
+            if (!in_dsect) main_lc = lc;
+            lc = 0; in_dsect = 1;
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = 0; s->defined = 1; }
         } else if (!strcmp(op, "ENTRY")) {
             if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s, ESD_LD); }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
