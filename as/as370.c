@@ -17,6 +17,11 @@
 #include <string.h>
 #include <ctype.h>
 
+/* bounded string copy that always NUL-terminates (dst must hold n+1 bytes). A
+ * plain loop, not strncpy/strncat, so it is free of the (false-positive here)
+ * -Wstringop-truncation those builtins draw for a deliberate truncating copy. */
+static void scopy(char *d, const char *s, size_t n) { size_t i = 0; while (i < n && s[i]) { d[i] = s[i]; i++; } d[i] = 0; }
+
 /* as370 runs on the host (not MVS), so these limits are sized for real
  * modules, not the 24-bit target. Largest rexx370 CSECT is well under these. */
 #define MAXSYM 65536
@@ -193,7 +198,8 @@ static int split_fields(const char *s, char f[][64], int max) {
         if ((*p == ',' && depth == 0) || *p == 0) {
             int len = (int)(p - start); if (len > 63) len = 63;
             if (n < max) { memcpy(f[n], start, len); f[n][len] = 0; n++; }
-            if (*p == 0) break; start = p + 1;
+            if (*p == 0) break;
+            start = p + 1;
         }
     }
     return n;
@@ -211,7 +217,8 @@ static int dc_split(const char *s, char f[][1024], int max) {
         if ((c == ',' && depth == 0 && !inq) || c == 0) {
             int len = (int)(p - start); if (len > 1023) len = 1023;
             if (n < max) { memcpy(f[n], start, len); f[n][len] = 0; n++; }
-            if (c == 0) break; start = p + 1;
+            if (c == 0) break;
+            start = p + 1;
         }
     }
     return n;
@@ -256,7 +263,8 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
         while (1) { char *cm = strchr(tok, ','); int len = cm ? (int)(cm - tok) : (int)strlen(tok);
             char t[32]; if (len > 31) len = 31; memcpy(t, tok, len); t[len] = 0;
             if (*nsub < 4) sub[(*nsub)++] = t[0] ? expr_val(t, NULL) : 0;   /* base/index may be a symbol (R13 EQU 13) */
-            if (!cm) break; tok = cm + 1; }
+            if (!cm) break;
+            tok = cm + 1; }
     } else {
         int reloc = 0; long v = expr_val(f, &reloc);
         if (reloc) {                                   /* relocatable: address via USING (of the symbol's section) */
@@ -288,7 +296,8 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
         else if (!q && *p == '(') d++;
         else if (!q && *p == ')') { if (d) d--; }
         if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
-        if (i < 127) opnd[i++] = *p; p++;
+        if (i < 127) opnd[i++] = *p;
+        p++;
     } }
     opnd[i] = 0;
     return 1;
@@ -337,7 +346,7 @@ static char g_gbl[64][20]; static int g_ngbl;
 static char g_sn[512][20], g_sv[512][96]; static int g_nset;
 static void base_of(const char *n, char *b) { int i = 0; while (n[i] && n[i] != '(' && i < 19) { b[i] = n[i]; i++; } b[i] = 0; }
 static int is_global(const char *n) { char b[20]; base_of(n, b); int i; for (i = 0; i < g_ngbl; i++) if (!strcmp(g_gbl[i], b)) return 1; return 0; }
-static void mark_global(const char *n) { char b[20]; base_of(n, b); if (is_global(b)) return; if (g_ngbl < 64) { strncpy(g_gbl[g_ngbl], b, 19); g_gbl[g_ngbl][19] = 0; g_ngbl++; } }
+static void mark_global(const char *n) { char b[20]; base_of(n, b); if (is_global(b)) return; if (g_ngbl < 64) { scopy(g_gbl[g_ngbl], b, 19); g_ngbl++; } }
 static char *set_find(struct ctx *c, const char *n) {
     if (is_global(n)) { int i; for (i = 0; i < g_nset; i++) if (!strcmp(g_sn[i], n)) return g_sv[i]; return NULL; }
     int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
@@ -358,7 +367,8 @@ static void set_put(struct ctx *c, const char *n, const char *v) {
  * closing paren are recognised only at top level, outside 'quotes' (so a
  * quoted element containing (), commas is kept whole). */
 static int sub_count(const char *v) {
-    if (!v[0]) return 0; if (v[0] != '(') return 1;
+    if (!v[0]) return 0;
+    if (v[0] != '(') return 1;
     int n = 1, d = 0, q = 0; const char *p;
     for (p = v + 1; *p; p++) {
         if (*p == '\'') q = !q;
@@ -527,9 +537,12 @@ static void term_str(struct ctx *c, const char *t, char *out) {
     } else eval_setc(c, t, out);
 }
 static int rel_apply(const char *rel, int cmp) {
-    if (!strcmp(rel, "EQ")) return cmp == 0; if (!strcmp(rel, "NE")) return cmp != 0;
-    if (!strcmp(rel, "GT")) return cmp > 0;  if (!strcmp(rel, "LT")) return cmp < 0;
-    if (!strcmp(rel, "GE")) return cmp >= 0; if (!strcmp(rel, "LE")) return cmp <= 0;
+    if (!strcmp(rel, "EQ")) return cmp == 0;
+    if (!strcmp(rel, "NE")) return cmp != 0;
+    if (!strcmp(rel, "GT")) return cmp > 0;
+    if (!strcmp(rel, "LT")) return cmp < 0;
+    if (!strcmp(rel, "GE")) return cmp >= 0;
+    if (!strcmp(rel, "LE")) return cmp <= 0;
     return 0;
 }
 static int eval_comp(struct ctx *c, const char *L, const char *rel, const char *R) {
@@ -550,12 +563,14 @@ static int cnd_bool(struct ctx *c, const char *t) {           /* a single boolea
 static int eval_cond(struct ctx *c, const char *cond) {
     char toks[32][96]; int nt = 0; const char *p = cond;
     while (*p) {
-        while (*p == ' ') p++; if (!*p) break;
+        while (*p == ' ') p++;
+        if (!*p) break;
         char *o = toks[nt]; int q = 0, d = 0, oi = 0;
         while (*p && (q || d || *p != ' ')) {
             if (*p == '\'') { if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) q = !q; }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
             else if (!q && *p == '(') d++; else if (!q && *p == ')') d--;
-            if (oi < 95) o[oi++] = *p; p++; }
+            if (oi < 95) o[oi++] = *p;
+            p++; }
         o[oi] = 0; if (nt < 31) nt++;
     }
     /* factors joined by AND/OR, left to right; a factor is [NOT] (comparison | bool) */
@@ -640,11 +655,12 @@ static struct macro *capture_macro(char **in, int nin, int *ip) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
     char pb[256], pl[16], po[16], pp[128]; strncpy(pb, in[i], 255); pb[255] = 0; parse(pb, pl, po, pp);
     struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
-    strncpy(m->namep, pl, sizeof m->namep - 1); strncpy(m->name, po, sizeof m->name - 1);
+    scopy(m->namep, pl, sizeof m->namep - 1); scopy(m->name, po, sizeof m->name - 1);
     if (pp[0]) { char flds[24][64]; int nf = split_fields(pp, flds, 24), k;
         for (k = 0; k < nf && k < 24; k++) { char *eq = strchr(flds[k], '=');
-            if (eq) { *eq = 0; strncpy(m->pname[k], flds[k], 19); strncpy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
-            else strncpy(m->pname[k], flds[k], 19); m->nparm++; } }
+            if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
+            else scopy(m->pname[k], flds[k], 19);
+            m->nparm++; } }
     while (++i < nin) { char bb[256], bl[16], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') strncpy(m->endlbl, bl, 19); break; }
         if (m->nbody < 1024) m->body[m->nbody++] = strdup(in[i]); }
@@ -654,7 +670,9 @@ static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
     static char *buf[4096]; int n = lib_readlines(name, buf, 4096); if (n < 0) return NULL;
     int i = 0; for (; i < n; i++) { char b[256], l[16], o[16], od[128]; strncpy(b, buf[i], 255); b[255] = 0;
-        if (!parse(b, l, o, od) || !o[0]) continue; if (strcmp(o, "MACRO")) return NULL; break; }
+        if (!parse(b, l, o, od) || !o[0]) continue;
+        if (strcmp(o, "MACRO")) return NULL;
+        break; }
     if (i >= n) return NULL;
     return capture_macro(buf, n, &i);
 }
@@ -697,10 +715,10 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         for (k = 0; k < na; k++) {
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
-            if (iskw) { *eq = 0; int j; char nm[26]; snprintf(nm, sizeof nm, "&%s", args[k]);
+            if (iskw) { *eq = 0; int j; char nm[66]; snprintf(nm, sizeof nm, "&%.63s", args[k]);
                 for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c.pv[j], eq + 1, 95); c.pv[j][95] = 0; break; } }
-            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { strncpy(c.pv[j], args[k], 95); c.pv[j][95] = 0; break; } cc2++; }
-                if (pos < 32) { strncpy(c.syslist[pos], args[k], 127); c.syslist[pos][127] = 0; } pos++; c.nsyslist = pos; }
+            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c.pv[j], args[k], 95); break; } cc2++; }
+                if (pos < 32) { scopy(c.syslist[pos], args[k], 127); } pos++; c.nsyslist = pos; }
         }
     }
     /* prescan sequence-symbol labels */
@@ -773,7 +791,7 @@ static void note_unknown(const char *o) {
         "EXTRN","WXTRN", NULL };
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
     for (i = 0; i < nunk; i++) if (!strcmp(unkops[i], o)) return;
-    if (nunk < 128) { strncpy(unkops[nunk], o, 11); unkops[nunk][11] = 0; nunk++; }
+    if (nunk < 128) { scopy(unkops[nunk], o, 11); nunk++; }
 }
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
@@ -859,7 +877,8 @@ static void emit_lit(struct lit *l) {
     else if (ty == 'A' || ty == 'Y') {
         int rc = 0; put(l->loc, l->ext[0] ? expr_val(l->ext, &rc) : 0, l->size);
         char sym[16]; int sn = 0; const char *se = l->ext;     /* leading symbol = relocation target (e.g. @V1-192) */
-        while (*se && !strchr("+-(), ", *se) && sn < 15) sym[sn++] = *se++; sym[sn] = 0;
+        while (*se && !strchr("+-(), ", *se) && sn < 15) sym[sn++] = *se++;
+        sym[sn] = 0;
         struct sym *es = sym_find(sym);
         int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
         if (rc != 0 && tgtreal) add_reloc(l->loc, sym, 0);   /* relocate only if net-relocatable and target ('*' or a symbol) is in a real section */
@@ -1038,7 +1057,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
                         int sn = 0; const char *se = ename;            /* leading symbol = relocation target (e.g. @V1-192) */
-                        while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
+                        while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++;
+                        rsym[sn] = 0;
                         if (isvcon) { if (pass == 1 && rsym[0] && !in_dsect) { struct sym *s = sym_get(rsym); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } isrel = 1; }   /* V-con: external reference, always relocated (none in a dummy section) */
                         else { struct sym *es = sym_find(rsym); int rc = 0; expr_val(ename, &rc);
                             int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
