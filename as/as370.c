@@ -226,6 +226,8 @@ static int dc_split(const char *s, char f[][1024], int max) {
 static long imm_val(const char *s) {
     if (s[0] == 'C' && s[1] == '\'') return a2e((unsigned char)s[2]);
     if (s[0] == 'X' && s[1] == '\'') return strtol(s + 2, NULL, 16);
+    if (s[0] == 'B' && s[1] == '\'') return strtol(s + 2, NULL, 2);   /* binary self-defining term */
+    if (!isdigit((unsigned char)s[0])) return expr_val(s, NULL);      /* symbol / expression immediate */
     return strtol(s, NULL, 10);
 }
 /* pick the USING covering address val in section sect; returns base reg and
