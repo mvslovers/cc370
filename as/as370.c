@@ -24,7 +24,7 @@
 #define MAXREL 131072
 #define TEXTMAX (1024 * 1024)
 
-enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC };
+enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC, F_S };
 
 struct opc { const char *name; int fmt; int op; int m1; };  /* m1 = implied mask for branch pseudos */
 static const struct opc optab[] = {
@@ -34,6 +34,8 @@ static const struct opc optab[] = {
     { "BE", F_BC, 0x47, 8 }, { "BNE", F_BC, 0x47, 7 }, { "BH", F_BC, 0x47, 2 }, { "BL", F_BC, 0x47, 4 },
     { "BNH", F_BC, 0x47, 13 }, { "BNL", F_BC, 0x47, 11 }, { "BZ", F_BC, 0x47, 8 }, { "BNZ", F_BC, 0x47, 7 },
     { "BP", F_BC, 0x47, 2 }, { "BM", F_BC, 0x47, 4 }, { "BO", F_BC, 0x47, 1 }, { "BNO", F_BC, 0x47, 14 },
+    { "BNP", F_BC, 0x47, 13 }, { "BNM", F_BC, 0x47, 11 },
+    { "IPK", F_S, 0xB20B, 0 }, { "SPKA", F_S, 0xB20A, 0 }, { "STCK", F_S, 0xB205, 0 },
     { "BCT", F_RX, 0x46, 0 }, { "SVC", F_SVC, 0x0A, 0 },
     { "BR",  F_BR, 0x07, 15 }, { "BER", F_BR, 0x07, 8 }, { "BNER", F_BR, 0x07, 7 }, { "NOPR", F_BR, 0x07, 0 },
     { "BHR", F_BR, 0x07, 2 }, { "BLR", F_BR, 0x07, 4 }, { "BNHR", F_BR, 0x07, 13 }, { "BNLR", F_BR, 0x07, 11 },
@@ -658,7 +660,7 @@ static struct macro *lib_load(const char *name) {
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
     const char *d[] = { "CSECT", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
-                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", NULL };
+                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", "PUSH", "POP", NULL };
     int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
 
@@ -934,6 +936,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
                 case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                case F_S: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
+                    put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4; break; }
                 case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len; resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len;
                     int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
                     int len1 = (ns  >= 1 ? (int)sub[0]  : (l1 ? l1 : 1));
@@ -990,6 +994,12 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (!nf) nusing = 0;                       /* DROP with no operand drops all */
                 else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0);
                     for (k = 0; k < nusing; ) { if (usings[k].reg == r) { usings[k] = usings[--nusing]; } else k++; } } }
+        } else if (!strcmp(op, "PUSH") || !strcmp(op, "POP")) {   /* PUSH/POP USING: save/restore the active USING table (PRINT etc. ignored) */
+            if (pass == 2 && strstr(opnd, "USING")) {
+                static struct uent ustk[16][32]; static int ustkn[16], usp;
+                if (op[1] == 'U') { if (usp < 16) { memcpy(ustk[usp], usings, sizeof usings); ustkn[usp] = nusing; usp++; } }   /* PUSH */
+                else if (usp > 0) { usp--; memcpy(usings, ustk[usp], sizeof usings); nusing = ustkn[usp]; }                      /* POP */
+            }
         } else if (!strcmp(op, "CNOP")) {                      /* align with NOPR (0x0700) fill */
             char F[2][64]; split_fields(opnd, F, 2);
             int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0), g = 0;
