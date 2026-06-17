@@ -43,7 +43,7 @@ static const struct opc optab[] = {
 };
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; };
 static struct sym syms[MAXSYM];
 static int nsym;
 /* ESD is a list of (symbol, role) events in source order. A name can appear as
@@ -53,7 +53,7 @@ enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
 struct esdent { struct sym *s; int role; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
 
-struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; };
+struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; int sect; };
 static struct lit lits[MAXLIT];
 static int nlit;
 static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
@@ -66,8 +66,9 @@ static unsigned char text[TEXTMAX];
 static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentation) */
 static long lc, modlen;
 static int  in_dsect; static long main_lc;   /* DSECT: dummy section, own counter, no TXT */
-static int  using_reg = -1;
-static long using_base;
+struct uent { int reg; long base; int sect; };   /* active USING ranges */
+static struct uent usings[32]; static int nusing;
+static int  cur_sect_id, g_sectid;            /* section identity for USING resolution */
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
@@ -115,6 +116,7 @@ static struct lit *lit_get(const char *t) {
     if (nlit >= MAXLIT) { fprintf(stderr, "as370: literal table full\n"); exit(2); }
     memset(&lits[nlit], 0, sizeof lits[0]); strncpy(lits[nlit].text, t, sizeof lits[0].text - 1);
     lits[nlit].ltseq = litpool;          /* literal belongs to the current (not-yet-flushed) pool */
+    lits[nlit].sect = cur_sect_id;
     lit_classify(&lits[nlit]);
     if (lits[nlit].isV) {                /* =V: register an external reference at first use */
         struct sym *s = sym_get(lits[nlit].ext); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER);
@@ -207,13 +209,23 @@ static long imm_val(const char *s) {
     if (s[0] == 'X' && s[1] == '\'') return strtol(s + 2, NULL, 16);
     return strtol(s, NULL, 10);
 }
+/* pick the USING covering address val in section sect; returns base reg and
+ * displacement. Prefers a same-section USING in range, else any USING in range
+ * (so single-USING modules are unaffected), else base 0 / absolute. */
+static int using_for(long val, int sect, long *disp) {
+    int i, best = -1; long bd = 0;
+    for (i = 0; i < nusing; i++) { if (usings[i].sect != sect) continue; long dd = val - usings[i].base; if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd)) { best = i; bd = dd; } }
+    if (best < 0) for (i = 0; i < nusing; i++) { long dd = val - usings[i].base; if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd)) { best = i; bd = dd; } }
+    if (best >= 0) { *disp = bd; return usings[best].reg; }
+    *disp = val; return 0;
+}
 /* resolve a memory operand into displacement d, index/length a, base b */
 /* parse a memory operand: displacement *d, explicit subscripts sub[0..*nsub),
  * *sym=1 for a symbol/literal resolved through USING (then sub[0]=base reg).
  * Subscript->field mapping is format-specific (RX: sub0=index; RS/SI/SS: base). */
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
     *nsub = 0; *sym = 0; *d = 0;
-    if (f[0] == '=') { struct lit *l = lit_get(f); *d = l->loc - using_base; *sym = 1; sub[0] = using_reg; return; }
+    if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; sub[0] = using_for(l->loc, l->sect, d); return; }
     const char *lp = strchr(f, '(');
     if (lp) {
         *d = expr_val(f, NULL);            /* displacement may be an expression, e.g. 4+120(13) */
@@ -227,8 +239,11 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             if (!cm) break; tok = cm + 1; }
     } else {
         int reloc = 0; long v = expr_val(f, &reloc);
-        if (reloc) { *d = v - using_base; *sym = 1; sub[0] = using_reg; }  /* relocatable: address via USING */
-        else { *d = v; *sym = 0; sub[0] = 0; }                             /* absolute: displacement value, base 0 */
+        if (reloc) {                                   /* relocatable: address via USING (of the symbol's section) */
+            char nm[64]; int n = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0;
+            struct sym *s = sym_find(nm); int ssect = s ? s->sect : cur_sect_id;
+            *sym = 1; sub[0] = using_for(v, ssect, d);
+        } else { *d = v; *sym = 0; sub[0] = 0; }       /* absolute: displacement value, base 0 */
     }
 }
 
@@ -703,8 +718,8 @@ static void emit_listing(long a, long b, const char *src) {
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
-    lc = 0; in_dsect = 0;
-    if (pass == 2) { using_reg = -1; nrel = 0; }
+    lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0;
+    if (pass == 2) nrel = 0;
     for (i = 0; i < nlines; i++) {
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         char buf[256], lbl[16], op[16], opnd[128];
@@ -718,7 +733,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             while (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }   /* instructions are halfword-aligned */
             char F[4][64]; int nf = split_fields(opnd, F, 4); (void)nf;
             if (pass == 1) {
-                if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
                 int k; for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
                 lc += ins_len(o->fmt);
             } else {
@@ -754,13 +769,18 @@ static void do_pass(int pass, char **lines, int nlines) {
 
         if (!strcmp(op, "CSECT")) {
             if (in_dsect) { in_dsect = 0; lc = main_lc; } else lc = 0;   /* resume the control section */
-            if (pass == 1) { struct sym *s = lbl[0] ? sym_get(lbl) : sym_get("");
-                s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }
-            if (pass == 2) { struct sym *s = sym_find(lbl[0] ? lbl : ""); if (s) cur_sect_esdid = s->esdid; }
+            struct sym *s = sym_get(lbl[0] ? lbl : "");
+            if (!s->sect) s->sect = ++g_sectid;
+            cur_sect_id = s->sect;
+            if (pass == 1) { s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }
+            if (pass == 2) cur_sect_esdid = s->esdid;
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             if (!in_dsect) main_lc = lc;
             lc = 0; in_dsect = 1;
-            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = 0; s->defined = 1; }
+            struct sym *s = sym_get(lbl[0] ? lbl : "");
+            if (!s->sect) s->sect = ++g_sectid;
+            cur_sect_id = s->sect;
+            if (pass == 1) { s->val = 0; s->defined = 1; }
         } else if (!strcmp(op, "ENTRY")) {
             if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s, ESD_LD); }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
@@ -768,9 +788,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                 for (j = 0; j < nf; j++) { struct sym *s = sym_get(f[j]); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
             char F[4][64]; split_fields(opnd, F, 4);
-            if (pass == 2) { using_reg = (int)expr_val(F[1], 0); using_base = (F[0][0] == '*') ? lc : expr_val(F[0], 0); }
+            if (pass == 2 && nusing < 32) {
+                int reg = (int)expr_val(F[1], 0);
+                long base = (F[0][0] == '*') ? lc : expr_val(F[0], 0);
+                int bsect = cur_sect_id;
+                if (F[0][0] != '*') { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm); if (bs) bsect = bs->sect; }
+                usings[nusing].reg = reg; usings[nusing].base = base; usings[nusing].sect = bsect; nusing++;
+            }
         } else if (!strcmp(op, "DROP")) {
-            if (pass == 2) using_reg = -1;
+            if (pass == 2) { char F[4][64]; int nf = split_fields(opnd, F, 4), j, k;
+                if (!nf) nusing = 0;                       /* DROP with no operand drops all */
+                else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0);
+                    for (k = 0; k < nusing; ) { if (usings[k].reg == r) { usings[k] = usings[--nusing]; } else k++; } } }
         } else if (!strcmp(op, "CNOP")) {                      /* align with NOPR (0x0700) fill */
             char F[2][64]; split_fields(opnd, F, 2);
             int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0), g = 0;
@@ -789,7 +818,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y') {
                     int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
                     if (!haslen) { blen = base; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc); }
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
                     long val = 0; char ename[64] = "", rsym[16] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
                     if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
@@ -806,7 +835,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         lc += blen;
                     }
                 } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
                     const char *q = strchr(p, '\''); char body[1024]; int slen = 0;
                     if (q) { const char *e = q + 1;
                         while (*e && slen < 1023) {
@@ -816,7 +845,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int emit = haslen ? blen : slen;
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
                 } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
                     const char *q = strchr(p, '\''); unsigned char by[1024]; int nb = 0;
                     if (q) { char h[2056]; int hl = 0, s0 = 0; const char *e = q + 1;
                         while (*e && *e != '\'' && hl < 2055) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
@@ -826,7 +855,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int emit = haslen ? blen : nb, pad = emit - nb;
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
                 } else if (ty == 'B') {                     /* binary, byte-aligned, MSB-first */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
                     const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
                     if (q) { char bits[2056]; int bl2 = 0; const char *e = q + 1;
                         while (*e && *e != '\'' && bl2 < 2048) { if (*e == '0' || *e == '1') bits[bl2++] = *e; e++; }
@@ -835,10 +864,10 @@ static void do_pass(int pass, char **lines, int nlines) {
                     }
                     int emit = haslen ? blen : nb, pad = emit - nb;
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
-                } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; }
+                } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; }
             }
         } else if (!strcmp(op, "EQU")) {
-            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = (opnd[0] == '*') ? lc : expr_val(opnd, NULL); s->defined = 1; }
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = (opnd[0] == '*') ? lc : expr_val(opnd, NULL); s->defined = 1; s->sect = cur_sect_id; }
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
             if (!strcmp(op, "END") && opnd[0]) {
