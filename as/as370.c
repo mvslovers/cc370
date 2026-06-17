@@ -636,7 +636,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         strncpy(bb, m->body[pc], 511); bb[511] = 0; parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
-        if (!strcmp(bo, "ANOP") || !strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE")) { pc++; continue; }
+        if (!strcmp(bo, "ANOP") || !strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
         if (!strncmp(bo, "GBL", 3) || !strncmp(bo, "LCL", 3)) { char fl[8][64]; int nf = split_fields(bod, fl, 8), j; for (j = 0; j < nf; j++) set_put(&c, fl[j], bo[3] == 'C' ? "" : "0"); pc++; continue; }
         if (!strcmp(bo, "SETA")) { long v = eval_seta(&c, bod); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, nb); pc++; continue; }
         if (!strcmp(bo, "SETB")) { int v = bod[0] == '(' ? eval_cond(&c, bod + 1) : (int)eval_seta(&c, bod); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, v ? "1" : "0"); pc++; continue; }
@@ -682,7 +682,7 @@ static int macro_pass(char **in, int nin, char **out) {
 static char unkops[128][12]; static int nunk;
 static void note_unknown(const char *o) {
     static const char *skip[] = { "SETA","SETB","SETC","GBLA","GBLB","GBLC","LCLA","LCLB","LCLC",
-        "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","CXD","COPY","MACRO","MEND",
+        "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","CXD","COPY","MACRO","MEND","ACTR",
         "EXTRN","WXTRN", NULL };
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
     for (i = 0; i < nunk; i++) if (!strcmp(unkops[i], o)) return;
