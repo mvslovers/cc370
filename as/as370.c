@@ -327,11 +327,25 @@ struct ctx {
     char syslist[32][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
     char arrb[48][20]; char arrnum[48]; int narr;   /* declared SET arrays: base name + 1 if numeric (A/B) */
 };
+/* Global SET symbols (GBLA/GBLB/GBLC) are shared between open code and every
+ * macro expansion. A name declared global anywhere routes through the global
+ * store; everything else is local to the macro (or open-code) context. */
+static char g_gbl[64][20]; static int g_ngbl;
+static char g_sn[512][20], g_sv[512][96]; static int g_nset;
+static void base_of(const char *n, char *b) { int i = 0; while (n[i] && n[i] != '(' && i < 19) { b[i] = n[i]; i++; } b[i] = 0; }
+static int is_global(const char *n) { char b[20]; base_of(n, b); int i; for (i = 0; i < g_ngbl; i++) if (!strcmp(g_gbl[i], b)) return 1; return 0; }
+static void mark_global(const char *n) { char b[20]; base_of(n, b); if (is_global(b)) return; if (g_ngbl < 64) { strncpy(g_gbl[g_ngbl], b, 19); g_gbl[g_ngbl][19] = 0; g_ngbl++; } }
 static char *set_find(struct ctx *c, const char *n) {
+    if (is_global(n)) { int i; for (i = 0; i < g_nset; i++) if (!strcmp(g_sn[i], n)) return g_sv[i]; return NULL; }
     int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
     return NULL;
 }
 static void set_put(struct ctx *c, const char *n, const char *v) {
+    if (is_global(n)) {
+        int i; for (i = 0; i < g_nset; i++) if (!strcmp(g_sn[i], n)) { strncpy(g_sv[i], v, 95); g_sv[i][95] = 0; return; }
+        if (g_nset < 512) { strncpy(g_sn[g_nset], n, 19); g_sn[g_nset][19] = 0; strncpy(g_sv[g_nset], v, 95); g_sv[g_nset][95] = 0; g_nset++; }
+        return;
+    }
     char *e = set_find(c, n);
     if (e) { strncpy(e, v, 95); e[95] = 0; return; }
     if (c->nset < 256) { strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
@@ -650,6 +664,27 @@ static int known_op(const char *o) {
 
 static void mexp_line(const char *line, char **out, int *nout, int depth);
 static int g_sysndx;
+/* interpret a conditional-assembly definition statement (GBLx/LCLx/SETx/ANOP)
+ * against context c. Returns 1 if it was such a statement. GBLx declarations mark
+ * the symbol global (shared via the global store) without clobbering a value the
+ * symbol already holds; LCLx (re)initialises a local. Used by both the macro
+ * expander and open-code processing so &FUNC set in open code reaches the macros. */
+static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *opnd) {
+    if (!strncmp(op, "GBL", 3) || !strncmp(op, "LCL", 3)) {
+        int isg = (op[0] == 'G'); char fl[24][64]; int nf = split_fields(opnd, fl, 24), j;
+        for (j = 0; j < nf; j++) { char *lp = strchr(fl[j], '(');
+            if (lp) { if (c->narr < 48) { int b2 = (int)(lp - fl[j]); if (b2 > 19) b2 = 19; memcpy(c->arrb[c->narr], fl[j], b2); c->arrb[c->narr][b2] = 0; c->arrnum[c->narr] = (op[3] != 'C'); c->narr++; }
+                       if (isg) mark_global(fl[j]); }  /* array */
+            else if (isg) { mark_global(fl[j]); if (!set_find(c, fl[j])) set_put(c, fl[j], op[3] == 'C' ? "" : "0"); }
+            else set_put(c, fl[j], op[3] == 'C' ? "" : "0"); }
+        return 1;
+    }
+    if (!strcmp(op, "SETA")) { long v = eval_seta(c, opnd); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, nb); return 1; }
+    if (!strcmp(op, "SETB")) { int v = opnd[0] == '(' ? eval_cond(c, opnd + 1) : (int)eval_seta(c, opnd); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v ? "1" : "0"); return 1; }
+    if (!strcmp(op, "SETC")) { char v[128]; eval_setc(c, opnd, v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
+    if (!strcmp(op, "ANOP")) return 1;
+    return 0;
+}
 /* expand a macro invocation, interpreting conditional assembly */
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
     struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; c.sysndx = ++g_sysndx;
@@ -679,16 +714,8 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         strncpy(bb, m->body[pc], 511); bb[511] = 0; parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
-        if (!strcmp(bo, "ANOP") || !strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
-        if (!strncmp(bo, "GBL", 3) || !strncmp(bo, "LCL", 3)) {
-            char fl[24][64]; int nf = split_fields(bod, fl, 24), j;
-            for (j = 0; j < nf; j++) { char *lp = strchr(fl[j], '(');
-                if (lp) { if (c.narr < 48) { int b2 = (int)(lp - fl[j]); if (b2 > 19) b2 = 19; memcpy(c.arrb[c.narr], fl[j], b2); c.arrb[c.narr][b2] = 0; c.arrnum[c.narr] = (bo[3] != 'C'); c.narr++; } }  /* array */
-                else set_put(&c, fl[j], bo[3] == 'C' ? "" : "0"); }
-            pc++; continue; }
-        if (!strcmp(bo, "SETA")) { long v = eval_seta(&c, bod); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, nb); pc++; continue; }
-        if (!strcmp(bo, "SETB")) { int v = bod[0] == '(' ? eval_cond(&c, bod + 1) : (int)eval_seta(&c, bod); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, v ? "1" : "0"); pc++; continue; }
-        if (!strcmp(bo, "SETC")) { char v[128]; eval_setc(&c, bod, v); char sn[40]; set_canon(&c, bl, sn); set_put(&c, sn, v); pc++; continue; }
+        if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
+        if (set_stmt(&c, bl, bo, bod)) { pc++; continue; }   /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
         if (!strcmp(bo, "AIF")) { char cond[128], seq[20]; aif_split(bod, cond, seq);
             if (eval_cond(&c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
@@ -702,11 +729,20 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
 /* expand one statement: macro call -> interpret; else emit (stripping any
  * leading sequence-symbol label so it never reaches the core). */
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
+    static struct ctx opc;   /* persistent open-code context for conditional assembly (globals route to the shared store) */
     char buf[256], lbl[16], op[16], opnd[128];
     strncpy(buf, line, 255); buf[255] = 0; parse(buf, lbl, op, opnd);
+    /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
+     * interpreted here (never reach the core, which would ignore them) so that
+     * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`. */
+    if (op[0] && (set_stmt(&opc, lbl, op, opnd))) return;
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
         char *cb[2048]; int n = lib_readlines(opnd, cb, 2048);
-        if (n >= 0) { int j; for (j = 0; j < n; j++) mexp_line(cb[j], out, nout, depth + 1); return; }
+        if (n >= 0) { int j; for (j = 0; j < n; j++) {
+                char cbuf[256], cl[16], co[16], cd[128]; strncpy(cbuf, cb[j], 255); cbuf[255] = 0; parse(cbuf, cl, co, cd);
+                if (!strcmp(co, "MACRO")) { capture_macro(cb, n, &j); continue; }   /* a COPY'd macro library (e.g. MVSMACS) defines its macros, not open code */
+                mexp_line(cb[j], out, nout, depth + 1);
+            } return; }
     }
     struct macro *m = NULL;
     if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
