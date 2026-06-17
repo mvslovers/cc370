@@ -940,7 +940,10 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int len2 = (ns2 >= 1 ? (int)sub2[0] : (l2 ? l2 : 1));
                     int b1 = (ns  >= 2 ? (int)sub[1]  : (ib1 >= 0 ? ib1 : (int)sub[0]));
                     int b2 = (ns2 >= 2 ? (int)sub2[1] : (ib2 >= 0 ? ib2 : (int)sub2[0]));
-                    int lenb = twol ? ((((len1 - 1) & 0xf) << 4) | ((len2 - 1) & 0xf)) : ((len1 - 1) & 0xff);
+                    /* the machine length field is (length-1); an explicitly-coded length of 0
+                     * (the `*-*` self-modify idiom) is emitted as field 0, not 0xFF */
+                    int lenb = twol ? (((len1 ? (len1 - 1) & 0xf : 0) << 4) | (len2 ? (len2 - 1) & 0xf : 0))
+                                    : (len1 ? (len1 - 1) & 0xff : 0);
                     put(lc, o->op, 1); put(lc + 1, lenb, 1);
                     put(lc + 2, ((long)b1 << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6; break; }
                 default: break;
