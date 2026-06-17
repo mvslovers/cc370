@@ -53,7 +53,7 @@ enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
 struct esdent { struct sym *s; int role; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
 
-struct lit { char text[32]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; int sect; };
+struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; int sect; };
 static struct lit lits[MAXLIT];
 static int nlit;
 static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
@@ -776,12 +776,14 @@ static void note_unknown(const char *o) {
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
 static void emit_float(long at, const char *vstr, int bytes) {
-    double v = strtod(vstr, NULL); int sign = 0;
+    long double v = strtold(vstr, NULL); int sign = 0;   /* long double keeps >56 mantissa bits for an exact HFP fraction */
     if (v < 0) { sign = 1; v = -v; }
+    if (v == 0.0L) { int j; for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero is all bytes 0 */
     int exp = 64;
-    if (v != 0.0) { while (v >= 1.0) { v /= 16.0; exp++; } while (v < 1.0 / 16.0) { v *= 16.0; exp--; } }
-    int fracbits = bytes * 8 - 8;
-    unsigned long long frac = (unsigned long long)(v * (double)(1ULL << fracbits) + 0.5);
+    while (v >= 1.0L) { v /= 16.0L; exp++; }
+    while (v < 1.0L / 16.0L) { v *= 16.0L; exp--; }
+    int fracbits = bytes * 8 - 8; if (fracbits > 56) fracbits = 56;
+    unsigned long long frac = (unsigned long long)(v * (long double)(1ULL << fracbits));   /* truncate the HFP fraction (IFOX does not round up) */
     put(at, (long)((sign ? 0x80 : 0) | (exp & 0x7f)), 1);
     int i; for (i = bytes - 1; i >= 1; i--) { put(at + i, (long)(frac & 0xff), 1); frac >>= 8; }
 }
