@@ -1080,7 +1080,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                             if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
                             body[slen++] = *e++;
                         } }
-                    int emit = haslen ? blen : slen;
+                    int emit = haslen ? blen : (q ? slen : 1);   /* valueless DS nC reserves cnt*1 bytes (default C length 1) */
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
                 } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
@@ -1090,7 +1090,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         if (hl & 1) { by[nb++] = (unsigned char)hexv(h[0]); s0 = 1; }
                         for (; s0 + 1 < hl && nb < 1024; s0 += 2) by[nb++] = (unsigned char)((hexv(h[s0]) << 4) | hexv(h[s0 + 1]));
                     }
-                    int emit = haslen ? blen : nb, pad = emit - nb;
+                    int emit = haslen ? blen : (q ? nb : 1), pad = emit - nb;   /* valueless DS nX reserves cnt*1 */
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
                 } else if (ty == 'B') {                     /* binary, byte-aligned, MSB-first */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
@@ -1100,10 +1100,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                         int pos = 0, rem = bl2 % 8, first = rem ? rem : (bl2 ? 8 : 0);
                         while (pos < bl2 && nb < 256) { int take = (nb == 0) ? first : 8, v = 0, j; for (j = 0; j < take; j++) v = (v << 1) | (bits[pos++] - '0'); by[nb++] = (unsigned char)v; }
                     }
-                    int emit = haslen ? blen : nb, pad = emit - nb;
+                    int emit = haslen ? blen : (q ? nb : 1), pad = emit - nb;   /* valueless DS nB reserves cnt*1 */
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
                 } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
             }
+            if (!in_dsect && lc > modlen) modlen = lc;   /* a DS reserves space that extends the section length even though it writes no TXT */
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0; s->val = expr_val(opnd, &rc); s->defined = 1; s->sect = cur_sect_id; s->len = 1;
                 s->type = (rc == 0) ? S_ABS : S_REL; }   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
