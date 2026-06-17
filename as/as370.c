@@ -130,12 +130,12 @@ static struct lit *lit_get(const char *t) {
  * between factors is multiplication). Sets *reloc if any term is relocatable.
  * Stops at a top-level '(' (a subscript), ',' or end — so it also evaluates a
  * displacement like 4+120(13). Not re-entrant (uses parse globals). */
-static const char *xp_; static int xrl_;
-static long x_factor(void) {
+static const char *xp_; static int xrl_;   /* xrl_ = net relocation count of the last expr_val (0 = absolute) */
+static long x_factor(int sign) {
     while (*xp_ == ' ') xp_++;
-    if (*xp_ == '*') { xp_++; xrl_ = 1; return lc; }            /* location counter */
-    if (*xp_ == '-') { xp_++; return -x_factor(); }
-    if (*xp_ == '+') { xp_++; return x_factor(); }
+    if (*xp_ == '*') { xp_++; xrl_ += sign; return lc; }   /* location counter (relocatable for USING resolution) */
+    if (*xp_ == '-') { xp_++; return -x_factor(-sign); }
+    if (*xp_ == '+') { xp_++; return x_factor(sign); }
     if (isdigit((unsigned char)*xp_)) { char *end; long v = strtol(xp_, (char **)&end, 10); xp_ = end; return v; }
     if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
         char kind = *xp_; xp_ += 2; long v = 0;
@@ -150,14 +150,14 @@ static long x_factor(void) {
     while (*xp_ && !strchr("+-*/(), ", *xp_) && n < 63) nm[n++] = *xp_++;
     nm[n] = 0;
     struct sym *s = sym_find(nm);
-    if (s) { if (s->type == S_REL) xrl_ = 1; return s->val; }
+    if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) xrl_ += sign; return s->val; }
     return 0;
 }
-static long x_term(void) {
-    long v = x_factor();
+static long x_term(int sign) {
+    long v = x_factor(sign);
     for (;;) { while (*xp_ == ' ') xp_++;
-        if (*xp_ == '*') { xp_++; v *= x_factor(); }
-        else if (*xp_ == '/') { xp_++; long r = x_factor(); v = r ? v / r : 0; }
+        if (*xp_ == '*') { xp_++; v *= x_factor(0); }       /* a product is absolute */
+        else if (*xp_ == '/') { xp_++; long r = x_factor(0); v = r ? v / r : 0; }
         else break; }
     return v;
 }
@@ -165,10 +165,10 @@ static long expr_val(const char *e, int *reloc) {
     xp_ = e; xrl_ = 0;
     while (*xp_ == ' ') xp_++;
     if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; return 0; }
-    long v = x_term();
+    long v = x_term(1);
     for (;;) { while (*xp_ == ' ') xp_++;
-        if (*xp_ == '+') { xp_++; v += x_term(); }
-        else if (*xp_ == '-') { xp_++; v -= x_term(); }
+        if (*xp_ == '+') { xp_++; v += x_term(1); }
+        else if (*xp_ == '-') { xp_++; v -= x_term(-1); }
         else break; }
     if (reloc) *reloc = xrl_;
     return v;
@@ -750,11 +750,11 @@ static void emit_lit(struct lit *l) {
     if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
     if (ty == 'V') { put(l->loc, 0, l->size); add_reloc(l->loc, l->ext, 1); }
     else if (ty == 'A' || ty == 'Y') {
-        put(l->loc, l->ext[0] ? expr_val(l->ext, NULL) : 0, l->size);
-        char sym[16]; int sn = 0; const char *se = l->ext;     /* leading symbol of e.g. @V1-192 */
+        int rc = 0; put(l->loc, l->ext[0] ? expr_val(l->ext, &rc) : 0, l->size);
+        char sym[16]; int sn = 0; const char *se = l->ext;     /* leading symbol = relocation target (e.g. @V1-192) */
         while (*se && !strchr("+-(), ", *se) && sn < 15) sym[sn++] = *se++; sym[sn] = 0;
         struct sym *es = sym_find(sym);
-        if (es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER) && !dsect_sect[es->sect & 255]) add_reloc(l->loc, sym, 0);
+        if (rc != 0 && es && !dsect_sect[es->sect & 255]) add_reloc(l->loc, sym, 0);   /* relocate only if net-relocatable and target is in a real section */
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         const char *q = strchr(p, '\'');
         if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
@@ -901,15 +901,16 @@ static void do_pass(int pass, char **lines, int nlines) {
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
                 if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y') {
                     int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
-                    if (!haslen) { blen = base; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc); }
+                    if (!haslen) { blen = base; long oldlc = lc; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc);
+                        if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }   /* DC alignment padding is emitted as zero TXT (IFOX-compatible) */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     long val = 0; char ename[64] = "", rsym[16] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
                     if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
-                        int sn = 0; const char *se = ename;            /* leading symbol of e.g. @V1-192 */
+                        int sn = 0; const char *se = ename;            /* leading symbol = relocation target (e.g. @V1-192) */
                         while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
-                        struct sym *es = sym_find(rsym);
-                        isrel = es && (es->type == S_SD || es->type == S_PC || es->type == S_REL || es->type == S_ER) && !dsect_sect[es->sect & 255]; }
+                        struct sym *es = sym_find(rsym); int rc = 0; expr_val(ename, &rc);
+                        isrel = (rc != 0) && es && !dsect_sect[es->sect & 255]; }   /* relocate only if net-relocatable and the target is in a real (non-dummy) section */
                     else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                     for (k = 0; k < cnt; k++) {
                         if (emit_dc) {
@@ -951,7 +952,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                 } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
             }
         } else if (!strcmp(op, "EQU")) {
-            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = expr_val(opnd, NULL); s->defined = 1; s->sect = cur_sect_id; s->len = 1; }
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0; s->val = expr_val(opnd, &rc); s->defined = 1; s->sect = cur_sect_id; s->len = 1;
+                s->type = (rc == 0) ? S_ABS : S_REL; }   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
             if (!strcmp(op, "END") && opnd[0]) {
