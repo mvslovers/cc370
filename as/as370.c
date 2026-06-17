@@ -776,14 +776,19 @@ static void note_unknown(const char *o) {
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
 static void emit_float(long at, const char *vstr, int bytes) {
-    long double v = strtold(vstr, NULL); int sign = 0;   /* long double keeps >56 mantissa bits for an exact HFP fraction */
+    /* IFOX converts the decimal exactly and rounds the HFP fraction to nearest.
+     * NOTE: this uses the host double (LDBL on arm64 macOS is 53-bit), so the
+     * low ~3 bits of a 56-bit fraction are imprecise — long 15+ digit constants
+     * (e.g. the transcendental tables in the math library) can be off by one in
+     * the last byte. Exact match needs integer/rational decimal->HFP. */
+    long double v = strtold(vstr, NULL); int sign = 0;
     if (v < 0) { sign = 1; v = -v; }
     if (v == 0.0L) { int j; for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero is all bytes 0 */
     int exp = 64;
     while (v >= 1.0L) { v /= 16.0L; exp++; }
     while (v < 1.0L / 16.0L) { v *= 16.0L; exp--; }
     int fracbits = bytes * 8 - 8; if (fracbits > 56) fracbits = 56;
-    unsigned long long frac = (unsigned long long)(v * (long double)(1ULL << fracbits));   /* truncate the HFP fraction (IFOX does not round up) */
+    unsigned long long frac = (unsigned long long)(v * (long double)(1ULL << fracbits) + 0.5L);   /* round to nearest */
     put(at, (long)((sign ? 0x80 : 0) | (exp & 0x7f)), 1);
     int i; for (i = bytes - 1; i >= 1; i--) { put(at + i, (long)(frac & 0xff), 1); frac >>= 8; }
 }
@@ -944,23 +949,25 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (*p == '(') { const char *rp = strchr(p, ')'); char ex[64]; int en = rp ? (int)(rp - p - 1) : 0; if (en > 63) en = 63; memcpy(ex, p + 1, en); ex[en] = 0; blen = (int)expr_val(ex, NULL); p = rp ? rp + 1 : p + strlen(p); }
                     else while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
-                if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y') {
+                if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y' || ty == 'V') {
                     int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
                     if (!haslen) { blen = base; long oldlc = lc; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc);
                         if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }   /* DC alignment padding is emitted as zero TXT (IFOX-compatible) */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
-                    long val = 0; char ename[64] = "", rsym[16] = ""; int isrel = 0, isaddr = (ty == 'A' || ty == 'Y');
+                    long val = 0; char ename[64] = "", rsym[16] = ""; int isrel = 0, isvcon = (ty == 'V'), isaddr = (ty == 'A' || ty == 'Y' || isvcon);
                     if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
                         int sn = 0; const char *se = ename;            /* leading symbol = relocation target (e.g. @V1-192) */
                         while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
-                        struct sym *es = sym_find(rsym); int rc = 0; expr_val(ename, &rc);
-                        int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
-                        isrel = (rc != 0) && tgtreal; }   /* relocate only if net-relocatable and the target ('*' or a symbol) is in a real (non-dummy) section */
+                        if (isvcon) { if (pass == 1 && rsym[0]) { struct sym *s = sym_get(rsym); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } isrel = 1; }   /* V-con: external reference, always relocated */
+                        else { struct sym *es = sym_find(rsym); int rc = 0; expr_val(ename, &rc);
+                            int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+                            isrel = (rc != 0) && tgtreal; } }   /* relocate only if net-relocatable and the target ('*' or a symbol) is in a real (non-dummy) section */
                     else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                     for (k = 0; k < cnt; k++) {
                         if (emit_dc) {
-                            if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) add_reloc(lc, rsym, 0); }
+                            if (isvcon) { put(lc, 0, blen); add_reloc(lc, rsym, 1); }       /* V-type relocation */
+                            else if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) add_reloc(lc, rsym, 0); }
                             else put(lc, val, blen);
                         }
                         lc += blen;
