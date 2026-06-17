@@ -775,22 +775,77 @@ static void note_unknown(const char *o) {
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
+/* --- minimal big unsigned integer (base 2^32) for exact decimal->HFP --------
+ * IFOX converts the decimal value exactly and rounds the HFP fraction to
+ * nearest; matching it byte-for-byte needs integer/rational arithmetic, not the
+ * host float type (which is platform-dependent: long double is 53-bit on arm64
+ * macOS, 64-bit on x86 Linux). This keeps the conversion portable and exact. */
+#define BN_LIMBS 64
+struct bn { unsigned int v[BN_LIMBS]; int n; };
+static void bn_set(struct bn *a, unsigned long long x) { a->n = 0; while (x) { a->v[a->n++] = (unsigned)(x & 0xffffffffu); x >>= 32; } }
+static void bn_norm(struct bn *a) { while (a->n > 0 && a->v[a->n - 1] == 0) a->n--; }
+static void bn_mul_small(struct bn *a, unsigned int m) {
+    unsigned long long carry = 0; int i;
+    for (i = 0; i < a->n; i++) { unsigned long long p = (unsigned long long)a->v[i] * m + carry; a->v[i] = (unsigned)(p & 0xffffffffu); carry = p >> 32; }
+    while (carry && a->n < BN_LIMBS) { a->v[a->n++] = (unsigned)(carry & 0xffffffffu); carry >>= 32; }
+}
+static void bn_add_small(struct bn *a, unsigned int x) {
+    unsigned long long carry = x; int i;
+    for (i = 0; carry && i < BN_LIMBS; i++) { unsigned long long s = (unsigned long long)(i < a->n ? a->v[i] : 0) + carry; a->v[i] = (unsigned)(s & 0xffffffffu); carry = s >> 32; if (i >= a->n) a->n = i + 1; }
+}
+static int bn_cmp(const struct bn *a, const struct bn *b) {
+    if (a->n != b->n) return a->n < b->n ? -1 : 1;
+    int i; for (i = a->n - 1; i >= 0; i--) if (a->v[i] != b->v[i]) return a->v[i] < b->v[i] ? -1 : 1;
+    return 0;
+}
+static void bn_sub(struct bn *a, const struct bn *b) {   /* a -= b, requires a >= b */
+    long long borrow = 0; int i;
+    for (i = 0; i < a->n; i++) { long long d = (long long)a->v[i] - (i < b->n ? b->v[i] : 0) - borrow; if (d < 0) { d += 0x100000000LL; borrow = 1; } else borrow = 0; a->v[i] = (unsigned)d; }
+    bn_norm(a);
+}
+static void bn_shl(struct bn *a, int bits) {
+    int limbs = bits / 32, rem = bits % 32, i;
+    if (limbs) { for (i = a->n - 1; i >= 0; i--) if (i + limbs < BN_LIMBS) a->v[i + limbs] = a->v[i]; for (i = 0; i < limbs; i++) a->v[i] = 0; a->n += limbs; if (a->n > BN_LIMBS) a->n = BN_LIMBS; }
+    if (rem) { unsigned long long carry = 0; for (i = 0; i < a->n; i++) { unsigned long long p = ((unsigned long long)a->v[i] << rem) | carry; a->v[i] = (unsigned)(p & 0xffffffffu); carry = p >> 32; } if (carry && a->n < BN_LIMBS) a->v[a->n++] = (unsigned)carry; }
+    bn_norm(a);
+}
+/* floor(N/D) (assumed < 2^64 after normalisation) via binary long division; *Rr = remainder */
+static unsigned long long bn_divmod(const struct bn *N, const struct bn *D, struct bn *Rr) {
+    struct bn R; bn_set(&R, 0); unsigned long long Q = 0; int i;
+    for (i = N->n * 32 - 1; i >= 0; i--) {
+        bn_shl(&R, 1);
+        if ((N->v[i / 32] >> (i % 32)) & 1) bn_add_small(&R, 1);
+        Q <<= 1;
+        if (bn_cmp(&R, D) >= 0) { bn_sub(&R, D); Q |= 1; }
+    }
+    *Rr = R; return Q;
+}
 static void emit_float(long at, const char *vstr, int bytes) {
-    /* IFOX converts the decimal exactly and rounds the HFP fraction to nearest.
-     * NOTE: this uses the host double (LDBL on arm64 macOS is 53-bit), so the
-     * low ~3 bits of a 56-bit fraction are imprecise — long 15+ digit constants
-     * (e.g. the transcendental tables in the math library) can be off by one in
-     * the last byte. Exact match needs integer/rational decimal->HFP. */
-    long double v = strtold(vstr, NULL); int sign = 0;
-    if (v < 0) { sign = 1; v = -v; }
-    if (v == 0.0L) { int j; for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero is all bytes 0 */
-    int exp = 64;
-    while (v >= 1.0L) { v /= 16.0L; exp++; }
-    while (v < 1.0L / 16.0L) { v *= 16.0L; exp--; }
+    const char *p = vstr; int sign = 0;
+    if (*p == '+') p++; else if (*p == '-') { sign = 1; p++; }
+    struct bn M; bn_set(&M, 0); int nfrac = 0, seenpoint = 0;
+    for (; *p && *p != '\'' && *p != ' '; p++) {
+        if (*p == '.') { seenpoint = 1; continue; }
+        if (*p == 'e' || *p == 'E') break;
+        if (*p >= '0' && *p <= '9') { bn_mul_small(&M, 10); bn_add_small(&M, *p - '0'); if (seenpoint) nfrac++; }
+    }
+    int eexp = 0;
+    if (*p == 'e' || *p == 'E') { p++; int es = 1; if (*p == '+') p++; else if (*p == '-') { es = -1; p++; } while (*p >= '0' && *p <= '9') { eexp = eexp * 10 + (*p++ - '0'); } eexp *= es; }
+    if (M.n == 0) { int j; for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero */
     int fracbits = bytes * 8 - 8; if (fracbits > 56) fracbits = 56;
-    unsigned long long frac = (unsigned long long)(v * (long double)(1ULL << fracbits) + 0.5L);   /* round to nearest */
+    int P = eexp - nfrac, k;                 /* value = M * 10^P */
+    struct bn num = M, den; bn_set(&den, 1);
+    if (P >= 0) for (k = 0; k < P; k++) bn_mul_small(&num, 10);
+    else for (k = 0; k < -P; k++) bn_mul_small(&den, 10);
+    int exp = 64;                            /* normalise num/den into [1/16, 1) */
+    while (bn_cmp(&num, &den) >= 0) { bn_mul_small(&den, 16); exp++; }
+    for (;;) { struct bn t = num; bn_mul_small(&t, 16); if (bn_cmp(&t, &den) < 0) { num = t; exp--; } else break; }
+    struct bn N = num; bn_shl(&N, fracbits);  /* F = round(num * 2^fracbits / den) */
+    struct bn R; unsigned long long F = bn_divmod(&N, &den, &R);
+    bn_mul_small(&R, 2); if (bn_cmp(&R, &den) >= 0) F++;        /* round half up */
+    if (F >> fracbits) { F >>= 4; exp++; }                     /* rounded up to 1.0 -> renormalise */
     put(at, (long)((sign ? 0x80 : 0) | (exp & 0x7f)), 1);
-    int i; for (i = bytes - 1; i >= 1; i--) { put(at + i, (long)(frac & 0xff), 1); frac >>= 8; }
+    int i; for (i = bytes - 1; i >= 1; i--) { put(at + i, (long)(F & 0xff), 1); F >>= 8; }
 }
 static void emit_lit(struct lit *l) {
     const char *p = l->text + 1;
