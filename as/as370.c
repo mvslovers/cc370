@@ -299,7 +299,7 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
         else if (!q && *p == '(') d++;
         else if (!q && *p == ')') { if (d) d--; }
         if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
-        if (i < 127) opnd[i++] = *p;
+        if (i < 1023) opnd[i++] = *p;
         p++;
     } }
     opnd[i] = 0;
@@ -656,7 +656,7 @@ static int lib_readlines(const char *name, char *buf[], int max) {
 }
 static struct macro *capture_macro(char **in, int nin, int *ip) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
-    char pb[256], pl[16], po[16], pp[128]; strncpy(pb, in[i], 255); pb[255] = 0; parse(pb, pl, po, pp);
+    char pb[1024], pl[16], po[16], pp[1024]; strncpy(pb, in[i], 1023); pb[1023] = 0; parse(pb, pl, po, pp);
     struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
     scopy(m->namep, pl, sizeof m->namep - 1); scopy(m->name, po, sizeof m->name - 1);
     if (pp[0]) { char flds[24][64]; int nf = split_fields(pp, flds, 24), k;
@@ -733,19 +733,19 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     if (m->endlbl[0] && nseq < 256) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
     int pc = 0, guard = 0;
     while (pc < m->nbody && guard++ < 100000) {
-        char bb[512], bl[16], bo[16], bod[384];
+        char bb[1024], bl[16], bo[16], bod[1024];
         if (m->body[pc][0] == '*' || (m->body[pc][0] == '.' && m->body[pc][1] == '*')) { pc++; continue; }  /* macro comment */
-        strncpy(bb, m->body[pc], 511); bb[511] = 0; parse(bb, bl, bo, bod);
+        strncpy(bb, m->body[pc], 1023); bb[1023] = 0; parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
         if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
         if (set_stmt(&c, bl, bo, bod)) { pc++; continue; }   /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
-        if (!strcmp(bo, "AIF")) { char cond[128], seq[20]; aif_split(bod, cond, seq);
+        if (!strcmp(bo, "AIF")) { char cond[512], seq[20]; aif_split(bod, cond, seq);
             if (eval_cond(&c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
-        char ex[512]; msub(&c, m->body[pc], ex);
+        char ex[1024]; msub(&c, m->body[pc], ex);
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
@@ -754,8 +754,8 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
  * leading sequence-symbol label so it never reaches the core). */
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
     static struct ctx opc;   /* persistent open-code context for conditional assembly (globals route to the shared store) */
-    char buf[256], lbl[16], op[16], opnd[128];
-    strncpy(buf, line, 255); buf[255] = 0; parse(buf, lbl, op, opnd);
+    char buf[1024], lbl[16], op[16], opnd[1024];
+    strncpy(buf, line, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`. */
@@ -763,7 +763,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
         char *cb[2048]; int n = lib_readlines(opnd, cb, 2048);
         if (n >= 0) { int j; for (j = 0; j < n; j++) {
-                char cbuf[256], cl[16], co[16], cd[128]; strncpy(cbuf, cb[j], 255); cbuf[255] = 0; parse(cbuf, cl, co, cd);
+                char cbuf[1024], cl[16], co[16], cd[1024]; strncpy(cbuf, cb[j], 1023); cbuf[1023] = 0; parse(cbuf, cl, co, cd);
                 if (!strcmp(co, "MACRO")) { capture_macro(cb, n, &j); continue; }   /* a COPY'd macro library (e.g. MVSMACS) defines its macros, not open code */
                 mexp_line(cb[j], out, nout, depth + 1);
             } return; }
@@ -772,14 +772,14 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
     if (m) { mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return; }
     if (*nout >= MAXLINES) return;
-    if (lbl[0] == '.') { char r[300]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
+    if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(line);
 }
 /* macro pass: capture MACRO/MEND defs, expand calls -> flat open code */
 static int macro_pass(char **in, int nin, char **out) {
     int nout = 0, i;
     for (i = 0; i < nin; i++) {
-        char buf[256], lbl[16], op[16], opnd[128];
+        char buf[1024], lbl[16], op[16], opnd[1024];
         strncpy(buf, in[i], 255); buf[255] = 0; parse(buf, lbl, op, opnd);
         if (!strcmp(op, "MACRO")) { capture_macro(in, nin, &i); continue; }
         mexp_line(in[i], out, &nout, 0);
@@ -922,7 +922,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     if (pass == 2) nrel = 0;
     for (i = 0; i < nlines; i++) {
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
-        char buf[256], lbl[16], op[16], opnd[128];
+        char buf[1024], lbl[16], op[16], opnd[1024];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
         if (!parse(buf, lbl, op, opnd)) continue;
