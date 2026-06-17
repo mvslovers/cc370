@@ -419,8 +419,16 @@ static int eval_comp(struct ctx *c, const char *L, const char *rel, const char *
     return rel_apply(rel, cmp);
 }
 /* evaluate an AIF condition: comparisons joined by AND/OR (left to right) */
+static int eval_cond(struct ctx *c, const char *cond);
+static int is_relop(const char *s) {
+    return !strcmp(s, "EQ") || !strcmp(s, "NE") || !strcmp(s, "LT") || !strcmp(s, "GT") || !strcmp(s, "LE") || !strcmp(s, "GE");
+}
+static int cnd_bool(struct ctx *c, const char *t) {           /* a single boolean factor */
+    if (t[0] == '(') { int L = (int)strlen(t); if (L >= 2 && t[L - 1] == ')') { char in[128]; int n = L - 2 > 127 ? 127 : L - 2; memcpy(in, t + 1, n); in[n] = 0; return eval_cond(c, in); } }
+    return eval_seta(c, t) != 0;                               /* SETB var / arithmetic: nonzero = true */
+}
 static int eval_cond(struct ctx *c, const char *cond) {
-    char toks[24][96]; int nt = 0; const char *p = cond;
+    char toks[32][96]; int nt = 0; const char *p = cond;
     while (*p) {
         while (*p == ' ') p++; if (!*p) break;
         char *o = toks[nt]; int q = 0, d = 0, oi = 0;
@@ -428,16 +436,23 @@ static int eval_cond(struct ctx *c, const char *cond) {
             if (*p == '\'') { if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) q = !q; }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
             else if (!q && *p == '(') d++; else if (!q && *p == ')') d--;
             if (oi < 95) o[oi++] = *p; p++; }
-        o[oi] = 0; if (nt < 23) nt++;
+        o[oi] = 0; if (nt < 31) nt++;
     }
-    if (nt < 3) return 0;
-    int res = eval_comp(c, toks[0], toks[1], toks[2]); int i = 3;
-    while (i + 2 < nt) {
-        const char *conn = toks[i]; int r = eval_comp(c, toks[i + 1], toks[i + 2], toks[i + 3]);
-        if (!strcmp(conn, "OR")) res = res || r; else if (!strcmp(conn, "AND")) res = res && r;
-        i += 4;
+    /* factors joined by AND/OR, left to right; a factor is [NOT] (comparison | bool) */
+    int i = 0, acc = 0, first = 1; char conn[4] = "";
+    while (i < nt) {
+        if (!first) { if (!strcmp(toks[i], "AND") || !strcmp(toks[i], "OR")) { strcpy(conn, toks[i]); i++; } else break; }
+        int neg = 0; while (i < nt && !strcmp(toks[i], "NOT")) { neg = !neg; i++; }
+        int v;
+        if (i + 2 < nt && is_relop(toks[i + 1])) { v = eval_comp(c, toks[i], toks[i + 1], toks[i + 2]); i += 3; }
+        else if (i < nt) { v = cnd_bool(c, toks[i]); i++; }
+        else break;
+        if (neg) v = !v;
+        if (first) { acc = v; first = 0; }
+        else if (!strcmp(conn, "AND")) acc = acc && v;
+        else if (!strcmp(conn, "OR")) acc = acc || v;
     }
-    return res;
+    return acc;
 }
 /* split "(cond)seqsym" -> cond (no outer parens), seqsym */
 static void aif_split(const char *opnd, char *cond, char *seq) {
