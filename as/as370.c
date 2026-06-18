@@ -50,7 +50,7 @@ static const struct opc optab[] = {
 };
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; };
 static struct sym syms[MAXSYM];
 static int nsym;
 /* ESD is a list of (symbol, role) events in source order. A name can appear as
@@ -81,6 +81,7 @@ static char dsect_sect[256];                  /* dsect_sect[id]=1 if section id 
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
+static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
 
 static unsigned char a2e(int c);   /* fwd */
 
@@ -1005,11 +1006,14 @@ static void do_pass(int pass, char **lines, int nlines) {
             cur_sect_id = s->sect;
             if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
             if (pass == 1) { s->val = 0; s->defined = 1; }
+        } else if (!strcmp(op, "TITLE")) {
+            if (pass == 1 && lbl[0] && !deck_id[0]) scopy(deck_id, lbl, 8);   /* first named TITLE -> deck id */
         } else if (!strcmp(op, "ENTRY")) {
             if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s, ESD_LD); }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
+            int weak = (op[0] == 'W');
             if (pass == 1 && opnd[0]) { char f[8][64]; int nf = split_fields(opnd, f, 8), j;
-                for (j = 0; j < nf; j++) { struct sym *s = sym_get(f[j]); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } }
+                for (j = 0; j < nf; j++) { struct sym *s = sym_get(f[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1; esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
             char F[4][64]; split_fields(opnd, F, 4);
             if (pass == 2 && nusing < 32) {
@@ -1186,7 +1190,19 @@ static void cbe(unsigned char *c, int off, long v, int n) { int i; for (i = n - 
 static void cebc(unsigned char *c, int off, const char *s, int w) {
     int i, done = 0; for (i = 0; i < w; i++) { if (!done && (!s || !s[i])) done = 1; c[off + i] = done ? 0x40 : a2e((unsigned char)s[i]); }
 }
-static void cseq(unsigned char *c, int seq) { char b[16]; int i; sprintf(b, "%08d", seq); for (i = 0; i < 8; i++) c[72 + i] = a2e(b[i]); }
+static void cseq(unsigned char *c, int seq) {
+    char b[16]; int i;
+    if (deck_id[0]) {                              /* deck id left-justified, sequence right-justified in the leftover cols */
+        int nl = (int)strlen(deck_id); if (nl > 8) nl = 8;
+        int nd = 8 - nl;                           /* digits available for the sequence */
+        for (i = 0; i < nl; i++) c[72 + i] = a2e((unsigned char)deck_id[i]);
+        if (nd > 0) { char fmt[8], d[16]; long m = 1; int k; for (k = 0; k < nd; k++) m *= 10;
+            sprintf(fmt, "%%0%dld", nd); sprintf(d, fmt, (long)(seq % m));
+            for (i = 0; i < nd; i++) c[72 + nl + i] = a2e(d[i]); }
+        return;
+    }
+    sprintf(b, "%08d", seq); for (i = 0; i < 8; i++) c[72 + i] = a2e(b[i]);
+}
 static void esd_ent(unsigned char *c, int slot, const char *name, int type, long addr, long sizeOrId, int blankSize) {
     cebc(c, slot, name, 8); c[slot + 8] = (unsigned char)type; cbe(c, slot + 9, addr, 3); c[slot + 12] = 0x40;
     if (blankSize) { c[slot + 13] = c[slot + 14] = c[slot + 15] = 0x40; } else cbe(c, slot + 13, sizeOrId, 3);
@@ -1202,7 +1218,7 @@ static void emit_obj(FILE *f) {
         while (n < 3 && e < nesdord) {
             struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
             if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, s->esdid == main_sect_esdid ? modlen : 0, 0); if (!cardfirst) cardfirst = s->esdid; }
-            else if (role == ESD_ER) { esd_ent(c, slot, s->name, 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
+            else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
             else { esd_ent(c, slot, s->name, 0x01, s->val, main_sect_esdid, 0); }   /* LD entry */
             n++;
         }
