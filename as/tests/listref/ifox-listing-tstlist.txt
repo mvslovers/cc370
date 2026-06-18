@@ -1,0 +1,71 @@
+
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 06.42 06/18/26
+TSTLIST   SD  0001 000000 000060
+EXTRTN    ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 06.42 06/18/26
+000000                                1 TSTLIST  CSECT
+                                      2          PRINT GEN
+                                      3          SAVE  (14,12),,'TSTLIST LISTING DEMO'
+000000 47F0 F01A      0001A           4+         B     26(0,15)                          BRANCH AROUND ID       00450000
+000004 14                             5+         DC    AL1(20)                           LENGTH OF IDENTIFIER   00550000
+000005 E3E2E3D3C9E2E340               6+         DC    CL8'TSTLIST '                     IDENTIFIER             00950000
+00000D D3C9E2E3C9D5C740               7+         DC    CL8'LISTING '                     IDENTIFIER             00950000
+000015 C4C5D4D6                       8+         DC    CL4'DEMO'                         IDENTIFIER             00750000
+000019 00
+00001A 90EC D00C      0000C           9+         STM   14,12,12(13)                      SAVE REGISTERS         02950000
+00001E 05C0                          10          BALR  12,0
+                            00000    11          USING TSTLIST,12
+000020 58F0 C050      00050          12          L     15,=V(EXTRTN)
+000024 5810 C054      00054          13          L     1,=A(WORKAREA)
+000028 5820 C058      00058          14          L     2,=F'42'
+00002C D203 C038 C05C 00038 0005C    15          MVC   WORKAREA(4),=X'01,02,03,04'
+         *** ERROR ***
+                                     16          RETURN (14,12)
+000032 98EC D00C      0000C          17+         LM    14,12,12(13)                      RESTORE THE REGISTERS  00650000
+000036 07FE                          18+         BR    14                                RETURN                 02000000
+000038 00000000                      19 WORKAREA DC    F'0'
+00003C 00000000                      20          DC    A(TSTLIST)
+000040 000038                        21          DC    AL3(WORKAREA)
+000043 C8C5D3D3D640E6D6              22          DC    C'HELLO WORLD'
+                                     23          END
+000050 00000000                      24                =V(EXTRTN)
+000054 00000038                      25                =A(WORKAREA)
+000058 0000002A                      26                =F'42'
+00005C 01020304                      27                =X'01,02,03,04'
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 06.42 06/18/26
+ 0001     0001      0C     00003C
+ 0001     0001      08     000040
+ 0001     0001      0C     000054
+ 0001     0002      1C     000050
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 06.42 06/18/26
+TSTLIST  00001 00000000 00001  00011 00020
+WORKAREA 00004 00000038 00019  00015 00021 00025
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 06.42 06/18/26
+=V(EXTRTN)
+         00004 00000050 00024  00012
+=A(WORKAREA)
+         00004 00000054 00025  00013
+=F'42'   00004 00000058 00026  00014
+=X'01,02,03,04'
+         00001 0000005C 00027  00015
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 06.42 06/18/26
+   15  IFO229      POSSIBLE REENTERABILITY ERROR NEAR OPERAND COLUMN 11
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    4
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         15
+TOTAL RECORDS READ FROM SYSTEM LIBRARY      746
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        69
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
