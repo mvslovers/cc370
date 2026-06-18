@@ -4,7 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-c2asm370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3.8j. It is a **cross-compiler**: it runs on the host (macOS/Linux) and emits mainframe assembler; it does **not** produce object files — the `.s` is uploaded to an IBM assembler (IFOX00) on the target.
+c2asm370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3.8j. It is a **cross-compiler**: it runs on the host (macOS/Linux) and emits mainframe assembler.
+
+**The goal (v2.0): a fully host-native MVS cross-toolchain.** Historically the `.s` was uploaded to the IBM assembler (**IFOX00**) on the target. v2.0 adds **`as370`** (`as/as370.c`) — a host-native MVS Assembler-XF clone that produces OS/360 object decks **on the host**, byte-identical to IFOX00. The endgame is to compile, assemble, **and link** on the host so the only thing that touches MVS is the final load module (eventually nothing). Components:
+
+| Tool | Role | Status |
+|------|------|--------|
+| **cc370** | C → i370 HLASM `.s` (the GCC 3.4.6 fork; `gcc/`) | works; `-O1` only |
+| **as370** | `.s`/`.asm` → OS/360 OBJ deck (`as/as370.c`) | **byte-identical to IFOX00 (950 modules); links + runs on MVS** |
+| **ld** (planned) | OBJ decks → MVS load module (replace IEWL) | not started — next milestone |
+
+**End-to-end validated on real MVS (2026-06-18):** `cc370 → as370` built ctest locally (no IFOX00), the decks linked with IEWL (RC=0) and ran (`PGM=CTESTH`) with **RC=0** (all charset checks pass). See `as/` and the [as370 section](#as370--host-native-mvs-assembler).
 
 **Two generations live in this repo:**
 - **`main` — v1.x:** GCC **3.2.3** fork (the original c2asm370).
@@ -33,10 +43,12 @@ Produces `build/gcc/cc1` (compiler proper) and `build/gcc/xgcc` (driver). Instal
 
 ## Testing
 
-No host-side unit tests. Validation is on MVS via the ecosystem:
+No host-side unit tests for the compiler. Validation is on MVS via the ecosystem:
 
 - Build `ctest` (dedicated charset test) and run `jcl/runctest.jcl` — fast charset check (expect 0 failures).
 - Build crent370 + rexx370 (mbt), run rexx370 `test/mvs/tstall.jcl` (TSTALLB) — full correctness (expect 84/84, 0 ABEND).
+
+**as370** is validated by **byte-identity to IFOX00** over the 950-module ecosystem corpus (its own oracle) plus the end-to-end MVS link+run (ctest `CTESTH`, RC=0). Folding this into `as/tests/` + CI is an open point — see [Goal & Roadmap](#goal--roadmap-open-points).
 
 ## Architecture
 
@@ -77,6 +89,41 @@ Unlike v1.x (3.2.3), v2.0 does **not** shadow `toplev.c`/`varasm.c`/`final.c` in
 - `gcc/c-parse.c` is generated from `c-parse.in`; a pre-generated parser / dummy Makefile rule avoids running yacc.
 - Symbol names in address constants must be emitted via `output_addr_const` (not `ASM_OUTPUT_LABELREF` on the raw `XSTR`) so the leading `*` of an `asm()`-named extern is stripped — taking the **address** of an asm-named extern otherwise emits invalid `=V(*NAME)` → IFOX IFO161 (fixed in v2.0).
 - Output uses EBCDIC encoding and HLASM syntax with MVS calling conventions.
+
+## as370 — Host-Native MVS Assembler
+
+`as/as370.c` is a single-file (~1900 lines) host-native MVS **Assembler-XF (IFOX00)** clone: macro preprocessor + two-pass core + OS/360 OBJ writer (80-byte EBCDIC ESD/TXT/RLD/END cards). It runs on macOS/Linux and produces object decks **byte-identical to IFOX00**.
+
+- **Identity:** tool name `as370`, product id `ASM370`, version `V1.0`. `as370 -v` → `as370 V1.0 - <build date>`.
+- **Build:** `gcc -O2 -Wall -Wextra -Werror -o as/as370 as/as370.c` (warning-clean under gcc-14 + clang).
+- **CLI:** z/OS-`as`-aligned. `--help` usage; RC convention from IFOX `JERMSGCD` (0 clean / 4 warn / 8 error / 12 severe / 16 terminal); silent on success (no noise when called from cc370). Friendly per-statement diagnostic: prints the true source line + `ERROR: Undefined operation code in line N - op`.
+- **Macro path:** `-I <dir>` (repeatable). The ecosystem needs crent370 `maclib` + `sysmac` and SYS1.MACLIB members.
+- **Validation = byte-identity to IFOX00**, the authoritative oracle. 950 ecosystem modules reproduce exactly: crent370 736/736, rexx370 81/81, UFSD 20/20, HTTPD 105/105, 9 samples. The END card's translator IDR (`15741SC103`+date) is IFOX-specific and intentionally not reproduced; "byte-identical" means ESD/TXT/RLD content. The full patched IFOX source is the reference (NOT committed — IBM proprietary; see memory `ifox-source-reference`).
+- **`-a` listing:** ASCII, column-exact to IFOX SYSPRINT for the ESD + SOURCE + RLD sections. Cross-reference / literal-xref / diagnostics / statistics pages not yet produced (see open points).
+
+### cc370 → as370 integration (current: stopgap wrapper)
+
+The GCC driver invokes an assembler literally named `as`, found in its own exec dir before PATH. A shell wrapper at `~/.local/libexec/gcc/i370-ibm-mvspdp/3.4.6/as` execs `as370` with the macro `-I` paths, so `cc370 -c x.c` runs cc1 → temp `.s` → as370 → `x.o`. **This is a stopgap:** the crent370 macro path is hardcoded in the wrapper and `/tmp/sys1mac` is ephemeral. The clean design (a real `as1` engine shared by standalone `as370` and the driver, with the macro path passed properly) is an open point.
+
+## Goal & Roadmap (Open Points)
+
+**Goal:** a fully host-native MVS cross-toolchain — compile (cc370) + assemble (as370) + **link (ld, planned)** on the host, so only the final load module touches MVS. Today cc370+as370 are proven end-to-end (ctest links + runs on MVS, RC=0); `ld` is the missing piece.
+
+**as370 remaining work:**
+- **More listing options** — `-a` sub-letters (g/i/m/s/x) are no-ops/provisional; add the CROSS-REFERENCE, LITERAL XREF, DIAGNOSTICS, STATISTICS pages.
+- **Better driver / cc370 integration** — replace the stopgap shell wrapper with a proper `as370`/`as1` split; stop hardcoding the crent370 macro path; give SYS1.MACLIB + crent maclib/sysmac a permanent, configurable home (the `/tmp/sys1mac` dependency must go).
+- **Assembler options from IFOX00 sources** — derive the real `PARM=` option set + RC/severity semantics from the IFOX source (`~/repos/mvs/ifox-src/all/`).
+
+**cc370 / packaging work:**
+- **New `cc370` repo** carved from the c2asm370 V2 sources (the GCC fork as its own project).
+- **Rework Makefiles** to build the driver as **`cc370`** (program prefix / `--program-transform-name`) instead of the target-prefixed `i370-ibm-mvspdp-gcc`.
+- **cc370 cosmetics to fit as370** — banners already say `cc370 V1.0`; fix the doubled `cpu`/`machine` `#assert` warnings (`gcc/config/i370/mvspdp.h:84-85` re-assert what `i370.h:34-35` already does → harmless "re-asserted" cpp warnings); align `-v`/`--help` wording with as370.
+
+**Cross-cutting (additions):**
+- **Host-side regression harness** — fold the 950-module IFOX byte-identity corpus check into `as/tests/` + CI so codegen/assembler changes can't silently regress (today it's ad-hoc `/tmp` scripts).
+- **mbt host-assembly backend** — teach mbt to assemble locally and upload OBJECT (skip the IFOX00 ASM step); after `ld`, upload only the load module.
+
+**Then: `ld`** — a host-native MVS linker (replace IEWL) producing the load module on the host. The big next milestone after as370.
 
 ## User Preferences
 
