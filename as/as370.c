@@ -239,6 +239,35 @@ static int using_for(long val, int sect, long *disp) {
     if (best >= 0) { *disp = bd; return usings[best].reg; }
     *disp = val; return 0;
 }
+/* section of a relocatable expression = section of its NET-relocatable term.
+ * e.g. IOBSENS0-IOBSTDRD+TAPEIOB: the two IOB fields cancel (same section), so
+ * the result is in TAPEIOB's section, not IOBSENS0's. Falls back to cur_sect_id.
+ * Sums the sign of each relocatable (non-absolute) symbol term per section and
+ * returns the section with a net positive count. */
+static int expr_sect(const char *f) {
+    int tsect[8]; long tsign[8]; int nt = 0, k;
+    const char *p = f; int sign = 1, expect = 1;
+    while (*p) {
+        if (*p == ' ') { p++; continue; }
+        if (*p == '+') { if (!expect) sign = 1; expect = 1; p++; continue; }
+        if (*p == '-') { if (!expect) sign = -1; expect = 1; p++; continue; }
+        if (*p == '/') { p++; expect = 1; continue; }
+        if (*p == '*' && !expect) { p++; expect = 1; continue; }   /* binary multiply */
+        if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } continue; }
+        if (*p == ')') { p++; continue; }
+        int csect = -1;
+        if (*p == '*') { csect = cur_sect_id; p++; }               /* location counter term */
+        else { char nm[64]; int n = 0; while (*p && !strchr("+-*/(), ", *p) && n < 63) nm[n++] = *p++; nm[n] = 0;
+            if (nm[0] && !isdigit((unsigned char)nm[0])) { struct sym *s = sym_find(nm); if (s && s->type != S_ABS) csect = s->sect; } }
+        if (csect >= 0) { int f2 = -1; for (k = 0; k < nt; k++) if (tsect[k] == csect) { f2 = k; break; }
+            if (f2 < 0 && nt < 8) { f2 = nt; tsect[nt] = csect; tsign[nt] = 0; nt++; }
+            if (f2 >= 0) tsign[f2] += sign; }
+        sign = 1; expect = 0;
+    }
+    for (k = 0; k < nt; k++) if (tsign[k] > 0) return tsect[k];     /* net +relocatable term */
+    for (k = 0; k < nt; k++) if (tsign[k] != 0) return tsect[k];
+    return cur_sect_id;
+}
 /* resolve a memory operand into displacement d, index/length a, base b */
 /* parse a memory operand: displacement *d, explicit subscripts sub[0..*nsub),
  * *sym=1 for a symbol/literal resolved through USING (then sub[0]=base reg).
@@ -253,7 +282,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
         int reloc = 0; long v = expr_val(f, &reloc);   /* prefix before '(' (expr_val stops there) */
         if (reloc) {                                   /* SYM(len)/SYM(index): base from the symbol's USING */
             char nm[64]; int nn = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && nn < 63) nm[nn++] = *e++; nm[nn] = 0;
-            struct sym *s = sym_find(nm); int ssect = s ? s->sect : cur_sect_id;
+            struct sym *s = sym_find(nm); int ssect = expr_sect(f);
             r_len = s ? s->len : 0;
             r_ibase = using_for(v, ssect, d);
         } else *d = v;                                 /* numeric displacement, e.g. 4+120(13) */
@@ -270,7 +299,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
         int reloc = 0; long v = expr_val(f, &reloc);
         if (reloc) {                                   /* relocatable: address via USING (of the symbol's section) */
             char nm[64]; int n = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0;
-            struct sym *s = sym_find(nm); int ssect = s ? s->sect : cur_sect_id;
+            struct sym *s = sym_find(nm); int ssect = expr_sect(f);
             r_len = s ? s->len : 0;
             *sym = 1; sub[0] = using_for(v, ssect, d);
         } else { *d = v; *sym = 0; sub[0] = 0; }       /* absolute: displacement value, base 0 */
