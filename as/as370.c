@@ -105,6 +105,7 @@ static void init_sysvars(void) {
 static unsigned char a2e(int c);   /* fwd */
 static int hexv(int c);            /* fwd */
 static int hex_to_bytes(const char *s, unsigned char *out, int max);   /* fwd */
+static int split_fields(const char *s, char f[][64], int max);   /* fwd */
 
 static struct sym *sym_find(const char *n) {
     int i; for (i = 0; i < nsym; i++) if (!strcmp(syms[i].name, n)) return &syms[i];
@@ -135,7 +136,9 @@ static void lit_classify(struct lit *l) {
     if (ty == 'A' || ty == 'V' || ty == 'Y') {
         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
         if (lp && rp && rp > lp) { int n = (int)(rp - lp - 1); if (n > 63) n = 63; memcpy(l->ext, lp + 1, n); l->ext[n] = 0; }
-        l->size = haslen ? len : (ty == 'Y' ? 2 : 4); l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
+        int per = haslen ? len : (ty == 'Y' ? 2 : 4);
+        char vv[64][64]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;   /* =AL1(a,b,c): one constant per value */
+        l->size = per * nv; l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
     } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
     } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
     } else if (ty == 'D') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 8; l->algn = 8;
@@ -1107,13 +1110,17 @@ static void emit_lit(struct lit *l) {
     while (isdigit((unsigned char)*p)) p++;
     char ty = toupper((unsigned char)*p++);
     if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
-    if (ty == 'V') { put(l->loc, 0, l->size); add_reloc(l->loc, l->ext, 1); rels[nrel - 1].len = l->size; }
-    else if (ty == 'A' || ty == 'Y') {
-        int rc = 0; put(l->loc, l->ext[0] ? expr_val(l->ext, &rc) : 0, l->size);
-        char sym[64]; reloc_sym(l->ext, sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
-        struct sym *es = sym_find(sym);
-        int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
-        if (rc != 0 && tgtreal) { add_reloc(l->loc, sym, 0); rels[nrel - 1].len = l->size; }   /* relocate only if net-relocatable and target ('*' or a symbol) is in a real section; RLD length matches AL3/AL2 width */
+    if (ty == 'V' || ty == 'A' || ty == 'Y') {            /* address constant, possibly a value list =AL1(a,b,c) */
+        char vv[64][64]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;
+        int per = l->size / nv, vj;
+        for (vj = 0; vj < nv; vj++) { long loc = l->loc + (long)vj * per;
+            if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
+                put(loc, 0, per); add_reloc(loc, r, 1); rels[nrel - 1].len = per; }
+            else { int rc = 0; long v = vv[vj][0] ? expr_val(vv[vj], &rc) : 0; put(loc, v, per);
+                char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
+                struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
+                int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+                if (rc != 0 && tgtreal) { add_reloc(loc, sym, 0); rels[nrel - 1].len = per; } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         const char *q = strchr(p, '\'');
         if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
