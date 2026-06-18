@@ -1553,7 +1553,12 @@ int main(int argc, char **argv) {
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     do_pass(2, lines, nl);
-    if (nunk) { int j; fprintf(stderr, "as370: unknown op(s):"); for (j = 0; j < nunk; j++) fprintf(stderr, " %s", unkops[j]); fprintf(stderr, "\n"); }
+    if (nunk) {   /* an op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
+        int j; fprintf(stderr, "as370: error: %d undefined operation code(s) or macro(s) not found in the -I search path:", nunk);
+        for (j = 0; j < nunk; j++) fprintf(stderr, " %s", unkops[j]);
+        fprintf(stderr, "\n");
+        errors += nunk;   /* fail the assembly (non-zero exit) so the build pipeline catches a missing macro */
+    }
 
     long i;
     printf("module length: 0x%lX (%ld bytes)\n", modlen, modlen);
