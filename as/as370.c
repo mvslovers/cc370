@@ -1163,8 +1163,8 @@ static void do_pass(int pass, char **lines, int nlines) {
         const struct opc *o = op_find(op);
         if (cur_sect_id == 0 && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG")))
             pre_csect = 1;   /* statement before the first CSECT opens the implicit unnamed PC */
-        if (cur_sect_id == 0 && !in_dsect && (o || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG"))) {
-            struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1;   /* code with no CSECT: open the implicit private-code section */
+        if (cur_sect_id == 0 && !in_dsect && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG"))) {
+            struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1;   /* code (or a leading EQU) with no CSECT: open the implicit private-code section so its ESD precedes a later ENTRY's LD */
             if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT);
             cur_sect_id = pc->sect; if (pass == 2) cur_sect_esdid = pc->esdid;
         }
