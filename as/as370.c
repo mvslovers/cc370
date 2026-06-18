@@ -122,10 +122,10 @@ static void init_sysvars(void) {
     if (!g_sysdate[0] || !g_systime[0]) {
         time_t t = time(NULL); struct tm *lt = localtime(&t);
         if (lt) {
-            if (!g_sysdate[0]) snprintf(g_sysdate, sizeof g_sysdate, "%02d/%02d/%02d",
-                                        lt->tm_mon + 1, lt->tm_mday, lt->tm_year % 100);
-            if (!g_systime[0]) snprintf(g_systime, sizeof g_systime, "%02d.%02d",
-                                        lt->tm_hour, lt->tm_min);
+            if (!g_sysdate[0]) snprintf(g_sysdate, sizeof g_sysdate, "%02u/%02u/%02u",
+                                        (unsigned)(lt->tm_mon + 1) % 100u, (unsigned)lt->tm_mday % 100u, (unsigned)lt->tm_year % 100u);
+            if (!g_systime[0]) snprintf(g_systime, sizeof g_systime, "%02u.%02u",
+                                        (unsigned)lt->tm_hour % 100u, (unsigned)lt->tm_min % 100u);
         }
     }
 }
@@ -200,7 +200,7 @@ static long x_factor(int sign) {
     if (*xp_ == '(') {                                     /* grouping paren in factor position (e.g. 8+(64-1)); a '(' after a term is a subscript and is left to the caller */
         xp_++; int before = xrl_; xrl_ = 0; long v = x_add(); int delta = xrl_;
         xrl_ = before + (sign < 0 ? -delta : delta);
-        while (*xp_ == ' ') xp_++; if (*xp_ == ')') xp_++;
+        while (*xp_ == ' ') { xp_++; } if (*xp_ == ')') xp_++;
         return v;
     }
     if (*xp_ == '*') { xp_++; xrl_ += sign; return lc; }   /* location counter (relocatable for USING resolution) */
@@ -719,7 +719,7 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
         if (*p == '\'') {
             char inner[256]; int il = 0; const char *q = p + 1;   /* scan to the closing quote, de-escaping doubled '' to a single ' */
             while (*q) { if (*q == '\'') { if (q[1] == '\'') { if (il < 255) inner[il++] = '\''; q += 2; continue; } break; }
-                if (il < 255) inner[il++] = *q; q++; }
+                if (il < 255) { inner[il++] = *q; } q++; }
             inner[il] = 0;
             char sub[256]; msub(c, inner, sub);
             p = (*q == '\'') ? q + 1 : q;
@@ -903,7 +903,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
         int oi = 0, q = 0, d = 0; while (*p && *p != '\n') {
             if (*p == '\'') q = !q; else if (!q && *p == '(') d++; else if (!q && *p == ')') { if (d) d--; }
             if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
-            if (oi < 4095) pp[oi++] = *p; p++; }
+            if (oi < 4095) { pp[oi++] = *p; } p++; }
         pp[oi] = 0; }
     struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
     scopy(m->namep, pl, sizeof m->namep - 1); scopy(m->name, po, sizeof m->name - 1);
@@ -913,7 +913,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
             else scopy(m->pname[k], flds[k], 19);
             m->nparm++; } }
     while (++i < nin) { char bb[256], bl[32], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
-        if (!strcmp(bo, "MEND")) { if (bl[0] == '.') strncpy(m->endlbl, bl, 19); break; }
+        if (!strcmp(bo, "MEND")) { if (bl[0] == '.') scopy(m->endlbl, bl, sizeof m->endlbl - 1); break; }
         if (m->nbody < 4096) { m->bodyseq[m->nbody] = (inseq ? strdup(inseq[i]) : NULL); m->body[m->nbody++] = strdup(in[i]); } }
     *ip = i; return m;
 }
@@ -967,7 +967,7 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
  * put it. The substituted operand may overflow its model width; a following
  * field is then pushed right by one blank rather than overwritten. */
 static void render_model(struct ctx *c, const char *model, const char *seq, char *out) {
-    char ln[256]; int i; for (i = 0; i < 255; i++) ln[i] = ' '; ln[255] = 0;
+    char ln[256]; int i; for (i = 0; i < 255; i++) { ln[i] = ' '; } ln[255] = 0;
     int seqcol = 72;                                  /* a card is 80 cols; the sequence number sits at 73-80 (index 72-79) */
     int mlen = (int)strlen(model); while (mlen > 0 && (model[mlen-1]=='\n'||model[mlen-1]=='\r')) mlen--;
     /* split the model card (cols 1-72) into name / operation / operand / comment,
@@ -990,7 +990,7 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
         while (p < mlen && p < seqcol) { char ch = model[p];
             if (ch == '\'') inq = !inq; else if (!inq && ch == '(') dep++; else if (!inq && ch == ')') { if (dep) dep--; }
             if (ch == ' ' && !inq && dep == 0) break;
-            if (q < 127) fld[2][q++] = ch; p++; }
+            if (q < 127) { fld[2][q++] = ch; } p++; }
         fld[2][q] = 0; }
     while (p < mlen && p < seqcol && model[p] == ' ') p++;
     /* comment: the remainder up to col 72, verbatim (internal blanks kept) */
@@ -1305,7 +1305,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             pre_csect = 1;   /* statement before the first CSECT opens the implicit unnamed PC */
         if (cur_sect_id == 0 && !in_dsect && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG"))) {
             struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1;   /* code (or a leading EQU) with no CSECT: open the implicit private-code section so its ESD precedes a later ENTRY's LD */
-            if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT);
+            if (!pc->sect) { pc->sect = ++g_sectid; } esd_add(pc, ESD_SECT);
             cur_sect_id = pc->sect; if (pass == 2) cur_sect_esdid = pc->esdid;
         }
         if (o) {
@@ -1460,7 +1460,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                               else if (!q && *s == ')') { if (d) d--; }
                               if ((!q && d == 0 && *s == ',') || !*s) {
                                   if (nv < 32) { int L = (int)(s - st); if (L > 79) L = 79; memcpy(vals[nv], st, L); vals[nv][L] = 0; nv++; }
-                                  if (!*s) break; st = s + 1; } } }
+                                  if (!*s) { break; } st = s + 1; } } }
                         if (nv == 0) { vals[0][0] = 0; nv = 1; }   /* A() -> a single zero constant */
                         if (isvcon && pass == 1 && !in_dsect) { int vj; for (vj = 0; vj < nv; vj++) {   /* register each V-con ER */
                             char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
@@ -1727,7 +1727,7 @@ static void a_esd_section(void) {
     for (k = 0; k < nesdord; k++) {
         struct sym *s = esdord[k].s; int role = esdord[k].role, nl = (int)strlen(s->name);
         memset(ln, ' ', 120); ln[120] = 0;
-        if (nl > 8) nl = 8; memcpy(ln, s->name, (size_t)nl);                 /* SYMBOL col 1 */
+        if (nl > 8) { nl = 8; } memcpy(ln, s->name, (size_t)nl);                 /* SYMBOL col 1 */
         if (role == ESD_SECT) {
             memcpy(ln + 10, s->type == S_PC ? "PC" : "SD", 2);              /* TYPE col 11 */
             snprintf(b, sizeof b, "%04X", s->esdid); memcpy(ln + 14, b, 4); /* ID col 15 */
@@ -1786,7 +1786,7 @@ static void a_src_emit(const char *ln) {
 }
 /* place 6-hex LOC at col 1 and the object code at col 8 in a blank 256-col line */
 static void a_locobj(char *ln, long loc, const char *hex) {
-    int j; for (j = 0; j < 255; j++) ln[j] = ' '; ln[255] = 0;
+    int j; for (j = 0; j < 255; j++) { ln[j] = ' '; } ln[255] = 0;
     char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6);
     if (hex && hex[0]) memcpy(ln + 7, hex, strlen(hex));
 }
@@ -1820,7 +1820,7 @@ static void a_src_section(char **lines, int nl) {
             int pad = (int)(loc & 1);
             if (pad) { char hex[40]; a_objcode(loc, pad, 0, hex); a_locobj(ln, loc, hex); a_src_emit(ln); loc += pad; len -= pad; }
         }
-        for (j = 0; j < 255; j++) ln[j] = ' '; ln[255] = 0;
+        for (j = 0; j < 255; j++) { ln[j] = ' '; } ln[255] = 0;
         if (show_loc) { char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6); }
         if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex); if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
         if (!noasm && lrecs[i].hasa1) { char b[16]; sprintf(b, "%05lX", lrecs[i].a1 & 0xfffffL); memcpy(ln + 22, b, 5); }
