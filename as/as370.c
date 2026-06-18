@@ -623,7 +623,7 @@ static int join_cont(char **in, int n, char **out, int maxout) {
         const char *l = in[i];
         if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) { out[no++] = strdup(l); i++; continue; }
         char acc[8192]; int a = 0, len = rawlen(l), copy = len > 71 ? 71 : len;
-        memcpy(acc, l, copy); a = copy;
+        acc[0] = 0; memcpy(acc, l, copy); a = copy;
         int cont = (len > 71 && l[71] != ' ');
         i++;
         /* operand field starts after the label (col 1) and the opcode */
