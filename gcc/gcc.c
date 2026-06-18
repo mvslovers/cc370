@@ -3363,7 +3363,7 @@ process_command (int argc, const char **argv)
       else if (strcmp (argv[i], "-fversion") == 0)
 	{
 	  /* translate_options () has turned --version into -fversion.  */
-	  printf (_("%s (GCC) %s\n"), programname, version_string);
+	  printf ("cc370 V1.0 - %s\n", __DATE__);   /* cc370 driver identity (matches the *370 tool family) */
 	  printf ("Copyright %s 2006 Free Software Foundation, Inc.\n",
 		  _("(C)"));
 	  fputs (_("This is free software; see the source for copying conditions.  There is NO\n\
@@ -6299,7 +6299,7 @@ main (int argc, const char **argv)
 
       if (! strncmp (version_string, compiler_version, n)
 	  && compiler_version[n] == 0)
-	notice ("gcc version %s\n", version_string);
+	notice ("cc370 V1.0 - %s\n", __DATE__);
       else
 	notice ("gcc driver version %s executing gcc version %s\n",
 		version_string, compiler_version);
