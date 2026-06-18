@@ -72,6 +72,19 @@ static int nrel;
 
 static unsigned char text[TEXTMAX];
 static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentation) */
+/* Pass-2 TXT emission log: every put(), in emission order, with the bytes AS
+ * WRITTEN -- so an ORG overlay's pre-overwrite bytes survive (the final image
+ * keeps only the last write). IFOX punches TXT in this order and cuts a card
+ * whenever the next byte's address is not the running card address (IFNX5P
+ * PUNRTN: CRDVAL != LOCATN). Contiguous writes are merged into one event so the
+ * common (strictly address-increasing) module yields just a few events. */
+#define TXL_EV  131072
+#define TXL_BUF (TEXTMAX * 2)
+static long txl_addr[TXL_EV]; static int txl_len[TXL_EV]; static long txl_boff[TXL_EV];
+static unsigned char txl_bytes[TXL_BUF];
+static int  ntxl; static long txl_blen, txl_maxend;
+static int  txl_on;        /* logging active (pass 2 only) */
+static int  txl_revisit;   /* a put() wrote below the high-water mark -> overlap (ORG overlay etc.) */
 static long lc, modlen;
 static long org_hwm;          /* highest lc reached in the current section (for ORG with no operand) */
 static int  in_dsect; static long main_lc; static int main_sect_id;   /* DSECT: dummy section, own counter, no TXT; main_* save the control section on first DSECT entry */
@@ -254,6 +267,18 @@ static long eval_reg(const char *s) {
 static void put(long at, long v, int n) {
     if (in_dsect) return;                       /* a DSECT generates no object text */
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
+    if (txl_on) {                               /* record the emission for the TXT writer (emission-order replay) */
+        if (at < txl_maxend) txl_revisit = 1;   /* writing below the high-water mark = an overlay */
+        if (ntxl > 0 && at == txl_addr[ntxl - 1] + txl_len[ntxl - 1]) {   /* contiguous -> extend the previous event */
+            if (txl_blen + n > TXL_BUF) { fprintf(stderr, "as370: TXT log buffer overflow\n"); exit(2); }
+            memcpy(txl_bytes + txl_blen, text + at, (size_t)n); txl_len[ntxl - 1] += n; txl_blen += n;
+        } else {
+            if (ntxl >= TXL_EV || txl_blen + n > TXL_BUF) { fprintf(stderr, "as370: TXT log overflow\n"); exit(2); }
+            txl_addr[ntxl] = at; txl_len[ntxl] = n; txl_boff[ntxl] = txl_blen;
+            memcpy(txl_bytes + txl_blen, text + at, (size_t)n); txl_blen += n; ntxl++;
+        }
+        if (at + n > txl_maxend) txl_maxend = at + n;
+    }
     if (at + n > modlen) modlen = at + n;
 }
 static long align4(long x) { return (x + 3) & ~3L; }
@@ -1207,7 +1232,7 @@ static void emit_float(long at, const char *vstr, int bytes) {
     bn_mul_small(&R, 2); if (bn_cmp(&R, &den) >= 0) F++;        /* round half up */
     if (F >> fracbits) { F >>= 4; exp++; }                     /* rounded up to 1.0 -> renormalise */
     put(at, (long)((sign ? 0x80 : 0) | (exp & 0x7f)), 1);
-    int i; for (i = bytes - 1; i >= 1; i--) { put(at + i, (long)(F & 0xff), 1); F >>= 8; }
+    int i; for (i = 1; i < bytes; i++) put(at + i, (long)((F >> (8 * (bytes - 1 - i))) & 0xff), 1);   /* ascending byte order: same values, but the TXT emission log stays address-monotonic */
 }
 static void emit_lit(struct lit *l) {
     const char *p = l->text + 1;
@@ -1257,6 +1282,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     int pre_csect = 0;                  /* a content statement appeared before the first CSECT */
     int prev_li = -1;                   /* previous statement captured for the -a listing (byte count is deferred) */
     if (pass == 2) nrel = 0;
+    txl_on = (pass == 2); if (pass == 2) { ntxl = 0; txl_blen = 0; txl_maxend = 0; txl_revisit = 0; }   /* (re)start the TXT emission log */
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
@@ -1596,16 +1622,29 @@ static void emit_obj(FILE *f) {
         cseq(c, ++seq); fwrite(c, 1, 80, f);
     } }
 
-    { long off = 0; while (off < modlen) {
-        if (!defn[off]) { off++; continue; }           /* skip alignment/DS gaps */
-        long rstart = off; while (off < modlen && defn[off]) off++;
-        while (rstart < off) {
-            long len = off - rstart; if (len > 56) len = 56;
-            cinit(c); cname(c, "TXT"); cbe(c, 5, rstart, 3); cbe(c, 10, len, 2); cbe(c, 14, main_sect_esdid, 2);
-            { long i; for (i = 0; i < len; i++) c[16 + i] = text[rstart + i]; }
-            cseq(c, ++seq); fwrite(c, 1, 80, f); rstart += len;
-        }
-    } }
+    /* TXT cards: replay the pass-2 emission log the way IFOX's PUNRTN does --
+     * accumulate bytes into a 56-byte card and start a new card whenever the next
+     * byte's address is not the running card address (a gap or an ORG overlay) or
+     * the card fills. A backward ORG therefore re-punches its overlaid bytes as a
+     * fresh (overlapping) card with the pre-overwrite content, exactly like IFOX. */
+    { int e; long cstart = 0, running = -1; int cn = 0, open = 0; unsigned char cbuf[56];
+      for (e = 0; e <= ntxl; e++) {
+        long ea; int el; const unsigned char *eb;
+        if (e < ntxl) { ea = txl_addr[e]; el = txl_len[e]; eb = txl_bytes + txl_boff[e]; }
+        else { ea = -1; el = 0; eb = NULL; }            /* sentinel: flush the open card */
+        int pos = 0;
+        do {
+            if (open && (e == ntxl || ea + pos != running || cn == 56)) {   /* flush the current card */
+                cinit(c); cname(c, "TXT"); cbe(c, 5, cstart, 3); cbe(c, 10, cn, 2); cbe(c, 14, main_sect_esdid, 2);
+                { int i; for (i = 0; i < cn; i++) c[16 + i] = cbuf[i]; }
+                cseq(c, ++seq); fwrite(c, 1, 80, f); open = 0;
+            }
+            if (e == ntxl) break;
+            if (!open) { cstart = ea + pos; running = cstart; cn = 0; open = 1; }
+            int take = 56 - cn; if (take > el - pos) take = el - pos;
+            memcpy(cbuf + cn, eb + pos, (size_t)take); cn += take; pos += take; running += take;
+        } while (pos < el);
+      } }
 
     /* group relocations by (pos, rel) so same-target entries are adjacent (packing), like IFOX */
     { int a, b; for (a = 1; a < nrel; a++) { struct reloc t = rels[a]; b = a - 1;
