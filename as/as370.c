@@ -621,7 +621,11 @@ static int eval_cond(struct ctx *c, const char *cond) {
         char *o = toks[nt]; int q = 0, d = 0, oi = 0;
         while (*p && (q || d || *p != ' ')) {
             if (*p == '\'') { if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) q = !q; }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
-            else if (!q && *p == '(') d++; else if (!q && *p == ')') d--;
+            else if (!q && *p == '(') {
+                if (d == 0 && oi > 0) { o[oi] = 0;                       /* a logical operator abutting '(' (NOT(..)/AND(..)/OR(..)) is its own token, not a subscript */
+                    if (!strcmp(o, "NOT") || !strcmp(o, "AND") || !strcmp(o, "OR")) break; }
+                d++;
+            } else if (!q && *p == ')') d--;
             if (oi < 95) o[oi++] = *p;
             p++; }
         o[oi] = 0; if (nt < 31) nt++;
