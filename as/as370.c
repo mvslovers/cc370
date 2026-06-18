@@ -534,6 +534,21 @@ static void e_readref(char *ref) {
     if (*ep_ == '(') { ref[i++] = *ep_++; int d = 1; while (*ep_ && d) { if (*ep_=='(')d++; else if(*ep_==')')d--; ref[i++]=*ep_++; } }
     ref[i] = 0;
 }
+/* value of a self-defining term or decimal held in a string (e.g. a SETC value
+ * referenced in arithmetic context): X'..' hex, B'..' binary, C'..' EBCDIC, or
+ * an optionally signed decimal. Used where a &var's stored text is a number. */
+static long selfdef(const char *s) {
+    while (*s == ' ') s++;
+    int neg = 0; if (*s == '+') s++; else if (*s == '-') { neg = 1; s++; }
+    long v = 0;
+    if ((*s == 'X' || *s == 'B' || *s == 'C') && s[1] == '\'') {
+        int kind = *s; s += 2;
+        if (kind == 'X') { while (*s && *s != '\'') v = v * 16 + hexv(*s++); }
+        else if (kind == 'B') { while (*s && *s != '\'') v = v * 2 + (*s++ == '1' ? 1 : 0); }
+        else { while (*s && *s != '\'') { if (*s == '\'' && s[1] == '\'') s++; v = (v << 8) | a2e((unsigned char)*s++); } }
+    } else v = atol(s);
+    return neg ? -v : v;
+}
 static long e_prim(void) {
     e_sp();
     if (*ep_ == '(') { ep_++; long v = e_expr(); e_sp(); if (*ep_ == ')') ep_++; return v; }
@@ -550,7 +565,7 @@ static long e_prim(void) {
         if (*ep_ == '\'') ep_++;
         return v;
     }
-    if (*ep_ == '&') { char ref[44], v[96]; e_readref(ref); vref(ec_, ref, v); return atol(v); }
+    if (*ep_ == '&') { char ref[44], v[96]; e_readref(ref); vref(ec_, ref, v); return selfdef(v); }
     return strtol(ep_, (char **)&ep_, 10);
 }
 static long e_term(void) {
