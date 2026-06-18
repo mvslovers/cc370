@@ -1104,7 +1104,14 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
     if (m) {   /* keep the macro call line itself for the listing (not assembled); its expansion is flagged generated */
         if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); gcard[*nout] = img ? strdup(img) : NULL; out[*nout] = strdup(sysbuf); (*nout)++; }
-        mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return;
+        /* HLASM substitutes the caller's variable symbols in a macro's arguments
+         * in the caller's context. At open-code level resolve them from g_opc, so
+         * e.g. `DCB MACRF=P&OUTM.M` binds &MACRF='PMM' (not the literal 'P&OUTM.M',
+         * which the called macro -- not knowing &OUTM -- would mis-parse). Inside a
+         * macro the enclosing expansion has already substituted them. */
+        char aopnd[1024];
+        if (g_genlevel == 0) msub(opc, opnd, aopnd); else { strncpy(aopnd, opnd, sizeof aopnd - 1); aopnd[sizeof aopnd - 1] = 0; }
+        mexp_macro(m, lbl[0] == '.' ? "" : lbl, aopnd, out, nout, depth); return;
     }
     if (*nout >= MAXLINES) return;
     lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN : 0);
