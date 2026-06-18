@@ -1945,7 +1945,7 @@ int main(int argc, char **argv) {
             const char *s = lines[unkln[j]]; int sl = (int)strlen(s);
             while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: line %d - Undefined operation code - %s\n", line_org[unkln[j]], unkops[j]);
+            fprintf(stderr, " ERROR: Undefined operation code in line %d - %s\n", line_org[unkln[j]], unkops[j]);
         }
         errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
     }
