@@ -153,6 +153,12 @@ static long x_factor(int sign) {
     if (*xp_ == '-') { xp_++; return -x_factor(-sign); }
     if (*xp_ == '+') { xp_++; return x_factor(sign); }
     if (isdigit((unsigned char)*xp_)) { char *end; long v = strtol(xp_, (char **)&end, 10); xp_ = end; return v; }
+    if (*xp_ == 'L' && xp_[1] == '\'') {                  /* L' length attribute in a machine-instruction operand */
+        xp_ += 2;
+        if (*xp_ == '*') { xp_++; return 1; }
+        char nm[64]; int n = 0; while (*xp_ && !strchr("+-*/(), ", *xp_) && n < 63) nm[n++] = *xp_++; nm[n] = 0;
+        struct sym *s = sym_find(nm); return s ? (s->len ? s->len : 1) : 1;
+    }
     if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
         char kind = *xp_; xp_ += 2; long v = 0;
         if (kind == 'C') { while (*xp_ && *xp_ != '\'') { v = (v << 8) | a2e((unsigned char)*xp_); xp_++; } }
@@ -1222,7 +1228,10 @@ static void do_pass(int pass, char **lines, int nlines) {
             }
             if (!in_dsect && lc > modlen) modlen = lc;   /* a DS reserves space that extends the section length even though it writes no TXT */
         } else if (!strcmp(op, "EQU")) {
-            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0; s->val = expr_val(opnd, &rc); s->defined = 1; s->sect = cur_sect_id; s->len = 1;
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0;
+                char F[4][64]; int nf = split_fields(opnd, F, 4);
+                s->val = expr_val(F[0], &rc); s->defined = 1; s->sect = cur_sect_id;
+                s->len = (nf >= 2 && F[1][0]) ? (int)expr_val(F[1], NULL) : 1;   /* EQU value,length: 2nd operand sets the length attribute (L') */
                 s->type = (rc == 0) ? S_ABS : S_REL; }   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
