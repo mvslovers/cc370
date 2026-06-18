@@ -1163,14 +1163,13 @@ static int macro_pass(char **in, int nin, char **out) {
     return nout;
 }
 
-static char unkops[128][12]; static int nunk;
-static void note_unknown(const char *o) {
+static char unkops[128][12]; static int unkln[128]; static int nunk;   /* each undefined-op occurrence: the op and its lines[] index */
+static void note_unknown(const char *o, int line) {
     static const char *skip[] = { "SETA","SETB","SETC","GBLA","GBLB","GBLC","LCLA","LCLB","LCLC",
         "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","CXD","COPY","MACRO","MEND","ACTR",
         "EXTRN","WXTRN", NULL };
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
-    for (i = 0; i < nunk; i++) if (!strcmp(unkops[i], o)) return;
-    if (nunk < 128) { scopy(unkops[nunk], o, 11); nunk++; }
+    if (nunk < 128) { scopy(unkops[nunk], o, 11); unkln[nunk] = line; nunk++; }   /* one record per flagged statement */
 }
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
@@ -1569,7 +1568,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             } }
             if (!in_dsect && lc > modlen) modlen = lc;   /* the pool's doubleword alignment extends the section length (no TXT for the pad) */
             litpool++;
-        } else if (pass == 1) note_unknown(op);
+        } else if (pass == 1) note_unknown(op, i);
     }
     if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
     if (pass == 2 && prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc);   /* close the byte count of the last assembled statement (no later statement triggers the flush) */
@@ -1873,14 +1872,14 @@ static void usage(FILE *o) {
 "  -a[sub-option...]  turn on listings\n"
 "                     Sub-options:\n"
 "                     e     produce external symbol dictionary\n"
-"                     g     produce general purpose register cross-reference\n"
-"                     i     produce product information\n"
-"                     m     produce macro and copy code source summary\n"
+"                     g     produce general purpose register cross-reference (not yet implemented)\n"
+"                     i     produce product information (not yet implemented)\n"
+"                     m     produce macro and copy code source summary (not yet implemented)\n"
 "                     r     produce relocation dictionary\n"
-"                     s     produce ordinary symbol and literal cross-reference\n"
-"                     x     produce DSECT cross-reference\n"
+"                     s     produce ordinary symbol and literal cross-reference (not yet implemented)\n"
+"                     x     produce DSECT cross-reference (not yet implemented)\n"
 "                     =FILE list to FILE (must be last sub-option)\n"
-"  --[no]help         show this message and exit\n"
+"  --help             show this message and exit\n"
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
 "  -v                 print as utility version\n", o);
@@ -1895,7 +1894,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strcmp(argv[ai], "-m") && ai + 1 < argc) ++ai;   /* -m HLASM-option: accepted, not yet implemented */
-        else if (!strcmp(argv[ai], "--") || !strcmp(argv[ai], "--nohelp")) { /* recognised, no-op */ }
+        else if (!strcmp(argv[ai], "--")) { /* end of options: recognised, no-op */ }
         else if (!strcmp(argv[ai], "-E")) eonly = 1;       /* (internal) dump macro-expanded source */
         else if (!strcmp(argv[ai], "-L")) listing = 1;     /* (internal) terse stderr listing */
         else if (!strncmp(argv[ai], "-a", 2)) {            /* -a[ergsmix...][=FILE]: turn on listings */
@@ -1932,11 +1931,15 @@ int main(int argc, char **argv) {
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     do_pass(2, lines, nl);
-    if (nunk) {   /* an op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
-        int j; fprintf(stderr, "as370: error: %d undefined operation code(s) or macro(s) not found in the -I search path:", nunk);
-        for (j = 0; j < nunk; j++) fprintf(stderr, " %s", unkops[j]);
-        fprintf(stderr, "\n");
-        errors += nunk;   /* fail the assembly (non-zero exit) so the build pipeline catches a missing macro */
+    if (nunk) {   /* op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
+        int j; for (j = 0; j < nunk; j++) {
+            const char *s = lines[unkln[j]]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Undefined operation code - %s\n", unkops[j]);
+            fprintf(stderr, " INFO:  Line %d in %s\n", unkln[j] + 1, src);
+        }
+        errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
     }
 
     if (objfn) {
@@ -1944,5 +1947,7 @@ int main(int argc, char **argv) {
         emit_obj(of); fclose(of);
     }
     emit_listing_a(lines, nl);
-    return errors ? 8 : 0;   /* RC: 0 = clean ("No statements flagged"), 8 = error(s). Finer 4/12/16 once we classify warnings/severe/terminal. */
+    if (errors)   /* highest severity is 8 (our only diagnostic class today) */
+        fprintf(stderr, " Assembler Done   %d Statement%s Flagged /   8 was Highest Severity\n", errors, errors == 1 ? "" : "s");
+    return errors ? 8 : 0;   /* RC: 0 = clean (silent), 8 = error(s). Finer 4/12/16 once we classify warnings/severe/terminal. */
 }
