@@ -371,7 +371,7 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
 #define MAXLINES 131072
 struct macro {
     char namep[20], name[16];
-    char pname[24][20], pdef[24][40]; int pkey[24]; int nparm;
+    char pname[100][20], pdef[100][40]; int pkey[100]; int nparm;   /* DCB has ~96 keyword params */
     char *body[4096]; int nbody;
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
 };
@@ -384,7 +384,7 @@ static struct macro *mac_find(const char *n) {
 /* ---- macro expansion context + conditional assembly --------------------- */
 struct ctx {
     struct macro *m;
-    char pv[24][96];                       /* parameter values (may be sublists) */
+    char pv[100][96];                      /* parameter values (may be sublists) */
     const char *namepval;
     char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
     int sysndx;                            /* &SYSNDX for this macro invocation */
@@ -720,11 +720,21 @@ static int lib_readlines(const char *name, char *buf[], int max) {
 }
 static struct macro *capture_macro(char **in, int nin, int *ip) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
-    char pb[1024], pl[16], po[16], pp[1024]; strncpy(pb, in[i], 1023); pb[1023] = 0; parse(pb, pl, po, pp);
+    char pb[4096], pl[16], po[16], pp[4096]; strncpy(pb, in[i], 4095); pb[4095] = 0; parse(pb, pl, po, pp);
+    { const char *p = pb;                 /* re-extract the full prototype operand (parse caps at 1023; DCB's list is longer) */
+        if (*p && !isspace((unsigned char)*p)) while (*p && !isspace((unsigned char)*p)) p++;   /* skip label */
+        while (*p == ' ' || *p == '\t') p++;
+        while (*p && !isspace((unsigned char)*p)) p++;                                          /* skip opcode */
+        while (*p == ' ' || *p == '\t') p++;
+        int oi = 0, q = 0, d = 0; while (*p && *p != '\n') {
+            if (*p == '\'') q = !q; else if (!q && *p == '(') d++; else if (!q && *p == ')') { if (d) d--; }
+            if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
+            if (oi < 4095) pp[oi++] = *p; p++; }
+        pp[oi] = 0; }
     struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
     scopy(m->namep, pl, sizeof m->namep - 1); scopy(m->name, po, sizeof m->name - 1);
-    if (pp[0]) { char flds[24][64]; int nf = split_fields(pp, flds, 24), k;
-        for (k = 0; k < nf && k < 24; k++) { char *eq = strchr(flds[k], '=');
+    if (pp[0]) { char flds[100][64]; int nf = split_fields(pp, flds, 100), k;
+        for (k = 0; k < nf && k < 100; k++) { char *eq = strchr(flds[k], '=');
             if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
             else scopy(m->pname[k], flds[k], 19);
             m->nparm++; } }
@@ -778,7 +788,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; c.sysndx = ++g_sysndx;
     int k;
     for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
-    if (opnd[0]) { char args[24][64]; int na = split_fields(opnd, args, 24), pos = 0;
+    if (opnd[0]) { char args[100][64]; int na = split_fields(opnd, args, 100), pos = 0;
         for (k = 0; k < na; k++) {
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
