@@ -1056,7 +1056,7 @@ static void emit_lit(struct lit *l) {
     while (isdigit((unsigned char)*p)) p++;
     char ty = toupper((unsigned char)*p++);
     if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
-    if (ty == 'V') { put(l->loc, 0, l->size); add_reloc(l->loc, l->ext, 1); }
+    if (ty == 'V') { put(l->loc, 0, l->size); add_reloc(l->loc, l->ext, 1); rels[nrel - 1].len = l->size; }
     else if (ty == 'A' || ty == 'Y') {
         int rc = 0; put(l->loc, l->ext[0] ? expr_val(l->ext, &rc) : 0, l->size);
         char sym[16]; int sn = 0; const char *se = l->ext;     /* leading symbol = relocation target (e.g. @V1-192) */
@@ -1064,7 +1064,7 @@ static void emit_lit(struct lit *l) {
         sym[sn] = 0;
         struct sym *es = sym_find(sym);
         int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
-        if (rc != 0 && tgtreal) add_reloc(l->loc, sym, 0);   /* relocate only if net-relocatable and target ('*' or a symbol) is in a real section */
+        if (rc != 0 && tgtreal) { add_reloc(l->loc, sym, 0); rels[nrel - 1].len = l->size; }   /* relocate only if net-relocatable and target ('*' or a symbol) is in a real section; RLD length matches AL3/AL2 width */
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         const char *q = strchr(p, '\'');
         if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
