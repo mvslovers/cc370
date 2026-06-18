@@ -518,6 +518,11 @@ static struct lrec lrecs[MAXLINES];
  * for an ordinary source line, where lines[] is already the verbatim card. */
 static char *gcard[MAXLINES];
 static const char *g_genimg;   /* image for the single line the next mexp_line emits */
+/* source-file line number each expanded line derives from (for diagnostics): an
+ * open-code statement -> its own line; a macro/COPY-generated line -> the line of
+ * the call/COPY in the input file. g_curorg is the line currently being expanded. */
+static int line_org[MAXLINES];
+static int g_curorg;
 struct macro {
     char namep[20], name[16];
     char pname[100][20], pdef[100][40]; int pkey[100]; int nparm;   /* DCB has ~96 keyword params */
@@ -853,10 +858,11 @@ static int lib_path(const char *name, char *path) {
 static int rawlen(const char *l) { int n = (int)strlen(l); while (n > 0 && (l[n-1] == '\n' || l[n-1] == '\r')) n--; return n; }
 /* seqout (optional) receives cols 73-80 of each output line's primary card --
  * the library sequence number the listing's SOURCE column carries through. */
-static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12]) {
+static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12], int *org) {
     int i = 0, no = 0;
     while (i < n && no < maxout) {
         const char *l = in[i];
+        if (org) org[no] = i + 1;   /* 1-based input line of this statement's first card */
         if (seqout) { int k, sl = rawlen(l); for (k = 0; k < 8; k++) seqout[no][k] = (72 + k < sl) ? l[72 + k] : ' '; seqout[no][8] = 0; }
         if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) { out[no++] = strdup(l); i++; continue; }
         char acc[8192]; int a = 0, len = rawlen(l), copy = len > 71 ? 71 : len;
@@ -896,7 +902,7 @@ static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[
     static char *tmp[16384]; char lb[256]; int n = 0;
     while (fgets(lb, sizeof lb, f) && n < 16384) tmp[n++] = strdup(lb);
     fclose(f);
-    return join_cont(tmp, n, buf, max, seqbuf);
+    return join_cont(tmp, n, buf, max, seqbuf, NULL);
 }
 static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12]) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
@@ -1064,7 +1070,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
  * pass and every COPY'd block, so a GBLC/SETC in PDPTOP reaches an AIF in
  * CLIBSUPA); globals route to the shared store. */
 static struct ctx g_opc;
-static void mexp_block(char **arr, int n, char **out, int *nout, int depth);   /* fwd */
+static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int *org);   /* fwd */
 /* expand one statement: macro call -> interpret; else emit (stripping any
  * leading sequence-symbol label so it never reaches the core). */
 /* Resolve the global system variables &SYSDATE/&SYSTIME in open code, before a
@@ -1104,12 +1110,12 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && (set_stmt(opc, lbl, op, opnd))) return;
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
         char *cb[2048]; int n = lib_readlines(opnd, cb, 2048, NULL);
-        if (n >= 0) { mexp_block(cb, n, out, nout, depth + 1); return; }   /* COPY'd block: open-code conditional assembly + macro defs */
+        if (n >= 0) { mexp_block(cb, n, out, nout, depth + 1, NULL); return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
     }
     struct macro *m = NULL;
     if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
     if (m) {   /* keep the macro call line itself for the listing (not assembled); its expansion is flagged generated */
-        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); gcard[*nout] = img ? strdup(img) : NULL; out[*nout] = strdup(sysbuf); (*nout)++; }
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); gcard[*nout] = img ? strdup(img) : NULL; line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
         /* HLASM substitutes the caller's variable symbols in a macro's arguments
          * in the caller's context. At open-code level resolve them from g_opc, so
          * e.g. `DCB MACRF=P&OUTM.M` binds &MACRF='PMM' (not the literal 'P&OUTM.M',
@@ -1122,6 +1128,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (*nout >= MAXLINES) return;
     lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN : 0);
     gcard[*nout] = img ? strdup(img) : NULL;
+    line_org[*nout] = g_curorg;
     if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(sysbuf);
 }
@@ -1129,7 +1136,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
  * Used for the whole module and for each COPY'd block; MACRO defs are captured,
  * everything else flows through mexp_line. The conditional context is the shared
  * g_opc (via mexp_line's set_stmt and the AIF eval below). */
-static void mexp_block(char **arr, int n, char **out, int *nout, int depth) {
+static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int *org) {
     char (*seqn)[20] = malloc((size_t)(n + 1) * 20); int *seqi = malloc((size_t)(n + 1) * sizeof(int));
     int nseq = 0, k, mdef = 0;
     if (!seqn || !seqi) { free(seqn); free(seqi); return; }
@@ -1145,6 +1152,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth) {
     }
     int pc = 0, guard = 0;
     while (pc < n && guard++ < 4000000) {
+        if (org) g_curorg = org[pc];   /* track the input-file line of the statement being expanded (inherited by macro/COPY output) */
         char buf[1024], lbl[32], op[16], opnd[1024]; strncpy(buf, arr[pc], 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
         if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
         if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, seq);
@@ -1157,9 +1165,9 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth) {
     free(seqn); free(seqi);
 }
 /* macro pass: capture MACRO/MEND defs, expand calls -> flat open code */
-static int macro_pass(char **in, int nin, char **out) {
+static int macro_pass(char **in, int nin, char **out, int *raw_org) {
     int nout = 0;
-    mexp_block(in, nin, out, &nout, 0);
+    mexp_block(in, nin, out, &nout, 0, raw_org);
     return nout;
 }
 
@@ -1917,10 +1925,11 @@ int main(int argc, char **argv) {
     static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
     while (fgets(lb, sizeof lb, f) && nr < MAXLINES) raw0[nr++] = strdup(lb);
     fclose(f);
-    int n = join_cont(raw0, nr, raw, MAXLINES, NULL);   /* fold column-72 continuations */
+    static int raw_org[MAXLINES];
+    int n = join_cont(raw0, nr, raw, MAXLINES, NULL, raw_org);   /* fold column-72 continuations; raw_org = input line per statement */
 
     static char *lines[MAXLINES];
-    int nl = macro_pass(raw, n, lines);
+    int nl = macro_pass(raw, n, lines, raw_org);
     if (eonly) { int j; for (j = 0; j < nl; j++) { fputs(lines[j], stdout); if (lines[j][0] && lines[j][strlen(lines[j]) - 1] != '\n') putchar('\n'); } return 0; }
 
     do_pass(1, lines, nl);
@@ -1936,8 +1945,7 @@ int main(int argc, char **argv) {
             const char *s = lines[unkln[j]]; int sl = (int)strlen(s);
             while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Undefined operation code - %s\n", unkops[j]);
-            fprintf(stderr, " INFO:  Line %d in %s\n", unkln[j] + 1, src);
+            fprintf(stderr, " ERROR: line %d - Undefined operation code - %s\n", line_org[unkln[j]], unkops[j]);
         }
         errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
     }
