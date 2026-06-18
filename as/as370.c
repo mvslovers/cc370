@@ -412,8 +412,8 @@ static void vref(struct ctx *c, const char *ref, char *out) {
         for (k = 0; k < c->nsyslist; k++) { if (k) slbuf[o++] = ','; const char *v = c->syslist[k]; while (*v && o < 1022) slbuf[o++] = *v++; }
         slbuf[o++] = ')'; slbuf[o] = 0; base = slbuf; is_param = 1;
     }
-    else if (c->m->namep[0] && !strcmp(amp, c->m->namep)) { base = c->namepval ? c->namepval : ""; is_param = 1; }
-    else for (k = 0; k < c->m->nparm; k++) if (!strcmp(amp, c->m->pname[k])) { base = c->pv[k]; is_param = 1; break; }
+    else if (c->m && c->m->namep[0] && !strcmp(amp, c->m->namep)) { base = c->namepval ? c->namepval : ""; is_param = 1; }
+    else if (c->m) for (k = 0; k < c->m->nparm; k++) if (!strcmp(amp, c->m->pname[k])) { base = c->pv[k]; is_param = 1; break; }   /* open code: c->m is NULL -> resolve via the SET/global store below */
     if (*p == '(') {
         char idxs[64]; const char *rp = strchr(p, ')'); int L = rp ? (int)(rp - p - 1) : (int)strlen(p + 1); if (L > 63) L = 63; memcpy(idxs, p + 1, L); idxs[L] = 0;
         const char *sep = ep_; struct ctx *sec = ec_; long idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec;   /* save/restore parser state */
@@ -758,23 +758,24 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         pc++;
     }
 }
+/* persistent open-code conditional-assembly context (shared by the top-level
+ * pass and every COPY'd block, so a GBLC/SETC in PDPTOP reaches an AIF in
+ * CLIBSUPA); globals route to the shared store. */
+static struct ctx g_opc;
+static void mexp_block(char **arr, int n, char **out, int *nout, int depth);   /* fwd */
 /* expand one statement: macro call -> interpret; else emit (stripping any
  * leading sequence-symbol label so it never reaches the core). */
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
-    static struct ctx opc;   /* persistent open-code context for conditional assembly (globals route to the shared store) */
+    struct ctx *opc = &g_opc;   /* shared open-code context */
     char buf[1024], lbl[16], op[16], opnd[1024];
     strncpy(buf, line, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`. */
-    if (op[0] && (set_stmt(&opc, lbl, op, opnd))) return;
+    if (op[0] && (set_stmt(opc, lbl, op, opnd))) return;
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
         char *cb[2048]; int n = lib_readlines(opnd, cb, 2048);
-        if (n >= 0) { int j; for (j = 0; j < n; j++) {
-                char cbuf[1024], cl[16], co[16], cd[1024]; strncpy(cbuf, cb[j], 1023); cbuf[1023] = 0; parse(cbuf, cl, co, cd);
-                if (!strcmp(co, "MACRO")) { capture_macro(cb, n, &j); continue; }   /* a COPY'd macro library (e.g. MVSMACS) defines its macros, not open code */
-                mexp_line(cb[j], out, nout, depth + 1);
-            } return; }
+        if (n >= 0) { mexp_block(cb, n, out, nout, depth + 1); return; }   /* COPY'd block: open-code conditional assembly + macro defs */
     }
     struct macro *m = NULL;
     if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
@@ -783,15 +784,41 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(line);
 }
+/* expand a line array as open code, honoring AIF/AGO/sequence-symbol branching.
+ * Used for the whole module and for each COPY'd block; MACRO defs are captured,
+ * everything else flows through mexp_line. The conditional context is the shared
+ * g_opc (via mexp_line's set_stmt and the AIF eval below). */
+static void mexp_block(char **arr, int n, char **out, int *nout, int depth) {
+    char (*seqn)[20] = malloc((size_t)(n + 1) * 20); int *seqi = malloc((size_t)(n + 1) * sizeof(int));
+    int nseq = 0, k, mdef = 0;
+    if (!seqn || !seqi) { free(seqn); free(seqi); return; }
+    for (k = 0; k < n; k++) {                          /* prescan sequence-symbol labels (skip MACRO..MEND bodies) */
+        char sb[1024], sl[16], so[16], sd[1024]; strncpy(sb, arr[k], 1023); sb[1023] = 0; parse(sb, sl, so, sd);
+        if (!strcmp(so, "MACRO")) { mdef++; continue; }
+        if (!strcmp(so, "MEND")) { if (mdef) mdef--; continue; }
+        if (mdef) continue;
+        if (arr[k][0] == '.' && arr[k][1] != '*') {
+            int j = 0; const char *q = arr[k]; while (*q && !isspace((unsigned char)*q) && j < 15) sl[j++] = *q++; sl[j] = 0;
+            if (nseq <= n) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
+        }
+    }
+    int pc = 0, guard = 0;
+    while (pc < n && guard++ < 4000000) {
+        char buf[1024], lbl[16], op[16], opnd[1024]; strncpy(buf, arr[pc], 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
+        if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc); pc++; continue; }   /* COPY'd / inline macro definition */
+        if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, seq);
+            if (eval_cond(&g_opc, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
+            pc++; continue; }
+        if (!strcmp(op, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], opnd)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
+        mexp_line(arr[pc], out, nout, depth);
+        pc++;
+    }
+    free(seqn); free(seqi);
+}
 /* macro pass: capture MACRO/MEND defs, expand calls -> flat open code */
 static int macro_pass(char **in, int nin, char **out) {
-    int nout = 0, i;
-    for (i = 0; i < nin; i++) {
-        char buf[1024], lbl[16], op[16], opnd[1024];
-        strncpy(buf, in[i], 255); buf[255] = 0; parse(buf, lbl, op, opnd);
-        if (!strcmp(op, "MACRO")) { capture_macro(in, nin, &i); continue; }
-        mexp_line(in[i], out, &nout, 0);
-    }
+    int nout = 0;
+    mexp_block(in, nin, out, &nout, 0);
     return nout;
 }
 
