@@ -1271,24 +1271,38 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (!haslen) { blen = base; long oldlc = lc; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc);
                         if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }   /* DC alignment padding is emitted as zero TXT (IFOX-compatible) */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
-                    long val = 0; char ename[64] = "", rsym[64] = ""; int isrel = 0, isvcon = (ty == 'V'), isaddr = (ty == 'A' || ty == 'Y' || isvcon);
-                    if (isaddr) { const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
-                        if (lp && rp && rp > lp) { size_t n = rp - lp - 1; if (n > 63) n = 63; memcpy(ename, lp + 1, n); ename[n] = 0; }
-                        if (isvcon) {                                  /* V-con: leading token is the (possibly not-yet-defined) ER name */
-                            int sn = 0; const char *se = ename; while (*se && !strchr("+-(), ", *se) && sn < 15) rsym[sn++] = *se++; rsym[sn] = 0;
-                            if (pass == 1 && rsym[0] && !in_dsect) { struct sym *s = sym_get(rsym); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } isrel = 1; }   /* always relocated (none in a dummy section) */
-                        else { reloc_sym(ename, rsym, sizeof rsym); int rc = 0; expr_val(ename, &rc);   /* A/Y: relocation target is the relocatable symbol term (e.g. X'80000000'+SYM -> SYM) */
-                            struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
-                            int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
-                            isrel = (rc != 0) && tgtreal; } }   /* relocate only if net-relocatable and the target ('*' or a symbol) is in a real (non-dummy) section */
-                    else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
-                    for (k = 0; k < cnt; k++) {
-                        if (emit_dc) {
-                            if (isvcon) { put(lc, 0, blen); add_reloc(lc, rsym, 1); rels[nrel - 1].len = blen; }       /* V-type relocation */
-                            else if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) { add_reloc(lc, rsym, 0); rels[nrel - 1].len = blen; } }   /* AL3 address -> 3-byte relocation, etc. */
-                            else put(lc, val, blen);
-                        }
-                        lc += blen;
+                    long val = 0; int isvcon = (ty == 'V'), isaddr = (ty == 'A' || ty == 'Y' || isvcon);
+                    if (isaddr) {                                  /* address constant, possibly a value list A(v1,v2,..) */
+                        const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
+                        char inside[256] = "";
+                        if (lp && rp && rp > lp) { size_t n = (size_t)(rp - lp - 1); if (n > 255) n = 255; memcpy(inside, lp + 1, n); inside[n] = 0; }
+                        char vals[32][80]; int nv = 0;             /* split the operand list on top-level commas */
+                        { const char *s = inside, *st = inside; int q = 0, d = 0;
+                          for (;; s++) {
+                              if (*s == '\'') q = !q;
+                              else if (!q && *s == '(') d++;
+                              else if (!q && *s == ')') { if (d) d--; }
+                              if ((!q && d == 0 && *s == ',') || !*s) {
+                                  if (nv < 32) { int L = (int)(s - st); if (L > 79) L = 79; memcpy(vals[nv], st, L); vals[nv][L] = 0; nv++; }
+                                  if (!*s) break; st = s + 1; } } }
+                        if (nv == 0) { vals[0][0] = 0; nv = 1; }   /* A() -> a single zero constant */
+                        if (isvcon && pass == 1 && !in_dsect) { int vj; for (vj = 0; vj < nv; vj++) {   /* register each V-con ER */
+                            char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
+                            if (r[0]) { struct sym *s = sym_get(r); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } } }
+                        for (k = 0; k < cnt; k++) { int vj; for (vj = 0; vj < nv; vj++) {
+                            if (emit_dc) {
+                                if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
+                                    put(lc, 0, blen); add_reloc(lc, r, 1); rels[nrel - 1].len = blen; }
+                                else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0; long v = vals[vj][0] ? expr_val(vals[vj], &rc) : 0;
+                                    struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
+                                    int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+                                    put(lc, v, blen); if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0); rels[nrel - 1].len = blen; } }   /* AL3 address -> 3-byte relocation, etc. */
+                            }
+                            lc += blen;
+                        } }
+                    } else {
+                        const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10);
+                        for (k = 0; k < cnt; k++) { if (emit_dc) put(lc, val, blen); lc += blen; }
                     }
                 } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
