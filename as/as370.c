@@ -1182,8 +1182,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                     else { const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10); }
                     for (k = 0; k < cnt; k++) {
                         if (emit_dc) {
-                            if (isvcon) { put(lc, 0, blen); add_reloc(lc, rsym, 1); }       /* V-type relocation */
-                            else if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) add_reloc(lc, rsym, 0); }
+                            if (isvcon) { put(lc, 0, blen); add_reloc(lc, rsym, 1); rels[nrel - 1].len = blen; }       /* V-type relocation */
+                            else if (isaddr) { put(lc, ename[0] ? expr_val(ename, NULL) : 0, blen); if (isrel) { add_reloc(lc, rsym, 0); rels[nrel - 1].len = blen; } }   /* AL3 address -> 3-byte relocation, etc. */
                             else put(lc, val, blen);
                         }
                         lc += blen;
