@@ -626,13 +626,23 @@ static int join_cont(char **in, int n, char **out, int maxout) {
         memcpy(acc, l, copy); a = copy;
         int cont = (len > 71 && l[71] != ' ');
         i++;
+        /* operand field starts after the label (col 1) and the opcode */
+        int os = 0;
+        if (acc[0] != ' ' && acc[0] != '\t') while (os < a && acc[os] != ' ' && acc[os] != '\t') os++;
+        while (os < a && (acc[os] == ' ' || acc[os] == '\t')) os++;
+        while (os < a && acc[os] != ' ' && acc[os] != '\t') os++;
+        while (os < a && (acc[os] == ' ' || acc[os] == '\t')) os++;
         while (cont && i < n) {
-            /* when the operand list is syntactically continued (the last non-blank
-             * is a comma) the blanks padding to column 72 are not significant — drop
-             * them so the next operand joins on. Otherwise keep them: they separate a
-             * complete operand from a trailing comment, or sit inside a string. */
-            int last = a - 1; while (last >= 0 && acc[last] == ' ') last--;
-            if (last >= 0 && acc[last] == ',') a = last + 1;
+            /* a continued line's operands end at the first top-level blank (outside
+             * quotes/parens); drop the trailing comment before joining the next line
+             * so e.g. `DCB &MACRF=,  FOUNDATION BLOCK` + continuation keeps the comma */
+            int j, q = 0, d = 0;
+            for (j = os; j < a; j++) { char ch = acc[j];
+                if (ch == '\'') q = !q;
+                else if (!q && ch == '(') d++;
+                else if (!q && ch == ')') { if (d) d--; }
+                else if (!q && d == 0 && (ch == ' ' || ch == '\t')) { a = j; break; }
+            }
             const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
             for (; s < e && a < 8190; s++) acc[a++] = c[s];
             cont = (cl > 71 && c[71] != ' ');
