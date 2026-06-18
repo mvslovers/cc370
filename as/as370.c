@@ -323,7 +323,7 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
 struct macro {
     char namep[20], name[16];
     char pname[24][20], pdef[24][40]; int pkey[24]; int nparm;
-    char *body[1024]; int nbody;
+    char *body[4096]; int nbody;
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
 };
 static struct macro macros[256];
@@ -666,7 +666,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip) {
             m->nparm++; } }
     while (++i < nin) { char bb[256], bl[16], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') strncpy(m->endlbl, bl, 19); break; }
-        if (m->nbody < 1024) m->body[m->nbody++] = strdup(in[i]); }
+        if (m->nbody < 4096) m->body[m->nbody++] = strdup(in[i]); }
     *ip = i; return m;
 }
 static struct macro *lib_load(const char *name) {
@@ -725,12 +725,12 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         }
     }
     /* prescan sequence-symbol labels */
-    char seqn[256][20]; int seqi[256], nseq = 0;   /* stack-local: mexp_macro recurses for nested macros */
+    char seqn[2048][20]; int seqi[2048], nseq = 0;   /* stack-local (mexp_macro recurses for nested macros); big enough for DCBD/CVT/IKJTCB */
     for (k = 0; k < m->nbody; k++) if (m->body[k][0] == '.' && m->body[k][1] != '*') {
         char sl[20]; int j = 0; const char *q = m->body[k]; while (*q && !isspace((unsigned char)*q) && j < 19) sl[j++] = *q++; sl[j] = 0;
-        if (nseq < 256) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
+        if (nseq < 2048) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
     }
-    if (m->endlbl[0] && nseq < 256) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
+    if (m->endlbl[0] && nseq < 2048) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
     int pc = 0, guard = 0;
     while (pc < m->nbody && guard++ < 100000) {
         char bb[1024], bl[16], bo[16], bod[1024];
