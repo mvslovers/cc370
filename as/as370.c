@@ -464,6 +464,11 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
 
 /* ---- WP-4 macro preprocessor --------------------------------------------- */
 #define MAXLINES 131072
+/* per-expanded-line listing flags, parallel to the flattened lines[] array */
+#define LF_GEN   1     /* macro-generated statement (listed with '+') */
+#define LF_NOASM 2     /* listing-only (e.g. the macro call line): shown, not assembled */
+static unsigned char lflags[MAXLINES];
+static int g_genlevel;  /* >0 while inside a macro expansion (distinguishes generated lines from COPY'd source) */
 struct macro {
     char namep[20], name[16];
     char pname[100][20], pdef[100][40]; int pkey[100]; int nparm;   /* DCB has ~96 keyword params */
@@ -907,6 +912,7 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
 }
 /* expand a macro invocation, interpreting conditional assembly */
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
+    g_genlevel++;   /* lines emitted during this expansion are macro-generated */
     struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; c.sysndx = ++g_sysndx;
     int k;
     for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
@@ -945,6 +951,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
+    g_genlevel--;
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
  * pass and every COPY'd block, so a GBLC/SETC in PDPTOP reaches an AIF in
@@ -993,8 +1000,12 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     }
     struct macro *m = NULL;
     if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
-    if (m) { mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return; }
+    if (m) {   /* keep the macro call line itself for the listing (not assembled); its expansion is flagged generated */
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); out[*nout] = strdup(sysbuf); (*nout)++; }
+        mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return;
+    }
     if (*nout >= MAXLINES) return;
+    lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN : 0);
     if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(sysbuf);
 }
@@ -1168,6 +1179,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     int pre_csect = 0;                  /* a content statement appeared before the first CSECT */
     if (pass == 2) nrel = 0;
     for (i = 0; i < nlines; i++) {
+        if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         char buf[1024], lbl[32], op[16], opnd[1024];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
