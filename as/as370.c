@@ -1542,6 +1542,84 @@ static void emit_obj(FILE *f) {
     cseq(c, ++seq); fwrite(c, 1, 80, f);
 }
 
+/* ---- -a assembler listing (ASCII, columns matching IFOX00 SYSPRINT) -------
+ * Each section is a 120-column page: a centred title line with PAGE n at col
+ * 112, then a column-header line with the translator-id/time/date block right-
+ * justified at col 120. Page eject = ASCII form-feed. Source listing is TODO. */
+static FILE *alst; static const char *alst_fn;
+static int a_on, a_esd, a_rld, a_xref, a_src, a_page;
+static void a_line(const char *s) {                 /* write a print line, trailing blanks trimmed */
+    int n = (int)strlen(s); while (n > 0 && s[n - 1] == ' ') n--;
+    fwrite(s, 1, (size_t)n, alst); fputc('\n', alst);
+}
+static void a_newpage(const char *title, const char *colhdr) {
+    char ln[128]; int t = (int)strlen(title);
+    if (a_page++) fputc('\f', alst);                /* page eject before every page but the first */
+    memset(ln, ' ', 120); ln[120] = 0;
+    { int lead = (121 - t) / 2; if (lead < 0) lead = 0; memcpy(ln + lead, title, (size_t)t); }
+    { char pg[16]; snprintf(pg, sizeof pg, "PAGE%5d", a_page); memcpy(ln + 111, pg, strlen(pg)); }   /* PAGE at col 112 */
+    a_line(ln);
+    memset(ln, ' ', 120); ln[120] = 0;
+    memcpy(ln, colhdr, strlen(colhdr));
+    { char id[48]; int bl; snprintf(id, sizeof id, "%s %s %s %s", AS370_IDR_PROD, AS370_IDR_VER, g_systime, g_sysdate);
+      bl = (int)strlen(id); if (bl > 120) bl = 120; memcpy(ln + 120 - bl, id, (size_t)bl); }   /* level/time/date right-justified at col 120 */
+    a_line(ln);
+}
+static int sect_esdid(int sect) {                   /* ESDID of the control section with this internal id (for an LD's owning section) */
+    int k; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT && esdord[k].s->sect == sect) return esdord[k].s->esdid;
+    return main_sect_esdid;
+}
+static void a_esd_section(void) {
+    int k; char ln[128], b[16];
+    a_newpage("EXTERNAL SYMBOL DICTIONARY", "SYMBOL   TYPE  ID   ADDR  LENGTH LDID");
+    for (k = 0; k < nesdord; k++) {
+        struct sym *s = esdord[k].s; int role = esdord[k].role, nl = (int)strlen(s->name);
+        memset(ln, ' ', 120); ln[120] = 0;
+        if (nl > 8) nl = 8; memcpy(ln, s->name, (size_t)nl);                 /* SYMBOL col 1 */
+        if (role == ESD_SECT) {
+            memcpy(ln + 10, s->type == S_PC ? "PC" : "SD", 2);              /* TYPE col 11 */
+            snprintf(b, sizeof b, "%04X", s->esdid); memcpy(ln + 14, b, 4); /* ID col 15 */
+            snprintf(b, sizeof b, "%06lX", s->val & 0xffffffL); memcpy(ln + 19, b, 6);                         /* ADDR col 20 */
+            snprintf(b, sizeof b, "%06lX", (s->esdid == main_sect_esdid ? modlen : 0) & 0xffffffL); memcpy(ln + 26, b, 6);  /* LENGTH col 27 */
+        } else if (role == ESD_LD) {
+            memcpy(ln + 10, "LD", 2);
+            snprintf(b, sizeof b, "%06lX", s->val & 0xffffffL); memcpy(ln + 19, b, 6);
+            snprintf(b, sizeof b, "%04X", sect_esdid(s->sect)); memcpy(ln + 33, b, 4);   /* LDID col 34 */
+        } else {
+            memcpy(ln + 10, s->is_weak ? "WX" : "ER", 2);
+            snprintf(b, sizeof b, "%04X", s->esdid); memcpy(ln + 14, b, 4);
+        }
+        a_line(ln);
+    }
+}
+static void a_rld_section(void) {
+    int k; char ln[128], b[16];
+    if (nrel == 0) return;
+    { int a2, b2; for (a2 = 1; a2 < nrel; a2++) { struct reloc t = rels[a2]; b2 = a2 - 1;   /* group by (pos,rel) like the object RLD */
+        while (b2 >= 0 && (rels[b2].pos > t.pos || (rels[b2].pos == t.pos && rels[b2].rel > t.rel))) { rels[b2 + 1] = rels[b2]; b2--; }
+        rels[b2 + 1] = t; } }
+    a_newpage("RELOCATION DICTIONARY", "POS.ID   REL.ID   FLAGS   ADDRESS");
+    for (k = 0; k < nrel; k++) {
+        int flag = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2);
+        memset(ln, ' ', 120); ln[120] = 0;
+        snprintf(b, sizeof b, "%04X", rels[k].pos); memcpy(ln + 1, b, 4);     /* POS.ID col 2 */
+        snprintf(b, sizeof b, "%04X", rels[k].rel); memcpy(ln + 10, b, 4);    /* REL.ID col 11 */
+        snprintf(b, sizeof b, "%02X", flag); memcpy(ln + 20, b, 2);           /* FLAGS col 21 */
+        snprintf(b, sizeof b, "%06lX", rels[k].addr & 0xffffffL); memcpy(ln + 27, b, 6);  /* ADDRESS col 28 */
+        a_line(ln);
+    }
+}
+static void emit_listing_a(void) {
+    if (!a_on) return;
+    alst = alst_fn ? fopen(alst_fn, "w") : stdout;
+    if (!alst) { perror(alst_fn); alst = stdout; }
+    a_page = 0;
+    if (a_esd) a_esd_section();
+    /* a_src (source listing) is implemented in the next increment */
+    if (a_rld) a_rld_section();
+    if (alst && alst != stdout) fclose(alst);
+}
+
 int main(int argc, char **argv) {
     const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
     for (ai = 1; ai < argc; ai++) {
@@ -1549,6 +1627,18 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strcmp(argv[ai], "-E")) eonly = 1;
         else if (!strcmp(argv[ai], "-L")) listing = 1;
+        else if (!strncmp(argv[ai], "-a", 2)) {        /* -a[ergsmix...][=FILE]: assembler listing */
+            const char *p = argv[ai] + 2; a_on = 1;
+            for (; *p && *p != '='; p++) switch (*p) {
+                case 'e': a_esd = 1; break;            /* external symbol dictionary */
+                case 'r': a_rld = 1; break;            /* relocation dictionary */
+                case 's': a_xref = 1; break;           /* symbol + literal cross-reference (TODO) */
+                case 'm': case 'g': case 'i': case 'x': break;   /* recognised; no IFOX equivalent (yet) */
+                default: break;
+            }
+            if (*p == '=' && p[1]) alst_fn = p + 1;     /* =FILE */
+            if (!a_esd && !a_rld && !a_xref) a_src = 1;  /* bare -a -> source listing (TODO) */
+        }
         else src = argv[ai];
     }
     if (!src) { fprintf(stderr, "usage: as370 [-I maclib]... [-o obj] file.s\n"); return 2; }
@@ -1585,5 +1675,6 @@ int main(int argc, char **argv) {
         FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 2; }
         emit_obj(of); fclose(of); printf("wrote object deck: %s\n", objfn);
     }
+    emit_listing_a();
     return errors ? 1 : 0;
 }
