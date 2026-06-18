@@ -73,7 +73,7 @@ static unsigned char text[TEXTMAX];
 static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentation) */
 static long lc, modlen;
 static long org_hwm;          /* highest lc reached in the current section (for ORG with no operand) */
-static int  in_dsect; static long main_lc;   /* DSECT: dummy section, own counter, no TXT */
+static int  in_dsect; static long main_lc; static int main_sect_id;   /* DSECT: dummy section, own counter, no TXT; main_* save the control section on first DSECT entry */
 struct uent { int reg; long base; int sect; };   /* active USING ranges */
 static struct uent usings[32]; static int nusing;
 static int  cur_sect_id, g_sectid;            /* section identity for USING resolution */
@@ -1026,7 +1026,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (pass == 1) { s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }
             if (pass == 2) cur_sect_esdid = s->esdid;
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
-            if (!in_dsect) main_lc = lc;
+            if (!in_dsect) { main_lc = lc; main_sect_id = cur_sect_id; }
             lc = 0; in_dsect = 1; org_hwm = 0;
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
@@ -1158,6 +1158,9 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (!strcmp(op, "END") && opnd[0]) {
                 end_has = 1;
                 if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val; end_esdid = s->esdid ? s->esdid : main_sect_esdid; } }
+            }
+            if (!strcmp(op, "END") && in_dsect) {   /* a trailing DSECT must not capture the pending literal pool: flush it into the control section */
+                in_dsect = 0; lc = main_lc; cur_sect_id = main_sect_id; cur_sect_esdid = main_sect_esdid;
             }
             /* gather this pool's literals (ltseq is assigned at creation = the pool
              * that was open when the literal was first referenced) */
