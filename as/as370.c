@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
 
 /* bounded string copy that always NUL-terminates (dst must hold n+1 bytes). A
  * plain loop, not strncpy/strncat, so it is free of the (false-positive here)
@@ -82,6 +83,24 @@ static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
+static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
+static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
+/* Set &SYSDATE/&SYSTIME from the host clock, or from ASMDATE/ASMTIME in the
+ * environment for reproducible builds (verification against a fixed object). */
+static void init_sysvars(void) {
+    const char *ed = getenv("ASMDATE"), *et = getenv("ASMTIME");
+    if (ed && *ed) scopy(g_sysdate, ed, 8);
+    if (et && *et) scopy(g_systime, et, 5);
+    if (!g_sysdate[0] || !g_systime[0]) {
+        time_t t = time(NULL); struct tm *lt = localtime(&t);
+        if (lt) {
+            if (!g_sysdate[0]) snprintf(g_sysdate, sizeof g_sysdate, "%02d/%02d/%02d",
+                                        lt->tm_mon + 1, lt->tm_mday, lt->tm_year % 100);
+            if (!g_systime[0]) snprintf(g_systime, sizeof g_systime, "%02d.%02d",
+                                        lt->tm_hour, lt->tm_min);
+        }
+    }
+}
 
 static unsigned char a2e(int c);   /* fwd */
 
@@ -461,6 +480,8 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 22) nm[i++] = *p++;
     nm[i] = 0;
     if (!strcmp(nm, "SYSNDX")) { snprintf(out, 96, "%04d", c->sysndx); return; }   /* unique per macro invocation */
+    if (!strcmp(nm, "SYSDATE")) { scopy(out, g_sysdate, 8); return; }   /* assembly date "MM/DD/YY" */
+    if (!strcmp(nm, "SYSTIME")) { scopy(out, g_systime, 5); return; }   /* assembly time "HH.MM" */
     char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
     const char *base = NULL; int k, is_param = 0;
     char slbuf[1024];
@@ -837,10 +858,36 @@ static struct ctx g_opc;
 static void mexp_block(char **arr, int n, char **out, int *nout, int depth);   /* fwd */
 /* expand one statement: macro call -> interpret; else emit (stripping any
  * leading sequence-symbol label so it never reaches the core). */
+/* Resolve the global system variables &SYSDATE/&SYSTIME in open code, before a
+ * macro call binds them as parameter values (so the SAVE macro's K'&ID sees the
+ * substituted length) or a bare DC emits them. Only these two context-free
+ * globals are touched; all other & references pass through for the normal macro
+ * machinery. Idempotent: an already-expanded line has no &SYS* left to match. */
+static void sysvar_sub(const char *src, char *dst) {
+    int di = 0; const char *s = src;
+    while (*s && di < 1022) {
+        if (*s == '&' && s[1] == '&') { dst[di++] = '&'; if (di < 1022) dst[di++] = '&'; s += 2; continue; }
+        if (*s == '&') {
+            const char *p = s + 1; char nm[12]; int i = 0;
+            while (*p && isalpha((unsigned char)*p) && i < 10) nm[i++] = *p++;
+            nm[i] = 0;
+            if (!strcmp(nm, "SYSDATE") || !strcmp(nm, "SYSTIME")) {
+                const char *v = nm[3] == 'D' ? g_sysdate : g_systime;
+                while (*v && di < 1022) dst[di++] = *v++;
+                s = p; if (*s == '.') s++;   /* swallow the concatenation dot */
+                continue;
+            }
+            dst[di++] = '&'; s++; continue;
+        }
+        dst[di++] = *s++;
+    }
+    dst[di] = 0;
+}
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
     struct ctx *opc = &g_opc;   /* shared open-code context */
+    char sysbuf[1024]; sysvar_sub(line, sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[1024], lbl[16], op[16], opnd[1024];
-    strncpy(buf, line, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
+    strncpy(buf, sysbuf, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`. */
@@ -854,7 +901,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (m) { mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return; }
     if (*nout >= MAXLINES) return;
     if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
-    else out[(*nout)++] = strdup(line);
+    else out[(*nout)++] = strdup(sysbuf);
 }
 /* expand a line array as open code, honoring AIF/AGO/sequence-symbol branching.
  * Used for the whole module and for each COPY'd block; MACRO defs are captured,
@@ -1390,6 +1437,7 @@ int main(int argc, char **argv) {
         else src = argv[ai];
     }
     if (!src) { fprintf(stderr, "usage: as370 [-I maclib]... [-o obj] file.s\n"); return 2; }
+    init_sysvars();
     FILE *f = fopen(src, "r"); if (!f) { perror(src); return 2; }
     static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
     while (fgets(lb, sizeof lb, f) && nr < MAXLINES) raw0[nr++] = strdup(lb);
