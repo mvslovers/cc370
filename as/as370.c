@@ -696,9 +696,11 @@ static int eval_cond(struct ctx *c, const char *cond) {
     while (*p) {
         while (*p == ' ') p++;
         if (!*p) break;
-        char *o = toks[nt]; int q = 0, d = 0, oi = 0;
+        char *o = toks[nt]; int q = 0, d = 0, oi = 0, closed = 0;
         while (*p && (q || d || *p != ' ')) {
-            if (*p == '\'') { if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) q = !q; }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
+            if (!q && d == 0 && closed && isalpha((unsigned char)*p)) break;  /* a relop/keyword abutting a closing quote ('A'NE'B', after a col-72 join) is its own token */
+            closed = 0;
+            if (*p == '\'') { if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) { int wq = q; q = !q; if (wq && !q) closed = 1; } }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
             else if (!q && *p == '(') {
                 if (d == 0 && oi > 0) { o[oi] = 0;                       /* a logical operator abutting '(' (NOT(..)/AND(..)/OR(..)) is its own token, not a subscript */
                     if (!strcmp(o, "NOT") || !strcmp(o, "AND") || !strcmp(o, "OR")) break; }
