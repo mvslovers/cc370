@@ -182,8 +182,8 @@ static struct lit *lit_get(const char *t) {
     lits[nlit].ltseq = litpool;          /* literal belongs to the current (not-yet-flushed) pool */
     lits[nlit].sect = cur_sect_id;
     lit_classify(&lits[nlit]);
-    if (lits[nlit].isV) {                /* =V: register an external reference at first use */
-        struct sym *s = sym_get(lits[nlit].ext); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER);
+    if (lits[nlit].isV) {                /* =V: define the external symbol now; its ESD entry is */
+        struct sym *s = sym_get(lits[nlit].ext); if (!s->defined) s->type = S_ER;   /* registered when the pool is flushed (LTORG/END), like IFOX */
     }
     return &lits[nlit++];
 }
@@ -1536,6 +1536,12 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (lits[k].ltseq != litpool) continue;
                 if (nmem < 4096) mem[nmem++] = k;
             }
+            /* Register each =V literal's external reference in the ESD now, when the
+             * pool is FLUSHED (not at first use), in first-reference order -- this is
+             * IFOX's ESD timing, so an ENTRY (LD) declared between the reference and
+             * the flush sorts ahead of these ERs (e.g. @@crtm's @@EXITA). */
+            if (pass == 1) { int mi; for (mi = 0; mi < nmem; mi++) { struct lit *l = &lits[mem[mi]];
+                if (l->isV) { struct sym *s = sym_get(l->ext); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } } }
             /* IFOX groups a pool into doubleword/fullword/halfword/byte segments to
              * minimise padding, each segment in order of first reference. A literal's
              * segment is the alignment implied by its LENGTH (len div by 8/4/2 else
