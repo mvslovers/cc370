@@ -85,6 +85,21 @@ static int  errors;
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
 static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
 static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
+/* as370's own translator identity (working title V2.0; product rename to as370
+ * is planned). Stamped into the object's END-record IDR and the -a listing
+ * header so the deck identifies itself rather than masquerading as IFOX. */
+#define AS370_IDR_PROD "AS370"          /* translator id (10-char IDR field, left-justified) */
+#define AS370_IDR_VER  "0200"           /* version 02.00 */
+/* "MM/DD/YY" -> Julian "YYDDD" for the END-record IDR date. */
+static void julian5(const char *mmddyy, char *out) {
+    int mm = 0, dd = 0, yy = 0;
+    if (sscanf(mmddyy, "%d/%d/%d", &mm, &dd, &yy) == 3 && mm >= 1 && mm <= 12) {
+        static const int cum[] = { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334 };
+        int doy = cum[mm - 1] + dd;
+        if (mm > 2 && (yy % 4) == 0) doy++;     /* 20yy leap years (00 is leap) */
+        snprintf(out, 8, "%02d%03d", yy % 100, doy);
+    } else { scopy(out, "00000", 5); }
+}
 /* Set &SYSDATE/&SYSTIME from the host clock, or from ASMDATE/ASMTIME in the
  * environment for reproducible builds (verification against a fixed object). */
 static void init_sysvars(void) {
@@ -1521,6 +1536,9 @@ static void emit_obj(FILE *f) {
     } }
 
     cinit(c); cname(c, "END"); if (end_has) { cbe(c, 5, end_addr, 3); cbe(c, 14, end_esdid, 2); }
+    { char jul[8], idr[24]; julian5(g_sysdate, jul);   /* IDR (cols 33-52): product(10) + space + version(4) + Julian date(5) */
+      snprintf(idr, sizeof idr, "%-10.10s %-4.4s%5.5s", AS370_IDR_PROD, AS370_IDR_VER, jul);
+      cebc(c, 32, idr, 20); }
     cseq(c, ++seq); fwrite(c, 1, 80, f);
 }
 
