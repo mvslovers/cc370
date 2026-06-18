@@ -60,7 +60,7 @@ enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
 struct esdent { struct sym *s; int role; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
 
-struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[9]; int size; int algn; int sect; };
+struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[64]; int size; int algn; int sect; };
 static struct lit lits[MAXLIT];
 static int nlit;
 static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
@@ -111,7 +111,7 @@ static void lit_classify(struct lit *l) {
     l->isV = (ty == 'V'); l->isA = (ty == 'A' || ty == 'V' || ty == 'Y');
     if (ty == 'A' || ty == 'V' || ty == 'Y') {
         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
-        if (lp && rp && rp > lp) { int n = (int)(rp - lp - 1); if (n > 8) n = 8; memcpy(l->ext, lp + 1, n); l->ext[n] = 0; }
+        if (lp && rp && rp > lp) { int n = (int)(rp - lp - 1); if (n > 63) n = 63; memcpy(l->ext, lp + 1, n); l->ext[n] = 0; }
         l->size = haslen ? len : (ty == 'Y' ? 2 : 4); l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
     } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
     } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
