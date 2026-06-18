@@ -140,8 +140,15 @@ static struct lit *lit_get(const char *t) {
  * Stops at a top-level '(' (a subscript), ',' or end — so it also evaluates a
  * displacement like 4+120(13). Not re-entrant (uses parse globals). */
 static const char *xp_; static int xrl_;   /* xrl_ = net relocation count of the last expr_val (0 = absolute) */
+static long x_add(void);   /* fwd: additive expression (term +/- term ...) */
 static long x_factor(int sign) {
     while (*xp_ == ' ') xp_++;
+    if (*xp_ == '(') {                                     /* grouping paren in factor position (e.g. 8+(64-1)); a '(' after a term is a subscript and is left to the caller */
+        xp_++; int before = xrl_; xrl_ = 0; long v = x_add(); int delta = xrl_;
+        xrl_ = before + (sign < 0 ? -delta : delta);
+        while (*xp_ == ' ') xp_++; if (*xp_ == ')') xp_++;
+        return v;
+    }
     if (*xp_ == '*') { xp_++; xrl_ += sign; return lc; }   /* location counter (relocatable for USING resolution) */
     if (*xp_ == '-') { xp_++; return -x_factor(-sign); }
     if (*xp_ == '+') { xp_++; return x_factor(sign); }
@@ -170,15 +177,19 @@ static long x_term(int sign) {
         else break; }
     return v;
 }
-static long expr_val(const char *e, int *reloc) {
-    xp_ = e; xrl_ = 0;
-    while (*xp_ == ' ') xp_++;
-    if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; return 0; }
+static long x_add(void) {
     long v = x_term(1);
     for (;;) { while (*xp_ == ' ') xp_++;
         if (*xp_ == '+') { xp_++; v += x_term(1); }
         else if (*xp_ == '-') { xp_++; v -= x_term(-1); }
         else break; }
+    return v;
+}
+static long expr_val(const char *e, int *reloc) {
+    xp_ = e; xrl_ = 0;
+    while (*xp_ == ' ') xp_++;
+    if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; return 0; }   /* leading '(' = subscript with no displacement prefix */
+    long v = x_add();
     if (reloc) *reloc = xrl_;
     return v;
 }
