@@ -119,6 +119,8 @@ static void esd_add(struct sym *s, int role) {
     int i; for (i = 0; i < nesdord; i++) if (esdord[i].s == s && esdord[i].role == role) return;
     if (nesdord < MAXSYM) { esdord[nesdord].s = s; esdord[nesdord].role = role; nesdord++; }
 }
+/* literal-pool segment key: the boundary alignment implied by a length (8/4/2/1). */
+static int lenalgn(int len) { return (len % 8 == 0) ? 8 : (len % 4 == 0) ? 4 : (len % 2 == 0) ? 2 : 1; }
 /* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
 static void lit_classify(struct lit *l) {
@@ -1362,10 +1364,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (lits[k].ltseq != litpool) continue;
                 if (nmem < 4096) mem[nmem++] = k;
             }
-            /* order by descending size, stable within equal size (IFOX groups the
-             * pool by length so e.g. =XL4 sits with the fullwords, =XL1 after them) */
-            { int a, b; for (a = 1; a < nmem; a++) { int t = mem[a]; b = a - 1;
-                while (b >= 0 && lits[mem[b]].size < lits[t].size) { mem[b + 1] = mem[b]; b--; }
+            /* IFOX groups a pool into doubleword/fullword/halfword/byte segments to
+             * minimise padding, each segment in order of first reference. A literal's
+             * segment is the alignment implied by its LENGTH (len div by 8/4/2 else
+             * byte), not its type: so =CL8 sits with the doublewords but =CL11 (odd)
+             * goes in the byte segment, after the fullwords. Sort by that key,
+             * descending, stable (preserving appearance order within a segment). */
+            { int a, b;
+              for (a = 1; a < nmem; a++) { int t = mem[a]; b = a - 1;
+                while (b >= 0 && lenalgn(lits[mem[b]].size) < lenalgn(lits[t].size)) { mem[b + 1] = mem[b]; b--; }
                 mem[b + 1] = t; } }
             if (!strcmp(op, "LTORG") || nmem > 0) lc = align8(lc);  /* pool starts on a doubleword */
             { int mi; for (mi = 0; mi < nmem; mi++) {
