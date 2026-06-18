@@ -361,7 +361,10 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
     lbl[0] = op[0] = opnd[0] = 0;
     if (*p == '*') return 0;
     if (*p != ' ' && *p != '\t' && *p != '\n' && *p != 0) {
-        i = 0; while (*p && !isspace((unsigned char)*p)) { if (i < 8) lbl[i++] = *p; p++; } lbl[i < 8 ? i : 8] = 0;
+        /* ordinary symbol labels cap at 8; a variable-symbol label may carry a
+         * subscript (&ARR(&IDX)) and run longer, so allow the full token there. */
+        int cap = (*p == '&') ? 30 : 8;
+        i = 0; while (*p && !isspace((unsigned char)*p)) { if (i < cap) lbl[i++] = *p; p++; } lbl[i < cap ? i : cap] = 0;
     }
     while (*p == ' ' || *p == '\t') p++;
     if (!*p || *p == '\n') return op[0] != 0;
@@ -538,6 +541,14 @@ static long e_prim(void) {
         int kind = *ep_; ep_ += 2; char ref[44], v[96];
         if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); } else v[0] = 0;
         return (kind == 'N') ? sub_count(v) : (long)strlen(v);
+    }
+    if ((*ep_ == 'X' || *ep_ == 'B' || *ep_ == 'C') && ep_[1] == '\'') {   /* self-defining term */
+        int kind = *ep_; long v = 0; ep_ += 2;
+        if (kind == 'X') { while (*ep_ && *ep_ != '\'') v = v * 16 + hexv(*ep_++); }
+        else if (kind == 'B') { while (*ep_ && *ep_ != '\'') v = v * 2 + (*ep_++ == '1' ? 1 : 0); }
+        else { while (*ep_ && *ep_ != '\'') { if (*ep_ == '\'' && ep_[1] == '\'') ep_++; v = (v << 8) | a2e((unsigned char)*ep_++); } }   /* C': EBCDIC byte values */
+        if (*ep_ == '\'') ep_++;
+        return v;
     }
     if (*ep_ == '&') { char ref[44], v[96]; e_readref(ref); vref(ec_, ref, v); return atol(v); }
     return strtol(ep_, (char **)&ep_, 10);
@@ -747,7 +758,7 @@ static int lib_readlines(const char *name, char *buf[], int max) {
 }
 static struct macro *capture_macro(char **in, int nin, int *ip) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
-    char pb[4096], pl[16], po[16], pp[4096]; strncpy(pb, in[i], 4095); pb[4095] = 0; parse(pb, pl, po, pp);
+    char pb[4096], pl[32], po[16], pp[4096]; strncpy(pb, in[i], 4095); pb[4095] = 0; parse(pb, pl, po, pp);
     { const char *p = pb;                 /* re-extract the full prototype operand (parse caps at 1023; DCB's list is longer) */
         if (*p && !isspace((unsigned char)*p)) while (*p && !isspace((unsigned char)*p)) p++;   /* skip label */
         while (*p == ' ' || *p == '\t') p++;
@@ -765,7 +776,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip) {
             if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
             else scopy(m->pname[k], flds[k], 19);
             m->nparm++; } }
-    while (++i < nin) { char bb[256], bl[16], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
+    while (++i < nin) { char bb[256], bl[32], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') strncpy(m->endlbl, bl, 19); break; }
         if (m->nbody < 4096) m->body[m->nbody++] = strdup(in[i]); }
     *ip = i; return m;
@@ -834,7 +845,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     if (m->endlbl[0] && nseq < 2048) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
     int pc = 0, guard = 0;
     while (pc < m->nbody && guard++ < 100000) {
-        char bb[1024], bl[16], bo[16], bod[1024];
+        char bb[1024], bl[32], bo[16], bod[1024];
         if (m->body[pc][0] == '*' || (m->body[pc][0] == '.' && m->body[pc][1] == '*')) { pc++; continue; }  /* macro comment */
         strncpy(bb, m->body[pc], 1023); bb[1023] = 0; parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
@@ -886,7 +897,7 @@ static void sysvar_sub(const char *src, char *dst) {
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
     struct ctx *opc = &g_opc;   /* shared open-code context */
     char sysbuf[1024]; sysvar_sub(line, sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
-    char buf[1024], lbl[16], op[16], opnd[1024];
+    char buf[1024], lbl[32], op[16], opnd[1024];
     strncpy(buf, sysbuf, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
@@ -912,7 +923,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth) {
     int nseq = 0, k, mdef = 0;
     if (!seqn || !seqi) { free(seqn); free(seqi); return; }
     for (k = 0; k < n; k++) {                          /* prescan sequence-symbol labels (skip MACRO..MEND bodies) */
-        char sb[1024], sl[16], so[16], sd[1024]; strncpy(sb, arr[k], 1023); sb[1023] = 0; parse(sb, sl, so, sd);
+        char sb[1024], sl[32], so[16], sd[1024]; strncpy(sb, arr[k], 1023); sb[1023] = 0; parse(sb, sl, so, sd);
         if (!strcmp(so, "MACRO")) { mdef++; continue; }
         if (!strcmp(so, "MEND")) { if (mdef) mdef--; continue; }
         if (mdef) continue;
@@ -923,7 +934,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth) {
     }
     int pc = 0, guard = 0;
     while (pc < n && guard++ < 4000000) {
-        char buf[1024], lbl[16], op[16], opnd[1024]; strncpy(buf, arr[pc], 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
+        char buf[1024], lbl[32], op[16], opnd[1024]; strncpy(buf, arr[pc], 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
         if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc); pc++; continue; }   /* COPY'd / inline macro definition */
         if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, seq);
             if (eval_cond(&g_opc, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
@@ -1076,7 +1087,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     if (pass == 2) nrel = 0;
     for (i = 0; i < nlines; i++) {
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
-        char buf[1024], lbl[16], op[16], opnd[1024];
+        char buf[1024], lbl[32], op[16], opnd[1024];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
         if (!parse(buf, lbl, op, opnd)) continue;
