@@ -193,6 +193,17 @@ static long expr_val(const char *e, int *reloc) {
     if (reloc) *reloc = xrl_;
     return v;
 }
+/* evaluate a register operand, accepting the (r) parenthesised form (common in
+ * macro-expanded model statements, e.g. `LR 0,(3)`); expr_val itself treats a
+ * leading '(' as a subscript and returns 0, so strip a fully-enclosing pair. */
+static long eval_reg(const char *s) {
+    while (*s == ' ') s++;
+    if (*s == '(') { int d = 0; const char *p = s;
+        for (; *p; p++) { if (*p == '(') d++; else if (*p == ')') { if (--d == 0) break; } }
+        if (d == 0 && *p == ')') { const char *q = p + 1; while (*q == ' ') q++;
+            if (!*q) { char in[64]; int n = (int)(p - s - 1); if (n > 63) n = 63; memcpy(in, s + 1, n); in[n] = 0; return expr_val(in, NULL); } } }
+    return expr_val(s, NULL);
+}
 static void put(long at, long v, int n) {
     if (in_dsect) return;                       /* a DSECT generates no object text */
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
@@ -1023,18 +1034,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                 long d, d2, sub[4], sub2[4]; int ns, ns2, sy, sy2;
                 switch (o->fmt) {
                 case F_RR:
-                    put(lc, (o->op << 8) | ((int)expr_val(F[0], 0) << 4) | (int)expr_val(F[1], 0), 2); lc += 2; break;
+                    put(lc, (o->op << 8) | ((int)eval_reg(F[0]) << 4) | (int)eval_reg(F[1]), 2); lc += 2; break;
                 case F_BR:
-                    put(lc, (o->op << 8) | (o->m1 << 4) | (int)expr_val(F[0], 0), 2); lc += 2; break;
+                    put(lc, (o->op << 8) | (o->m1 << 4) | (int)eval_reg(F[0]), 2); lc += 2; break;
                 case F_SVC:
                     put(lc, (o->op << 8) | ((int)expr_val(F[0], 0) & 0xff), 2); lc += 2; break;
                 case F_RX: case F_BC: {
-                    int r1 = (o->fmt == F_BC) ? o->m1 : (int)expr_val(F[0], 0);
+                    int r1 = (o->fmt == F_BC) ? o->m1 : (int)eval_reg(F[0]);
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
                     int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : (r_ibase >= 0 ? r_ibase : 0));
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
-                case F_RS: { int r1 = (int)expr_val(F[0], 0), r3, b;
-                    if (nf >= 3) { r3 = (int)expr_val(F[1], 0); resolve(F[2], &d, sub, &ns, &sy); }
+                case F_RS: { int r1 = (int)eval_reg(F[0]), r3, b;
+                    if (nf >= 3) { r3 = (int)eval_reg(F[1]); resolve(F[2], &d, sub, &ns, &sy); }
                     else { r3 = 0; resolve(F[1], &d, sub, &ns, &sy); }  /* shift form R1,D2(B2): R3 field unused */
                     b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
