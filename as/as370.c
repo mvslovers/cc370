@@ -1036,7 +1036,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (nn > 0) while ((lc % nn) != b && g++ < 64) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; }
         } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
             if (lc > org_hwm) org_hwm = lc;
-            lc = opnd[0] ? expr_val(opnd, NULL) : org_hwm;
+            lc = (!opnd[0] || opnd[0] == ',') ? org_hwm : expr_val(opnd, NULL);   /* bare ORG or `ORG ,` resets to the high-water mark */
             if (!in_dsect && org_hwm > modlen) modlen = org_hwm;
         } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
             { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }
