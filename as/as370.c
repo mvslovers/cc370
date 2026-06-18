@@ -1283,7 +1283,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         char vals[32][80]; int nv = 0;             /* split the operand list on top-level commas */
                         { const char *s = inside, *st = inside; int q = 0, d = 0;
                           for (;; s++) {
-                              if (*s == '\'') q = !q;
+                              if (*s == '\'') { if (q || !(s > inside && strchr("KNLT", s[-1]))) q = !q; }  /* K'/N'/L'/T' apostrophe (e.g. AL2(L'SYM,0)) is an attribute, not a string quote */
                               else if (!q && *s == '(') d++;
                               else if (!q && *s == ')') { if (d) d--; }
                               if ((!q && d == 0 && *s == ',') || !*s) {
