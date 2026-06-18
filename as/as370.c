@@ -537,11 +537,12 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
         if (!*p) break;
         char piece[256]; piece[0] = 0;
         if (*p == '\'') {
-            const char *q = strchr(p + 1, '\'');
-            int L = q ? (int)(q - p - 1) : (int)strlen(p + 1);
-            char inner[256]; if (L > 255) L = 255; memcpy(inner, p + 1, L); inner[L] = 0;
+            char inner[256]; int il = 0; const char *q = p + 1;   /* scan to the closing quote, de-escaping doubled '' to a single ' */
+            while (*q) { if (*q == '\'') { if (q[1] == '\'') { if (il < 255) inner[il++] = '\''; q += 2; continue; } break; }
+                if (il < 255) inner[il++] = *q; q++; }
+            inner[il] = 0;
             char sub[256]; msub(c, inner, sub);
-            p = q ? q + 1 : p + 1 + L;
+            p = (*q == '\'') ? q + 1 : q;
             if (*p == '(') {                       /* substring (start,len) */
                 ec_ = c; ep_ = p + 1; long st = e_expr(); e_sp(); long ln = 0;
                 if (*ep_ == ',') { ep_++; ln = e_expr(); }
