@@ -328,6 +328,14 @@ static int using_for(long val, int sect, long *disp) {
     if (best >= 0) { *disp = bd; return usings[best].reg; }
     *disp = val; return 0;
 }
+/* base address that register reg currently addresses via USING (0 if none); used
+ * to recover the listing's effective address ADDR = displacement + base. Returns
+ * the first matching USING -- which is what using_for picked for a symbolic
+ * operand; the two diverge only if a register sits in two USING domains. */
+static long using_base_of(int reg) {
+    int i; for (i = 0; i < nusing; i++) if (usings[i].reg == reg) return usings[i].base;
+    return 0;
+}
 /* section of a relocatable expression = section of its NET-relocatable term.
  * e.g. IOBSENS0-IOBSTDRD+TAPEIOB: the two IOB fields cancel (same section), so
  * the result is in TAPEIOB's section, not IOBSENS0's. Falls back to cur_sect_id.
@@ -469,10 +477,21 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
 #define LF_NOASM 2     /* listing-only (e.g. the macro call line): shown, not assembled */
 static unsigned char lflags[MAXLINES];
 static int g_genlevel;  /* >0 while inside a macro expansion (distinguishes generated lines from COPY'd source) */
+/* per-statement listing data captured in pass 2 (LOC + emitted bytes + effective operand addresses) */
+struct lrec { long loc; int len; long a1, a2; unsigned char hasa1, hasa2; };
+static struct lrec lrecs[MAXLINES];
+/* The verbatim 80-column source image for the listing's SOURCE column. For a
+ * macro-generated line this is the model card with variable symbols substituted
+ * IN PLACE (field start-columns preserved, cols 73-80 carried through) -- which
+ * is what IFOX prints; the normalised lines[] text would lose that layout. NULL
+ * for an ordinary source line, where lines[] is already the verbatim card. */
+static char *gcard[MAXLINES];
+static const char *g_genimg;   /* image for the single line the next mexp_line emits */
 struct macro {
     char namep[20], name[16];
     char pname[100][20], pdef[100][40]; int pkey[100]; int nparm;   /* DCB has ~96 keyword params */
     char *body[4096]; int nbody;
+    char *bodyseq[4096];           /* cols 73-80 of each body card, for the listing's SOURCE column (NULL if unknown) */
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
 };
 static struct macro macros[256];
@@ -801,10 +820,13 @@ static int lib_path(const char *name, char *path) {
  * statement on the next line starting at column 16. Comment lines (* / .*) are
  * never continued. Operates on raw[] and on every macro/COPY library read. */
 static int rawlen(const char *l) { int n = (int)strlen(l); while (n > 0 && (l[n-1] == '\n' || l[n-1] == '\r')) n--; return n; }
-static int join_cont(char **in, int n, char **out, int maxout) {
+/* seqout (optional) receives cols 73-80 of each output line's primary card --
+ * the library sequence number the listing's SOURCE column carries through. */
+static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12]) {
     int i = 0, no = 0;
     while (i < n && no < maxout) {
         const char *l = in[i];
+        if (seqout) { int k, sl = rawlen(l); for (k = 0; k < 8; k++) seqout[no][k] = (72 + k < sl) ? l[72 + k] : ' '; seqout[no][8] = 0; }
         if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) { out[no++] = strdup(l); i++; continue; }
         char acc[8192]; int a = 0, len = rawlen(l), copy = len > 71 ? 71 : len;
         acc[0] = 0; memcpy(acc, l, copy); a = copy;
@@ -837,15 +859,15 @@ static int join_cont(char **in, int n, char **out, int maxout) {
     }
     return no;
 }
-static int lib_readlines(const char *name, char *buf[], int max) {
+static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12]) {
     char path[256]; if (!lib_path(name, path)) return -1;
     FILE *f = fopen(path, "r"); if (!f) return -1;
     static char *tmp[16384]; char lb[256]; int n = 0;
     while (fgets(lb, sizeof lb, f) && n < 16384) tmp[n++] = strdup(lb);
     fclose(f);
-    return join_cont(tmp, n, buf, max);
+    return join_cont(tmp, n, buf, max, seqbuf);
 }
-static struct macro *capture_macro(char **in, int nin, int *ip) {
+static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12]) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
     char pb[4096], pl[32], po[16], pp[4096]; strncpy(pb, in[i], 4095); pb[4095] = 0; parse(pb, pl, po, pp);
     { const char *p = pb;                 /* re-extract the full prototype operand (parse caps at 1023; DCB's list is longer) */
@@ -867,18 +889,19 @@ static struct macro *capture_macro(char **in, int nin, int *ip) {
             m->nparm++; } }
     while (++i < nin) { char bb[256], bl[32], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') strncpy(m->endlbl, bl, 19); break; }
-        if (m->nbody < 4096) m->body[m->nbody++] = strdup(in[i]); }
+        if (m->nbody < 4096) { m->bodyseq[m->nbody] = (inseq ? strdup(inseq[i]) : NULL); m->body[m->nbody++] = strdup(in[i]); } }
     *ip = i; return m;
 }
 static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
-    static char *buf[4096]; int n = lib_readlines(name, buf, 4096); if (n < 0) return NULL;
+    static char *buf[4096]; static char seqbuf[4096][12];
+    int n = lib_readlines(name, buf, 4096, seqbuf); if (n < 0) return NULL;
     int i = 0; for (; i < n; i++) { char b[256], l[16], o[16], od[128]; strncpy(b, buf[i], 255); b[255] = 0;
         if (!parse(b, l, o, od) || !o[0]) continue;
         if (strcmp(o, "MACRO")) return NULL;
         break; }
     if (i >= n) return NULL;
-    return capture_macro(buf, n, &i);
+    return capture_macro(buf, n, &i, seqbuf);
 }
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
@@ -909,6 +932,58 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
     if (!strcmp(op, "SETC")) { char v[128]; eval_setc(c, opnd, v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
     if (!strcmp(op, "ANOP")) return 1;
     return 0;
+}
+/* Render a macro model statement for the listing's SOURCE column, the way IFOX
+ * does it: each field (name / operation / operand / comment) is substituted in
+ * place but keeps the *start column it had in the model card*, and cols 73-80
+ * (the library sequence number) are carried through verbatim. So `&NAME B ...`
+ * with &NAME empty still prints `B` in its model column, and an operand that
+ * grows/shrinks under substitution leaves the comment anchored where the model
+ * put it. The substituted operand may overflow its model width; a following
+ * field is then pushed right by one blank rather than overwritten. */
+static void render_model(struct ctx *c, const char *model, const char *seq, char *out) {
+    char ln[256]; int i; for (i = 0; i < 255; i++) ln[i] = ' '; ln[255] = 0;
+    int seqcol = 72;                                  /* a card is 80 cols; the sequence number sits at 73-80 (index 72-79) */
+    int mlen = (int)strlen(model); while (mlen > 0 && (model[mlen-1]=='\n'||model[mlen-1]=='\r')) mlen--;
+    /* split the model card (cols 1-72) into name / operation / operand / comment,
+     * remembering each field's start column. The operand stops at the first blank
+     * that is not inside quotes or parentheses (like parse()); the comment is
+     * then everything up to col 72, internal blanks included. */
+    int fcol[4]; char fld[4][128]; int p = 0, k;
+    for (k = 0; k < 4; k++) { fcol[k] = 0; fld[k][0] = 0; }
+    /* name (only if col 1 is non-blank); a sequence-symbol label (.NAME) is dropped */
+    if (p < mlen && model[0] != ' ') {
+        int q = 0; while (p < mlen && p < seqcol && model[p] != ' ') { if (q < 127) fld[0][q++] = model[p]; p++; }
+        fld[0][q] = 0; if (fld[0][0] == '.') fld[0][0] = 0;   /* sequence symbol -> no generated name */
+    }
+    while (p < mlen && p < seqcol && model[p] == ' ') p++;
+    /* operation */
+    if (p < mlen && p < seqcol) { fcol[1] = p; int q = 0; while (p < mlen && p < seqcol && model[p] != ' ') { if (q < 127) fld[1][q++] = model[p]; p++; } fld[1][q] = 0; }
+    while (p < mlen && p < seqcol && model[p] == ' ') p++;
+    /* operand (quote/paren aware) */
+    if (p < mlen && p < seqcol) { fcol[2] = p; int q = 0, inq = 0, dep = 0;
+        while (p < mlen && p < seqcol) { char ch = model[p];
+            if (ch == '\'') inq = !inq; else if (!inq && ch == '(') dep++; else if (!inq && ch == ')') { if (dep) dep--; }
+            if (ch == ' ' && !inq && dep == 0) break;
+            if (q < 127) fld[2][q++] = ch; p++; }
+        fld[2][q] = 0; }
+    while (p < mlen && p < seqcol && model[p] == ' ') p++;
+    /* comment: the remainder up to col 72, verbatim (internal blanks kept) */
+    if (p < mlen && p < seqcol) { fcol[3] = p; int q = 0; while (p < mlen && p < seqcol) { if (q < 127) fld[3][q++] = model[p]; p++; } fld[3][q] = 0; }
+    /* place each field's substituted text at its model start column, shifting a
+     * field right only when the previous one overran it */
+    int cur = 0;
+    for (i = 0; i < 4; i++) {
+        if (!fld[i][0]) continue;
+        char sub[256]; msub(c, fld[i], sub);
+        int col = fcol[i]; if (col < cur) col = cur;   /* never overwrite the previous field */
+        int sl = (int)strlen(sub), j; for (j = 0; j < sl && col + j < 255; j++) ln[col + j] = sub[j];
+        cur = col + sl + 1;                            /* at least one blank before the next field */
+    }
+    /* carry the library sequence number (cols 73-80) through verbatim */
+    if (seq) { int j; for (j = 0; j < 8 && seq[j]; j++) ln[seqcol + j] = seq[j]; }
+    int n = 255; while (n > 0 && ln[n-1] == ' ') n--; ln[n] = 0;   /* trim trailing blanks */
+    strcpy(out, ln);
 }
 /* expand a macro invocation, interpreting conditional assembly */
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
@@ -948,6 +1023,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
         char ex[1024]; msub(&c, m->body[pc], ex);
+        char gimg[256]; render_model(&c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
@@ -987,6 +1063,7 @@ static void sysvar_sub(const char *src, char *dst) {
 }
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
     struct ctx *opc = &g_opc;   /* shared open-code context */
+    const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
     char sysbuf[1024]; sysvar_sub(line, sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[1024], lbl[32], op[16], opnd[1024];
     strncpy(buf, sysbuf, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
@@ -995,17 +1072,18 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`. */
     if (op[0] && (set_stmt(opc, lbl, op, opnd))) return;
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
-        char *cb[2048]; int n = lib_readlines(opnd, cb, 2048);
+        char *cb[2048]; int n = lib_readlines(opnd, cb, 2048, NULL);
         if (n >= 0) { mexp_block(cb, n, out, nout, depth + 1); return; }   /* COPY'd block: open-code conditional assembly + macro defs */
     }
     struct macro *m = NULL;
     if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
     if (m) {   /* keep the macro call line itself for the listing (not assembled); its expansion is flagged generated */
-        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); out[*nout] = strdup(sysbuf); (*nout)++; }
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); gcard[*nout] = img ? strdup(img) : NULL; out[*nout] = strdup(sysbuf); (*nout)++; }
         mexp_macro(m, lbl[0] == '.' ? "" : lbl, opnd, out, nout, depth); return;
     }
     if (*nout >= MAXLINES) return;
     lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN : 0);
+    gcard[*nout] = img ? strdup(img) : NULL;
     if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(sysbuf);
 }
@@ -1030,7 +1108,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth) {
     int pc = 0, guard = 0;
     while (pc < n && guard++ < 4000000) {
         char buf[1024], lbl[32], op[16], opnd[1024]; strncpy(buf, arr[pc], 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
-        if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc); pc++; continue; }   /* COPY'd / inline macro definition */
+        if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
         if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, seq);
             if (eval_cond(&g_opc, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
@@ -1177,10 +1255,12 @@ static void do_pass(int pass, char **lines, int nlines) {
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
     int pre_csect = 0;                  /* a content statement appeared before the first CSECT */
+    int prev_li = -1;                   /* previous statement captured for the -a listing (byte count is deferred) */
     if (pass == 2) nrel = 0;
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
+        if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
         char buf[1024], lbl[32], op[16], opnd[1024];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
@@ -1215,16 +1295,20 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int r1 = (o->fmt == F_BC) ? o->m1 : (int)eval_reg(F[0]);
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
                     int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : (r_ibase >= 0 ? r_ibase : 0));
-                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
+                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_RS: { int r1 = (int)eval_reg(F[0]), r3, b;
                     if (nf >= 3) { r3 = (int)eval_reg(F[1]); resolve(F[2], &d, sub, &ns, &sy); }
                     else { r3 = 0; resolve(F[1], &d, sub, &ns, &sy); }  /* shift form R1,D2(B2): R3 field unused */
                     b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];
-                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                    put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
+                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
-                    put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4; break; }
+                    put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
+                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_S: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
-                    put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4; break; }
+                    put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4;
+                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len; resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len;
                     int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
                     int len1 = (ns  >= 1 ? (int)sub[0]  : (l1 ? l1 : 1));
@@ -1236,7 +1320,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int lenb = twol ? (((len1 ? (len1 - 1) & 0xf : 0) << 4) | (len2 ? (len2 - 1) & 0xf : 0))
                                     : (len1 ? (len1 - 1) & 0xff : 0);
                     put(lc, o->op, 1); put(lc + 1, lenb, 1);
-                    put(lc + 2, ((long)b1 << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6; break; }
+                    put(lc + 2, ((long)b1 << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6;
+                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b1); lrecs[i].hasa1 = 1;
+                    lrecs[i].a2 = (d2 & 0xfffL) + using_base_of(b2); lrecs[i].hasa2 = 1; break; }
                 default: break;
                 }
             }
@@ -1278,6 +1364,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 int bsect = cur_sect_id;
                 if (F[0][0] != '*') { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm); if (bs) bsect = bs->sect; }
                 usings[nusing].reg = reg; usings[nusing].base = base; usings[nusing].sect = bsect; nusing++;
+                lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
             }
         } else if (!strcmp(op, "DROP")) {
             if (pass == 2) { char F[4][64]; int nf = split_fields(opnd, F, 4), j, k;
@@ -1440,6 +1527,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (pass == 1) note_unknown(op);
     }
     if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
+    if (pass == 2 && prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc);   /* close the byte count of the last assembled statement (no later statement triggers the flush) */
 }
 
 /* ---- OS/360 OBJ writer ---------------------------------------------------- */
@@ -1621,13 +1709,100 @@ static void a_rld_section(void) {
         a_line(ln);
     }
 }
-static void emit_listing_a(void) {
+/* object-code field: machine instructions in halfword groups (XXXX XXXX),
+ * constants/data contiguous; both capped at the 8 bytes IFOX prints. A range
+ * with no emitted bytes (a DS reservation) prints blank. */
+static void a_objcode(long loc, int len, int instr, char *out) {
+    int n = len; if (n > 8) n = 8; if (n < 0) n = 0;
+    if (!instr && (n == 0 || !defn[loc])) { out[0] = 0; return; }   /* DS / nothing emitted */
+    int o = 0, i;
+    for (i = 0; i < n; i++) {
+        if (instr && i && (i % 2) == 0) out[o++] = ' ';
+        o += sprintf(out + o, "%02X", defn[loc + i] ? text[loc + i] : 0);
+    }
+    out[o] = 0;
+}
+#define A_SRC_LINECOUNT 55
+static int a_srcrows;
+static void a_src_newpage(void) {
+    a_newpage("", "  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT");   /* the source page has no centred title, only the column header */
+    a_srcrows = 0;
+}
+static void a_src_emit(const char *ln) {
+    if (a_srcrows >= A_SRC_LINECOUNT) a_src_newpage();
+    a_line(ln); a_srcrows++;
+}
+/* place 6-hex LOC at col 1 and the object code at col 8 in a blank 256-col line */
+static void a_locobj(char *ln, long loc, const char *hex) {
+    int j; for (j = 0; j < 255; j++) ln[j] = ' '; ln[255] = 0;
+    char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6);
+    if (hex && hex[0]) memcpy(ln + 7, hex, strlen(hex));
+}
+/* the SOURCE STATEMENT listing: one row per expanded line (macro-generated rows
+ * carry a '+'), then the literal pool numbered after the last source statement.
+ * Columns: LOC@1 OBJECT@8 ADDR1@23 ADDR2@29 STMT(right-justified to 39)
+ * '+'@40 SOURCE@41 -- the SOURCE image keeps the model card's column layout
+ * (see gcard / render_model). */
+static void a_src_section(char **lines, int nl) {
+    char ln[256]; int i, j;
+    a_srcrows = A_SRC_LINECOUNT;   /* force the header before the first row */
+    int stmt = 0;
+    for (i = 0; i < nl; i++) {
+        stmt++;
+        char buf[1024], lbl[32], op[16], opnd[1024];
+        strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
+        parse(buf, lbl, op, opnd);
+        int gen   = (lflags[i] & LF_GEN) != 0;
+        int noasm = (lflags[i] & LF_NOASM) != 0;
+        const struct opc *o = noasm ? NULL : op_find(op);
+        int is_instr = (o != NULL);
+        int show_loc = 0, show_obj = 0;
+        if (!noasm) {
+            if (is_instr) { show_loc = show_obj = 1; }
+            else if (!strcmp(op, "DC") || !strcmp(op, "DS") || !strcmp(op, "CCW") || !strcmp(op, "CNOP")) { show_loc = show_obj = 1; }
+            else if (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") || !strcmp(op, "COM")) { show_loc = 1; }
+            else if (!strcmp(op, "EQU") || !strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }
+        }
+        long loc = lrecs[i].loc; int len = lrecs[i].len;
+        if (is_instr) {                                /* a halfword-alignment pad prints as its own object line */
+            int pad = (int)(loc & 1);
+            if (pad) { char hex[40]; a_objcode(loc, pad, 0, hex); a_locobj(ln, loc, hex); a_src_emit(ln); loc += pad; len -= pad; }
+        }
+        for (j = 0; j < 255; j++) ln[j] = ' '; ln[255] = 0;
+        if (show_loc) { char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6); }
+        if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex); if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
+        if (!noasm && lrecs[i].hasa1) { char b[16]; sprintf(b, "%05lX", lrecs[i].a1 & 0xfffffL); memcpy(ln + 22, b, 5); }
+        if (!noasm && lrecs[i].hasa2) { char b[16]; sprintf(b, "%05lX", lrecs[i].a2 & 0xfffffL); memcpy(ln + 28, b, 5); }
+        { char sn[12]; int dl = sprintf(sn, "%d", stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
+        { const char *s = gcard[i] ? gcard[i] : lines[i]; int sl = (int)strlen(s);
+          while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+          for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j]; }
+        a_src_emit(ln);
+    }
+    /* literal pool: continue the statement numbers, in placement (address) order.
+     * NB: this dumps ALL literals after the last source line -- correct for a
+     * single trailing END pool, but a mid-stream LTORG would print its literals
+     * here instead of at the LTORG, with out-of-sequence statement numbers. */
+    { int order[4096], no = 0, k;
+      for (k = 0; k < nlit && no < 4096; k++) if (lits[k].placed) order[no++] = k;
+      for (k = 1; k < no; k++) { int t = order[k], m = k - 1;     /* insertion sort by location */
+          while (m >= 0 && lits[order[m]].loc > lits[t].loc) { order[m + 1] = order[m]; m--; }
+          order[m + 1] = t; }
+      for (k = 0; k < no; k++) { struct lit *l = &lits[order[k]];
+          char hex[40]; a_objcode(l->loc, l->size, 0, hex);
+          a_locobj(ln, l->loc, hex);
+          stmt++;
+          { char sn[12]; int dl = sprintf(sn, "%d", stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
+          { int sl = (int)strlen(l->text), x; for (x = 0; x < sl && 55 + x < 255; x++) ln[55 + x] = l->text[x]; }   /* literal text at the operand column (listing col 56) */
+          a_src_emit(ln); } }
+}
+static void emit_listing_a(char **lines, int nl) {
     if (!a_on) return;
     alst = alst_fn ? fopen(alst_fn, "w") : stdout;
     if (!alst) { perror(alst_fn); alst = stdout; }
     a_page = 0;
     if (a_esd) a_esd_section();
-    /* a_src (source listing) is implemented in the next increment */
+    if (a_src) a_src_section(lines, nl);
     if (a_rld) a_rld_section();
     if (alst && alst != stdout) fclose(alst);
 }
@@ -1639,17 +1814,20 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strcmp(argv[ai], "-E")) eonly = 1;
         else if (!strcmp(argv[ai], "-L")) listing = 1;
-        else if (!strncmp(argv[ai], "-a", 2)) {        /* -a[ergsmix...][=FILE]: assembler listing */
-            const char *p = argv[ai] + 2; a_on = 1;
-            for (; *p && *p != '='; p++) switch (*p) {
-                case 'e': a_esd = 1; break;            /* external symbol dictionary */
-                case 'r': a_rld = 1; break;            /* relocation dictionary */
-                case 's': a_xref = 1; break;           /* symbol + literal cross-reference (TODO) */
-                case 'm': case 'g': case 'i': case 'x': break;   /* recognised; no IFOX equivalent (yet) */
+        else if (!strncmp(argv[ai], "-a", 2)) {        /* -a[ersgmix...][=FILE]: assembler listing */
+            /* sub-letter semantics (s=source, x=xref, g/m/i recognised no-ops) are
+             * provisional, pending the z/OS `as` man pages; only e/r/s are wired up */
+            const char *p = argv[ai] + 2; a_on = 1; int any = 0;
+            for (; *p && *p != '='; p++) { switch (*p) {
+                case 'e': a_esd = 1; any = 1; break;   /* external symbol dictionary */
+                case 'r': a_rld = 1; any = 1; break;   /* relocation dictionary */
+                case 's': a_src = 1; any = 1; break;   /* source statements (with object code) */
+                case 'x': a_xref = 1; any = 1; break;  /* symbol + literal cross-reference (not yet implemented) */
+                case 'g': case 'm': case 'i': any = 1; break;   /* recognised; no IFOX equivalent (yet) */
                 default: break;
-            }
+            } }
             if (*p == '=' && p[1]) alst_fn = p + 1;     /* =FILE */
-            if (!a_esd && !a_rld && !a_xref) a_src = 1;  /* bare -a -> source listing (TODO) */
+            if (!any) { a_esd = a_src = a_rld = 1; }     /* bare -a -> the full listing */
         }
         else src = argv[ai];
     }
@@ -1659,7 +1837,7 @@ int main(int argc, char **argv) {
     static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
     while (fgets(lb, sizeof lb, f) && nr < MAXLINES) raw0[nr++] = strdup(lb);
     fclose(f);
-    int n = join_cont(raw0, nr, raw, MAXLINES);   /* fold column-72 continuations */
+    int n = join_cont(raw0, nr, raw, MAXLINES, NULL);   /* fold column-72 continuations */
 
     static char *lines[MAXLINES];
     int nl = macro_pass(raw, n, lines);
@@ -1687,6 +1865,6 @@ int main(int argc, char **argv) {
         FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 2; }
         emit_obj(of); fclose(of); printf("wrote object deck: %s\n", objfn);
     }
-    emit_listing_a();
+    emit_listing_a(lines, nl);
     return errors ? 1 : 0;
 }
