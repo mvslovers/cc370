@@ -101,8 +101,14 @@ static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
 /* as370's own translator identity (working title V2.0; product rename to as370
  * is planned). Stamped into the object's END-record IDR and the -a listing
  * header so the deck identifies itself rather than masquerading as IFOX. */
-#define AS370_IDR_PROD "AS370"          /* translator id (10-char IDR field, left-justified) */
-#define AS370_IDR_VER  "0200"           /* version 02.00 */
+/* ---- translator identity (single source of truth) -------------------------
+ * The CLI tool is "as370" (the cc370/as370/ld370 family); the stamped assembler
+ * product is "ASM370". Used in three places: -v, the listing header, and the
+ * END-record IDR. */
+#define AS370_NAME     "as370"          /* CLI tool name (-v) */
+#define AS370_VER_H    "V1.0"           /* human-readable version (-v) */
+#define AS370_IDR_PROD "ASM370"         /* 10-char EBCDIC product id, left-justified (listing header + END-record IDR) */
+#define AS370_IDR_VER  "0100"           /* 4-char version = 01.00 (listing header + IDR) */
 /* "MM/DD/YY" -> Julian "YYDDD" for the END-record IDR date. */
 static void julian5(const char *mmddyy, char *out) {
     int mm = 0, dd = 0, yy = 0;
@@ -1859,8 +1865,6 @@ static void emit_listing_a(char **lines, int nl) {
     if (alst && alst != stdout) fclose(alst);
 }
 
-/* -v version string -- keep the form consistent across the *370 tools. */
-#define AS370_VER_STR "as370 V2.0"
 static void usage(FILE *o) {
     fputs(
 "Usage: as370 [options...] file\n"
@@ -1886,7 +1890,7 @@ int main(int argc, char **argv) {
     if (argc == 1) { usage(stdout); return 0; }            /* bare invocation: show usage, RC 0 */
     for (ai = 1; ai < argc; ai++) {
         if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
-        else if (!strcmp(argv[ai], "-v")) { printf("%s - %s\n", AS370_VER_STR, __DATE__); return 0; }
+        else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", AS370_NAME, AS370_VER_H, __DATE__); return 0; }
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
