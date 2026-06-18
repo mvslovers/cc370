@@ -1859,33 +1859,58 @@ static void emit_listing_a(char **lines, int nl) {
     if (alst && alst != stdout) fclose(alst);
 }
 
+/* -v version string -- keep the form consistent across the *370 tools. */
+#define AS370_VER_STR "as370 V2.0"
+static void usage(FILE *o) {
+    fputs(
+"Usage: as370 [options...] file\n"
+" Options:\n"
+"  -- -m              accept any valid HLASM option (not yet implemented)\n"
+"  -a[sub-option...]  turn on listings\n"
+"                     Sub-options:\n"
+"                     e     produce external symbol dictionary\n"
+"                     g     produce general purpose register cross-reference\n"
+"                     i     produce product information\n"
+"                     m     produce macro and copy code source summary\n"
+"                     r     produce relocation dictionary\n"
+"                     s     produce ordinary symbol and literal cross-reference\n"
+"                     x     produce DSECT cross-reference\n"
+"                     =FILE list to FILE (must be last sub-option)\n"
+"  --[no]help         show this message and exit\n"
+"  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
+"  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
+"  -v                 print as utility version\n", o);
+}
 int main(int argc, char **argv) {
     const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
+    if (argc == 1) { usage(stdout); return 0; }            /* bare invocation: show usage, RC 0 */
     for (ai = 1; ai < argc; ai++) {
-        if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
+        if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
+        else if (!strcmp(argv[ai], "-v")) { printf("%s - %s\n", AS370_VER_STR, __DATE__); return 0; }
+        else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
+        else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
-        else if (!strcmp(argv[ai], "-E")) eonly = 1;
-        else if (!strcmp(argv[ai], "-L")) listing = 1;
-        else if (!strncmp(argv[ai], "-a", 2)) {        /* -a[ersgmix...][=FILE]: assembler listing */
-            /* sub-letter semantics (s=source, x=xref, g/m/i recognised no-ops) are
-             * provisional, pending the z/OS `as` man pages; only e/r/s are wired up */
-            const char *p = argv[ai] + 2; a_on = 1; int any = 0;
+        else if (!strcmp(argv[ai], "-m") && ai + 1 < argc) ++ai;   /* -m HLASM-option: accepted, not yet implemented */
+        else if (!strcmp(argv[ai], "--") || !strcmp(argv[ai], "--nohelp")) { /* recognised, no-op */ }
+        else if (!strcmp(argv[ai], "-E")) eonly = 1;       /* (internal) dump macro-expanded source */
+        else if (!strcmp(argv[ai], "-L")) listing = 1;     /* (internal) terse stderr listing */
+        else if (!strncmp(argv[ai], "-a", 2)) {            /* -a[ergsmix...][=FILE]: turn on listings */
+            const char *p = argv[ai] + 2; a_on = 1; a_src = 1; int sel = 0;   /* the source listing is the base of -a; sub-letters add/select sections */
             for (; *p && *p != '='; p++) { switch (*p) {
-                case 'e': a_esd = 1; any = 1; break;   /* external symbol dictionary */
-                case 'r': a_rld = 1; any = 1; break;   /* relocation dictionary */
-                case 's': a_src = 1; any = 1; break;   /* source statements (with object code) */
-                case 'x': a_xref = 1; any = 1; break;  /* symbol + literal cross-reference (not yet implemented) */
-                case 'g': case 'm': case 'i': any = 1; break;   /* recognised; no IFOX equivalent (yet) */
+                case 'e': a_esd = 1; sel = 1; break;   /* external symbol dictionary */
+                case 'r': a_rld = 1; sel = 1; break;   /* relocation dictionary */
+                case 's': a_xref = 1; sel = 1; break;  /* ordinary symbol + literal cross-reference (not yet produced) */
+                case 'g': case 'i': case 'm': case 'x': sel = 1; break;   /* GPR xref / product info / macro summary / DSECT xref (not yet produced) */
                 default: break;
             } }
-            if (*p == '=' && p[1]) alst_fn = p + 1;     /* =FILE */
-            if (!any) { a_esd = a_src = a_rld = 1; }     /* bare -a -> the full listing */
+            if (*p == '=' && p[1]) alst_fn = p + 1;        /* =FILE (must be the last sub-option) */
+            if (!sel) { a_esd = a_rld = 1; }               /* bare -a -> LIST(MAX): every section we produce */
         }
         else src = argv[ai];
     }
-    if (!src) { fprintf(stderr, "usage: as370 [-I maclib]... [-o obj] file.s\n"); return 2; }
+    if (!src) { usage(stderr); return 16; }                /* options given but no input file */
     init_sysvars();
-    FILE *f = fopen(src, "r"); if (!f) { perror(src); return 2; }
+    FILE *f = fopen(src, "r"); if (!f) { perror(src); return 16; }
     static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
     while (fgets(lb, sizeof lb, f) && nr < MAXLINES) raw0[nr++] = strdup(lb);
     fclose(f);
@@ -1910,13 +1935,10 @@ int main(int argc, char **argv) {
         errors += nunk;   /* fail the assembly (non-zero exit) so the build pipeline catches a missing macro */
     }
 
-    long i;
-    printf("module length: 0x%lX (%ld bytes)\n", modlen, modlen);
-    printf("TXT: "); for (i = 0; i < modlen; i++) printf("%02X", text[i]); printf("\n");
     if (objfn) {
-        FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 2; }
-        emit_obj(of); fclose(of); printf("wrote object deck: %s\n", objfn);
+        FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 16; }
+        emit_obj(of); fclose(of);
     }
     emit_listing_a(lines, nl);
-    return errors ? 1 : 0;
+    return errors ? 8 : 0;   /* RC: 0 = clean ("No statements flagged"), 8 = error(s). Finer 4/12/16 once we classify warnings/severe/terminal. */
 }
