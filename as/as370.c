@@ -103,6 +103,8 @@ static void init_sysvars(void) {
 }
 
 static unsigned char a2e(int c);   /* fwd */
+static int hexv(int c);            /* fwd */
+static int hex_to_bytes(const char *s, unsigned char *out, int max);   /* fwd */
 
 static struct sym *sym_find(const char *n) {
     int i; for (i = 0; i < nsym; i++) if (!strcmp(syms[i].name, n)) return &syms[i];
@@ -137,7 +139,7 @@ static void lit_classify(struct lit *l) {
     } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
     } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
     } else if (ty == 'D') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 8; l->algn = 8;
-    } else if (ty == 'X') { const char *q = strchr(p, '\''); int hd = 0; if (q) { const char *e = q + 1; while (*e && *e != '\'') { if (isxdigit((unsigned char)*e)) hd++; e++; } } l->size = haslen ? len : (hd + 1) / 2; l->algn = 1;
+    } else if (ty == 'X') { const char *q = strchr(p, '\''); unsigned char tmp[260]; int nb = q ? hex_to_bytes(q + 1, tmp, 260) : 0; l->size = haslen ? len : nb; l->algn = 1;
     } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; } sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
     } else { l->size = 4; l->algn = 4; }
     if (l->size < 1) l->size = 1;
@@ -239,14 +241,34 @@ static void put(long at, long v, int n) {
 static long align4(long x) { return (x + 3) & ~3L; }
 static long align8(long x) { return (x + 7) & ~7L; }
 static int hexv(int c) { if (c >= '0' && c <= '9') return c - '0'; c = toupper((unsigned char)c); if (c >= 'A' && c <= 'F') return c - 'A' + 10; return 0; }
+/* parse a hex-constant body (the text between the quotes, stops at the closing
+ * quote) into bytes, honouring commas as byte-group separators: X'80,8F,0,0'
+ * yields 4 bytes (each group is taken on its own and left-zero-padded to its
+ * byte width, so a single-digit group '0' becomes one 0x00 byte). Returns the
+ * byte count. A plain X'808F84' (no commas) packs as one even-padded group. */
+static int hex_to_bytes(const char *s, unsigned char *out, int max) {
+    int nb = 0;
+    while (*s && *s != '\'') {
+        char g[64]; int gn = 0;
+        while (*s && *s != '\'' && *s != ',') { if (isxdigit((unsigned char)*s) && gn < 63) g[gn++] = (char)*s; s++; }
+        int s0 = 0;
+        if (gn & 1) { if (nb < max) out[nb++] = (unsigned char)hexv(g[0]); s0 = 1; }
+        for (; s0 + 1 < gn && nb < max; s0 += 2) out[nb++] = (unsigned char)((hexv(g[s0]) << 4) | hexv(g[s0 + 1]));
+        if (*s == ',') s++; else break;
+    }
+    return nb;
+}
 
-/* split operand into fields at top-level (depth-0) commas */
+/* split operand into fields at top-level (depth-0, unquoted) commas. A comma
+ * inside parens or a 'quoted' string is not a separator, so =X'80,8F' and
+ * C'a,b' stay intact; the K'/N'/L'/T' attribute apostrophe is not a quote. */
 static int split_fields(const char *s, char f[][64], int max) {
-    int n = 0, depth = 0; const char *start = s, *p = s;
+    int n = 0, depth = 0, q = 0; const char *start = s, *p = s;
     for (;; p++) {
-        if (*p == '(') depth++;
-        else if (*p == ')') depth--;
-        if ((*p == ',' && depth == 0) || *p == 0) {
+        if (*p == '\'') { if (q || !(p > s && strchr("KNLT", p[-1]))) q = !q; }
+        else if (!q && *p == '(') depth++;
+        else if (!q && *p == ')') depth--;
+        if ((!q && *p == ',' && depth == 0) || *p == 0) {
             int len = (int)(p - start); if (len > 63) len = 63;
             if (n < max) { memcpy(f[n], start, len); f[n][len] = 0; n++; }
             if (*p == 0) break;
@@ -1099,11 +1121,7 @@ static void emit_lit(struct lit *l) {
     } else if (ty == 'F' || ty == 'H') {
         put(l->loc, l->val, l->size);
     } else if (ty == 'X') {
-        const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
-        if (q) { char h[520]; int hl = 0, s0 = 0; const char *e = q + 1;
-            while (*e && *e != '\'' && hl < 519) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
-            if (hl & 1) { by[nb++] = (unsigned char)hexv(h[0]); s0 = 1; }
-            for (; s0 + 1 < hl && nb < 256; s0 += 2) by[nb++] = (unsigned char)((hexv(h[s0]) << 4) | hexv(h[s0 + 1])); }
+        const char *q = strchr(p, '\''); unsigned char by[256]; int nb = q ? hex_to_bytes(q + 1, by, 256) : 0;
         int pad = l->size - nb, j; for (j = 0; j < l->size; j++) put(l->loc + j, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1);
     } else if (ty == 'C') {
         const char *q = strchr(p, '\''); char body[256]; int slen = 0;
