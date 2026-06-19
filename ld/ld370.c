@@ -58,6 +58,27 @@ static const char *nm(const unsigned char *n)
     for (i = 7; i >= 0 && b[i] == ' '; i--) b[i] = 0;
     return b;
 }
+/* ASCII -> EBCDIC (CP037), single char; inverse of e2a1. Unmappable -> space. */
+static unsigned char a2e1(char a)
+{
+    if (a >= 'A' && a <= 'I') return (unsigned char)(0xC1 + (a - 'A'));
+    if (a >= 'J' && a <= 'R') return (unsigned char)(0xD1 + (a - 'J'));
+    if (a >= 'S' && a <= 'Z') return (unsigned char)(0xE2 + (a - 'S'));
+    if (a >= '0' && a <= '9') return (unsigned char)(0xF0 + (a - '0'));
+    if (a == '$') return 0x5B; if (a == '#') return 0x7B;
+    if (a == '@') return 0x7C; if (a == '_') return 0x6D;
+    return 0x40;
+}
+/* build an 8-byte EBCDIC, space-padded member name from an ASCII string */
+static void member_name(unsigned char d[8], const char *s)
+{
+    int i, n = (int)strlen(s);
+    for (i = 0; i < 8; i++) {
+        char c = (i < n) ? s[i] : ' ';
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        d[i] = a2e1(c);
+    }
+}
 
 /* ---- model ---- */
 #define MAXESD 512
@@ -176,19 +197,325 @@ static long olen = 0;
 static void emit(const unsigned char *b, long n) { memcpy(out + olen, b, n); olen += n; }
 static void emitb(int b) { out[olen++] = (unsigned char)b; }
 
+/* ============================================================================
+ * IEBCOPY unloaded-PDS emitter
+ *
+ * Wraps the load-module member record stream into the sequential format an
+ * IEBCOPY UNLOAD produces -- the transport for host->MVS install: a byte
+ * stream IEBCOPY LOADs back into a real load library (mvsMF cannot write
+ * RECFM=U PDS members directly, so we ship the unloaded image instead).
+ *
+ * Structure: COPYR1 (eye-catcher X'CA6D0F') + COPYR2 (source DEB/device
+ * descriptors), then a sequence of CKD record images.  Each record image =
+ *      F(1) MBBCCHHR(8: M BB CC HH R) KL(1) DL(2)  [+ KEY(KL)] + DATA(DL)
+ * Layout:
+ *   [328B env header]          COPYR1 + COPYR2                (echoed verbatim)
+ *   [dir record]               count(KL=8,DL=256) + key FF*8 + 256B dir block
+ *   [dir EOF]                  12 zero bytes (end-of-directory marker record)
+ *   per member, per block:     count(KL=0, DL=blocklen, R ascending) + DATA
+ *   [EOM]                      count(KL=0, DL=0, R = last+1)
+ *
+ * Field classes (advisor reframe -- this is synthesis, not byte-identity to a
+ * member function): COPYR1/COPYR2, device geometry (CC=0x8d) and the base R
+ * (0x0c) are *environment* and echoed from a known-good unload; member name,
+ * block split, R sequence, DL and the directory TTRs are *member-derived* and
+ * built here.  v1 validates by host byte-identity to e2e.iebcopy-unload.bin;
+ * the real oracle is IEBCOPY LOAD + run on MVS.
+ * ==========================================================================*/
+
+/* COPYR1 + COPYR2 (328B), echoed verbatim from a real IEBCOPY unload. Describes
+ * the synthetic source PDS DCB (DSORG=PO, BLKSIZE=19069, RECFM=U) + volume DEB
+ * extents (UDEBX) + device type.  None of it is member-derived. */
+static const unsigned char unload_env_hdr[328] = {
+    0x00, 0xca, 0x6d, 0x0f, 0x02, 0x00, 0x4a, 0x7d, 0x00, 0x00, 0xc0, 0x00,
+    0x00, 0x00, 0x4a, 0x7d, 0x30, 0x50, 0x20, 0x0b, 0x00, 0x00, 0x4a, 0x7d,
+    0x02, 0x30, 0x00, 0x1e, 0x4b, 0x36, 0x01, 0x0b, 0x52, 0x08, 0x02, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00,
+    0x8f, 0x09, 0x66, 0x44, 0x04, 0x9b, 0xd0, 0xe8, 0x50, 0x00, 0x27, 0xc8,
+    0x00, 0x00, 0x00, 0x8d, 0x00, 0x00, 0x00, 0x8d, 0x00, 0x1d, 0x00, 0x1e,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00 };
+
+/* PDS2 directory user-data (24B), echoed template.  build_userdata() overlays
+ * the computed first-text TTR.  TODO(generalise): compute the module
+ * attributes (PDS2ATR), entry point (PDS2EPA) and total length (PDS2STOR) from
+ * the member's CESD/control records per the IHAPDS layout, instead of echoing
+ * this one member's values. */
+static const unsigned char unload_userdata[24] = {
+    0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc3, 0xf2, 0x00, 0x00,
+    0x08, 0x00, 0x08, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x01, 0x00, 0x00 };
+
+/* echoed environment: cylinder of the source PDS data extent (= UDEBX extent
+ * start in the env header) and the base record number on its first track (the
+ * source PDS reserved R=1..0x0b for directory blocks before member data). */
+#define UNLOAD_DATA_CC  0x008d
+#define UNLOAD_FIRST_R  0x0c
+
+/* write a 12-byte CKD count image: F + MBBCCHHR(M,BB,CC,HH,R) + KL + DL */
+static void put_count(unsigned char *p, int cc, int hh, int r, int kl, int dl)
+{
+    p[0] = 0;                                   /* F flag */
+    p[1] = 0; p[2] = 0; p[3] = 0;               /* M(1) + BB(2) */
+    put16(p + 4, cc); put16(p + 6, hh); p[8] = (unsigned char)r;   /* CC HH R */
+    p[9] = (unsigned char)kl; put16(p + 10, dl);                   /* KL DL */
+}
+
+/* one physical block of a load-module member */
+struct lmblock { long off, len; int is_text; };
+/* a member to be unloaded */
+struct umember {
+    unsigned char name[8];
+    const unsigned char *bytes; long len;
+    struct lmblock blk[128]; int nblk;
+    int first_r, text_r;
+};
+
+/* Split a load-module member byte stream into its physical blocks (the records
+ * a loader/IEWFETCH would see).  Record types by byte 0:
+ *   X'20' CESD  -> 8-byte header + ESD bytes (count at off 6)
+ *   X'80' IDR   -> length = byte 1 + 1
+ *   high nibble 0 (control/RLD): 16 + ID-list(off 4) + RLD bytes(off 6);
+ *                 if the TXT bit (X'01') is set a pure-text record of length
+ *                 (off 14) follows as its OWN block.
+ * Returns block count, or -1 on an unrecognised record. */
+static int split_member(const unsigned char *m, long n, struct lmblock *b, int maxb)
+{
+    long p = 0; int k = 0;
+    while (p < n) {
+        int b0 = m[p], hi = b0 & 0xf0; long blen;
+        if (hi == 0x20) {                               /* CESD */
+            blen = 8 + be16(m + p + 6);
+        } else if (hi == 0x80) {                        /* IDR */
+            blen = m[p + 1] + 1;
+        } else if (hi == 0x00) {                        /* control / RLD record (16-byte hdr) */
+            int txt = b0 & 0x01;                        /* TXT bit -> pure-text record follows */
+            long tlen = txt ? be16(m + p + 14) : 0;     /* its length = the control record's CCW count */
+            blen = 16 + be16(m + p + 4) + be16(m + p + 6);
+            if (k >= maxb) return -1;
+            b[k].off = p; b[k].len = blen; b[k].is_text = 0; k++;
+            p += blen;
+            if (txt && tlen) {
+                if (k >= maxb) return -1;
+                b[k].off = p; b[k].len = tlen; b[k].is_text = 1; k++;
+                p += tlen;
+            }
+            continue;                                   /* self-contained; skip the CESD/IDR tail below */
+        } else {
+            return -1;                                  /* SYM/scatter: not produced by cc370/as370 yet */
+        }
+        if (k >= maxb) return -1;                        /* CESD / IDR: one block, advance and loop */
+        b[k].off = p; b[k].len = blen; b[k].is_text = 0; k++;
+        p += blen;
+    }
+    return k;
+}
+
+/* build the 24-byte PDS2 user-data for a member: echo template, overlay the
+ * computed first-text TTR (relative track 0, record text_r). */
+static void build_userdata(unsigned char ud[24], const struct umember *m)
+{
+    memcpy(ud, unload_userdata, 24);
+    ud[0] = 0; ud[1] = 0; ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (0, text_r) */
+}
+
+/* Emit the IEBCOPY unloaded image of one-or-more members into o[]; return the
+ * byte length.  v1: single track, ascending R (no track-overflow), one
+ * directory block.  The loops are laid out for N members so generalising to
+ * multi-member / multi-track only fills in the marked TODOs. */
+static long emit_unload(unsigned char *o, struct umember *mem, int nmem)
+{
+    long p = 0; int i, j, r, eom_r;
+    unsigned char dir[256]; long used;
+
+    /* PDS directory entries must be in ascending EBCDIC name order; sort the
+     * members once so both the directory and the data area agree (insertion
+     * sort -- nmem is small). */
+    for (i = 1; i < nmem; i++) {
+        struct umember t = mem[i];
+        for (j = i; j > 0 && memcmp(mem[j - 1].name, t.name, 8) > 0; j--)
+            mem[j] = mem[j - 1];
+        mem[j] = t;
+    }
+
+    memcpy(o + p, unload_env_hdr, 328); p += 328;       /* COPYR1 + COPYR2 */
+
+    /* assign each block a record number, single track ascending from base.
+     * TODO(multi-track): when blocks overflow one track, advance HH then CC
+     * (and grow UDEBX) keeping MBBCCHHR monotonic; today we assume one track. */
+    r = UNLOAD_FIRST_R;
+    for (i = 0; i < nmem; i++) {
+        mem[i].first_r = r;
+        mem[i].text_r = r;
+        for (j = 0; j < mem[i].nblk; j++) {
+            if (mem[i].blk[j].is_text) mem[i].text_r = r;
+            r++;
+        }
+    }
+    eom_r = r;
+    if (r > 255) trace("WARNING: %d records exceed one track -- multi-track not yet emitted", r);
+
+    /* directory block: 2-byte used count, member entries (assumed name-sorted
+     * by the caller -- true for v1), FF terminator entry, zero pad. */
+    memset(dir, 0, sizeof dir);
+    used = 2;
+    for (i = 0; i < nmem; i++) {
+        unsigned char *e = dir + used;
+        memcpy(e, mem[i].name, 8);
+        e[8] = 0; e[9] = 0; e[10] = (unsigned char)mem[i].first_r;   /* TTR = (0, first_r) */
+        e[11] = 0x2c;                                /* alias=0, 1 TTR, 12 halfwords user data */
+        build_userdata(e + 12, &mem[i]);
+        used += 8 + 3 + 1 + 24;
+    }
+    memset(dir + used, 0xff, 8); used += 12;          /* end-of-directory: FF name + zero TTR/C */
+    put16(dir, (int)used);
+    if (used > 256) trace("WARNING: directory overflows one block -- multi-block dir not yet emitted");
+
+    put_count(o + p, 0, 0, 0, 8, 256); p += 12;        /* directory record */
+    memset(o + p, 0xff, 8); p += 8;                    /* key = high values */
+    memcpy(o + p, dir, 256); p += 256;
+
+    memset(o + p, 0, 12); p += 12;                     /* end-of-directory marker record */
+
+    /* member data: one CKD record image per physical block */
+    r = UNLOAD_FIRST_R;
+    for (i = 0; i < nmem; i++)
+        for (j = 0; j < mem[i].nblk; j++) {
+            long bl = mem[i].blk[j].len;
+            put_count(o + p, UNLOAD_DATA_CC, 0, r, 0, (int)bl); p += 12;
+            memcpy(o + p, mem[i].bytes + mem[i].blk[j].off, bl); p += bl;
+            r++;
+        }
+    put_count(o + p, UNLOAD_DATA_CC, 0, eom_r, 0, 0); p += 12;   /* EOM */
+    return p;
+}
+
+/* Split each member, emit the unloaded image of all of them and write it to
+ * path.  mem[].name/.bytes/.len must be set by the caller. Returns 0 on ok. */
+static int write_unload_mem(const char *path, struct umember *mem, int nmem)
+{
+    static unsigned char unl[1 << 18];
+    long ulen; FILE *f; int i;
+
+    for (i = 0; i < nmem; i++) {
+        mem[i].nblk = split_member(mem[i].bytes, mem[i].len, mem[i].blk, 128);
+        if (mem[i].nblk < 0) {
+            fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", nm(mem[i].name));
+            return 1;
+        }
+        trace("=== unload: member '%s', %d block(s), %ld bytes ===",
+              nm(mem[i].name), mem[i].nblk, mem[i].len);
+    }
+    ulen = emit_unload(unl, mem, nmem);
+    f = fopen(path, "wb");
+    if (!f) { perror(path); return 1; }
+    fwrite(unl, 1, (size_t)ulen, f);
+    fclose(f);
+    trace("=== done: wrote %ld-byte unloaded image (%d member%s) to %s ===",
+          ulen, nmem, nmem == 1 ? "" : "s", path);
+    return 0;
+}
+
+/* convenience: unload a single in-memory member */
+static int write_unload(const char *path, const char *name,
+                        const unsigned char *member, long mlen)
+{
+    struct umember m;
+    memset(&m, 0, sizeof m);
+    member_name(m.name, name);
+    m.bytes = member; m.len = mlen;
+    return write_unload_mem(path, &m, 1);
+}
+
+/* derive an 8-char member name from a file path basename (strip dir + ext) */
+static const char *basename_member(const char *path)
+{
+    static char nm8[9]; const char *s = path, *p; int i;
+    for (p = path; *p; p++) if (*p == '/' || *p == '\\') s = p + 1;
+    for (i = 0; i < 8 && s[i] && s[i] != '.'; i++) nm8[i] = s[i];
+    nm8[i] = 0;
+    return nm8;
+}
+
 int main(int argc, char **argv)
 {
-    const char *outfile = NULL, *objfiles[MAXOBJ];
-    int nobjf = 0, i, j;
+    const char *outfile = NULL, *unloadfile = NULL, *unloadfrom = NULL, *mname = NULL;
+    const char *objfiles[MAXOBJ];
+    char *packspec[MAXOBJ];
+    int nobjf = 0, npack = 0, i, j;
     FILE *f;
 
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-o") && i + 1 < argc) outfile = argv[++i];
+        else if (!strcmp(argv[i], "--unload") && i + 1 < argc) unloadfile = argv[++i];
+        else if (!strcmp(argv[i], "--unload-from") && i + 1 < argc) unloadfrom = argv[++i];
+        else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
+        else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (nobjf < MAXOBJ) objfiles[nobjf++] = argv[i];
     }
+
+    /* --- standalone unload: wrap an existing flat member, no object linking.
+     *     ld370 --unload-from MEMBER.lm [--name NAME] --unload OUT.unload --- */
+    if (unloadfrom) {
+        static unsigned char memb[1 << 16];
+        long mlen;
+        if (!unloadfile) { fprintf(stderr, "ld370: --unload-from needs --unload OUT\n"); return 2; }
+        f = fopen(unloadfrom, "rb");
+        if (!f) { perror(unloadfrom); return 1; }
+        mlen = (long)fread(memb, 1, sizeof memb, f);
+        fclose(f);
+        return write_unload(unloadfile, mname ? mname : basename_member(unloadfrom), memb, mlen);
+    }
+
+    /* --- multi-member unload: pack several flat members into one image.
+     *     ld370 --pack NAME1=FILE1 --pack NAME2=FILE2 ... --unload OUT.unload
+     *     (single-track geometry: total records must fit one track for now) --- */
+    if (npack) {
+        struct umember m[MAXOBJ]; int rc;
+        if (!unloadfile) { fprintf(stderr, "ld370: --pack needs --unload OUT\n"); return 2; }
+        memset(m, 0, sizeof m);
+        for (i = 0; i < npack; i++) {
+            char *eq = strchr(packspec[i], '='); long n; unsigned char *buf; size_t got;
+            if (!eq) { fprintf(stderr, "ld370: bad --pack '%s' (need NAME=FILE)\n", packspec[i]); return 2; }
+            *eq = 0;
+            f = fopen(eq + 1, "rb");
+            if (!f) { perror(eq + 1); return 1; }
+            fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
+            buf = malloc((size_t)n);
+            if (!buf) { fclose(f); fprintf(stderr, "ld370: out of memory\n"); return 1; }
+            got = fread(buf, 1, (size_t)n, f); (void)got; fclose(f);
+            member_name(m[i].name, packspec[i]); m[i].bytes = buf; m[i].len = n;
+        }
+        rc = write_unload_mem(unloadfile, m, npack);
+        for (i = 0; i < npack; i++) free((void *)m[i].bytes);
+        return rc;
+    }
+
     if (!nobjf || !outfile) {
-        fprintf(stderr, "usage: ld370 [--verbose] -o OUT.bin OBJ1.obj [OBJ2.obj ...]\n");
+        fprintf(stderr,
+                "usage: ld370 [--verbose] -o OUT.bin [--unload OUT.unload [--name NAME]] OBJ...\n"
+                "       ld370 --unload-from MEMBER.lm [--name NAME] --unload OUT.unload\n"
+                "       ld370 --pack NAME1=MEMBER1.lm [--pack NAME2=MEMBER2.lm ...] --unload OUT.unload\n");
         return 2;
     }
 
@@ -373,5 +700,11 @@ int main(int argc, char **argv)
     fwrite(out, 1, olen, f);
     fclose(f);
     trace("=== done: wrote %ld-byte load module to %s ===", olen, outfile);
+
+    /* optional: also emit the IEBCOPY unloaded image of the linked member
+     * (the host->MVS install transport). The member just written to -o is the
+     * ".lm"; --unload is the shippable result. */
+    if (unloadfile)
+        return write_unload(unloadfile, mname ? mname : basename_member(outfile), out, olen);
     return 0;
 }
