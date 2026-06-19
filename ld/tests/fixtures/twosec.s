@@ -1,0 +1,7 @@
+MAINSEC  CSECT
+         BR    14
+MPTR     DC    A(SUBSEC)
+SUBSEC   CSECT
+SDATA    DC    F'42'
+SPTR     DC    A(MAINSEC)
+         END

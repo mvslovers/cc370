@@ -1,0 +1,6 @@
+# build artifact
+/ld370
+# python bytecode
+tests/__pycache__/
+# regenerable assembler output (run.sh produces these from the .s sources)
+tests/fixtures/*.obj

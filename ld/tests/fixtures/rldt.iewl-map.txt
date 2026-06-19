@@ -1,0 +1,242 @@
+--- JESJCLIN ---
+//CARVRLD JOB (A),'LD RLD REF',                                         JOB  457
+//          CLASS=A,MSGCLASS=H,
+//          MSGLEVEL=(1,1),
+//          NOTIFY=IBMUSER,
+//         USER=IBMUSER,
+//         PASSWORD=
+//*
+//ASM      EXEC PGM=IFOX00,
+//          PARM='DECK,LIST,NOLOAD,TERM,XREF(SHORT),RENT'
+//SYSLIB   DD DSN=SYS1.MACLIB,DISP=SHR
+//SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+//SYSUT2   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+//SYSUT3   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+//SYSPUNCH DD DSN=&&OBJ,DISP=(NEW,PASS),UNIT=SYSDA,
+//            SPACE=(TRK,(1,1)),DCB=(RECFM=FB,LRECL=80,BLKSIZE=3120)
+//SYSTERM  DD SYSOUT=*
+//SYSPRINT DD SYSOUT=*
+//SYSGO    DD DUMMY
+//SYSIN    DD *
+�& �  �  
+//*
+//LINK     EXEC PGM=IEWL,PARM='NCAL,LIST,MAP,XREF,LET,RENT',
+//          COND=(4,LT,ASM)
+//SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+//SYSPRINT DD SYSOUT=*
+//SYSLMOD  DD DSN=IBMUSER.CARVEOUT.LOAD(RLDT),DISP=SHR
+//SYSLIN   DD DSN=&&OBJ,DISP=(OLD,PASS)
+//         DD *
+�& �  �  
+//
+******** JOB DELETED BY JES2 OR CANCELLED BY OPERATOR BEFORE EXECUTION ********
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- JESMSGLG ---
+                                                J E S 2   J O B   L O G
+ 1.59.06 JOB  457  $HASP373 CARVRLD  STARTED - INIT  1 - CLASS A - SYS MVSC
+ 1.59.06 JOB  457  IEF403I CARVRLD - STARTED - TIME=01.59.06
+ 1.59.06 JOB  457  IEFACTRT ASM     /IFOX00  /00:00:00.04/00:00:00.09/00000/CARVRLD
+ 1.59.06 JOB  457  IEFACTRT LINK    /IEWL    /00:00:00.01/00:00:00.04/00004/CARVRLD
+ 1.59.06 JOB  457  IEF404I CARVRLD - ENDED - TIME=01.59.06
+ 1.59.06 JOB  457  $HASP395 CARVRLD  ENDED
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- JESJCL ---
+    1     //CARVRLD JOB (A),'LD RLD REF',                                         JOB  457
+          //          CLASS=A,MSGCLASS=H,
+          //          MSGLEVEL=(1,1),
+          //          NOTIFY=IBMUSER,
+          //         USER=IBMUSER,
+          //         PASSWORD=
+          ***
+    2     //ASM      EXEC PGM=IFOX00,
+          //          PARM='DECK,LIST,NOLOAD,TERM,XREF(SHORT),RENT'
+    3     //SYSLIB   DD DSN=SYS1.MACLIB,DISP=SHR
+    4     //SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+    5     //SYSUT2   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+    6     //SYSUT3   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+    7     //SYSPUNCH DD DSN=&&OBJ,DISP=(NEW,PASS),UNIT=SYSDA,
+          //            SPACE=(TRK,(1,1)),DCB=(RECFM=FB,LRECL=80,BLKSIZE=3120)
+    8     //SYSTERM  DD SYSOUT=*
+    9     //SYSPRINT DD SYSOUT=*
+   10     //SYSGO    DD DUMMY
+   11     //SYSIN    DD *
+          ***
+   12     //LINK     EXEC PGM=IEWL,PARM='NCAL,LIST,MAP,XREF,LET,RENT',
+          //          COND=(4,LT,ASM)
+   13     //SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
+   14     //SYSPRINT DD SYSOUT=*
+   15     //SYSLMOD  DD DSN=IBMUSER.CARVEOUT.LOAD(RLDT),DISP=SHR
+   16     //SYSLIN   DD DSN=&&OBJ,DISP=(OLD,PASS)
+   17     //         DD *
+          //
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- JESYSMSG ---
+IEF236I ALLOC. FOR CARVRLD ASM
+IEF237I 150  ALLOCATED TO SYSLIB
+IEF237I 251  ALLOCATED TO SYSUT1
+IEF237I 252  ALLOCATED TO SYSUT2
+IEF237I 252  ALLOCATED TO SYSUT3
+IEF237I 251  ALLOCATED TO SYSPUNCH
+IEF237I JES2 ALLOCATED TO SYSTERM
+IEF237I JES2 ALLOCATED TO SYSPRINT
+IEF237I DMY  ALLOCATED TO SYSGO
+IEF237I JES2 ALLOCATED TO SYSIN
+IEF142I CARVRLD ASM - STEP WAS EXECUTED - COND CODE 0000
+IEF285I   SYS1.MACLIB                                  KEPT          *--------0
+IEF285I   VOL SER NOS= MVSRES.
+IEF285I   SYS26170.T015906.RA000.CARVRLD.R0000001      DELETED       *--------8
+IEF285I   VOL SER NOS= WORK00.
+IEF285I   SYS26170.T015906.RA000.CARVRLD.R0000002      DELETED       *--------7
+IEF285I   VOL SER NOS= WORK01.
+IEF285I   SYS26170.T015906.RA000.CARVRLD.R0000003      DELETED       *--------7
+IEF285I   VOL SER NOS= WORK01.
+IEF285I   SYS26170.T015906.RA000.CARVRLD.OBJ           PASSED        *--------1
+IEF285I   VOL SER NOS= WORK00.
+IEF285I   JES2.JOB00457.SO0103                         SYSOUT
+IEF285I   JES2.JOB00457.SO0104                         SYSOUT
+IEF285I   JES2.JOB00457.SI0101                         SYSIN
+IEF373I STEP /ASM     / START 26170.0159
+IEF374I STEP /ASM     / STOP  26170.0159 CPU    0MIN 00.04SEC SRB    0MIN 00.00SEC VIRT   512K SYS   204K
+**** JOB NAME: CARVRLD  JOBCARD READ 2026/170 01:59:06 370/148 VS2 R03.8 MVSC ******************************************************
+*                                                                                                                                  *
+*  STEP NUMBER:          1  USER CORE:        512K  START TIME:   01:59:06     CPU TIME:    00:00:00.04  ACTIVE TIME:  00:00:00.06 *
+*  STEP NAME:     ASM       SYSTEM CORE:      204K  STOP TIME:    01:59:06     SRB TIME:    00:00:00.00  ALLOC TIME:   01:59:06    *
+*  PROGRAM NAME:  IFOX00    REGION SIZE:      512K  ELAPSED TIME: 00:00:00.09  TCB TIME:    00:00:00.04  PROGRAM LOAD: 01:59:06    *
+*  CONDITION CODE:   00000  PERFORMANCE GROUP: 004                                                                                 *
+*                           JES2 CARDS:          0       SERVICE UNITS  PAGES IN/OUT  # SWAPS  PAGES SWAP IN/OUT  VIO PAGES IN/OUT *
+*                                                                  168      0 /    0        0           0 /    0          0 /    0 *
+*                                                                                                                                  *
+*   ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT   *
+*   150/D3350         0  251/D3350         8  252/D3350         7  252/D3350         7  251/D3350         1                        *
+************************************************************************************************************************************
+IEF236I ALLOC. FOR CARVRLD LINK
+IEF237I 251  ALLOCATED TO SYSUT1
+IEF237I JES2 ALLOCATED TO SYSPRINT
+IEF237I 252  ALLOCATED TO SYSLMOD
+IEF237I 180  ALLOCATED TO SYS15878
+IEF237I 251  ALLOCATED TO SYSLIN
+IEF237I JES2 ALLOCATED TO
+IEF142I CARVRLD LINK - STEP WAS EXECUTED - COND CODE 0004
+IEF285I   SYS26170.T015906.RA000.CARVRLD.R0000004      DELETED       *--------0
+IEF285I   VOL SER NOS= WORK00.
+IEF285I   JES2.JOB00457.SO0105                         SYSOUT
+IEF285I   IBMUSER.CARVEOUT.LOAD                        KEPT          *-------10
+IEF285I   VOL SER NOS= WORK01.
+IEF285I   UCPUB000                                     KEPT          *--------0
+IEF285I   VOL SER NOS= PUB000.
+IEF285I   SYS26170.T015906.RA000.CARVRLD.OBJ           PASSED        *--------2
+IEF285I   VOL SER NOS= WORK00.
+IEF285I   JES2.JOB00457.SI0102                         SYSIN
+IEF373I STEP /LINK    / START 26170.0159
+IEF374I STEP /LINK    / STOP  26170.0159 CPU    0MIN 00.01SEC SRB    0MIN 00.00SEC VIRT   260K SYS   208K
+************************************************************************************************************************************
+*                                                                                                                                  *
+*  STEP NUMBER:          2  USER CORE:        260K  START TIME:   01:59:06     CPU TIME:    00:00:00.01  ACTIVE TIME:  00:00:00.02 *
+*  STEP NAME:     LINK      SYSTEM CORE:      208K  STOP TIME:    01:59:06     SRB TIME:    00:00:00.00  ALLOC TIME:   01:59:06    *
+*  PROGRAM NAME:  IEWL      REGION SIZE:      512K  ELAPSED TIME: 00:00:00.04  TCB TIME:    00:00:00.01  PROGRAM LOAD: 01:59:06    *
+*  CONDITION CODE:   00004  PERFORMANCE GROUP: 004                                                                                 *
+*                           JES2 CARDS:          0       SERVICE UNITS  PAGES IN/OUT  # SWAPS  PAGES SWAP IN/OUT  VIO PAGES IN/OUT *
+*                                                                   85      0 /    0        0           0 /    0          0 /    0 *
+*                                                                                                                                  *
+*   ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT  ADDR/UNIT I/O COUNT   *
+*   251/D3350         0  252/D3350        10  180/D3380         0  251/D3350         2                                             *
+************************************************************************************************************************************
+IEF237I 251  ALLOCATED TO SYS00001
+IEF285I   SYS26170.T015906.RA000.CARVRLD.R0000001      KEPT          *--------0
+IEF285I   VOL SER NOS= WORK00.
+IEF285I   SYS26170.T015906.RA000.CARVRLD.OBJ           DELETED
+IEF285I   VOL SER NOS= WORK00.
+IEF375I  JOB /CARVRLD / START 26170.0159
+IEF376I  JOB /CARVRLD / STOP  26170.0159 CPU    0MIN 00.05SEC SRB    0MIN 00.00SEC
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- SYSIN ---
+RLDT     CSECT
+         BR    14
+VEXT     DC    V(EXTRTN)
+ASELF    DC    A(RLDT)
+         END
+/*
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- UNK0102 ---
+  ENTRY RLDT
+/*
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- SYSTERM ---
+ASSEMBLER (XF) DONE
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NUMBER, NOOBJECT, RENT, RLD, STMT, NOLIBMAC, TERMINAL, NOTEST, XREF(SHORT)
+  SYSPARM()
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- SYSPRINT ---
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 01.59 06/19/26
+RLDT      SD  0001 000000 00000C
+EXTRTN    ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 01.59 06/19/26
+000000                                1 RLDT     CSECT
+000000 07FE                           2          BR    14
+000002 0000
+000004 00000000                       3 VEXT     DC    V(EXTRTN)
+000008 00000000                       4 ASELF    DC    A(RLDT)
+                                      5          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 01.59 06/19/26
+ 0001     0001      0C     000008
+ 0001     0002      1C     000004
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.59 06/19/26
+RLDT     00001 00000000 00001  00004
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 01.59 06/19/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NUMBER, NOOBJECT, RENT, RLD, STMT, NOLIBMAC, TERMINAL, NOTEST, XREF(SHORT)
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT          5
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        33
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+--- SYSPRINT ---
+ 
+ F64-LEVEL LINKAGE EDITOR OPTIONS SPECIFIED NCAL,LIST,MAP,XREF,LET,RENT
+          DEFAULT OPTION(S) USED -  SIZE=(231424,55296)
+IEW0000      ENTRY RLDT
+IEW0461  EXTRTN
+ 
+                                                CROSS REFERENCE TABLE
+ 
+  CONTROL SECTION                       ENTRY
+    NAME    ORIGIN  LENGTH                NAME   LOCATION     NAME   LOCATION     NAME   LOCATION     NAME   LOCATION
+  RLDT          00       C
+ 
+ 
+  LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION             LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION
+        4            EXTRTN         $UNRESOLVED
+ ENTRY ADDRESS       00
+ TOTAL LENGTH        10
+****RLDT      DOES NOT EXIST BUT HAS BEEN ADDED TO DATA SET
+AUTHORIZATION CODE IS         0.
+**MODULE HAS BEEN MARKED REENTERABLE, AND REUSABLE.
+ 
+                                             DIAGNOSTIC MESSAGE DIRECTORY
+   IEW0461 WARNING - SYMBOL PRINTED IS AN UNRESOLVED EXTERNAL REFERENCE; NCAL WAS SPECIFIED, OR THE REFERENCE WAS
+           MARKED FOR RESTRICTED NO-CALL OR NEVERCALL.
+ 
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
