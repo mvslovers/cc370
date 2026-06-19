@@ -138,6 +138,7 @@ struct obj {
     struct { unsigned char name[8]; long addr; int owner_local; } ld[64];   /* label defs (entries) */
     int nld;
     long object_base;                 /* assigned base address of this object's section(s) */
+    int has_entry, entry_id; long entry_off;   /* END-card entry: section local ESDID + offset */
 };
 static struct obj O[MAXOBJ];
 static int nO = 0;
@@ -206,7 +207,10 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                 same = c[p] & 0x01; p += 4; o->nrld++;
             }
         } else if (c[1] == 0xC5 && c[2] == 0xD5 && c[3] == 0xC4) {     /* END */
-            if (!(c[5] == 0x40 && c[6] == 0x40 && c[7] == 0x40)) entry_pt = be24(c + 5);
+            if (!(c[5] == 0x40 && c[6] == 0x40 && c[7] == 0x40)) {     /* entry by section ESDID + offset */
+                entry_pt = be24(c + 5);
+                o->has_entry = 1; o->entry_id = be16(c + 14); o->entry_off = be24(c + 5);
+            }
         }
     }
 }
@@ -427,6 +431,7 @@ struct umember {
     const unsigned char *bytes; long len;
     struct lmblock blk[128]; int nblk;
     int first_r, text_r;
+    long entry, modlen;   /* PDS2EPA / PDS2STOR for the dir entry; <0 = echo template */
 };
 
 /* Split a load-module member byte stream into its physical blocks (the records
@@ -475,6 +480,14 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
 {
     memcpy(ud, unload_userdata, 24);
     ud[0] = 0; ud[1] = 0; ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (0, text_r) */
+    if (m->modlen >= 0) {                                     /* computed from the link */
+        put24(ud + 10, m->modlen);                           /* PDS2STOR (total storage) */
+        put16(ud + 13, (int)m->modlen);                      /* PDS2FTBL (first text block len) */
+    }
+    if (m->entry >= 0) {
+        put24(ud + 15, m->entry);                            /* PDS2EPA (entry point) */
+        put24(ud + 21, m->entry);                            /* PDS2EPM (entry for member name) */
+    }
 }
 
 /* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
@@ -585,12 +598,12 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
 
 /* convenience: unload a single in-memory member */
 static int write_unload(const char *path, const char *name,
-                        const unsigned char *member, long mlen)
+                        const unsigned char *member, long mlen, long entry, long modlen)
 {
     struct umember m;
     memset(&m, 0, sizeof m);
     member_name(m.name, name);
-    m.bytes = member; m.len = mlen;
+    m.bytes = member; m.len = mlen; m.entry = entry; m.modlen = modlen;
     return write_unload_mem(path, &m, 1);
 }
 
@@ -790,13 +803,13 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
 }
 
 /* convenience: XMIT a single in-memory member */
-static int write_xmit1(const char *path, const char *name,
-                       const unsigned char *member, long mlen, const char *dsn)
+static int write_xmit1(const char *path, const char *name, const unsigned char *member,
+                       long mlen, const char *dsn, long entry, long modlen)
 {
     struct umember m;
     memset(&m, 0, sizeof m);
     member_name(m.name, name);
-    m.bytes = member; m.len = mlen;
+    m.bytes = member; m.len = mlen; m.entry = entry; m.modlen = modlen;
     return write_xmit(path, &m, 1, dsn);
 }
 
@@ -867,8 +880,8 @@ int main(int argc, char **argv)
         mlen = (long)fread(memb, 1, sizeof memb, f);
         fclose(f);
         name = mname ? mname : basename_member(unloadfrom);
-        if (unloadfile && write_unload(unloadfile, name, memb, mlen)) return 1;
-        if (xmitfile && write_xmit1(xmitfile, name, memb, mlen, dsn)) return 1;
+        if (unloadfile && write_unload(unloadfile, name, memb, mlen, -1, -1)) return 1;
+        if (xmitfile && write_xmit1(xmitfile, name, memb, mlen, dsn, -1, -1)) return 1;
         return 0;
     }
 
@@ -890,6 +903,7 @@ int main(int argc, char **argv)
             if (!buf) { fclose(f); fprintf(stderr, "ld370: out of memory\n"); return 1; }
             got = fread(buf, 1, (size_t)n, f); (void)got; fclose(f);
             member_name(m[i].name, packspec[i]); m[i].bytes = buf; m[i].len = n;
+            m[i].entry = -1; m[i].modlen = -1;          /* multi-member: echo dir template */
         }
         if (unloadfile) rc = write_unload_mem(unloadfile, m, npack);
         if (!rc && xmitfile) rc = write_xmit(xmitfile, m, npack, dsn);
@@ -980,7 +994,16 @@ int main(int argc, char **argv)
     int nsect = gid;
     for (i = 0; i < nG; i++)
         if (!G[i].is_sect) G[i].gid = ++gid;          /* unresolved ERs get ids after sections */
-    trace("  module length = %ld", modlen);
+
+    /* entry point: the END-card section's final origin + offset (first object
+     * that names one -- normally the explicit main, e.g. @@MAIN). */
+    long entry_addr = 0;
+    for (i = 0; i < nO; i++)
+        if (O[i].has_entry && O[i].entry_id >= 1 && O[i].entry_id < MAXESD && O[i].loc[O[i].entry_id].used) {
+            entry_addr = G[O[i].loc_g[O[i].entry_id]].org + O[i].entry_off;
+            break;
+        }
+    trace("  module length = %ld  entry point = %06lX", modlen, entry_addr);
 
     /* --- build module text image + relocate address constants --- */
     static unsigned char mod[1 << 20];
@@ -1050,7 +1073,7 @@ int main(int argc, char **argv)
         static unsigned char cr[16 + 4 * MAXG]; memset(cr, 0, (size_t)(16 + idlen));
         cr[0] = have_rld ? 0x01 : 0x0D;
         put16(cr + 4, idlen); put16(cr + 6, 0);
-        cr[8] = 0x06; put24(cr + 9, 0); cr[12] = 0x40; put16(cr + 14, (int)modlen);
+        cr[8] = 0x06; put24(cr + 9, entry_addr); cr[12] = 0x40; put16(cr + 14, (int)modlen);
         for (gid = 1; gid <= nsect; gid++) {          /* sections are gid 1..nsect, in origin order */
             int gi = -1; for (i = 0; i < nG; i++) if (G[i].gid == gid) { gi = i; break; }
             long span = (gid < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
@@ -1112,8 +1135,8 @@ int main(int argc, char **argv)
      * unloaded image. */
     {
         const char *name = mname ? mname : basename_member(outfile);
-        if (unloadfile && write_unload(unloadfile, name, out, olen)) return 1;
-        if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn)) return 1;
+        if (unloadfile && write_unload(unloadfile, name, out, olen, entry_addr, modlen)) return 1;
+        if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn, entry_addr, modlen)) return 1;
     }
     return 0;
 }
