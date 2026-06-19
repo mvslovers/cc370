@@ -77,10 +77,21 @@ emit them; `inmr_hdr()` writes the eye-catcher.
 Field classes: `INMDSNAM` is a **parameter** (`--dsn`, the install target);
 `INMFTIME` is **computed** (current time — the byte-identity carve-out); the
 DCB constants (RECFM/DSORG/LRECL of the source U-PO library and the VS unloaded
-form) are **echoed** E2E-correct. **Open (TODO):** the `INMSIZE` allocation
-hints and source `INMBLKSZ/INMDIR` are echoed E2E values — compute them from the
-member for arbitrary modules (a single tiny oracle can't validate them; a wrong
-size only bites RECEIVE on a larger member).
+form) are **echoed** E2E-correct. **Open (TODO):** `INMSIZE` (= the file's
+approximate size in bytes, an allocation hint) and the source `INMBLKSZ/INMDIR`
+are echoed E2E values — compute them from the member for arbitrary modules (a
+wrong size only bites RECEIVE on a larger member).
+
+> **Cross-checked against the authoritative `mainframed/xmi` reference**
+> (<https://github.com/mainframed/xmi>, <https://xmi.readthedocs.io/en/latest/netdata.html>):
+> the text-unit key table (INMDSNAM=0x0002, INMDIR=0x000c, INMBLKSZ=0x0030,
+> INMDSORG=0x003c, INMLRECL=0x0042, INMRECFM=0x0049, INMTNODE=0x1001,
+> INMTUID=0x1002, INMFNODE=0x1011, INMFUID=0x1012, INMFTIME=0x1024,
+> INMUTILN=0x1028, INMSIZE=0x102c, INMNUMF=0x102f), the per-PDS INMR set
+> (INMR01 + 2×INMR02 [IEBCOPY+INMCOPY] + INMR03 + INMR06), the 4-byte INMR02
+> file ordinal, the text-unit encoding, the segment flag bits, the
+> no-checksum/zero-pad tail, and the RECFM/DSORG bit encodings all match what
+> this emitter produces.
 
 ## 4. Install on MVS (RECV370)
 
