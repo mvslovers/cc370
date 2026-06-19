@@ -81,6 +81,7 @@ static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentat
 #define TXL_EV  131072
 #define TXL_BUF (TEXTMAX * 2)
 static long txl_addr[TXL_EV]; static int txl_len[TXL_EV]; static long txl_boff[TXL_EV];
+static int  txl_esdid[TXL_EV];   /* ESDID of the section that emitted each event (for the TXT card's ID, since overlaid sections share an address) */
 static unsigned char txl_bytes[TXL_BUF];
 static int  ntxl; static long txl_blen, txl_maxend;
 static int  txl_on;        /* logging active (pass 2 only) */
@@ -275,12 +276,12 @@ static void put(long at, long v, int n) {
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
     if (txl_on) {                               /* record the emission for the TXT writer (emission-order replay) */
         if (at < txl_maxend) txl_revisit = 1;   /* writing below the high-water mark = an overlay */
-        if (ntxl > 0 && at == txl_addr[ntxl - 1] + txl_len[ntxl - 1]) {   /* contiguous -> extend the previous event */
+        if (ntxl > 0 && at == txl_addr[ntxl - 1] + txl_len[ntxl - 1] && cur_sect_esdid == txl_esdid[ntxl - 1]) {   /* contiguous AND same section -> extend the previous event */
             if (txl_blen + n > TXL_BUF) { fprintf(stderr, "as370: TXT log buffer overflow\n"); exit(2); }
             memcpy(txl_bytes + txl_blen, text + at, (size_t)n); txl_len[ntxl - 1] += n; txl_blen += n;
         } else {
             if (ntxl >= TXL_EV || txl_blen + n > TXL_BUF) { fprintf(stderr, "as370: TXT log overflow\n"); exit(2); }
-            txl_addr[ntxl] = at; txl_len[ntxl] = n; txl_boff[ntxl] = txl_blen;
+            txl_addr[ntxl] = at; txl_len[ntxl] = n; txl_boff[ntxl] = txl_blen; txl_esdid[ntxl] = cur_sect_esdid;
             memcpy(txl_bytes + txl_blen, text + at, (size_t)n); txl_blen += n; ntxl++;
         }
         if (at + n > txl_maxend) txl_maxend = at + n;
@@ -1376,7 +1377,8 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
 
         if (!strcmp(op, "CSECT")) {
-            if (in_dsect) { in_dsect = 0; lc = main_lc; } else { lc = 0; org_hwm = 0; }   /* resume the control section */
+            if (in_dsect) { in_dsect = 0; lc = main_lc; }   /* DSECT: resume the saved control-section counter */
+            else { org_hwm = 0; }   /* a new/continued CSECT keeps the continuous location counter: distinct sections stack within one assembly, as IFOX does */
             if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
                 int k, hassect = 0; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) hassect = 1;
                 if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT); }
@@ -1384,7 +1386,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
             cur_sect_id = s->sect;
-            if (pass == 1) { s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }
+            if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = lc; s->defined = 1; esd_add(s, ESD_SECT); }   /* first definition: origin = current (continuous) lc; a reopen keeps its origin */
             if (pass == 2) cur_sect_esdid = s->esdid;
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             if (!in_dsect) { main_lc = lc; main_sect_id = cur_sect_id; }
@@ -1629,6 +1631,19 @@ static void esd_ent(unsigned char *c, int slot, const char *name, int type, long
     if (blankSize) { c[slot + 13] = c[slot + 14] = c[slot + 15] = 0x40; } else cbe(c, slot + 13, sizeOrId, 3);
 }
 
+/* length of the control section at esdord index e: the distance to the NEXT
+ * section declared in this assembly (declaration order is non-decreasing in
+ * origin, since the location counter is continuous across CSECTs), or to the
+ * module end for the last section. An empty section that shares an origin with
+ * the next (e.g. an implicit private-code section ahead of a named CSECT) thus
+ * gets length 0. */
+static long sect_length(int e) {
+    long org = esdord[e].s->val; int k;
+    for (k = e + 1; k < nesdord; k++)
+        if (esdord[k].role == ESD_SECT) return esdord[k].s->val - org;
+    return modlen - org;
+}
+
 static void emit_obj(FILE *f) {
     unsigned char c[80]; int seq = 0, k;
 
@@ -1637,8 +1652,8 @@ static void emit_obj(FILE *f) {
         cinit(c); cname(c, "ESD");
         int n = 0, cardfirst = 0;
         while (n < 3 && e < nesdord) {
-            struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
-            if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, s->esdid == main_sect_esdid ? modlen : 0, 0); if (!cardfirst) cardfirst = s->esdid; }
+            int ei = e; struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
+            if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, sect_length(ei), 0); if (!cardfirst) cardfirst = s->esdid; }
             else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
             else { esd_ent(c, slot, s->name, 0x01, s->val, main_sect_esdid, 0); }   /* LD entry */
             n++;
@@ -1653,20 +1668,20 @@ static void emit_obj(FILE *f) {
      * byte's address is not the running card address (a gap or an ORG overlay) or
      * the card fills. A backward ORG therefore re-punches its overlaid bytes as a
      * fresh (overlapping) card with the pre-overwrite content, exactly like IFOX. */
-    { int e; long cstart = 0, running = -1; int cn = 0, open = 0; unsigned char cbuf[56];
+    { int e, cesdid = 0; long cstart = 0, running = -1; int cn = 0, open = 0; unsigned char cbuf[56];
       for (e = 0; e <= ntxl; e++) {
-        long ea; int el; const unsigned char *eb;
-        if (e < ntxl) { ea = txl_addr[e]; el = txl_len[e]; eb = txl_bytes + txl_boff[e]; }
-        else { ea = -1; el = 0; eb = NULL; }            /* sentinel: flush the open card */
+        long ea; int el, eid; const unsigned char *eb;
+        if (e < ntxl) { ea = txl_addr[e]; el = txl_len[e]; eb = txl_bytes + txl_boff[e]; eid = txl_esdid[e]; }
+        else { ea = -1; el = 0; eb = NULL; eid = -1; }   /* sentinel: flush the open card */
         int pos = 0;
         do {
-            if (open && (e == ntxl || ea + pos != running || cn == 56)) {   /* flush the current card */
-                cinit(c); cname(c, "TXT"); cbe(c, 5, cstart, 3); cbe(c, 10, cn, 2); cbe(c, 14, main_sect_esdid, 2);
+            if (open && (e == ntxl || ea + pos != running || cn == 56 || eid != cesdid)) {   /* flush: gap, full card, or a section change */
+                cinit(c); cname(c, "TXT"); cbe(c, 5, cstart, 3); cbe(c, 10, cn, 2); cbe(c, 14, cesdid, 2);
                 { int i; for (i = 0; i < cn; i++) c[16 + i] = cbuf[i]; }
                 cseq(c, ++seq); fwrite(c, 1, 80, f); open = 0;
             }
             if (e == ntxl) break;
-            if (!open) { cstart = ea + pos; running = cstart; cn = 0; open = 1; }
+            if (!open) { cstart = ea + pos; running = cstart; cn = 0; open = 1; cesdid = eid; }
             int take = 56 - cn; if (take > el - pos) take = el - pos;
             memcpy(cbuf + cn, eb + pos, (size_t)take); cn += take; pos += take; running += take;
         } while (pos < el);

@@ -11,8 +11,11 @@ MACLIB="-I $CRENT/maclib -I $CRENT/sysmac"
 # sample8 (tinitvl, WTO) and sample9 (irxtmpw, XCTL->IHBINNRB) are real rexx370
 # modules that exercise the hardest macro paths — they guard against regressing
 # the byte-exact REXX corpus when changing the assembler for other projects.
+# sample10 is the multiple-distinct-CSECT case (two text-producing sections in
+# one assembly): origins stack, each section keeps its own ESD length, and each
+# section's TXT card carries its own ESDID.
 fail=0
-for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9; do
+for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1 || { echo "$s: ASSEMBLE FAILED"; fail=1; continue; }
     ref="tests/ref/$s.obj"
     mysz=$(wc -c < "/tmp/$s.obj"); refsz=$(wc -c < "$ref")
