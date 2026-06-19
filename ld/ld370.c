@@ -81,9 +81,13 @@ static void member_name(unsigned char d[8], const char *s)
     }
 }
 
-/* ---- model ---- */
+/* ---- model ----
+ * MAXESD bounds one OBJECT's local ESD (small); MAXOBJ and MAXG bound the
+ * whole link -- a real C program autocalls a large runtime closure, so these
+ * are sized for hundreds of pulled members and thousands of composite symbols. */
 #define MAXESD 512
-#define MAXOBJ 32
+#define MAXOBJ 1024
+#define MAXG   8192
 enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05 };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
@@ -91,7 +95,7 @@ static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 struct gsym { unsigned char name[8]; int type; int is_sect; int gid; long org, len;
               int def_obj; long in_addr;   /* section: defining object + origin within it */
               int owner; };                /* LR (label/entry): gsym index of the owning section */
-static struct gsym G[MAXESD];
+static struct gsym G[MAXG];
 static int nG = 0;
 
 static int g_find(const unsigned char *name)
@@ -101,14 +105,23 @@ static int g_find(const unsigned char *name)
         if (memcmp(G[i].name, name, 8) == 0) return i;
     return -1;
 }
+/* a fresh composite symbol, NOT merged by name -- for private code (PC)
+ * sections, which are distinct per object even though they share a blank name */
+static int g_new(const unsigned char *name)
+{
+    if (nG >= MAXG) { fprintf(stderr, "ld370: composite symbol table full (MAXG=%d)\n", MAXG); exit(1); }
+    memcpy(G[nG].name, name, 8);
+    G[nG].type = 0; G[nG].is_sect = 0; G[nG].gid = 0; G[nG].org = 0; G[nG].len = 0;
+    G[nG].def_obj = -1; G[nG].in_addr = 0; G[nG].owner = -1;
+    return nG++;
+}
 static int g_intern(const unsigned char *name, int type)
 {
     int i = g_find(name);
     if (i >= 0) return i;
-    memcpy(G[nG].name, name, 8);
-    G[nG].type = type; G[nG].is_sect = 0; G[nG].gid = 0; G[nG].org = 0; G[nG].len = 0;
-    G[nG].def_obj = -1; G[nG].in_addr = 0; G[nG].owner = -1;
-    return nG++;
+    i = g_new(name);
+    G[i].type = type;
+    return i;
 }
 
 /* per input object (each is single-CSECT in the cc370/as370 case) */
@@ -116,6 +129,7 @@ struct lent { int used; unsigned char name[8]; int type; long addr, len; };
 struct orld { int R, P, flag; long addr; };
 struct obj {
     struct lent loc[MAXESD];          /* local ESD by local ESDID */
+    int loc_g[MAXESD];                /* composite gsym index for each local ESDID */
     int sect_local;                   /* local id of this object's section */
     unsigned char text[1 << 14];
     long textlen;
@@ -197,11 +211,13 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
     }
 }
 
-/* map a local ESDID in object o to its index in the composite symbol table */
+/* map a local ESDID in object o to its index in the composite symbol table
+ * (the mapping is built in PASS 2; uses loc_g so private blank-named PC
+ * sections map to THIS object's section, not the first blank one by name) */
 static int local_to_g(struct obj *o, int localid)
 {
     if (localid < 1 || localid >= MAXESD || !o->loc[localid].used) return -1;
-    return g_find(o->loc[localid].name);
+    return o->loc_g[localid];
 }
 
 /* ---- automatic library call (autocall) ----
@@ -315,7 +331,7 @@ static int autocall(void)
 }
 
 /* ---- emitter ---- */
-static unsigned char out[1 << 16];
+static unsigned char out[1 << 20];
 static long olen = 0;
 static void emit(const unsigned char *b, long n) { memcpy(out + olen, b, n); olen += n; }
 static void emitb(int b) { out[olen++] = (unsigned char)b; }
@@ -545,7 +561,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
  * path.  mem[].name/.bytes/.len must be set by the caller. Returns 0 on ok. */
 static int write_unload_mem(const char *path, struct umember *mem, int nmem)
 {
-    static unsigned char unl[1 << 18];
+    static unsigned char unl[1 << 20];
     long ulen; FILE *f; int i;
 
     for (i = 0; i < nmem; i++) {
@@ -751,7 +767,7 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
 /* Build the XMIT image of members[] and write it to path. */
 static int write_xmit(const char *path, struct umember *mem, int nmem, const char *dsn)
 {
-    static unsigned char unl[1 << 18], xm[1 << 18];
+    static unsigned char unl[1 << 20], xm[1 << 18];
     long bounds[4], ulen, xlen; FILE *f; int i;
 
     for (i = 0; i < nmem; i++) {
@@ -843,7 +859,7 @@ int main(int argc, char **argv)
     /* --- standalone wrap: an existing flat member, no object linking.
      *     ld370 --unload-from MEMBER.lm [--name NAME] [--unload OUT] [--xmit OUT] --- */
     if (unloadfrom) {
-        static unsigned char memb[1 << 16];
+        static unsigned char memb[1 << 20];
         long mlen; const char *name;
         if (!unloadfile && !xmitfile) { fprintf(stderr, "ld370: --unload-from needs --unload and/or --xmit OUT\n"); return 2; }
         f = fopen(unloadfrom, "rb");
@@ -907,23 +923,28 @@ int main(int argc, char **argv)
         if (nO > nobjf) trace("  pulled %d member(s); %d object(s) total", nO - nobjf, nO);
     }
 
-    /* --- PASS 2: build the composite ESD (resolve ER -> SD by name) --- */
+    /* --- PASS 2: build the composite ESD (resolve ER -> SD/LR by name) --- */
     trace("=== PASS 2: build composite ESD, resolve references ===");
     for (i = 0; i < nO; i++) {
         struct obj *o = &O[i];
         for (j = 1; j < MAXESD; j++) {
+            int t, gi;
             if (!o->loc[j].used) continue;
-            int gi = g_intern(o->loc[j].name, o->loc[j].type);
-            if (is_sect_type(o->loc[j].type)) {       /* a section definition */
-                G[gi].is_sect = 1; G[gi].type = o->loc[j].type; G[gi].len = o->loc[j].len;
+            t = o->loc[j].type;
+            /* PC (private code) is a distinct section per object even though its
+             * name is blank -- give it a fresh gsym; named SD/CM/ER merge. */
+            gi = (t == T_PC) ? g_new(o->loc[j].name) : g_intern(o->loc[j].name, t);
+            o->loc_g[j] = gi;
+            if (is_sect_type(t)) {                    /* a section definition */
+                G[gi].is_sect = 1; G[gi].type = t; G[gi].len = o->loc[j].len;
                 G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
             }
         }
         for (j = 0; j < o->nld; j++) {            /* label defs (entries) -> composite LR (type 03) */
             int gi = g_intern(o->ld[j].name, T_LD);
-            G[gi].type = 0x03; G[gi].in_addr = o->ld[j].addr;
             int ol = o->ld[j].owner_local;
-            G[gi].owner = (ol >= 1 && ol < MAXESD && o->loc[ol].used) ? g_find(o->loc[ol].name) : -1;
+            G[gi].type = 0x03; G[gi].in_addr = o->ld[j].addr;
+            G[gi].owner = (ol >= 1 && ol < MAXESD && o->loc[ol].used) ? o->loc_g[ol] : -1;
         }
     }
     for (i = 0; i < nG; i++)
@@ -962,7 +983,7 @@ int main(int argc, char **argv)
     trace("  module length = %ld", modlen);
 
     /* --- build module text image + relocate address constants --- */
-    static unsigned char mod[1 << 16];
+    static unsigned char mod[1 << 20];
     memset(mod, 0, modlen);
     for (i = 0; i < nO; i++) memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
     trace("=== relocate address constants ===");
@@ -972,12 +993,16 @@ int main(int argc, char **argv)
             int Rg = local_to_g(o, o->rld[j].R);
             long loc = o->object_base + o->rld[j].addr;
             int len = ((o->rld[j].flag >> 2) & 3) + 1;
-            if (Rg >= 0 && G[Rg].is_sect) {           /* resolved: relocate by (final origin - input origin) */
-                long delta = G[Rg].org - o->loc[o->rld[j].R].addr;
+            long base = -1;                           /* resolved final target address */
+            if (Rg >= 0 && G[Rg].is_sect)
+                base = G[Rg].org;                     /* section: its final origin */
+            else if (Rg >= 0 && G[Rg].type == 0x03 && G[Rg].owner >= 0 && G[G[Rg].owner].is_sect)
+                base = G[G[Rg].owner].org + G[Rg].in_addr;   /* LR (entry): owner origin + offset */
+            if (base >= 0) {                          /* relocate by (final target - input value) */
+                long delta = base - o->loc[o->rld[j].R].addr;
                 long v = rdval(mod + loc, len) + delta;
                 wrval(mod + loc, v, len);
-                trace("  adcon@%06lX -> %s: %+ld (final %06lX - input %06lX)",
-                      loc, nm(G[Rg].name), delta, G[Rg].org, o->loc[o->rld[j].R].addr);
+                trace("  adcon@%06lX -> %s: %+ld (final %06lX)", loc, nm(G[Rg].name), delta, base);
             } else {
                 trace("  adcon@%06lX -> %s: UNRESOLVED, left for the loader",
                       loc, Rg >= 0 ? nm(G[Rg].name) : "?");
@@ -1022,7 +1047,7 @@ int main(int argc, char **argv)
     /* --- control record (ID-length list over the sections, in origin order) --- */
     {
         int idlen = 4 * nsect;
-        unsigned char cr[16 + 4 * MAXESD]; memset(cr, 0, (size_t)(16 + idlen));
+        static unsigned char cr[16 + 4 * MAXG]; memset(cr, 0, (size_t)(16 + idlen));
         cr[0] = have_rld ? 0x01 : 0x0D;
         put16(cr + 4, idlen); put16(cr + 6, 0);
         cr[8] = 0x06; put24(cr + 9, 0); cr[12] = 0x40; put16(cr + 14, (int)modlen);
@@ -1051,11 +1076,14 @@ int main(int argc, char **argv)
             for (j = 0; j < o->nrld; j++) {
                 int Rg = local_to_g(o, o->rld[j].R);
                 int Pg = local_to_g(o, o->rld[j].P);
-                int Rgid = (Rg >= 0) ? G[Rg].gid : 0;
                 int Pgid = (Pg >= 0) ? G[Pg].gid : 0;
                 long addr = o->object_base + o->rld[j].addr;
-                int flag = o->rld[j].flag;
-                if (!(Rg >= 0 && G[Rg].is_sect)) flag |= 0x80;   /* unresolved -> do not relocate */
+                int flag = o->rld[j].flag, Rgid = 0, resolved = 0;
+                if (Rg >= 0 && G[Rg].is_sect) { Rgid = G[Rg].gid; resolved = 1; }
+                else if (Rg >= 0 && G[Rg].type == 0x03 && G[Rg].owner >= 0 && G[G[Rg].owner].is_sect) {
+                    Rgid = G[G[Rg].owner].gid; resolved = 1;     /* LR adcon relocates via its owner section */
+                } else if (Rg >= 0) Rgid = G[Rg].gid;
+                if (!resolved) flag |= 0x80;                     /* unresolved -> do not relocate */
                 if (Rgid == prevR && Pgid == prevP && prevflag_off >= 0) {
                     out[prevflag_off] |= 0x01;
                 } else {
