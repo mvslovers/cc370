@@ -67,6 +67,19 @@ run_unload() {
 
 run_unload e2e e2e.iewl-member.bin e2e.iebcopy-unload.bin E2E
 
+# XMIT (TSO TRANSMIT / NETDATA) wrapper: wrap the e2e member's unload and
+# structurally check it against the real TRANSMIT oracle (modulo the INMFTIME
+# timestamp) + confirm the payload is the unload image.  Validated end-to-end
+# on MVS: the FB80 upload RECV370-installs and the member runs (RC=7).
+printf '\n=== xmit e2e  (oracle e2e.iewl.xmit) ===\n'
+if "$LD" --unload-from "$FIX/e2e.iewl-member.bin" --name E2E --dsn IBMUSER.E2E.LOAD \
+        --xmit "$TMP/e2e.xmit" 2>/dev/null; then
+    python3 ld/tests/xmit_check.py "$TMP/e2e.xmit" "$FIX/e2e.iewl.xmit" "$FIX/e2e.iebcopy-unload.bin" \
+        || fails=$((fails + 1))
+else
+    echo "ld370 --xmit failed"; fails=$((fails + 1))
+fi
+
 # multi-member: pack two linked members into one image (deliberately in
 # non-sorted input order) and confirm both reconstruct + the directory is
 # name-sorted.  No byte oracle -- structural round-trip only (single track).

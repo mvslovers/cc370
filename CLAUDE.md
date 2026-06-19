@@ -12,7 +12,7 @@ c2asm370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MV
 |------|------|--------|
 | **cc370** | C → i370 HLASM `.s` (the GCC 3.4.6 fork; `gcc/`) | works; `-O1` only |
 | **as370** | `.s`/`.asm` → OS/360 OBJ deck (`as/as370.c`) | **byte-identical to IFOX00 (950 modules); links + runs on MVS** |
-| **ld370** | OBJ decks → MVS load module (replace IEWL) + IEBCOPY-unload transport (`ld/ld370.c`) | member byte-identical to IEWL over the regression oracles; `--unload` host byte-identical to the IEBCOPY unload oracle (Stage 1) |
+| **ld370** | OBJ decks → MVS load module (replace IEWL) + `--unload`/`--xmit` host→MVS transport (`ld/ld370.c`) | member byte-identical to IEWL; `--unload` byte-identical to the IEBCOPY-unload oracle; `--xmit` byte-identical to a TSO TRANSMIT oracle (modulo timestamp). **End-to-end on real MVS: `as370→ld370→--xmit` → upload → RECV370 → runs, RC=7 (Stage 2 done)** |
 
 **End-to-end validated on real MVS (2026-06-18):** `cc370 → as370` built ctest locally (no IFOX00), the decks linked with IEWL (RC=0) and ran (`PGM=CTESTH`) with **RC=0** (all charset checks pass). See `as/` and the [as370 section](#as370--host-native-mvs-assembler).
 
@@ -123,7 +123,7 @@ The GCC driver invokes an assembler literally named `as`, found in its own exec 
 - **Host-side regression harness** — fold the 950-module IFOX byte-identity corpus check into `as/tests/` + CI so codegen/assembler changes can't silently regress (today it's ad-hoc `/tmp` scripts).
 - **mbt host-assembly backend** — teach mbt to assemble locally and upload OBJECT (skip the IFOX00 ASM step); after `ld`, upload only the load module.
 
-**`ld370`** — a host-native MVS linker (replace IEWL) producing the load module on the host. Status: links multiple OBJ decks into a member byte-identical to IEWL over the `ld/tests/fixtures` oracles, and wraps the member into the IEBCOPY **unloaded-PDS** transport (`--unload`, multi-member `--pack`) so it uploads as a binary sequential dataset and IEBCOPY LOADs it into a real load library (mvsMF can't write RECFM=U members directly). The unload format is spec'd in `docs/unload-format.md`. Open: **Stage 2** — IEBCOPY LOAD + run on real MVS (the only proof it reloads; a host byte-diff proves only the wrapping); **Stage 3** — multi-track geometry + computed PDS2 directory user-data; then the planned XMIT emitter alongside `--unload`.
+**`ld370`** — a host-native MVS linker (replace IEWL) producing the load module on the host, **end-to-end proven on real MVS**. Links multiple OBJ decks into a member byte-identical to IEWL over the `ld/tests/fixtures` oracles, wraps it into the IEBCOPY **unloaded-PDS** image (`--unload`, multi-member `--pack`), and wraps THAT into a **TSO TRANSMIT / NETDATA** file (`--xmit`, RECFM=FB80). FB80 uploads byte-clean via mvsMF (the bare unload is RECFM=VS, which mvsMF can't rebuild on upload), and **`RECV370`** installs it into a load library. **Validated 2026-06-19:** `as370→ld370→--xmit` built E2E with zero IFOX/IEWL/IEBCOPY, uploaded, RECV370-installed (`IEB154I`), and ran with **RC=7** — the project endgame (only the final load module touches MVS, via one RECV370 step). Formats: `docs/unload-format.md`, `docs/xmit-format.md`. Open (**Stage 3**): compute INMSIZE/source-DCB + PDS2 user-data for arbitrary members; multi-track unload geometry for large libraries; an mbt host-link backend that ships the XMIT instead of submitting ASM/LINK JCL.
 
 ## User Preferences
 

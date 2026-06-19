@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* ---- big-endian field access ---- */
 static int be16(const unsigned char *p) { return (p[0] << 8) | p[1]; }
@@ -338,11 +339,17 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
     ud[0] = 0; ud[1] = 0; ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (0, text_r) */
 }
 
+/* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
+ * remaining 276). IEBCOPY/TRANSMIT writes COPYR1 and COPYR2 as separate
+ * records (confirmed by IDCAMS PRINT of a real unload). */
+#define UNLOAD_COPYR1_LEN 52
+
 /* Emit the IEBCOPY unloaded image of one-or-more members into o[]; return the
- * byte length.  v1: single track, ascending R (no track-overflow), one
- * directory block.  The loops are laid out for N members so generalising to
- * multi-member / multi-track only fills in the marked TODOs. */
-static long emit_unload(unsigned char *o, struct umember *mem, int nmem)
+ * byte length.  If bounds!=NULL, fill the 4 logical-record end offsets the
+ * unload is split into when transmitted: COPYR1, COPYR2, directory(+EOD),
+ * member-data(+EOM) -- the 4 data records of the XMIT payload.
+ * v1: single track, ascending R (no track-overflow), one directory block. */
+static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *bounds)
 {
     long p = 0; int i, j, r, eom_r;
     unsigned char dir[256]; long used;
@@ -358,6 +365,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem)
     }
 
     memcpy(o + p, unload_env_hdr, 328); p += 328;       /* COPYR1 + COPYR2 */
+    if (bounds) { bounds[0] = UNLOAD_COPYR1_LEN; bounds[1] = 328; }
 
     /* assign each block a record number, single track ascending from base.
      * TODO(multi-track): when blocks overflow one track, advance HH then CC
@@ -395,6 +403,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem)
     memcpy(o + p, dir, 256); p += 256;
 
     memset(o + p, 0, 12); p += 12;                     /* end-of-directory marker record */
+    if (bounds) bounds[2] = p;                          /* directory record + EOD marker */
 
     /* member data: one CKD record image per physical block */
     r = UNLOAD_FIRST_R;
@@ -406,6 +415,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem)
             r++;
         }
     put_count(o + p, UNLOAD_DATA_CC, 0, eom_r, 0, 0); p += 12;   /* EOM */
+    if (bounds) bounds[3] = p;                          /* member data + EOM */
     return p;
 }
 
@@ -425,7 +435,7 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
         trace("=== unload: member '%s', %d block(s), %ld bytes ===",
               nm(mem[i].name), mem[i].nblk, mem[i].len);
     }
-    ulen = emit_unload(unl, mem, nmem);
+    ulen = emit_unload(unl, mem, nmem, NULL);
     f = fopen(path, "wb");
     if (!f) { perror(path); return 1; }
     fwrite(unl, 1, (size_t)ulen, f);
@@ -446,6 +456,212 @@ static int write_unload(const char *path, const char *name,
     return write_unload_mem(path, &m, 1);
 }
 
+/* ============================================================================
+ * XMIT (TSO TRANSMIT / NETDATA) emitter
+ *
+ * Wraps the IEBCOPY unloaded image (the 4 logical records emit_unload marks via
+ * its bounds[]) in the NETDATA/INMR control structure TSO TRANSMIT generates,
+ * as RECFM=FB LRECL=80.  This is the host->MVS install transport: FB80 uploads
+ * cleanly as a binary sequential dataset (mvsMF splits on the 80-byte records)
+ * and TSO RECEIVE / RECV370 reinstates the load-library member.  (The bare
+ * IEBCOPY-unload path is blocked -- mvsMF cannot rebuild the unload's
+ * variable-spanned records on upload; FB80 sidesteps it.  Precedent: Dignus
+ * PLINK ships a TSO TRANSMIT file.)
+ *
+ * Logical records (NETDATA-segmented into the FB80 stream):
+ *   INMR01  header      node/user/timestamp/file-count
+ *   INMR02  control #1   IEBCOPY -> the SOURCE load library DCB (RECFM=U, PO)
+ *   INMR02  control #2   INMCOPY -> the unloaded form DCB (RECFM=VS, PS)
+ *   INMR03  data descriptor
+ *   COPYR1 COPYR2 dir+EOD member+EOM   the 4 unload records (data)
+ *   INMR06  trailer
+ * Each is split into <=253-byte segments: len(1, incl. 2-byte hdr) + flags(1) +
+ * data; flags 0x80=first-of-record, 0x40=last, 0x20=control.  Segments pack
+ * continuously into 80-byte records; the final record is zero-padded.
+ *
+ * One file is transmitted (a load library) => INMNUMF=1; a multi-member library
+ * is still one file, its members inside the unload directory (no wrapper change
+ * for --pack).  Validated host-side structurally vs an e2e.xmit.bin oracle
+ * modulo INMFTIME (an inherent timestamp carve-out); real oracle = RECEIVE+run.
+ *
+ * Size hints (INMSIZE) and the source DCB are echoed E2E-correct constants for
+ * now; computing them from the member is the open generalisation -- see TODOs.
+ * ==========================================================================*/
+
+/* NETDATA text-unit keys (subset emitted here) */
+enum { INMDSNAM = 0x0002, INMDIR = 0x000c, INMBLKSZ = 0x0030, INMDSORG = 0x003c,
+       INMLRECL = 0x0042, INMRECFM = 0x0049, INMTNODE = 0x1001, INMTUID = 0x1002,
+       INMFNODE = 0x1011, INMFUID = 0x1012, INMFTIME = 0x1024, INMUTILN = 0x1028,
+       INMSIZE = 0x102c, INMNUMF = 0x102f };
+
+/* one text unit: key(2) + count(2, =1) + length(2) + value */
+static void tu(unsigned char *b, long *p, int key, const unsigned char *val, int len)
+{
+    put16(b + *p, key); *p += 2;
+    put16(b + *p, 1);   *p += 2;
+    put16(b + *p, len); *p += 2;
+    memcpy(b + *p, val, len); *p += len;
+}
+static void tui(unsigned char *b, long *p, int key, long v, int n)   /* integer value */
+{
+    unsigned char t[4]; wrval(t, v, n); tu(b, p, key, t, n);
+}
+static void tus(unsigned char *b, long *p, int key, const char *s)   /* EBCDIC string value */
+{
+    unsigned char t[44]; int i, n = (int)strlen(s); if (n > 44) n = 44;
+    for (i = 0; i < n; i++) t[i] = a2e1(s[i]);
+    tu(b, p, key, t, n);
+}
+/* INMDSNAM: one value per '.'-separated qualifier of dsn */
+static void tu_dsname(unsigned char *b, long *p, const char *dsn)
+{
+    const char *s = dsn; int nq = 1, i; const char *q;
+    for (q = dsn; *q; q++) if (*q == '.') nq++;
+    put16(b + *p, INMDSNAM); *p += 2;
+    put16(b + *p, nq);       *p += 2;
+    for (;;) {
+        int qn = 0; while (s[qn] && s[qn] != '.') qn++;
+        put16(b + *p, qn); *p += 2;
+        for (i = 0; i < qn; i++) b[(*p)++] = a2e1(s[i]);
+        if (!s[qn]) break;
+        s += qn + 1;
+    }
+}
+static long inmr_hdr(unsigned char *r, int n)        /* 'INMR0n' eyecatcher */
+{
+    r[0] = 0xc9; r[1] = 0xd5; r[2] = 0xd4; r[3] = 0xd9; r[4] = 0xf0;
+    r[5] = (unsigned char)(0xf0 + n);
+    return 6;
+}
+
+/* append a logical record as NETDATA segments (<=253 data bytes each) */
+static void netdata_seg(unsigned char *o, long *p, const unsigned char *rec, long len, int control)
+{
+    long off = 0; int ctl = control ? 0x20 : 0;
+    do {
+        long n = len - off; if (n > 253) n = 253;
+        int flags = ctl | (off == 0 ? 0x80 : 0) | (off + n >= len ? 0x40 : 0);
+        o[(*p)++] = (unsigned char)(n + 2);
+        o[(*p)++] = (unsigned char)flags;
+        memcpy(o + *p, rec + off, n); *p += n;
+        off += n;
+    } while (off < len);
+}
+
+/* current local time as a 16-EBCDIC-digit INMFTIME (YYYYMMDDHHMMSShh) */
+static void xmit_ftime(unsigned char e[16])
+{
+    char a[17]; time_t t = time(NULL); struct tm *tm = localtime(&t); int i;
+    sprintf(a, "%04d%02d%02d%02d%02d%02d00",
+            tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+            tm->tm_hour, tm->tm_min, tm->tm_sec);
+    for (i = 0; i < 16; i++) e[i] = a2e1(a[i]);
+}
+
+/* Build the XMIT of one unloaded image (unl[0..bounds[3]) split at bounds[])
+ * into o[]; dsn = target load-library name (informational + RECEIVE default).
+ * Returns the FB80 byte length. */
+static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bounds,
+                      const char *dsn)
+{
+    unsigned char r[1024]; long rp, p = 0; unsigned char ft[16];
+
+    /* INMR01 -- transmission header */
+    rp = inmr_hdr(r, 1);
+    tui(r, &rp, INMLRECL, 80, 4);
+    tus(r, &rp, INMFNODE, "ORIGNODE");
+    tus(r, &rp, INMFUID,  "IBMUSER");
+    tus(r, &rp, INMTNODE, "IBMUSER");
+    tus(r, &rp, INMTUID,  "DUMMY");
+    xmit_ftime(ft); tu(r, &rp, INMFTIME, ft, 16);
+    tui(r, &rp, INMNUMF, 1, 1);
+    netdata_seg(o, &p, r, rp, 1);
+
+    /* INMR02 #1 -- IEBCOPY: attributes of the SOURCE load library (recreated by
+     * RECEIVE).  TODO(generalise): compute INMSIZE/INMBLKSZ/INMDIR + parameterise
+     * the DCB from the target library instead of echoing E2E constants. */
+    rp = inmr_hdr(r, 2);
+    put24(r + rp, 0); r[rp + 3] = 1; rp += 4;            /* file number = 1 */
+    tus(r, &rp, INMUTILN, "IEBCOPY");
+    tui(r, &rp, INMSIZE, 19069, 4);
+    tui(r, &rp, INMDIR, 10, 3);
+    tui(r, &rp, INMLRECL, 0, 4);
+    tui(r, &rp, INMDSORG, 0x0200, 2);                   /* PO */
+    tui(r, &rp, INMBLKSZ, 19069, 4);
+    tui(r, &rp, INMRECFM, 0xc002, 2);                   /* U */
+    tu_dsname(r, &rp, dsn);
+    netdata_seg(o, &p, r, rp, 1);
+
+    /* INMR02 #2 -- INMCOPY: attributes of the unloaded form (the in-stream data,
+     * RECFM=VS).  Constant for our IEBCOPY-unload format. */
+    rp = inmr_hdr(r, 2);
+    put24(r + rp, 0); r[rp + 3] = 1; rp += 4;
+    tus(r, &rp, INMUTILN, "INMCOPY");
+    tui(r, &rp, INMSIZE, 15600, 4);
+    tui(r, &rp, INMLRECL, 19085, 4);
+    tui(r, &rp, INMDSORG, 0x4000, 2);                   /* PS */
+    tui(r, &rp, INMBLKSZ, 3120, 4);
+    tui(r, &rp, INMRECFM, 0x4802, 2);                   /* VS */
+    netdata_seg(o, &p, r, rp, 1);
+
+    /* INMR03 -- data record descriptor */
+    rp = inmr_hdr(r, 3);
+    tui(r, &rp, INMSIZE, 19069, 4);
+    tui(r, &rp, INMLRECL, 80, 4);
+    tui(r, &rp, INMDSORG, 0x4000, 2);
+    tui(r, &rp, INMRECFM, 0x0001, 2);
+    netdata_seg(o, &p, r, rp, 1);
+
+    /* the 4 unloaded data records (COPYR1 / COPYR2 / dir+EOD / member+EOM) */
+    netdata_seg(o, &p, unl,             bounds[0],              0);
+    netdata_seg(o, &p, unl + bounds[0], bounds[1] - bounds[0], 0);
+    netdata_seg(o, &p, unl + bounds[1], bounds[2] - bounds[1], 0);
+    netdata_seg(o, &p, unl + bounds[2], bounds[3] - bounds[2], 0);
+
+    /* INMR06 -- trailer */
+    rp = inmr_hdr(r, 6);
+    netdata_seg(o, &p, r, rp, 1);
+
+    while (p % 80) o[p++] = 0;                           /* pad final FB80 record */
+    return p;
+}
+
+/* Build the XMIT image of members[] and write it to path. */
+static int write_xmit(const char *path, struct umember *mem, int nmem, const char *dsn)
+{
+    static unsigned char unl[1 << 18], xm[1 << 18];
+    long bounds[4], ulen, xlen; FILE *f; int i;
+
+    for (i = 0; i < nmem; i++) {
+        mem[i].nblk = split_member(mem[i].bytes, mem[i].len, mem[i].blk, 128);
+        if (mem[i].nblk < 0) {
+            fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", nm(mem[i].name));
+            return 1;
+        }
+    }
+    ulen = emit_unload(unl, mem, nmem, bounds);
+    (void)ulen;
+    xlen = emit_xmit(xm, unl, bounds, dsn);
+    f = fopen(path, "wb");
+    if (!f) { perror(path); return 1; }
+    fwrite(xm, 1, (size_t)xlen, f);
+    fclose(f);
+    trace("=== done: wrote %ld-byte XMIT (%d FB80 recs, %d member%s) to %s ===",
+          xlen, (int)(xlen / 80), nmem, nmem == 1 ? "" : "s", path);
+    return 0;
+}
+
+/* convenience: XMIT a single in-memory member */
+static int write_xmit1(const char *path, const char *name,
+                       const unsigned char *member, long mlen, const char *dsn)
+{
+    struct umember m;
+    memset(&m, 0, sizeof m);
+    member_name(m.name, name);
+    m.bytes = member; m.len = mlen;
+    return write_xmit(path, &m, 1, dsn);
+}
+
 /* derive an 8-char member name from a file path basename (strip dir + ext) */
 static const char *basename_member(const char *path)
 {
@@ -459,6 +675,7 @@ static const char *basename_member(const char *path)
 int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *unloadfrom = NULL, *mname = NULL;
+    const char *xmitfile = NULL, *dsn = NULL;
     const char *objfiles[MAXOBJ];
     char *packspec[MAXOBJ];
     int nobjf = 0, npack = 0, i, j;
@@ -468,31 +685,37 @@ int main(int argc, char **argv)
         if (!strcmp(argv[i], "-o") && i + 1 < argc) outfile = argv[++i];
         else if (!strcmp(argv[i], "--unload") && i + 1 < argc) unloadfile = argv[++i];
         else if (!strcmp(argv[i], "--unload-from") && i + 1 < argc) unloadfrom = argv[++i];
+        else if (!strcmp(argv[i], "--xmit") && i + 1 < argc) xmitfile = argv[++i];
+        else if (!strcmp(argv[i], "--dsn") && i + 1 < argc) dsn = argv[++i];
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (nobjf < MAXOBJ) objfiles[nobjf++] = argv[i];
     }
+    if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INMDSNAM default; RECEIVE DA(...) overrides */
 
-    /* --- standalone unload: wrap an existing flat member, no object linking.
-     *     ld370 --unload-from MEMBER.lm [--name NAME] --unload OUT.unload --- */
+    /* --- standalone wrap: an existing flat member, no object linking.
+     *     ld370 --unload-from MEMBER.lm [--name NAME] [--unload OUT] [--xmit OUT] --- */
     if (unloadfrom) {
         static unsigned char memb[1 << 16];
-        long mlen;
-        if (!unloadfile) { fprintf(stderr, "ld370: --unload-from needs --unload OUT\n"); return 2; }
+        long mlen; const char *name;
+        if (!unloadfile && !xmitfile) { fprintf(stderr, "ld370: --unload-from needs --unload and/or --xmit OUT\n"); return 2; }
         f = fopen(unloadfrom, "rb");
         if (!f) { perror(unloadfrom); return 1; }
         mlen = (long)fread(memb, 1, sizeof memb, f);
         fclose(f);
-        return write_unload(unloadfile, mname ? mname : basename_member(unloadfrom), memb, mlen);
+        name = mname ? mname : basename_member(unloadfrom);
+        if (unloadfile && write_unload(unloadfile, name, memb, mlen)) return 1;
+        if (xmitfile && write_xmit1(xmitfile, name, memb, mlen, dsn)) return 1;
+        return 0;
     }
 
-    /* --- multi-member unload: pack several flat members into one image.
-     *     ld370 --pack NAME1=FILE1 --pack NAME2=FILE2 ... --unload OUT.unload
+    /* --- multi-member: pack several flat members into one image/library.
+     *     ld370 --pack NAME1=FILE1 --pack NAME2=FILE2 ... [--unload OUT] [--xmit OUT]
      *     (single-track geometry: total records must fit one track for now) --- */
     if (npack) {
-        struct umember m[MAXOBJ]; int rc;
-        if (!unloadfile) { fprintf(stderr, "ld370: --pack needs --unload OUT\n"); return 2; }
+        struct umember m[MAXOBJ]; int rc = 0;
+        if (!unloadfile && !xmitfile) { fprintf(stderr, "ld370: --pack needs --unload and/or --xmit OUT\n"); return 2; }
         memset(m, 0, sizeof m);
         for (i = 0; i < npack; i++) {
             char *eq = strchr(packspec[i], '='); long n; unsigned char *buf; size_t got;
@@ -506,16 +729,17 @@ int main(int argc, char **argv)
             got = fread(buf, 1, (size_t)n, f); (void)got; fclose(f);
             member_name(m[i].name, packspec[i]); m[i].bytes = buf; m[i].len = n;
         }
-        rc = write_unload_mem(unloadfile, m, npack);
+        if (unloadfile) rc = write_unload_mem(unloadfile, m, npack);
+        if (!rc && xmitfile) rc = write_xmit(xmitfile, m, npack, dsn);
         for (i = 0; i < npack; i++) free((void *)m[i].bytes);
         return rc;
     }
 
     if (!nobjf || !outfile) {
         fprintf(stderr,
-                "usage: ld370 [--verbose] -o OUT.bin [--unload OUT.unload [--name NAME]] OBJ...\n"
-                "       ld370 --unload-from MEMBER.lm [--name NAME] --unload OUT.unload\n"
-                "       ld370 --pack NAME1=MEMBER1.lm [--pack NAME2=MEMBER2.lm ...] --unload OUT.unload\n");
+                "usage: ld370 [-v] -o OUT.bin [--unload U] [--xmit X [--dsn DS]] [--name N] OBJ...\n"
+                "       ld370 --unload-from MEMBER.lm [--name N] [--unload U] [--xmit X]\n"
+                "       ld370 --pack N1=M1.lm [--pack N2=M2.lm ...] [--unload U] [--xmit X]\n");
         return 2;
     }
 
@@ -701,10 +925,14 @@ int main(int argc, char **argv)
     fclose(f);
     trace("=== done: wrote %ld-byte load module to %s ===", olen, outfile);
 
-    /* optional: also emit the IEBCOPY unloaded image of the linked member
-     * (the host->MVS install transport). The member just written to -o is the
-     * ".lm"; --unload is the shippable result. */
-    if (unloadfile)
-        return write_unload(unloadfile, mname ? mname : basename_member(outfile), out, olen);
+    /* optional: also emit the IEBCOPY unloaded image and/or the XMIT of the
+     * linked member (the host->MVS install transport). The member just written
+     * to -o is the ".lm"; --xmit is the shippable result, --unload the raw
+     * unloaded image. */
+    {
+        const char *name = mname ? mname : basename_member(outfile);
+        if (unloadfile && write_unload(unloadfile, name, out, olen)) return 1;
+        if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn)) return 1;
+    }
     return 0;
 }
