@@ -11,12 +11,14 @@ cd "$(dirname "$0")/../.." || exit 2          # repo root (c2asm370)
 
 AS=./as/as370
 LD=./ld/ld370
+AR=./ld/ar370
 DIFF="python3 ld/tests/lmdiff.py"
 FIX=ld/tests/fixtures
 TMP="${TMPDIR:-/tmp}"
 
 [ -x "$AS" ] || gcc -O2 -Wall -Wextra -Werror -o "$AS" as/as370.c || exit 2
 gcc -O2 -Wall -Wextra -Werror -o "$LD" ld/ld370.c || exit 2
+gcc -O2 -Wall -Wextra -Werror -o "$AR" ld/ar370.c || exit 2
 
 fails=0
 
@@ -91,6 +93,38 @@ if "$LD" --pack TINY="$TMP/tiny.ld.bin" --pack RLDT="$TMP/rldt.ld.bin" \
 else
     echo "ld370 --pack failed"; fails=$((fails + 1))
 fi
+
+# automatic library call: a member pulled from an ar370 archive must yield the
+# SAME module as linking it explicitly (same appearance order => same ESDIDs).
+#   modab  = single pull   (mod_a references MODB, in libmodb.a)
+#   chain  = transitive    (chain_r->chain_a->chain_b; chain_b is pulled ONLY
+#                           because the pulled chain_a references it)
+# run_autocall LIBNAME ROOT MEMBER...
+run_autocall() {
+    name=$1; root=$2; shift 2
+    members=""
+    "$AS" -o "$TMP/$root.o" "$FIX/$root.s" || { echo "as370 failed: $root"; fails=$((fails + 1)); return; }
+    for m in "$@"; do
+        "$AS" -o "$TMP/$m.o" "$FIX/$m.s" || { echo "as370 failed: $m"; fails=$((fails + 1)); return; }
+        members="$members $TMP/$m.o"
+    done
+    # shellcheck disable=SC2086
+    "$AR" rc "$TMP/lib$name.a" $members || { echo "ar370 failed: $name"; fails=$((fails + 1)); return; }
+    # shellcheck disable=SC2086
+    "$LD" -o "$TMP/$name.exp" "$TMP/$root.o" $members \
+        || { echo "ld370 explicit failed: $name"; fails=$((fails + 1)); return; }
+    "$LD" -o "$TMP/$name.auto" -L"$TMP" -l"$name" "$TMP/$root.o" \
+        || { echo "ld370 autocall failed: $name"; fails=$((fails + 1)); return; }
+    printf '\n=== autocall %s ===\n' "$name"
+    if cmp -s "$TMP/$name.exp" "$TMP/$name.auto"; then
+        echo "autocall == explicit link"
+    else
+        echo "autocall DIFFERS from explicit"; fails=$((fails + 1))
+    fi
+}
+
+run_autocall modab mod_a   mod_b
+run_autocall chain chain_r chain_a chain_b
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

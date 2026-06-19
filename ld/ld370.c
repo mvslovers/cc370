@@ -129,13 +129,25 @@ static struct obj O[MAXOBJ];
 static int nO = 0;
 static long entry_pt = 0;
 
-/* ---- PASS 1: object-deck reader (inverse of as370.c) ---- */
-static void parse_object(FILE *f, struct obj *o)
+/* read a whole file into a malloc'd buffer (caller frees) */
+static unsigned char *read_file(const char *path, long *len)
 {
-    unsigned char c[80];
+    FILE *f = fopen(path, "rb"); long n; unsigned char *b; size_t got;
+    if (!f) { perror(path); return NULL; }
+    fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
+    b = malloc((size_t)(n > 0 ? n : 1));
+    got = fread(b, 1, (size_t)n, f); (void)got; fclose(f);
+    *len = n; return b;
+}
+
+/* ---- PASS 1: object-deck reader (inverse of as370.c) ---- */
+static void parse_object(const unsigned char *buf, long len, struct obj *o)
+{
+    long off;
     memset(o, 0, sizeof *o);
     o->sect_local = -1;
-    while (fread(c, 1, 80, f) == 80) {
+    for (off = 0; off + 80 <= len; off += 80) {
+        const unsigned char *c = buf + off;
         if (c[0] != 0x02) continue;
         if (c[1] == 0xC5 && c[2] == 0xE2 && c[3] == 0xC4) {            /* ESD */
             int cnt = be16(c + 10), first = be16(c + 14), k, nid = 0;
@@ -190,6 +202,116 @@ static int local_to_g(struct obj *o, int localid)
 {
     if (localid < 1 || localid >= MAXESD || !o->loc[localid].used) return -1;
     return g_find(o->loc[localid].name);
+}
+
+/* ---- automatic library call (autocall) ----
+ * After the explicit objects are read, pull from the archives (.a, ar370
+ * format) any member that defines a still-unresolved ER, to a fixpoint:
+ * pulling a member may expose new ERs that pull further members.  Members are
+ * object decks, so a pulled member is just another parse_object into O[].
+ * Runs as a standalone step BEFORE the composite ESD is built, so it does not
+ * perturb the ESDID order (appearance order: explicit objects, then pulls). */
+#define MAXAR 32
+#define MAXARSYM 16384
+struct archive {
+    unsigned char *data; long size;
+    struct { char name[64]; long off; } sym[MAXARSYM];
+    int nsym;
+};
+static struct archive AR[MAXAR];
+static int nAR = 0;
+static struct { int ar; long off; } pulled[MAXOBJ];
+static int npulled = 0;
+
+/* load an ar370/GNU `ar` archive and parse its "/" symbol table */
+static int load_archive(const char *path)
+{
+    long n, p; unsigned char *a; struct archive *ar;
+    if (nAR >= MAXAR) { fprintf(stderr, "ld370: too many archives\n"); return 1; }
+    a = read_file(path, &n);
+    if (!a) return 1;
+    if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ld370: %s: not an archive\n", path); free(a); return 1; }
+    ar = &AR[nAR]; ar->data = a; ar->size = n; ar->nsym = 0;
+    /* first member must be the "/" symbol table */
+    if (a[8] == '/' && a[9] == ' ') {
+        long q = 8 + 60;
+        unsigned long cnt = ((unsigned long)a[q] << 24) | ((unsigned long)a[q+1] << 16)
+                          | ((unsigned long)a[q+2] << 8) | a[q+3], k;
+        const char *names = (const char *)(a + q + 4 + 4 * cnt);
+        for (k = 0; k < cnt && ar->nsym < MAXARSYM; k++) {
+            long off = ((long)a[q+4+4*k] << 24) | ((long)a[q+4+4*k+1] << 16)
+                     | ((long)a[q+4+4*k+2] << 8) | a[q+4+4*k+3];
+            strncpy(ar->sym[ar->nsym].name, names, 63);
+            ar->sym[ar->nsym].name[63] = 0;
+            ar->sym[ar->nsym].off = off;
+            ar->nsym++;
+            names += strlen(names) + 1;
+        }
+    }
+    (void)p;
+    nAR++;
+    trace("- archive %s: %d exported symbol(s)", path, ar->nsym);
+    return 0;
+}
+
+/* is symbol name (8-byte EBCDIC) defined by any loaded object (SD/PC/CM/LD)? */
+static int is_defined(const unsigned char *name8)
+{
+    int i, j;
+    for (i = 0; i < nO; i++) {
+        for (j = 1; j < MAXESD; j++)
+            if (O[i].loc[j].used && is_sect_type(O[i].loc[j].type)
+                && memcmp(O[i].loc[j].name, name8, 8) == 0) return 1;
+        for (j = 0; j < O[i].nld; j++)
+            if (memcmp(O[i].ld[j].name, name8, 8) == 0) return 1;
+    }
+    return 0;
+}
+
+/* extract the object deck at member-header offset `off` of archive `ai` and
+ * parse it into a new O[] slot */
+static int pull_member(int ai, long off)
+{
+    unsigned char *a = AR[ai].data; char szs[11]; long size;
+    if (nO >= MAXOBJ) { fprintf(stderr, "ld370: too many objects (autocall)\n"); return 1; }
+    memcpy(szs, a + off + 48, 10); szs[10] = 0; size = atol(szs);
+    parse_object(a + off + 60, size, &O[nO]);
+    pulled[npulled].ar = ai; pulled[npulled].off = off; npulled++;
+    nO++;
+    return 0;
+}
+
+/* resolve unresolved ERs from the archives, to a fixpoint */
+static int autocall(void)
+{
+    int changed = 1;
+    while (changed) {
+        int i, j, a, s, cur = nO;
+        changed = 0;
+        for (i = 0; i < cur; i++) {
+            for (j = 1; j < MAXESD; j++) {
+                const char *want;
+                if (!O[i].loc[j].used || O[i].loc[j].type != T_ER) continue;
+                if (is_defined(O[i].loc[j].name)) continue;       /* already satisfied */
+                want = nm(O[i].loc[j].name);
+                for (a = 0; a < nAR; a++) {
+                    for (s = 0; s < AR[a].nsym; s++)
+                        if (!strcmp(AR[a].sym[s].name, want)) {
+                            long off = AR[a].sym[s].off; int pk, dup = 0;
+                            for (pk = 0; pk < npulled; pk++)
+                                if (pulled[pk].ar == a && pulled[pk].off == off) { dup = 1; break; }
+                            if (dup) break;                        /* already pulled; leave for loader */
+                            trace("  autocall: '%s' -> archive %d member @%ld", want, a, off);
+                            if (pull_member(a, off)) return 1;
+                            changed = 1;
+                            break;
+                        }
+                    if (changed) break;
+                }
+            }
+        }
+    }
+    return 0;
 }
 
 /* ---- emitter ---- */
@@ -672,13 +794,32 @@ static const char *basename_member(const char *path)
     return nm8;
 }
 
+/* resolve -lNAME to lib<NAME>.a in the -L dirs (then '.') and load it */
+static int load_lib(const char *name, char **Ldir, int nLdir)
+{
+    char path[1024]; int d;
+    for (d = 0; d <= nLdir; d++) {
+        const char *dir = (d < nLdir) ? Ldir[d] : "."; FILE *t;
+        snprintf(path, sizeof path, "%s/lib%s.a", dir, name);
+        t = fopen(path, "rb");
+        if (t) { fclose(t); return load_archive(path); }
+    }
+    fprintf(stderr, "ld370: cannot find -l%s\n", name);
+    return 1;
+}
+static int ends_with(const char *s, const char *suf)
+{
+    size_t ls = strlen(s), lf = strlen(suf);
+    return ls >= lf && !strcmp(s + ls - lf, suf);
+}
+
 int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *unloadfrom = NULL, *mname = NULL;
     const char *xmitfile = NULL, *dsn = NULL;
     const char *objfiles[MAXOBJ];
-    char *packspec[MAXOBJ];
-    int nobjf = 0, npack = 0, i, j;
+    char *packspec[MAXOBJ], *Ldir[32];
+    int nobjf = 0, npack = 0, nLdir = 0, i, j;
     FILE *f;
 
     for (i = 1; i < argc; i++) {
@@ -690,6 +831,11 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
+        else if (!strcmp(argv[i], "-L") && i + 1 < argc) { if (nLdir < 32) Ldir[nLdir++] = argv[++i]; }
+        else if (!strncmp(argv[i], "-L", 2)) { if (nLdir < 32) Ldir[nLdir++] = argv[i] + 2; }
+        else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
+        else if (!strncmp(argv[i], "-l", 2)) { if (load_lib(argv[i] + 2, Ldir, nLdir)) return 1; }
+        else if (ends_with(argv[i], ".a")) { if (load_archive(argv[i])) return 1; }
         else if (nobjf < MAXOBJ) objfiles[nobjf++] = argv[i];
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INMDSNAM default; RECEIVE DA(...) overrides */
@@ -743,15 +889,22 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    /* --- PASS 1: read every object module --- */
+    /* --- PASS 1: read every explicit object module --- */
     trace("=== PASS 1: read %d object module(s) ===", nobjf);
     for (i = 0; i < nobjf; i++) {
+        long n; unsigned char *b = read_file(objfiles[i], &n);
         trace("- object: %s", objfiles[i]);
-        f = fopen(objfiles[i], "rb");
-        if (!f) { perror(objfiles[i]); return 1; }
-        parse_object(f, &O[nO]);
-        fclose(f);
+        if (!b) return 1;
+        parse_object(b, n, &O[nO]);
+        free(b);
         nO++;
+    }
+
+    /* --- autocall: pull archive members that resolve unresolved ERs --- */
+    if (nAR) {
+        trace("=== autocall: %d archive(s) ===", nAR);
+        if (autocall()) return 1;
+        if (nO > nobjf) trace("  pulled %d member(s); %d object(s) total", nO - nobjf, nO);
     }
 
     /* --- PASS 2: build the composite ESD (resolve ER -> SD by name) --- */

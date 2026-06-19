@@ -12,7 +12,8 @@ c2asm370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MV
 |------|------|--------|
 | **cc370** | C → i370 HLASM `.s` (the GCC 3.4.6 fork; `gcc/`) | works; `-O1` only |
 | **as370** | `.s`/`.asm` → OS/360 OBJ deck (`as/as370.c`) | **byte-identical to IFOX00 (950 modules); links + runs on MVS** |
-| **ld370** | OBJ decks → MVS load module (replace IEWL) + `--unload`/`--xmit` host→MVS transport (`ld/ld370.c`) | member byte-identical to IEWL; `--unload` byte-identical to the IEBCOPY-unload oracle; `--xmit` byte-identical to a TSO TRANSMIT oracle (modulo timestamp). **End-to-end on real MVS: `as370→ld370→--xmit` → upload → RECV370 → runs, RC=7 (Stage 2 done)** |
+| **ld370** | OBJ decks → MVS load module (replace IEWL) + automatic library call (`-l`/`-L` over `.a`) + `--unload`/`--xmit` host→MVS transport (`ld/ld370.c`) | member byte-identical to IEWL; `--unload`/`--xmit` byte-identical to their oracles (XMIT modulo timestamp); autocall validated (single + transitive pull == explicit link). **End-to-end on real MVS: `as370→ld370→--xmit` → upload → RECV370 → runs, RC=7 (Stage 2 done)** |
+| **ar370** | OBJ decks → `.a` archive + ESD symbol index (`ld/ar370.c`) | standard `ar` container (host-inspectable) with a GNU `/`-member symbol table built from each deck's ESD (variable-length names, long-symbol-ready); the static-library ld370 autocalls against |
 
 **End-to-end validated on real MVS (2026-06-18):** `cc370 → as370` built ctest locally (no IFOX00), the decks linked with IEWL (RC=0) and ran (`PGM=CTESTH`) with **RC=0** (all charset checks pass). See `as/` and the [as370 section](#as370--host-native-mvs-assembler).
 
