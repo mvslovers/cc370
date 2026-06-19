@@ -67,7 +67,8 @@ static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
 /* composite (global) symbol = one CESD entry */
 struct gsym { unsigned char name[8]; int type; int is_sect; int gid; long org, len;
-              int def_obj; long in_addr; };   /* defining object + the section's origin within it */
+              int def_obj; long in_addr;   /* section: defining object + origin within it */
+              int owner; };                /* LR (label/entry): gsym index of the owning section */
 static struct gsym G[MAXESD];
 static int nG = 0;
 
@@ -84,7 +85,7 @@ static int g_intern(const unsigned char *name, int type)
     if (i >= 0) return i;
     memcpy(G[nG].name, name, 8);
     G[nG].type = type; G[nG].is_sect = 0; G[nG].gid = 0; G[nG].org = 0; G[nG].len = 0;
-    G[nG].def_obj = -1; G[nG].in_addr = 0;
+    G[nG].def_obj = -1; G[nG].in_addr = 0; G[nG].owner = -1;
     return nG++;
 }
 
@@ -98,6 +99,8 @@ struct obj {
     long textlen;
     struct orld rld[512];
     int nrld;
+    struct { unsigned char name[8]; long addr; int owner_local; } ld[64];   /* label defs (entries) */
+    int nld;
     long object_base;                 /* assigned base address of this object's section(s) */
 };
 static struct obj O[MAXOBJ];
@@ -113,11 +116,21 @@ static void parse_object(FILE *f, struct obj *o)
     while (fread(c, 1, 80, f) == 80) {
         if (c[0] != 0x02) continue;
         if (c[1] == 0xC5 && c[2] == 0xE2 && c[3] == 0xC4) {            /* ESD */
-            int cnt = be16(c + 10), first = be16(c + 14), k;
+            int cnt = be16(c + 10), first = be16(c + 14), k, nid = 0;
             for (k = 0; k < cnt / 16; k++) {
                 const unsigned char *e = c + 16 + k * 16;
-                int ty = e[8] & 0x0f, id = first + k;
-                if (ty == T_LD || id < 1 || id >= MAXESD) continue;
+                int ty = e[8] & 0x0f;
+                if (ty == T_LD) {            /* label def (entry): carries no ESDID; record for the composite ESD */
+                    if (o->nld < 64) {
+                        memcpy(o->ld[o->nld].name, e, 8);
+                        o->ld[o->nld].addr = be24(e + 9);
+                        o->ld[o->nld].owner_local = (int)be24(e + 13);   /* owning section's local ESDID */
+                        o->nld++;
+                    }
+                    continue;
+                }
+                int id = first + nid; nid++;                 /* non-LD entries are numbered; LD slots are skipped */
+                if (id < 1 || id >= MAXESD) continue;
                 o->loc[id].used = 1;
                 memcpy(o->loc[id].name, e, 8);
                 o->loc[id].type = ty;
@@ -202,6 +215,12 @@ int main(int argc, char **argv)
                 G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
             }
         }
+        for (j = 0; j < o->nld; j++) {            /* label defs (entries) -> composite LR (type 03) */
+            int gi = g_intern(o->ld[j].name, T_LD);
+            G[gi].type = 0x03; G[gi].in_addr = o->ld[j].addr;
+            int ol = o->ld[j].owner_local;
+            G[gi].owner = (ol >= 1 && ol < MAXESD && o->loc[ol].used) ? g_find(o->loc[ol].name) : -1;
+        }
     }
     for (i = 0; i < nG; i++)
         if (!G[i].is_sect && G[i].type == T_ER)
@@ -275,6 +294,10 @@ int main(int argc, char **argv)
         e[8] = (unsigned char)G[gi].type;
         if (G[gi].is_sect) {
             put24(e + 9, G[gi].org); e[12] = 0x01; put24(e + 13, G[gi].len);
+        } else if (G[gi].type == 0x03) {  /* LR (label/entry): label address + owning section's ESDID */
+            long oorg = G[gi].owner >= 0 ? G[G[gi].owner].org : 0;
+            int  ogid = G[gi].owner >= 0 ? G[G[gi].owner].gid : 0;
+            put24(e + 9, oorg + G[gi].in_addr); e[12] = 0x01; put24(e + 13, ogid);
         } else {                          /* unresolved ER: 00 .. 00 40 40 (matches IEWL) */
             e[12] = 0x00; e[13] = 0x00; e[14] = 0x40; e[15] = 0x40;
         }
