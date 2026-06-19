@@ -37,11 +37,8 @@ run_case() {
 
 run_case tiny  tiny1.bin tiny.s
 run_case rldt  rldt.bin  rldt.s
-run_case modab modab.bin mod_a.s mod_b.s
-
-# Known-blocked (needs the as370 multiple-distinct-CSECT fix): twosec.s
-# Re-enable once as370 emits correct multi-section objects:
-#   run_case twosec twosec.bin twosec.s
+run_case modab  modab.bin  mod_a.s mod_b.s
+run_case twosec twosec.bin twosec.s     # two distinct CSECTs in one object
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

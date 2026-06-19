@@ -66,7 +66,8 @@ enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05 };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
 /* composite (global) symbol = one CESD entry */
-struct gsym { unsigned char name[8]; int type; int is_sect; int gid; long org, len; };
+struct gsym { unsigned char name[8]; int type; int is_sect; int gid; long org, len;
+              int def_obj; long in_addr; };   /* defining object + the section's origin within it */
 static struct gsym G[MAXESD];
 static int nG = 0;
 
@@ -83,6 +84,7 @@ static int g_intern(const unsigned char *name, int type)
     if (i >= 0) return i;
     memcpy(G[nG].name, name, 8);
     G[nG].type = type; G[nG].is_sect = 0; G[nG].gid = 0; G[nG].org = 0; G[nG].len = 0;
+    G[nG].def_obj = -1; G[nG].in_addr = 0;
     return nG++;
 }
 
@@ -96,8 +98,7 @@ struct obj {
     long textlen;
     struct orld rld[512];
     int nrld;
-    long sect_org;                    /* assigned origin */
-    int sect_g;                       /* index into G of this object's section */
+    long object_base;                 /* assigned base address of this object's section(s) */
 };
 static struct obj O[MAXOBJ];
 static int nO = 0;
@@ -196,48 +197,64 @@ int main(int argc, char **argv)
         for (j = 1; j < MAXESD; j++) {
             if (!o->loc[j].used) continue;
             int gi = g_intern(o->loc[j].name, o->loc[j].type);
-            if (is_sect_type(o->loc[j].type)) {       /* a definition */
+            if (is_sect_type(o->loc[j].type)) {       /* a section definition */
                 G[gi].is_sect = 1; G[gi].type = o->loc[j].type; G[gi].len = o->loc[j].len;
+                G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
             }
         }
-        o->sect_g = (o->sect_local >= 0) ? local_to_g(o, o->sect_local) : -1;
     }
     for (i = 0; i < nG; i++)
         if (!G[i].is_sect && G[i].type == T_ER)
             trace("  '%s': UNRESOLVED external (no defining section)", nm(G[i].name));
 
-    /* --- address assignment: stack sections (doubleword-aligned), number ESDIDs --- */
-    trace("=== assign addresses: stack sections ===");
-    int gid = 0; long running = 0;
+    /* --- address assignment ---
+     * Stack whole OBJECTS, each at a doubleword base; within an object the
+     * assembler already laid out its sections, so a section's final origin =
+     * its object's base + the section's origin within that object. ESDIDs:
+     * sections first (appearance order), then unresolved ERs. */
+    trace("=== assign addresses: stack objects, place sections ===");
+    long running = 0;
+    for (i = 0; i < nO; i++) {
+        struct obj *o = &O[i];
+        long osize = 0; int jj;
+        for (jj = 1; jj < MAXESD; jj++)
+            if (o->loc[jj].used && is_sect_type(o->loc[jj].type)
+                && o->loc[jj].addr + o->loc[jj].len > osize)
+                osize = o->loc[jj].addr + o->loc[jj].len;
+        o->object_base = running;
+        running += roundup8(osize);
+    }
+    long modlen = roundup8(running);
+    int gid = 0;
     for (i = 0; i < nG; i++)
         if (G[i].is_sect) {
-            G[i].gid = ++gid; G[i].org = running; running += roundup8(G[i].len);
+            G[i].gid = ++gid;
+            G[i].org = (G[i].def_obj >= 0 ? O[G[i].def_obj].object_base : 0) + G[i].in_addr;
             trace("  section '%s' -> ESDID %d  origin=%06lX  length=%ld",
                   nm(G[i].name), G[i].gid, G[i].org, G[i].len);
         }
     int nsect = gid;
     for (i = 0; i < nG; i++)
         if (!G[i].is_sect) G[i].gid = ++gid;          /* unresolved ERs get ids after sections */
-    long modlen = roundup8(running);
-    for (i = 0; i < nO; i++) O[i].sect_org = (O[i].sect_g >= 0) ? G[O[i].sect_g].org : 0;
     trace("  module length = %ld", modlen);
 
     /* --- build module text image + relocate address constants --- */
     static unsigned char mod[1 << 16];
     memset(mod, 0, modlen);
-    for (i = 0; i < nO; i++) memcpy(mod + O[i].sect_org, O[i].text, O[i].textlen);
+    for (i = 0; i < nO; i++) memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
     trace("=== relocate address constants ===");
     for (i = 0; i < nO; i++) {
         struct obj *o = &O[i];
         for (j = 0; j < o->nrld; j++) {
             int Rg = local_to_g(o, o->rld[j].R);
-            long loc = o->sect_org + o->rld[j].addr;
+            long loc = o->object_base + o->rld[j].addr;
             int len = ((o->rld[j].flag >> 2) & 3) + 1;
-            if (Rg >= 0 && G[Rg].is_sect) {           /* resolved: add target section origin */
-                long v = rdval(mod + loc, len) + G[Rg].org;
+            if (Rg >= 0 && G[Rg].is_sect) {           /* resolved: relocate by (final origin - input origin) */
+                long delta = G[Rg].org - o->loc[o->rld[j].R].addr;
+                long v = rdval(mod + loc, len) + delta;
                 wrval(mod + loc, v, len);
-                trace("  adcon@%06lX -> %s: value += origin %06lX",
-                      loc, nm(G[Rg].name), G[Rg].org);
+                trace("  adcon@%06lX -> %s: %+ld (final %06lX - input %06lX)",
+                      loc, nm(G[Rg].name), delta, G[Rg].org, o->loc[o->rld[j].R].addr);
             } else {
                 trace("  adcon@%06lX -> %s: UNRESOLVED, left for the loader",
                       loc, Rg >= 0 ? nm(G[Rg].name) : "?");
@@ -306,9 +323,10 @@ int main(int argc, char **argv)
             struct obj *o = &O[i];
             for (j = 0; j < o->nrld; j++) {
                 int Rg = local_to_g(o, o->rld[j].R);
+                int Pg = local_to_g(o, o->rld[j].P);
                 int Rgid = (Rg >= 0) ? G[Rg].gid : 0;
-                int Pgid = (o->sect_g >= 0) ? G[o->sect_g].gid : 0;
-                long addr = o->sect_org + o->rld[j].addr;
+                int Pgid = (Pg >= 0) ? G[Pg].gid : 0;
+                long addr = o->object_base + o->rld[j].addr;
                 int flag = o->rld[j].flag;
                 if (!(Rg >= 0 && G[Rg].is_sect)) flag |= 0x80;   /* unresolved -> do not relocate */
                 if (Rgid == prevR && Pgid == prevP && prevflag_off >= 0) {
