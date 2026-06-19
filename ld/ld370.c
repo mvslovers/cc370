@@ -88,6 +88,8 @@ static void member_name(unsigned char d[8], const char *s)
 #define MAXESD 512
 #define MAXOBJ 1024
 #define MAXG   8192
+#define MAXTEXT 18432             /* split text records at <= this (<= load-lib BLKSIZE
+                                   * 19069); a bigger record overflows RECV370's buffer */
 enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05 };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
@@ -763,11 +765,26 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     tui(r, &rp, INMRECFM, 0x0001, 2);
     netdata_seg(o, &p, r, rp, 1);
 
-    /* the 4 unloaded data records (COPYR1 / COPYR2 / dir+EOD / member+EOM) */
+    /* COPYR1 / COPYR2 / directory+EOD are one logical record each */
     netdata_seg(o, &p, unl,             bounds[0],              0);
     netdata_seg(o, &p, unl + bounds[0], bounds[1] - bounds[0], 0);
     netdata_seg(o, &p, unl + bounds[1], bounds[2] - bounds[1], 0);
-    netdata_seg(o, &p, unl + bounds[2], bounds[3] - bounds[2], 0);
+    /* member data: the IEBCOPY-unload's variable records cannot exceed the
+     * reload buffer, so pack whole CKD records (count12 + KL + DL) into logical
+     * records of <= MAXTEXT bytes instead of one giant record. */
+    {
+        long q = bounds[2];
+        while (q < bounds[3]) {
+            long cs = q, clen = 0;
+            while (q < bounds[3]) {
+                long reclen = 12 + unl[q + 9] + be16(unl + q + 10);
+                if (clen > 0 && clen + reclen > MAXTEXT) break;
+                clen += reclen; q += reclen;
+                if (clen >= MAXTEXT) break;
+            }
+            netdata_seg(o, &p, unl + cs, clen, 0);
+        }
+    }
 
     /* INMR06 -- trailer */
     rp = inmr_hdr(r, 6);
@@ -994,6 +1011,8 @@ int main(int argc, char **argv)
     int nsect = gid;
     for (i = 0; i < nG; i++)
         if (!G[i].is_sect) G[i].gid = ++gid;          /* unresolved ERs get ids after sections */
+    static int gidx[MAXG + 1];                        /* gid -> G[] index */
+    for (i = 0; i < nG; i++) gidx[G[i].gid] = i;
 
     /* entry point: the END-card section's final origin + offset (first object
      * that names one -- normally the explicit main, e.g. @@MAIN). */
@@ -1067,27 +1086,40 @@ int main(int argc, char **argv)
     for (i = 0; i < nO; i++) total_rld += O[i].nrld;
     int have_rld = total_rld > 0;
 
-    /* --- control record (ID-length list over the sections, in origin order) --- */
+    /* --- control + text records: split the module text into <= MAXTEXT-byte
+     * records, each preceded by a control record naming the CSECTs it carries
+     * (load address at off 9, length at off 14, ID/length list at off 16). A
+     * single text record larger than the load-library blocksize overflows the
+     * reload buffer (RECV370 U0200), so real modules are split. Sections are
+     * gid 1..nsect in origin order; we pack whole sections per chunk. --- */
     {
-        int idlen = 4 * nsect;
-        static unsigned char cr[16 + 4 * MAXG]; memset(cr, 0, (size_t)(16 + idlen));
-        cr[0] = have_rld ? 0x01 : 0x0D;
-        put16(cr + 4, idlen); put16(cr + 6, 0);
-        cr[8] = 0x06; put24(cr + 9, entry_addr); cr[12] = 0x40; put16(cr + 14, (int)modlen);
-        for (gid = 1; gid <= nsect; gid++) {          /* sections are gid 1..nsect, in origin order */
-            int gi = -1; for (i = 0; i < nG; i++) if (G[i].gid == gid) { gi = i; break; }
-            long span = (gid < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
-            put16(cr + 16 + 4 * (gid - 1), gid);
-            put16(cr + 18 + 4 * (gid - 1), (int)span);
+        int sg = 1, nchunk = 0;
+        while (sg <= nsect) {
+            long cstart = G[gidx[sg]].org, cend = cstart; int first = sg, g, k, idlen;
+            static unsigned char cr[16 + 4 * MAXG];
+            while (sg <= nsect) {                      /* greedily pack whole sections, >= 1 */
+                long send = (sg < nsect) ? G[gidx[sg]].org + roundup8(G[gidx[sg]].len) : modlen;
+                if (sg > first && send - cstart > MAXTEXT) break;
+                cend = send; sg++;
+            }
+            idlen = 4 * (sg - first);
+            memset(cr, 0, (size_t)(16 + idlen));
+            cr[0] = (sg > nsect && !have_rld) ? 0x0D : 0x01;   /* MODEND only on last chunk w/o RLD */
+            put16(cr + 4, idlen); put16(cr + 6, 0);
+            cr[8] = 0x06; put24(cr + 9, cstart); cr[12] = 0x40; put16(cr + 14, (int)(cend - cstart));
+            for (g = first, k = 0; g < sg; g++, k++) {
+                int gi = gidx[g];
+                long span = (g < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
+                put16(cr + 16 + 4 * k, g); put16(cr + 18 + 4 * k, (int)span);
+            }
+            emit(cr, 16 + idlen);                      /* control record */
+            emit(mod + cstart, cend - cstart);         /* text record */
+            nchunk++;
+            if (cend - cstart > MAXTEXT)
+                trace("  WARNING: section run %ld > MAXTEXT -- intra-section split not yet done", cend - cstart);
         }
-        emit(cr, 16 + idlen);
-        trace("  control record:  %d bytes  byte0=%02X, %d section(s), %ld-byte text",
-              16 + idlen, cr[0], nsect, modlen);
+        trace("  control+text:    %d chunk(s) over %ld-byte text", nchunk, modlen);
     }
-
-    /* --- text record --- */
-    emit(mod, modlen);
-    trace("  text record:     %ld bytes", modlen);
 
     /* --- RLD record (0E = RLD + EOM): all objects' RLDs, remapped to global --- */
     if (have_rld) {
