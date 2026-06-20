@@ -88,8 +88,18 @@ static void member_name(unsigned char d[8], const char *s)
 #define MAXESD 512
 #define MAXOBJ 1024
 #define MAXG   8192
-#define MAXTEXT 18432             /* split text records at <= this (<= load-lib BLKSIZE
-                                   * 19069); a bigger record overflows RECV370's buffer */
+#define MAXTEXT 18432             /* pack member-data into logical records <= this; must stay
+                                   * <= the unload BLKSIZE (below) so RECVRCPY writes each one
+                                   * in a single unblocked PUT -- a record larger than BLKSIZE
+                                   * would span and break the IEBCOPY reload (IEB139I) */
+/* The IEBCOPY-unloaded form's BLKSIZE.  Real IEBCOPY's unload DCB-exit forces
+ * BLKSIZE = MINBLK = 12 + 8 + keylen + source-BLKSIZE (IEBLDUL); a load library
+ * has keylen=0, so for a 19069-byte source library it is 19089.  ld370 must
+ * declare this in the INMCOPY INMR02 so RECVRCPY blocks SYSUT1 wide enough to
+ * hold a full member-data record unspanned (the 3120 it replaced was xmit370's
+ * static template placeholder, never the real unloaded blocksize). */
+#define UNLOAD_SRC_BLKSIZE 19069
+#define UNLOAD_BLKSIZE     (12 + 8 + 0 + UNLOAD_SRC_BLKSIZE)   /* IEBCOPY MINBLK = 19089 */
 enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05 };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
@@ -765,7 +775,7 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     tui(r, &rp, INMDIR, 10, 3);
     tui(r, &rp, INMLRECL, 0, 4);
     tui(r, &rp, INMDSORG, 0x0200, 2);                   /* PO */
-    tui(r, &rp, INMBLKSZ, 19069, 4);
+    tui(r, &rp, INMBLKSZ, UNLOAD_SRC_BLKSIZE, 4);       /* source load-library BLKSIZE */
     tui(r, &rp, INMRECFM, 0xc002, 2);                   /* U */
     tu_dsname(r, &rp, dsn);
     netdata_seg(o, &p, r, rp, 1);
@@ -776,9 +786,9 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     put24(r + rp, 0); r[rp + 3] = 1; rp += 4;
     tus(r, &rp, INMUTILN, "INMCOPY");
     tui(r, &rp, INMSIZE, 15600, 4);
-    tui(r, &rp, INMLRECL, 19085, 4);
+    tui(r, &rp, INMLRECL, UNLOAD_BLKSIZE - 4, 4);       /* VS: max logical record = BLKSIZE-4 */
     tui(r, &rp, INMDSORG, 0x4000, 2);                   /* PS */
-    tui(r, &rp, INMBLKSZ, 3120, 4);
+    tui(r, &rp, INMBLKSZ, UNLOAD_BLKSIZE, 4);           /* = IEBCOPY MINBLK; must hold one record unspanned */
     tui(r, &rp, INMRECFM, 0x4802, 2);                   /* VS */
     netdata_seg(o, &p, r, rp, 1);
 
