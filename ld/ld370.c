@@ -499,8 +499,11 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
     memcpy(ud, unload_userdata, 24);
     put16(ud, m->text_tt); ud[2] = 1;                /* PDS2TTRT = (text_tt, 1) */
     if (m->modlen >= 0) {                                     /* computed from the link */
+        long ftbl = m->modlen; int j;                        /* PDS2FTBL = length of the FIRST text */
+        for (j = 0; j < m->nblk; j++)                         /* record, not the whole module -- they */
+            if (m->blk[j].is_text) { ftbl = m->blk[j].len; break; }  /* coincide only for a 1-text module */
         put24(ud + 10, m->modlen);                           /* PDS2STOR (total storage) */
-        put16(ud + 13, (int)m->modlen);                      /* PDS2FTBL (first text block len) */
+        put16(ud + 13, (int)ftbl);                           /* PDS2FTBL (first text block len) */
     }
     if (m->entry >= 0) {
         put24(ud + 15, m->entry);                            /* PDS2EPA (entry point) */
