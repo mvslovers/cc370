@@ -49,8 +49,12 @@ host-gebauten C-Programm.
    verwarf jede Card jenseits 16 K **still** → Modul ab ~16 KB genullt → S0C1 beim
    Lauf. Fix: dynamisch wachsender Puffer. NOPT 17000/2056 + 12288/12288 laufen
    RC=0, Fixtures byte-identisch zu IEWL. (Details: `docs/multitext-fetch-truncation.md`.)
-   Offen bleibt nur die *separate* RECV370-Transport-Grenze für ~60-KB-Module
-   (`U0200-13 .RECVBLK`, siehe A1-Folgepunkt / `docs/xmit-format.md`).
+   **U0200 ebenfalls behoben** (2026-06-21): eine einzelne CSECT > MAXTEXT wird jetzt
+   intra-section in ≤MAXTEXT-Records gesplittet (IEWL-Layout, Orakel
+   `run_iewl_bigsect.py`); 60-KB-Modul installiert + läuft RC=0.
+   **t1 (echtes C-Programm) Stand:** Transport läuft jetzt (RECV RC=0, ~69 KB/11 Tracks);
+   **RUN bricht mit S106** (Program-FETCH) — neue Frontier (t1 hat echte RLDs/141 Sektionen/
+   entry=8). Das ist der nächste Schritt für „ein C-Programm läuft".
 2. **Globale Variablen (CM)** — noch nicht getestet; evtl. braucht ld370 dafür
    eine Kleinigkeit.
 3. **Module ohne Standard-Start (no-crt0)** — httpd/mvsmf haben Programme, die

@@ -30,9 +30,18 @@
 > (both FETCH-irrelevant). Lesson: when "the image is full" is an *inference*, scan the
 > bytes before theorising about the reader (IEWFETCH).
 >
-> **Separate, still-open:** a ~60 KB module (`--t1 40000 --t2 20000`) now ships real text
-> but fails at `U0200-13 RECV370 .RECVBLK` — the documented Stage-3 RECV370/XMIT
-> track-geometry limit for large multi-track members (CLAUDE.md "pt.2 OPEN"), not this bug.
+> **Follow-on (also fixed, 2026-06-21):** a ~60 KB module (`--t1 40000 --t2 20000`) then
+> hit `U0200-13 RECV370 .RECVBLK` — again *not* a geometry limit, but ld370 emitting one
+> oversized text record for a section larger than MAXTEXT (intra-section split was
+> unimplemented). Fixed by splitting such a section at MAXTEXT boundaries, byte-for-byte
+> the IEWL layout (oracle `ld/tests/run_iewl_bigsect.py`: 40000 → 18432/18432/3136); the
+> 60 KB module installs and runs RC=0.
+>
+> **Real-C-program (`t1`) status:** with both fixes the transport now carries `t1`
+> (`int main(){return 7;}` + crent, ~69 KB / 11 tracks) — RECV370 RC=0, clean reload (the
+> old "IEB139I geometry" blocker is gone). **`t1` RUN now abends S106** (program fetch) —
+> a new frontier: `t1` has real RLDs, 141 sections, entry=8, unlike the RLD-free NOPT
+> modules. That S106 is the next thing to chase for "a C program runs".
 
 **Original (incorrect) status:** open bug in `ld370`'s multi-text **placement** (NOT emission — see §4, the
 member and PDS2 attributes are proven byte-correct against a real IEWL oracle). Single-text
