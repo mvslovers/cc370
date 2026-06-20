@@ -29,10 +29,10 @@ unload pair: `ld/tests/fixtures/e2e.iewl-member.bin` (the member) and
 ## 1. File layout
 
 ```
-[ COPYR1 + COPYR2 ]            328 bytes, echoed verbatim (environment)
+[ COPYR1 + COPYR2 ]            328 bytes, env header (UDEBX extent grown to fit)
 [ directory record ]          count12(KL=8,DL=256) + key FF*8 + 256-byte dir block
 [ end-of-directory record ]   12 zero bytes (a DL=0 marker record)
-  per member, per physical block, in record-number order:
+  per member, per physical block, one block per relative track:
     [ member-data record ]    count12(KL=0, DL=blocklen) + DATA[blocklen]
 [ end-of-module record ]      count12(KL=0, DL=0)   -- one, after the last block
 ```
@@ -51,9 +51,14 @@ off len field
  9   1  KL         key length  (8 for directory, 0 for member data)
 10   2  DL         data length (big-endian)
 ```
-`put_count()` in `ld/ld370.c` writes exactly this. Member-data records ascend by
-`R` on a single track (`CC` = `UNLOAD_DATA_CC` = 0x8d, `HH` = 0); the directory
-record sits at all-zero MBBCCHHR.
+`put_count()` in `ld/ld370.c` writes exactly this. **Device-agnostic layout (v2):
+one block per track.** Physical block `g` (global, across all members) sits
+*alone* on relative track `g` at `R=1`: `CC` = `0x8d + g/30`, `HH` = `g%30`
+(30 = 3350 tracks/cylinder). A single block ≤ `UBLKSIZE` therefore fits the track
+of *any* target DASD (2314=7294 … 3390=56664), so the image loads regardless of
+the end-user's device — 3.8j IEBCOPY writes RECFM=U blocks as-is and relocates
+the TTRs itself (it has no `COPYMOD`; see `iebcopy-source-reference`). The
+directory record sits at all-zero MBBCCHHR (IEBCOPY's directory sentinel).
 
 ## 3. COPYR1 / COPYR2 (the 328-byte environment header)
 
@@ -90,12 +95,13 @@ off len
  *   12  end marker: NAME = X'FF'*8, TTR=0, C=0
  *   ..  zero pad to 256
 ```
-* **TTR** = (relative track 0, R of the member's first block).
+* **TTR** = (relative track of the member's first block, R=1). One block per
+  track, so the directory `TT` is the global index of the member's first block.
 * **C-byte** = alias(bit0) | #TTR(bits1-2) | #halfwords-of-userdata(bits3-7).
   Here `0x2c` = 1 TTR + 12 halfwords (24-byte user data).
 * **USERDATA** = the PDS2 load-module attributes (`IHAPDS`): `PDS2TTRT` (TTR of
-  first text block) + zero + note-list TTR + attrs + entry point + length…
-  `ld370` computes `PDS2TTRT` from the block layout and **echoes** the
+  first text block = `(text_tt, 1)`) + zero + note-list TTR + attrs + entry point
+  + length… `ld370` computes `PDS2TTRT` from the block layout and **echoes** the
   remaining attribute/EP/length bytes (TODO: derive them from the member's
   CESD/control records — see `build_userdata()`).
 
@@ -110,9 +116,12 @@ loader/IEWFETCH sees — see `docs/load-module-format.md` §3) by `split_member(
 | `X'80'` | IDR | `byte1 + 1` |
 | high nibble 0 | control / RLD | `16 + IDlen(off 4) + RLDlen(off 6)`; if the TXT bit `X'01'` is set, a **separate** pure-text block of length `count(off 14)` follows |
 
-Each block becomes one member-data record: `count12(CC=0x8d, HH=0, R=next,
-KL=0, DL=blocklen)` + the block bytes. A final **DL=0** record (R = last+1)
-ends the member data (the on-disk end-of-file).
+Each block becomes one member-data record on its own relative track:
+`count12(CC=0x8d + g/30, HH=g%30, R=1, KL=0, DL=blocklen)` + the block bytes,
+`g` incrementing across all members. A final **DL=0** record (on the track after
+the last block) ends the member data (the on-disk end-of-file). The `UDEBX` data
+extent is grown to `ceil((tracks+1)/30)` whole cylinders so the fake-DEB
+TTR↔MBBCCHHR conversion spans every track used.
 
 > The IDR length rule (`byte1 + 1`) is grounded on three samples (0xFA→251,
 > 0x15→22, 0x14→21); confirm against an IDR with a different byte 1 — a real
@@ -120,12 +129,17 @@ ends the member data (the on-disk end-of-file).
 
 ## 6. Status & open points
 
-* **Stage 1 (done):** single member, byte-identical to `e2e.iebcopy-unload.bin`;
-  `split_member` round-trips every linked regression member (incl. the `0x0E`
-  RLD path); multi-member (`--pack`) reconstructs + name-sorts. Host checks:
-  `ld/tests/run.sh` + `ld/tests/unload_check.py`.
-* **Stage 2 (next):** IEBCOPY LOAD a couple of small modules on real MVS and run
-  one — the only proof the image actually reloads.
-* **Stage 3 (generalise):** multi-track geometry (advance `R`→`HH`→`CC`, size
-  `UDEBX`) once a member/library exceeds one track; multi-block directories;
-  computed PDS2 user-data. The emit loops are already laid out for N members.
+* **Stage 1 (done):** `split_member` round-trips every linked regression member
+  (incl. the `0x0E` RLD path); multi-member (`--pack`) reconstructs + name-sorts.
+  Host checks: `ld/tests/run.sh` + `ld/tests/unload_check.py` (multi-track-aware:
+  reconstruct by directory `TT`, R reset per track).
+* **Stage 2 (done):** the FB80 XMIT uploads, `PGM=RECV370` installs it, the
+  member runs on real MVS.
+* **Stage 3 (done, 2026-06-20):** device-agnostic **one block per track** — the
+  e2e member (6 blocks → 6 tracks) installs (`IEB154I`, RC=0, no `IEB139I`) and
+  runs (**RC=7**) on mvsdev.lan. `UDEBX` cylinder growth is coded. Byte-identity
+  to the real single-track IEBCOPY oracle is intentionally dropped (we under-pack
+  for device independence); the MVS round-trip is the arbiter.
+* **Open:** multi-member multi-track on MVS (single EOM at end, not per-member —
+  untested >1 member); >30-track members (UDEBX growth not yet round-tripped);
+  computed PDS2 attributes (still echoed); multi-block directories.

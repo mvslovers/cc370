@@ -50,33 +50,31 @@ run_case modab  modab.bin  mod_a.s mod_b.s
 run_case twosec twosec.bin twosec.s     # two distinct CSECTs in one object
 run_case klein  klein.bin  klein.s      # ENTRY/LD (-> composite LR) + RLD SAMERP continuation
 
-# IEBCOPY unloaded-image emitter: wrap a known IEWL member and byte-diff against
-# the IEBCOPY UNLOAD oracle.  NOTE: a green diff proves only that the member
-# WRAPPING is correct -- the COPYR1/COPYR2 environment header is echoed from this
-# same oracle, so it cannot regress.  It does NOT prove the image reloads on MVS;
-# the real oracle is IEBCOPY LOAD + run (Stage 2).
+# IEBCOPY unloaded-image emitter: wrap a known IEWL member and structurally
+# check that it reconstructs from the device-agnostic one-block-per-track image.
+# Byte-identity to a real IEBCOPY UNLOAD no longer applies -- we deliberately
+# under-pack (one block per track) so the image loads on ANY target DASD.  The
+# real oracle is RECV370 LOAD + run on MVS: validated 2026-06-20, the e2e member
+# installs (IEB154I) and runs (RC=7) through the multi-track emitter.
 run_unload() {
-    name=$1; member=$2; oracle=$3; mname=$4
+    name=$1; member=$2; mname=$3
     "$LD" --unload-from "$FIX/$member" --name "$mname" --unload "$TMP/$name.unload" \
         || { echo "ld370 --unload failed: $name"; fails=$((fails + 1)); return; }
-    printf '\n=== unload %s  (oracle %s) ===\n' "$name" "$oracle"
-    if cmp -s "$FIX/$oracle" "$TMP/$name.unload"; then
-        echo "unload: BYTE-IDENTICAL"
-    else
-        echo "unload: DIFFERS"; cmp "$FIX/$oracle" "$TMP/$name.unload"; fails=$((fails + 1))
-    fi
+    printf '\n=== unload %s ===\n' "$name"
+    python3 ld/tests/unload_check.py "$TMP/$name.unload" "$mname=$FIX/$member" \
+        || fails=$((fails + 1))
 }
 
-run_unload e2e e2e.iewl-member.bin e2e.iebcopy-unload.bin E2E
+run_unload e2e e2e.iewl-member.bin E2E
 
-# XMIT (TSO TRANSMIT / NETDATA) wrapper: wrap the e2e member's unload and
-# structurally check it against the real TRANSMIT oracle (modulo the INMFTIME
-# timestamp) + confirm the payload is the unload image.  Validated end-to-end
-# on MVS: the FB80 upload RECV370-installs and the member runs (RC=7).
-printf '\n=== xmit e2e  (oracle e2e.iewl.xmit) ===\n'
+# XMIT (TSO TRANSMIT / NETDATA) wrapper: wrap the e2e member's unload and check
+# FB80 + the INMR control set + that the data records carry the unload payload
+# byte-faithfully.  Validated end-to-end on MVS: the FB80 upload RECV370-installs
+# (IEB154I) and the member runs (RC=7) through the multi-track emitter.
+printf '\n=== xmit e2e ===\n'
 if "$LD" --unload-from "$FIX/e2e.iewl-member.bin" --name E2E --dsn IBMUSER.E2E.LOAD \
-        --xmit "$TMP/e2e.xmit" 2>/dev/null; then
-    python3 ld/tests/xmit_check.py "$TMP/e2e.xmit" "$FIX/e2e.iewl.xmit" "$FIX/e2e.iebcopy-unload.bin" \
+        --unload "$TMP/e2e.x.unl" --xmit "$TMP/e2e.xmit" 2>/dev/null; then
+    python3 ld/tests/xmit_check.py "$TMP/e2e.xmit" "$TMP/e2e.x.unl" \
         || fails=$((fails + 1))
 else
     echo "ld370 --xmit failed"; fails=$((fails + 1))

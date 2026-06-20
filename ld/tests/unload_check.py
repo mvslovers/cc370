@@ -47,8 +47,8 @@ def check(unload_path, expect):
     entries, q = [], 2
     while q < used and block[q] != 0xFF:
         name = ''.join(e2a(c) for c in block[q:q + 8]).rstrip()
-        r = block[q + 10]
-        entries.append((name, r))
+        tt = be16(block, q + 8)          # TTR = relative track (one block/track)
+        entries.append((name, tt))
         q += 12 + (block[q + 11] & 0x1F) * 2
 
     if [n for n, _ in entries] != sorted(n for n, _ in entries):
@@ -61,27 +61,26 @@ def check(unload_path, expect):
         return False
     p += 12
 
-    # member-data records, keyed by record number, until the EOM (DL=0)
-    recs = {}
+    # member-data records: one block per relative track (R=1), in member/track
+    # order, until the EOM (DL=0).  Block g sits on relative track g, so the
+    # directory's TT indexes directly into this list.
+    blocks = []
     while p + 12 <= len(u):
-        r, kl, dl = u[p + 8], u[p + 9], be16(u, p + 10)
+        kl, dl = u[p + 9], be16(u, p + 10)
         p += 12
-        if dl == 0:
+        if dl == 0:                       # EOM
             break
-        recs[r] = u[p:p + dl]
+        blocks.append(u[p:p + dl])
         p += kl + dl
     if p != len(u):
         print("  FAIL: stream did not consume to EOF (%d of %d)" % (p, len(u)))
         return False
 
-    starts = sorted(r for _, r in entries)
+    starts = sorted(tt for _, tt in entries)
     ok = True
-    for name, r in entries:
-        nxt = min([s for s in starts if s > r], default=1 << 30)
-        blk, rr = b'', r
-        while rr in recs and rr < nxt:
-            blk += recs[rr]
-            rr += 1
+    for name, tt in entries:
+        nxt = min([s for s in starts if s > tt], default=len(blocks))
+        blk = b''.join(blocks[tt:nxt])
         want = expect.get(name)
         if want is None:
             print("  FAIL: unexpected member '%s'" % name)

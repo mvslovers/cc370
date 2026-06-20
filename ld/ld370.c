@@ -415,6 +415,12 @@ static const unsigned char unload_userdata[24] = {
  * source PDS reserved R=1..0x0b for directory blocks before member data). */
 #define UNLOAD_DATA_CC  0x008d
 #define UNLOAD_FIRST_R  0x0c
+#define UNLOAD_TRKPERCYL 30      /* 3350 tracks/cylinder (env header DEBNMTRK / offset 83) */
+/* UDEBX (DEB data extent) fields within the 328-byte env header, patched when a
+ * member needs more than one cylinder of tracks. */
+#define UDEBX_ENDCC  78          /* DEBENDCC  (end cylinder)   */
+#define UDEBX_ENDHH  80          /* DEBENDHH  (end head)       */
+#define UDEBX_NMTRK  82          /* DEBNMTRK  (tracks in extent) */
 
 /* write a 12-byte CKD count image: F + MBBCCHHR(M,BB,CC,HH,R) + KL + DL */
 static void put_count(unsigned char *p, int cc, int hh, int r, int kl, int dl)
@@ -432,7 +438,7 @@ struct umember {
     unsigned char name[8];
     const unsigned char *bytes; long len;
     struct lmblock blk[128]; int nblk;
-    int first_r, text_r;
+    int first_tt, text_tt;   /* relative track of first block / first text block (one block/track, R=1) */
     long entry, modlen;   /* PDS2EPA / PDS2STOR for the dir entry; <0 = echo template */
 };
 
@@ -481,7 +487,7 @@ static int split_member(const unsigned char *m, long n, struct lmblock *b, int m
 static void build_userdata(unsigned char ud[24], const struct umember *m)
 {
     memcpy(ud, unload_userdata, 24);
-    ud[0] = 0; ud[1] = 0; ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (0, text_r) */
+    put16(ud, m->text_tt); ud[2] = 1;                /* PDS2TTRT = (text_tt, 1) */
     if (m->modlen >= 0) {                                     /* computed from the link */
         put24(ud + 10, m->modlen);                           /* PDS2STOR (total storage) */
         put16(ud + 13, (int)m->modlen);                      /* PDS2FTBL (first text block len) */
@@ -501,10 +507,13 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
  * byte length.  If bounds!=NULL, fill the 4 logical-record end offsets the
  * unload is split into when transmitted: COPYR1, COPYR2, directory(+EOD),
  * member-data(+EOM) -- the 4 data records of the XMIT payload.
- * v1: single track, ascending R (no track-overflow), one directory block. */
+ * v2: device-agnostic -- one block per track (block g alone on relative track g
+ * at R=1).  A single block <= UBLKSIZE fits any target DASD track, so the image
+ * loads regardless of the end-user's device (3.8j IEBCOPY writes RECFM=U blocks
+ * as-is + relocates TTRs; it has no COPYMOD).  One directory block. */
 static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *bounds)
 {
-    long p = 0; int i, j, r, eom_r;
+    long p = 0; int i, j, ntracks, ncyl;
     unsigned char dir[256]; long used;
 
     /* PDS directory entries must be in ascending EBCDIC name order; sort the
@@ -520,20 +529,30 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     memcpy(o + p, unload_env_hdr, 328); p += 328;       /* COPYR1 + COPYR2 */
     if (bounds) { bounds[0] = UNLOAD_COPYR1_LEN; bounds[1] = 328; }
 
-    /* assign each block a record number, single track ascending from base.
-     * TODO(multi-track): when blocks overflow one track, advance HH then CC
-     * (and grow UDEBX) keeping MBBCCHHR monotonic; today we assume one track. */
-    r = UNLOAD_FIRST_R;
-    for (i = 0; i < nmem; i++) {
-        mem[i].first_r = r;
-        mem[i].text_r = r;
-        for (j = 0; j < mem[i].nblk; j++) {
-            if (mem[i].blk[j].is_text) mem[i].text_r = r;
-            r++;
+    /* one block per track: block g (global, across all members) lives alone on
+     * relative track g.  Record each member's first-block and first-text-block
+     * track so the directory TTR / PDS2TTRT point at them (R is always 1). */
+    {
+        int g = 0, sawtext;
+        for (i = 0; i < nmem; i++) {
+            mem[i].first_tt = g;
+            mem[i].text_tt = g;
+            sawtext = 0;
+            for (j = 0; j < mem[i].nblk; j++) {
+                if (mem[i].blk[j].is_text && !sawtext) { mem[i].text_tt = g; sawtext = 1; }
+                g++;
+            }
         }
+        ntracks = g;                                    /* data tracks; EOM sits on track g */
     }
-    eom_r = r;
-    if (r > 255) trace("WARNING: %d records exceed one track -- multi-track not yet emitted", r);
+
+    /* grow the UDEBX data extent to span every track used (incl. the EOM track),
+     * in whole cylinders, so the fake-DEB TTR<->MBBCCHHR conversion stays valid. */
+    ncyl = (ntracks + 1 + UNLOAD_TRKPERCYL - 1) / UNLOAD_TRKPERCYL;
+    if (ncyl < 1) ncyl = 1;
+    put16(o + UDEBX_ENDCC, UNLOAD_DATA_CC + ncyl - 1);
+    put16(o + UDEBX_ENDHH, UNLOAD_TRKPERCYL - 1);
+    put16(o + UDEBX_NMTRK, ncyl * UNLOAD_TRKPERCYL);
 
     /* directory block: 2-byte used count, member entries (assumed name-sorted
      * by the caller -- true for v1), FF terminator entry, zero pad. */
@@ -542,7 +561,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     for (i = 0; i < nmem; i++) {
         unsigned char *e = dir + used;
         memcpy(e, mem[i].name, 8);
-        e[8] = 0; e[9] = 0; e[10] = (unsigned char)mem[i].first_r;   /* TTR = (0, first_r) */
+        put16(e + 8, mem[i].first_tt); e[10] = 1;    /* TTR = (first_tt, 1) */
         e[11] = 0x2c;                                /* alias=0, 1 TTR, 12 halfwords user data */
         build_userdata(e + 12, &mem[i]);
         used += 8 + 3 + 1 + 24;
@@ -558,16 +577,22 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     memset(o + p, 0, 12); p += 12;                     /* end-of-directory marker record */
     if (bounds) bounds[2] = p;                          /* directory record + EOD marker */
 
-    /* member data: one CKD record image per physical block */
-    r = UNLOAD_FIRST_R;
-    for (i = 0; i < nmem; i++)
-        for (j = 0; j < mem[i].nblk; j++) {
-            long bl = mem[i].blk[j].len;
-            put_count(o + p, UNLOAD_DATA_CC, 0, r, 0, (int)bl); p += 12;
-            memcpy(o + p, mem[i].bytes + mem[i].blk[j].off, bl); p += bl;
-            r++;
-        }
-    put_count(o + p, UNLOAD_DATA_CC, 0, eom_r, 0, 0); p += 12;   /* EOM */
+    /* member data: one CKD record image per physical block, one block per
+     * relative track (CC advances every UNLOAD_TRKPERCYL tracks), R always 1. */
+    {
+        int g = 0;
+        for (i = 0; i < nmem; i++)
+            for (j = 0; j < mem[i].nblk; j++) {
+                long bl = mem[i].blk[j].len;
+                put_count(o + p, UNLOAD_DATA_CC + g / UNLOAD_TRKPERCYL,
+                          g % UNLOAD_TRKPERCYL, 1, 0, (int)bl); p += 12;
+                memcpy(o + p, mem[i].bytes + mem[i].blk[j].off, bl); p += bl;
+                g++;
+            }
+        /* EOM: zero-length record alone on the track after the last block */
+        put_count(o + p, UNLOAD_DATA_CC + g / UNLOAD_TRKPERCYL,
+                  g % UNLOAD_TRKPERCYL, 1, 0, 0); p += 12;
+    }
     if (bounds) bounds[3] = p;                          /* member data + EOM */
     return p;
 }
