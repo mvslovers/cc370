@@ -1210,10 +1210,18 @@ int main(int argc, char **argv)
         trace("  control+text:    %d chunk(s) over %ld-byte text", nchunk, modlen);
     }
 
-    /* --- RLD record (0E = RLD + EOM): all objects' RLDs, remapped to global --- */
+    /* --- RLD records: emit RLD items in records of <= RLDMAX bytes of RLD
+     * data.  IEWL caps each RLD record at 236 so the whole record (16-byte
+     * header + data) fits program fetch's 256-byte RLD buffer (IEWFETCH FTRBUF);
+     * one oversized RLD record makes fetch read past the buffer and relocate
+     * garbage addresses -> S106 reason 0E.  Records are byte0=02 (RLD only)
+     * except the last, which is 0E (RLD + MODEND + SEGEND).  The SAMERP
+     * R/P-continuation must NOT cross a record boundary -- fetch reads each
+     * record into a fresh buffer, so every record's first item carries its full
+     * R/P. --- */
     if (have_rld) {
-        long hdr = olen; unsigned char rh[16]; memset(rh, 0, 16); rh[0] = 0x0E; emit(rh, 16);
-        long data = olen;
+        const long RLDMAX = 236;
+        long rec_hdr = -1, rec_data = 0;
         int prevR = -1, prevP = -1; long prevflag_off = -1;
         for (i = 0; i < nO; i++) {
             struct obj *o = &O[i];
@@ -1222,25 +1230,31 @@ int main(int argc, char **argv)
                 int Pg = local_to_g(o, o->rld[j].P);
                 int Pgid = (Pg >= 0) ? G[Pg].gid : 0;
                 long addr = o->object_base + o->rld[j].addr;
-                int flag = o->rld[j].flag, Rgid = 0, resolved = 0;
+                int flag = o->rld[j].flag, Rgid = 0, resolved = 0, same, isize;
                 if (Rg >= 0 && G[Rg].is_sect) { Rgid = G[Rg].gid; resolved = 1; }
                 else if (Rg >= 0 && G[Rg].type == 0x03 && G[Rg].owner >= 0 && G[G[Rg].owner].is_sect) {
                     Rgid = G[G[Rg].owner].gid; resolved = 1;     /* LR adcon relocates via its owner section */
                 } else if (Rg >= 0) Rgid = G[Rg].gid;
                 if (!resolved) flag |= 0x80;                     /* unresolved -> do not relocate */
-                if (Rgid == prevR && Pgid == prevP && prevflag_off >= 0) {
-                    out[prevflag_off] |= 0x01;
-                } else {
-                    unsigned char rp[4]; put16(rp, Rgid); put16(rp + 2, Pgid); emit(rp, 4);
+                same  = (rec_hdr >= 0 && Rgid == prevR && Pgid == prevP && prevflag_off >= 0);
+                isize = same ? 4 : 8;                            /* flag+addr, or + R/P prefix */
+                if (rec_hdr < 0 || rec_data + isize > RLDMAX) {  /* close prev record, start a new one */
+                    unsigned char rh[16];
+                    if (rec_hdr >= 0) put16(out + rec_hdr + 6, (int)rec_data);
+                    memset(rh, 0, 16); rh[0] = 0x02;
+                    rec_hdr = olen; emit(rh, 16); rec_data = 0;
+                    prevR = prevP = -1; prevflag_off = -1; same = 0;   /* no continuation across records */
                 }
+                if (same) out[prevflag_off] |= 0x01;
+                else { unsigned char rp[4]; put16(rp, Rgid); put16(rp + 2, Pgid); emit(rp, 4); rec_data += 4; }
                 prevflag_off = olen;
-                emitb(flag);
-                { unsigned char a[3]; put24(a, addr); emit(a, 3); }
+                emitb(flag); { unsigned char a[3]; put24(a, addr); emit(a, 3); }
+                rec_data += 4;
                 prevR = Rgid; prevP = Pgid;
             }
         }
-        put16(out + hdr + 6, (int)(olen - data));
-        trace("  RLD record:      %ld bytes  byte0=0E (RLD + EOM), %d item(s)", olen - hdr, total_rld);
+        if (rec_hdr >= 0) { put16(out + rec_hdr + 6, (int)rec_data); out[rec_hdr] = 0x0E; }
+        trace("  RLD records:     %d item(s) in <=%ld-byte records (last byte0=0E)", total_rld, RLDMAX);
     }
 
     (void)entry_pt;
