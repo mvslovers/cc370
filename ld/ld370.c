@@ -143,8 +143,9 @@ struct obj {
     struct lent loc[MAXESD];          /* local ESD by local ESDID */
     int loc_g[MAXESD];                /* composite gsym index for each local ESDID */
     int sect_local;                   /* local id of this object's section */
-    unsigned char text[1 << 14];
-    long textlen;
+    unsigned char *text;              /* object text, grown on demand (was a fixed 16384-byte */
+    long textcap;                     /*   buffer that SILENTLY dropped text past 16K -> any   */
+    long textlen;                     /*   module > 16K truncated to zeros, S0C1 at run time)  */
     struct orld rld[512];
     int nrld;
     struct { unsigned char name[8]; long addr; int owner_local; } ld[64];   /* label defs (entries) */
@@ -203,12 +204,21 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                       o->loc[id].len);
             }
         } else if (c[1] == 0xE3 && c[2] == 0xE7 && c[3] == 0xE3) {     /* TXT */
-            long addr = be24(c + 5); int cnt = be16(c + 10);
-            if (addr + cnt <= (long)sizeof o->text) {
-                memcpy(o->text + addr, c + 16, cnt);
-                if (addr + cnt > o->textlen) o->textlen = addr + cnt;
+            long addr = be24(c + 5), cnt = be16(c + 10), need = addr + cnt;
+            if (need > o->textcap) {                       /* grow on demand; never silently drop */
+                long ncap = o->textcap ? o->textcap : 4096;
+                unsigned char *nt;
+                while (ncap < need) ncap *= 2;
+                nt = realloc(o->text, (size_t)ncap);
+                if (!nt) { fprintf(stderr, "ld370: out of memory for object text (%ld bytes)\n", ncap); exit(1); }
+                memset(nt + o->textcap, 0, (size_t)(ncap - o->textcap));   /* zero-fill gaps */
+                o->text = nt; o->textcap = ncap;
             }
-            trace("  TXT  %d bytes -> local section id=%d at offset %06lX", cnt, be16(c + 14), addr);
+            if (cnt > 0) {
+                memcpy(o->text + addr, c + 16, cnt);
+                if (need > o->textlen) o->textlen = need;
+            }
+            trace("  TXT  %ld bytes -> local section id=%d at offset %06lX", cnt, be16(c + 14), addr);
         } else if (c[1] == 0xD9 && c[2] == 0xD3 && c[3] == 0xC4) {     /* RLD */
             int cnt = be16(c + 10), p = 16, end = 16 + cnt, R = 0, P = 0, same = 0;
             while (p + 4 <= end && p + 4 <= 80) {
@@ -499,11 +509,32 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
     memcpy(ud, unload_userdata, 24);
     put16(ud, m->text_tt); ud[2] = 1;                /* PDS2TTRT = (text_tt, 1) */
     if (m->modlen >= 0) {                                     /* computed from the link */
-        long ftbl = m->modlen; int j;                        /* PDS2FTBL = length of the FIRST text */
-        for (j = 0; j < m->nblk; j++)                         /* record, not the whole module -- they */
-            if (m->blk[j].is_text) { ftbl = m->blk[j].len; break; }  /* coincide only for a 1-text module */
+        long ftbl = m->modlen, origin = 0; int j, ntext = 0, have_rld = 0, first_text = -1;
+        for (j = 0; j < m->nblk; j++) {
+            if (m->blk[j].is_text) {                         /* PDS2FTBL = length of the FIRST text */
+                if (first_text < 0) { first_text = j; ftbl = m->blk[j].len; }
+                ntext++;                                     /* record, not the whole module -- they */
+            } else if (m->bytes[m->blk[j].off] & 0x02)       /* coincide only for a 1-text module */
+                have_rld = 1;                                /* a control/RLD record carrying RLD items */
+        }
+        if (first_text > 0) {                                /* control record precedes the first text */
+            long co = m->blk[first_text - 1].off;            /* its CCW load address (off 9-11) = origin */
+            origin = ((long)m->bytes[co + 9] << 16) | (m->bytes[co + 10] << 8) | m->bytes[co + 11];
+        }
         put24(ud + 10, m->modlen);                           /* PDS2STOR (total storage) */
         put16(ud + 13, (int)ftbl);                           /* PDS2FTBL (first text block len) */
+        /* PDS2ATR1/2: the template is from a single-text, no-RLD, origin=0,
+         * entry=0 module.  Recompute the per-module flags so multi-text / RLD /
+         * non-zero-entry modules are described truthfully -- PDS21BLK left set on
+         * a multi-block module makes program fetch take the single-block load
+         * path and load ONLY the first text block (-> S0C1 past it).  Keep
+         * RENT/REUS/EXEC (ATR1) and FLVL/LEF (ATR2) from the template. */
+        ud[8] = (unsigned char)((ud[8] & ~0x01)              /* PDS21BLK: one text block AND no RLD */
+                 | ((ntext == 1 && !have_rld) ? 0x01 : 0));
+        ud[9] = (unsigned char)((ud[9] & ~(0x10 | 0x40 | 0x20))
+                 | (have_rld ? 0 : 0x10)                     /* PDS2NRLD: no RLD items */
+                 | (origin == 0 ? 0x40 : 0)                  /* PDS2ORG0: first-text origin is zero */
+                 | (m->entry == 0 ? 0x20 : 0));              /* PDS2EP0:  entry point is zero */
     }
     if (m->entry >= 0) {
         put24(ud + 15, m->entry);                            /* PDS2EPA (entry point) */
@@ -1065,7 +1096,7 @@ int main(int argc, char **argv)
     /* --- build module text image + relocate address constants --- */
     static unsigned char mod[1 << 20];
     memset(mod, 0, modlen);
-    for (i = 0; i < nO; i++) memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
+    for (i = 0; i < nO; i++) if (O[i].textlen) memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
     trace("=== relocate address constants ===");
     for (i = 0; i < nO; i++) {
         struct obj *o = &O[i];
