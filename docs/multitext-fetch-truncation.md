@@ -37,11 +37,19 @@
 > the IEWL layout (oracle `ld/tests/run_iewl_bigsect.py`: 40000 → 18432/18432/3136); the
 > 60 KB module installs and runs RC=0.
 >
-> **Real-C-program (`t1`) status:** with both fixes the transport now carries `t1`
-> (`int main(){return 7;}` + crent, ~69 KB / 11 tracks) — RECV370 RC=0, clean reload (the
-> old "IEB139I geometry" blocker is gone). **`t1` RUN now abends S106** (program fetch) —
-> a new frontier: `t1` has real RLDs, 141 sections, entry=8, unlike the RLD-free NOPT
-> modules. That S106 is the next thing to chase for "a C program runs".
+> **Real-C-program (`t1`) progress:** with the text + intra-section-split + RLD-record-split
+> fixes, `t1` (`int main(){return 7;}` + crent, ~69 KB / 11 tracks) now **transports
+> (RECV370 RC=0), fetches, and executes** the crent startup on MVS.
+> - The **S106** that blocked fetch was ld370 emitting one oversized RLD record; program
+>   fetch reads RLD records into a 256-byte buffer, so an RLD record > ~236 B overflows it
+>   and fetch relocates garbage → S106-0E. Fixed by splitting RLD data into ≤236-byte
+>   records like IEWL (oracle `ld/tests/run_iewl_mtrld.py`).
+> - **Now blocked on a runtime `S0C4`** (not fetch): crent prints
+>   `__CRTGET CRT for TCB was not found in PPA(00000000)` — `@@PPAGET` walks the TCB
+>   save-area chain for the `PPAEYE` eyecatcher and returns PPA=0, so `__CRTGET` returns
+>   NULL and the caller derefs it. `@@CRT0` should establish the PPA in the chain. crent
+>   runs fine via mbt/IEWL, so this is specific to the ld370 link — next: link `t1`'s exact
+>   objects with real IEWL and run; if RC=7, diff the entry point + the @@CRT0/@@PPAGET adcons.
 
 **Original (incorrect) status:** open bug in `ld370`'s multi-text **placement** (NOT emission — see §4, the
 member and PDS2 attributes are proven byte-correct against a real IEWL oracle). Single-text
