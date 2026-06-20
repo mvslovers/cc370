@@ -96,6 +96,27 @@ The reader rebuilds its read channel program from these fields (`IEWFETCH.ASM:26
 
 A text record immediately follows its control record (when byte 0 has `TXT X'01'`). It is **pure CSECT text** — no header of its own. Its length and load address are given entirely by the preceding control record (CCW address at off 9–11 = origin, CCW count at off 14–15 = length) (`HEWLFSCD.ASM:103-106`; template `TXTBYT` at `:1070` is a one-byte text record). The ID/length list in the control record (off 16…) tells the loader which CESD-ID owns each span of bytes within the text record so adcons can be relocated CSECT-relative.
 
+### 5.1 Maximum text-record size — IEWL's splitting rule
+
+A module larger than one text record is split into several control+text pairs. **IEWL does not use a fixed split size**; it computes a maximum text-record length `TXTSIZE` at OPEN time and fills each record up to that value, splitting *across* CSECT boundaries when needed (a single text record may carry the tail of one section and the head of the next). The computation (`HEWLFINT.ASM:569-587`):
+
+1. Start from the `TXT18K` table — a descending list of candidate sizes (`HEWLFINT.ASM:978-989`):
+
+   | bytes | const | | bytes | const |
+   |---|---|---|---|---|
+   | **18432** | `TXT18K` | | 5120 | `TXT5K` |
+   | 13312 | `TXT13K` | | 4096 | `TXT4K` |
+   | 12288 | `TXT12K` | | 3072 | `TXT3K` |
+   | 7680 | `TXT7P5K` (3340) | | 2048 | `TXT2K` |
+   | 6144 | `TXT6K` | | 1024 | `TXT1K` |
+
+2. `TXTSIZE` = the **largest table entry ≤ the SYSLMOD device's max block size** (`DEVMAXBS`, from `DEVTYPE`; e.g. a 3350 track ≈ 19069 → 18432).
+3. Then cap to **available buffer storage**: if `VALUE2/2 < TXTSIZE`, `TXTSIZE = VALUE2/2` (`:585-587`). If `VALUE2/2 ≥ 20480` (`TXT20K`) a 5K RLD buffer is provided (`:581-583`); when 4K RLD buffers are in play the buffer area is reduced by 4096 (`TXT4K`) first (`:630-632`).
+
+**Consequences for a host-native `ld`:**
+- The largest text record IEWL ever writes is **18432 bytes** (`TXTBSIZE`, `HEWLFINP.ASM:66`). 16384 is **not** an IEWL record size. Production modules (crent370/rexx370/httpd) routinely contain 18432-byte text records and load correctly — so a single text record up to 18432 is well within FETCH's capability.
+- IEWL fills records to `TXTSIZE` **byte-wise**, crossing section boundaries. A host `ld` that instead packs *whole sections per record* will produce a structurally different (though still ≤ 18432) split — see [multitext-fetch-truncation.md](multitext-fetch-truncation.md).
+
 ---
 
 ## 6. RLD record, RLD item, and the flag byte

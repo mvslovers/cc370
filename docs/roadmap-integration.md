@@ -43,10 +43,14 @@ host-gebauten C-Programm.
 
 ### A. Toolchain fertig (Pflicht — damit echte Programme laufen)
 
-1. **Großes Programm verpacken (Multi-Track)** — *aktueller Blocker.* Große
-   Programme passen nicht auf eine „Spur" der Platte; das Verpacken muss das
-   berücksichtigen. Danach läuft das erste echte host-gebaute C-Programm.
-   (Details: `docs/xmit-format.md`, Roadmap-Punkt E.)
+1. **Multi-Text-Modul läuft beim FETCH durch** — ✅ **BEHOBEN (2026-06-21).** Es war
+   weder FETCH noch Geometrie noch Emission-vs-IEWL: `ld370`s Per-Objekt-Textpuffer
+   war ein fixes 16384-Byte-Array (`struct obj.text[1<<14]`), und der TXT-Reader
+   verwarf jede Card jenseits 16 K **still** → Modul ab ~16 KB genullt → S0C1 beim
+   Lauf. Fix: dynamisch wachsender Puffer. NOPT 17000/2056 + 12288/12288 laufen
+   RC=0, Fixtures byte-identisch zu IEWL. (Details: `docs/multitext-fetch-truncation.md`.)
+   Offen bleibt nur die *separate* RECV370-Transport-Grenze für ~60-KB-Module
+   (`U0200-13 .RECVBLK`, siehe A1-Folgepunkt / `docs/xmit-format.md`).
 2. **Globale Variablen (CM)** — noch nicht getestet; evtl. braucht ld370 dafür
    eine Kleinigkeit.
 3. **Module ohne Standard-Start (no-crt0)** — httpd/mvsmf haben Programme, die
@@ -119,4 +123,6 @@ host-gebauten C-Programm.
   Objekt-/Load-Module-Formate (Grundlage für as370/ld370).
 - `docs/unload-format.md`, `docs/xmit-format.md` — die Transport-Formate
   (Grundlage für `ld370 --unload`/`--xmit`).
+- `docs/multitext-fetch-truncation.md` — gelöster Blocker A1 (Multi-Text-Modul
+  wurde bei 16 KB abgeschnitten — `ld370`-Textpuffer; 2026-06-21 behoben).
 - `as/` — as370 (host-nativer Assembler) inkl. eigener Doku.
