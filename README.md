@@ -1,3 +1,17 @@
+> **c2asm370 — host-native MVS cross-toolchain.** On the `V2.0.0` branch this
+> repo is more than the GCC fork below: it is a full toolchain that **compiles,
+> assembles, links and packages MVS programs entirely on the host** (macOS/Linux),
+> so only the finished load module is shipped to MVS — **cc370** (this GCC 3.4.6
+> fork), **as370** (assembler, byte-identical to IFOX00), **ld370** (linker,
+> replaces IEWL) + **ar370** (`.a` archives) and the `--unload`/`--xmit`
+> host→MVS transport. Start here:
+> [`docs/roadmap-integration.md`](docs/roadmap-integration.md) (plain-language
+> status + integration plan), [`V2.0.0-README.md`](V2.0.0-README.md),
+> [`CLAUDE.md`](CLAUDE.md), [`as/README.md`](as/README.md). The text below is the
+> inherited upstream `i370-gcc` README (general background for the compiler).
+
+---
+
 README for i370-gcc
 -------------------
 This git repo contains several versions of GNU GCC, including GCCMVS,

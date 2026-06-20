@@ -1,85 +1,59 @@
-# as370 — host-native MVS assembler (work in progress)
+# as370 — host-native MVS assembler
 
-Part of the **c2asm370** host-assembler initiative (Notion Epic TSK-273): an
-Assembler-XF (IFOX00)-compatible assembler that emits MVS object directly
-(OS/360 OBJ first, GOFF later), so the C→object path no longer needs IFOX00 on
-MVS. Lives in this repo (no separate binutils). Linker/pre-linker is deferred.
+Part of the **c2asm370** host-native MVS cross-toolchain (cc370 / as370 / ld370 /
+ar370). `as370` is an Assembler-XF (**IFOX00**) clone that runs on the host
+(macOS/Linux) and emits OS/360 object decks directly — so the C→object path no
+longer needs IFOX00 on MVS. Single C file (`as370.c`), no separate binutils.
 
-## Status — WP-2 (core skeleton)
+## Status — done (the assembler matches its IFOX00 oracle)
 
-First light: the two-pass core assembles the WP-1 macro-free reference
-(`tests/sample1.s`) and reproduces IFOX00's TXT bytes **exactly**:
+`as370` reproduces IFOX00 **byte-for-byte** over the 950-module ecosystem corpus
+(crent370 736/736, rexx370 81/81, UFSD 20/20, HTTPD 105/105, 9 samples). Its
+object decks link with IEWL and with the host-native **ld370**, and the result
+runs on real MVS (the end-to-end `cc370 → as370 → ld370 → --xmit` chain ran a C
+test program with the expected result). "Byte-identical" means the ESD/TXT/RLD
+content; the END card's translator IDR is IFOX-specific and intentionally not
+reproduced.
 
-```
-05C0 58F0 C00E 4110 C00A 07FE 00000000 00000000
-```
-
-Working so far:
-- two passes (location counter, symbol table, high-water module length)
-- formats **RR, RX, RS, SI, SS**; extended branches **BR** (→ `BCR 15,r`) and **B**
-- directives **CSECT** (named=SD / unnamed=PC), **ENTRY** (LD), **USING/DROP**,
-  **DC A/F/C** (EBCDIC), **DS, EQU, LTORG, END**
-- operands both **explicit** (`d(x,b)`, `d(len,b)`, `d(b)`) and **symbolic via USING**
-- literal pool (`=V`, `=A`, `=F`) with LTORG placement; `=V` registers an ER
-- gap-aware TXT (alignment/DS gaps split TXT records, matching IFOX); the RLD
-  card is omitted when there are no relocations (matching IFOX)
-
-## Status — WP-4 (macro processor) — real compiler output assembles!
-
-A macro/conditional-assembly preprocessor expands macros into flat open code
-before the two-pass core (z390-style split). **`tests/sample2.s` — actual
-`c2asm370` compiler output** (`COPY PDPTOP` + `PDPPRLG`/`PDPEPIL` → nested
-`SAVE`/`RETURN` from SYS1.MACLIB) — assembles **byte-identical to IFOX00** (all
-cards before END; END differs only in the optional IDR).
-
-Working:
-- inline `MACRO`/`MEND` **and** library lookup (`-I dir`, by member name);
-  `COPY` member inclusion
-- name-field + positional + keyword params (defaults); `&`-substitution incl.
-  inside literals + `&x.` concatenation; **nested** expansion
-- conditional assembly: `GBLx`/`LCLx`, `SETA`/`SETB`/`SETC`, `AIF` (`AND`/`OR`,
-  string/arith compares, `T'`/`N'`/`K'`/`L'` attributes, substrings), `AGO`,
-  `ANOP`, `MEXIT`, sequence symbols (incl. on `MEND`)
-- sublist params `&R(n)`, attribute-driven expansion (the real SAVE/RETURN)
-- literal pool aligned to a doubleword; RLD grouped by target for bit-7 packing
-
-Run `make test` (self-validating against the IFOX00 reference decks in
-`tests/ref/`): all of `tests/sample{1..6}.s` byte-identical to IFOX00.
-
-Validation oracle = the IFOX00 `PRINT GEN` listing (see Epic / WP-1, TSK-274).
-
-## Status — WP-3 (OS/360 OBJ writer)
-
-`as370 -o deck.obj` emits an 80-col EBCDIC object deck (ESD/TXT/RLD/END). For
-`sample1` the deck is **byte-identical to IFOX00's** on cards 1-3 (ESD + TXT +
-RLD); the END card matches except cols 33-52 (the IDR, which legitimately
-identifies the producing assembler — left blank for now).
-
-Broadened for compiler output (`tests/sample3.s`, byte-identical to IFOX on cards
-1-4): **PC** (unnamed CSECT, type 04), **LD** (`ENTRY`, type 01 + owner ESDID),
-**multi-card TXT** (56-byte chunks), **RLD bit-7 continuation packing**
-(consecutive same Reloc+Pos → `0D` + 4-byte cont), plus `LR` and `DC nF'v'`.
-Pending: RS/SI/SS formats, EBCDIC `DC C`, then the macro processor (WP-4).
-
-## Build & test
+Build & validate:
 
 ```sh
-make          # builds ./as370 (clang/gcc, -std=gnu99)
-make test     # assembles tests/sample1.s
-./as370 tests/sample1.s
+gcc -O2 -Wall -Wextra -Werror -o as370 as370.c
+sh ../ld/tests/run.sh        # the ld370 regression also drives as370 over the fixtures
 ```
 
-## Next (roadmap inside WP-2 → WP-3/4)
+`as370 -v` → `as370 V1.0 - <build date>`; `as370 --help` for the CLI (z/OS-`as`
+aligned). Macro search path via `-I dir` (repeatable: crent370 maclib + sysmac +
+SYS1.MACLIB members).
 
-- Lift the full **i370 opcode table** from `i370-binutils` (`opcodes/i370-opc.c`,
-  `include/opcode/i370.h`) — clean `{name,len,opcode,mask,flags,operands}` form;
-  add the remaining formats (RS, SI, SS) and extended branches.
-- Handle the **compiler-output** instruction set (Sample #2: STM/LM, MVC, B, LR,
-  A, base-register prologue) — still macro-free at the core level.
-- **EBCDIC** for `DC C'...'` via the compiler's CP037+NEL tables (shared, so the
-  assembler is not a "second cook").
-- **WP-3:** OS/360 OBJ writer (ESD/TXT/RLD/END cards) from one internal
-  ESD/TXT/RLD model — incl. PC/LD symbols and RLD bit-7 continuation packing.
-- **WP-4:** minimal macro processor (COPY + maclib lookup, MACRO/MEND, GBLC/SETC,
-  AIF/AGO) to expand PDPTOP/PDPPRLG/PDPEPIL from `CRENT370.MACLIB`.
-```
+## What it does
+
+- **Two-pass core:** location counter, symbol table, module length; instruction
+  formats RR/RX/RS/SI/SS + extended branches; directives CSECT (named SD /
+  unnamed PC), ENTRY (LD), USING/DROP, DC/DS/EQU/LTORG/END, literal pool
+  (`=V`/`=A`/`=F`) with LTORG placement.
+- **Macro / conditional-assembly preprocessor** (expands to flat open code
+  before the core): inline `MACRO`/`MEND` + library lookup + `COPY`; name /
+  positional / keyword params, `&`-substitution (incl. in literals, `&x.`
+  concatenation), nested expansion; `GBLx`/`LCLx`, `SETA`/`SETB`/`SETC`, `AIF`
+  (logical/relational, `T'`/`N'`/`K'`/`L'`, substrings), `AGO`/`ANOP`/`MEXIT`,
+  sequence symbols, sublist params, attribute-driven expansion — enough for the
+  real SAVE/RETURN and the cc370 prologue/epilogue (`PDPTOP`/`PDPPRLG`/`PDPEPIL`).
+- **OS/360 OBJ writer:** 80-byte EBCDIC ESD/TXT/RLD/END cards from one internal
+  ESD/TXT/RLD model — PC/LD symbols, multi-card gap-aware TXT, RLD bit-7
+  continuation packing — matching IFOX exactly.
+- **`-a` listing:** ASCII, column-exact to IFOX SYSPRINT for the ESD/SOURCE/RLD
+  sections.
+
+## Open points
+
+- More `-a` listing pages (CROSS-REFERENCE, LITERAL XREF, DIAGNOSTICS,
+  STATISTICS) — currently provisional / no-ops.
+- A cleaner driver integration: replace the stopgap `as` shell wrapper that
+  cc370 invokes (which hardcodes the crent370 macro path and the ephemeral
+  `/tmp/sys1mac`) with a proper split + a permanent, configurable macro home.
+- Derive the real `PARM=` option set + RC/severity semantics from the IFOX00
+  source.
+
+See `../docs/object-module-format.md` for the OBJ format as370 emits, and
+`../docs/roadmap-integration.md` for the whole-suite roadmap.
