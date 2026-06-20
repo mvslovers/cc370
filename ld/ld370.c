@@ -1160,7 +1160,8 @@ int main(int argc, char **argv)
      * (load address at off 9, length at off 14, ID/length list at off 16). A
      * single text record larger than the load-library blocksize overflows the
      * reload buffer (RECV370 U0200), so real modules are split. Sections are
-     * gid 1..nsect in origin order; we pack whole sections per chunk. --- */
+     * gid 1..nsect in origin order; we pack whole sections per chunk, and split
+     * a single section that is itself larger than MAXTEXT (see below). --- */
     {
         int sg = 1, nchunk = 0;
         while (sg <= nsect) {
@@ -1171,21 +1172,40 @@ int main(int argc, char **argv)
                 if (sg > first && send - cstart > MAXTEXT) break;
                 cend = send; sg++;
             }
-            idlen = 4 * (sg - first);
-            memset(cr, 0, (size_t)(16 + idlen));
-            cr[0] = (sg > nsect && !have_rld) ? 0x0D : 0x01;   /* MODEND only on last chunk w/o RLD */
-            put16(cr + 4, idlen); put16(cr + 6, 0);
-            cr[8] = 0x06; put24(cr + 9, cstart); cr[12] = 0x40; put16(cr + 14, (int)(cend - cstart));
-            for (g = first, k = 0; g < sg; g++, k++) {
-                int gi = gidx[g];
-                long span = (g < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
-                put16(cr + 16 + 4 * k, g); put16(cr + 18 + 4 * k, (int)span);
+            /* Emit the chunk [cstart,cend) as one or more text records, each
+             * <= MAXTEXT.  A multi-section chunk is always <= MAXTEXT (the
+             * greedy loop guarantees it) -> one record carrying every section's
+             * (id,length).  A single section larger than MAXTEXT is split into
+             * MAXTEXT-sized records (intra-section split), each control record
+             * carrying that one section's PARTIAL length -- byte-for-byte the
+             * layout IEWL emits (a 40000-byte CSECT -> 18432/18432/3136).
+             * Oversized records would blow the RECV370 reload buffer
+             * (U0200-13 .RECVBLK) and the IEBCOPY reload BLKSIZE. */
+            {
+                int multi = (sg - first) > 1, last_chunk = (sg > nsect);
+                long p = cstart;
+                do {
+                    long rlen = cend - p; if (rlen > MAXTEXT) rlen = MAXTEXT;
+                    int is_last = last_chunk && (p + rlen >= cend);
+                    idlen = multi ? 4 * (sg - first) : 4;
+                    memset(cr, 0, (size_t)(16 + idlen));
+                    cr[0] = (is_last && !have_rld) ? 0x0D : 0x01;   /* MODEND on the very last record */
+                    put16(cr + 4, idlen); put16(cr + 6, 0);
+                    cr[8] = 0x06; put24(cr + 9, p); cr[12] = 0x40; put16(cr + 14, (int)rlen);
+                    if (multi) {
+                        for (g = first, k = 0; g < sg; g++, k++) {
+                            int gi = gidx[g];
+                            long span = (g < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
+                            put16(cr + 16 + 4 * k, g); put16(cr + 18 + 4 * k, (int)span);
+                        }
+                    } else {                            /* one section (whole or a split piece) */
+                        put16(cr + 16, first); put16(cr + 18, (int)rlen);
+                    }
+                    emit(cr, 16 + idlen);               /* control record */
+                    emit(mod + p, rlen);                /* text record (<= MAXTEXT) */
+                    nchunk++; p += rlen;
+                } while (p < cend);
             }
-            emit(cr, 16 + idlen);                      /* control record */
-            emit(mod + cstart, cend - cstart);         /* text record */
-            nchunk++;
-            if (cend - cstart > MAXTEXT)
-                trace("  WARNING: section run %ld > MAXTEXT -- intra-section split not yet done", cend - cstart);
         }
         trace("  control+text:    %d chunk(s) over %ld-byte text", nchunk, modlen);
     }
