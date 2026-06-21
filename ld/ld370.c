@@ -1120,6 +1120,13 @@ int main(int argc, char **argv)
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INMDSNAM default; RECEIVE DA(...) overrides */
 
+    /* `-o X.xmit` selects the shippable XMIT as the output format (just as
+     * `-o X.lm` gives the raw load-module member): emit the XMIT of the linked
+     * member -- with its real entry/modlen, the path that runs on MVS -- instead
+     * of the bare member.  This is what lets cc370 do the full host->MVS one-shot
+     * (cc370 foo.c -o foo.xmit), since the driver passes the output via -o. */
+    if (outfile && ends_with(outfile, ".xmit")) { xmitfile = outfile; outfile = NULL; }
+
     /* --- standalone wrap: an existing flat member, no object linking.
      *     ld370 --unload-from MEMBER.lm [--name NAME] [--unload OUT] [--xmit OUT] --- */
     if (unloadfrom) {
@@ -1165,7 +1172,7 @@ int main(int argc, char **argv)
     /* a link needs content: explicit objects, or --include members to pull
      * (the faithful mbt model -- INCLUDE the listed NCALIB members + autocall,
      * no "explicit object" concept). */
-    if ((!nobjf && !ninc) || !outfile) {
+    if ((!nobjf && !ninc) || (!outfile && !xmitfile && !unloadfile)) {
         fprintf(stderr,
                 "usage: ld370 [-v] -o OUT.bin [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
                 "             [--unload U] [--xmit X [--dsn DS]] [--name N] OBJ...\n"
@@ -1489,18 +1496,20 @@ int main(int argc, char **argv)
     }
 
     (void)entry_pt;
-    f = fopen(outfile, "wb");
-    if (!f) { perror(outfile); return 1; }
-    fwrite(out, 1, olen, f);
-    fclose(f);
-    trace("=== done: wrote %ld-byte load module to %s ===", olen, outfile);
+    if (outfile) {                              /* raw load-module member (-o X.lm) */
+        f = fopen(outfile, "wb");
+        if (!f) { perror(outfile); return 1; }
+        fwrite(out, 1, olen, f);
+        fclose(f);
+        trace("=== done: wrote %ld-byte load module to %s ===", olen, outfile);
+    }
 
-    /* optional: also emit the IEBCOPY unloaded image and/or the XMIT of the
-     * linked member (the host->MVS install transport). The member just written
-     * to -o is the ".lm"; --xmit is the shippable result, --unload the raw
-     * unloaded image. */
+    /* also (or instead) emit the IEBCOPY unloaded image and/or the XMIT of the
+     * linked member -- the host->MVS install transport.  -o X.xmit routes the
+     * output here (outfile is NULL then); -o X.lm writes the bare member above
+     * and --xmit/--unload are additional. */
     {
-        const char *name = mname ? mname : basename_member(outfile);
+        const char *name = mname ? mname : basename_member(outfile ? outfile : xmitfile);
         if (unloadfile && write_unload(unloadfile, name, out, olen, entry_addr, modlen)) return 1;
         if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn, entry_addr, modlen)) return 1;
     }
