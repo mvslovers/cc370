@@ -500,7 +500,7 @@ static int do_includes(const char **incspec, int ninc)
 }
 
 /* ---- emitter ---- */
-static unsigned char out[1 << 20];
+static unsigned char out[1 << 22];        /* load-module emit buffer (4 MB) */
 static long olen = 0;
 static void emit(const unsigned char *b, long n) { memcpy(out + olen, b, n); olen += n; }
 static void emitb(int b) { out[olen++] = (unsigned char)b; }
@@ -600,7 +600,7 @@ struct lmblock { long off, len; int is_text; };
 struct umember {
     unsigned char name[8];
     const unsigned char *bytes; long len;
-    struct lmblock blk[128]; int nblk;
+    struct lmblock *blk; int nblk;   /* allocated by split_member; free after emit */
     int first_tt, text_tt;   /* relative track of first block / first text block (one block/track, R=1) */
     long entry, modlen;   /* PDS2EPA / PDS2STOR for the dir entry; <0 = echo template */
 };
@@ -613,9 +613,17 @@ struct umember {
  *                 if the TXT bit (X'01') is set a pure-text record of length
  *                 (off 14) follows as its OWN block.
  * Returns block count, or -1 on an unrecognised record. */
-static int split_member(const unsigned char *m, long n, struct lmblock *b, int maxb)
+static int split_member(const unsigned char *m, long n, struct lmblock **out)
 {
-    long p = 0; int k = 0;
+    long p = 0; int k = 0, cap = 256;
+    struct lmblock *b = malloc(cap * sizeof *b);
+    *out = NULL;
+    if (!b) return -1;
+#define ADDBLK(O, L, T) do {                                          \
+        if (k >= cap) { cap *= 2; b = realloc(b, cap * sizeof *b);    \
+                        if (!b) return -1; }                          \
+        b[k].off = (O); b[k].len = (L); b[k].is_text = (T); k++;      \
+    } while (0)
     while (p < n) {
         int b0 = m[p], hi = b0 & 0xf0; long blen;
         if (hi == 0x20) {                               /* CESD */
@@ -626,22 +634,21 @@ static int split_member(const unsigned char *m, long n, struct lmblock *b, int m
             int txt = b0 & 0x01;                        /* TXT bit -> pure-text record follows */
             long tlen = txt ? be16(m + p + 14) : 0;     /* its length = the control record's CCW count */
             blen = 16 + be16(m + p + 4) + be16(m + p + 6);
-            if (k >= maxb) return -1;
-            b[k].off = p; b[k].len = blen; b[k].is_text = 0; k++;
+            ADDBLK(p, blen, 0);
             p += blen;
             if (txt && tlen) {
-                if (k >= maxb) return -1;
-                b[k].off = p; b[k].len = tlen; b[k].is_text = 1; k++;
+                ADDBLK(p, tlen, 1);
                 p += tlen;
             }
             continue;                                   /* self-contained; skip the CESD/IDR tail below */
         } else {
-            return -1;                                  /* SYM/scatter: not produced by cc370/as370 yet */
+            free(b); return -1;                         /* SYM/scatter: not produced by cc370/as370 yet */
         }
-        if (k >= maxb) return -1;                        /* CESD / IDR: one block, advance and loop */
-        b[k].off = p; b[k].len = blen; b[k].is_text = 0; k++;
+        ADDBLK(p, blen, 0);                              /* CESD / IDR: one block, advance and loop */
         p += blen;
     }
+#undef ADDBLK
+    *out = b;
     return k;
 }
 
@@ -790,11 +797,11 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
  * path.  mem[].name/.bytes/.len must be set by the caller. Returns 0 on ok. */
 static int write_unload_mem(const char *path, struct umember *mem, int nmem)
 {
-    static unsigned char unl[1 << 20];
+    static unsigned char unl[1 << 22];     /* unload image (4 MB) */
     long ulen; FILE *f; int i;
 
     for (i = 0; i < nmem; i++) {
-        mem[i].nblk = split_member(mem[i].bytes, mem[i].len, mem[i].blk, 128);
+        mem[i].nblk = split_member(mem[i].bytes, mem[i].len, &mem[i].blk);
         if (mem[i].nblk < 0) {
             fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", nm(mem[i].name));
             return 1;
@@ -807,6 +814,7 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
     if (!f) { perror(path); return 1; }
     fwrite(unl, 1, (size_t)ulen, f);
     fclose(f);
+    for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; }
     trace("=== done: wrote %ld-byte unloaded image (%d member%s) to %s ===",
           ulen, nmem, nmem == 1 ? "" : "s", path);
     return 0;
@@ -1011,11 +1019,11 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
 /* Build the XMIT image of members[] and write it to path. */
 static int write_xmit(const char *path, struct umember *mem, int nmem, const char *dsn)
 {
-    static unsigned char unl[1 << 20], xm[1 << 18];
+    static unsigned char unl[1 << 22], xm[1 << 22];   /* unload + XMIT (4 MB each) */
     long bounds[4], ulen, xlen; FILE *f; int i;
 
     for (i = 0; i < nmem; i++) {
-        mem[i].nblk = split_member(mem[i].bytes, mem[i].len, mem[i].blk, 128);
+        mem[i].nblk = split_member(mem[i].bytes, mem[i].len, &mem[i].blk);
         if (mem[i].nblk < 0) {
             fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", nm(mem[i].name));
             return 1;
@@ -1028,6 +1036,7 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
     if (!f) { perror(path); return 1; }
     fwrite(xm, 1, (size_t)xlen, f);
     fclose(f);
+    for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; }
     trace("=== done: wrote %ld-byte XMIT (%d FB80 recs, %d member%s) to %s ===",
           xlen, (int)(xlen / 80), nmem, nmem == 1 ? "" : "s", path);
     return 0;
@@ -1146,7 +1155,10 @@ int main(int argc, char **argv)
         return rc;
     }
 
-    if (!nobjf || !outfile) {
+    /* a link needs content: explicit objects, or --include members to pull
+     * (the faithful mbt model -- INCLUDE the listed NCALIB members + autocall,
+     * no "explicit object" concept). */
+    if ((!nobjf && !ninc) || !outfile) {
         fprintf(stderr,
                 "usage: ld370 [-v] -o OUT.bin [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
                 "             [--unload U] [--xmit X [--dsn DS]] [--name N] OBJ...\n"
