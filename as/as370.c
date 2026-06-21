@@ -17,6 +17,13 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <unistd.h>
+#include <libgen.h>
+#include <limits.h>
+#ifdef __APPLE__
+#include <stdint.h>
+#include <mach-o/dyld.h>
+#endif
 
 /* bounded string copy that always NUL-terminates (dst must hold n+1 bytes). A
  * plain loop, not strncpy/strncat, so it is free of the (false-positive here)
@@ -844,6 +851,28 @@ static void aif_split(const char *opnd, char *cond, char *seq) {
 /* ---- macro library (-I dirs): COPY members + macro lookup by name -------- */
 #define MAXMACLIB 16
 static char *maclib_dirs[MAXMACLIB]; static int nmaclib;
+
+/* Resolve the real directory of this executable (symlinks included) so the
+ * built-in default macro path can be derived RELATIVE to the install:
+ * <exedir>/../macros == <sysroot>/macros when as370 lives in
+ * <prefix>/<triple>/bin.  No triple is baked in -- renaming the target needs no
+ * change here -- and it is relocatable (move the install, the path follows). */
+static void self_exe_dir(const char *argv0, char *out, size_t outsz)
+{
+    char buf[PATH_MAX], real[PATH_MAX], tmp[PATH_MAX];
+#ifdef __APPLE__
+    uint32_t sz = sizeof buf;
+    if (_NSGetExecutablePath(buf, &sz) != 0) snprintf(buf, sizeof buf, "%s", argv0);
+#elif defined(__linux__)
+    ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
+    if (n > 0) buf[n] = 0; else snprintf(buf, sizeof buf, "%s", argv0);
+#else
+    snprintf(buf, sizeof buf, "%s", argv0);
+#endif
+    if (!realpath(buf, real)) snprintf(real, sizeof real, "%s", buf);
+    snprintf(tmp, sizeof tmp, "%s", real);          /* dirname() may modify its arg */
+    snprintf(out, outsz, "%s", dirname(tmp));
+}
 static int lib_path(const char *name, char *path) {
     const char *exts[] = { ".macro", ".copy", ".mac", ".asm", "", NULL };
     char low[40]; int i; for (i = 0; name[i] && i < 39; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
@@ -1908,9 +1937,11 @@ static void usage(FILE *o) {
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
 "  -v                 print as utility version\n"
 "\n"
-"environment:\n"
-"  AS370_MACLIB       colon-separated default macro dirs (e.g. the installed\n"
-"                     sysroot macro library), searched after any -I\n", o);
+"macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros\n"
+"  the last is a built-in relocatable default -- the installed sysroot macro\n"
+"  library found from this executable's own path, so an installed as370\n"
+"  (<prefix>/<triple>/bin/as370) assembles with no -I and no environment.\n"
+"  AS370_MACLIB is a colon-separated override (the assembler C_INCLUDE_PATH).\n", o);
 }
 int main(int argc, char **argv) {
     const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
@@ -1939,13 +1970,18 @@ int main(int argc, char **argv) {
         }
         else src = argv[ai];
     }
-    /* AS370_MACLIB: colon-separated default macro dirs (the installed sysroot
-     * macro library), appended AFTER explicit -I so -I still wins.  Lets the
-     * cc370 driver / a shell profile point at the sysroot macros without a
-     * per-call -I -- the assembler equivalent of C_INCLUDE_PATH. */
+    /* Macro search path, highest priority first:
+     *   1. -I dirs            (added above during option parsing)
+     *   2. AS370_MACLIB       (colon-separated override, like C_INCLUDE_PATH)
+     *   3. <exedir>/../macros (built-in relocatable default = the sysroot macro
+     *                          library; works for plain `as370 foo.asm` with no
+     *                          env and no -I, the way a real toolchain assembler
+     *                          finds its system macros).
+     * Non-existent dirs are harmless -- lib_path() just fails the fopen and
+     * moves on -- so running from the build tree (where ../macros is absent)
+     * simply falls back to -I. */
     {
-        const char *env = getenv("AS370_MACLIB");
-        const char *s = env;
+        const char *s = getenv("AS370_MACLIB");
         while (s && *s && nmaclib < MAXMACLIB) {
             const char *e = s; while (*e && *e != ':') e++;
             if (e > s) {
@@ -1955,6 +1991,12 @@ int main(int argc, char **argv) {
             }
             s = (*e == ':') ? e + 1 : e;
         }
+    }
+    if (nmaclib < MAXMACLIB) {
+        char exedir[PATH_MAX]; char macdir[PATH_MAX + 16];
+        self_exe_dir(argv[0], exedir, sizeof exedir);
+        snprintf(macdir, sizeof macdir, "%s/../macros", exedir);
+        maclib_dirs[nmaclib++] = strdup(macdir);
     }
     if (!src) { usage(stderr); return 16; }                /* options given but no input file */
     init_sysvars();
