@@ -83,8 +83,8 @@ def main():
     xmit_dsn = f"{hlq}.{MEMBER}.XMIT"
     rcv_dsn = f"{hlq}.{MEMBER}.RCV"
 
-    sh([LD370, "-v", "-o", lm, "--name", MEMBER, "--unload", unl,
-        "--xmit", xmit, "--dsn", xmit_dsn, obj, args.lib])
+    sh([LD370, "-v", "-o", lm, "--name", MEMBER, "--entry", "@@CRT0",
+        "--unload", unl, "--xmit", xmit, "--dsn", xmit_dsn, obj, args.lib])
 
     if args.link_only:
         print(f"\n[link-only] wrote {xmit} -> target {xmit_dsn}")

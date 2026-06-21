@@ -931,7 +931,7 @@ static int ends_with(const char *s, const char *suf)
 int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *unloadfrom = NULL, *mname = NULL;
-    const char *xmitfile = NULL, *dsn = NULL;
+    const char *xmitfile = NULL, *dsn = NULL, *entryname = NULL;
     const char *objfiles[MAXOBJ];
     char *packspec[MAXOBJ], *Ldir[32];
     int nobjf = 0, npack = 0, nLdir = 0, i, j;
@@ -944,6 +944,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--xmit") && i + 1 < argc) xmitfile = argv[++i];
         else if (!strcmp(argv[i], "--dsn") && i + 1 < argc) dsn = argv[++i];
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
+        else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
         else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) { if (nLdir < 32) Ldir[nLdir++] = argv[++i]; }
@@ -1083,14 +1084,32 @@ int main(int argc, char **argv)
     static int gidx[MAXG + 1];                        /* gid -> G[] index */
     for (i = 0; i < nG; i++) gidx[G[i].gid] = i;
 
-    /* entry point: the END-card section's final origin + offset (first object
-     * that names one -- normally the explicit main, e.g. @@MAIN). */
+    /* entry point: --entry NAME resolves a named section/LD entry (the working
+     * crent convention is ENTRY @@CRT0 -- the C startup that establishes the
+     * runtime; the cc370 END-card entry is the @@MAIN stub, and entering there
+     * skips @@CRT0's setup -> the runtime can't find its anchor -> S0C4). Without
+     * --entry, fall back to the END-card section origin + offset of the first
+     * object that names one. */
     long entry_addr = 0;
-    for (i = 0; i < nO; i++)
-        if (O[i].has_entry && O[i].entry_id >= 1 && O[i].entry_id < MAXESD && O[i].loc[O[i].entry_id].used) {
-            entry_addr = G[O[i].loc_g[O[i].entry_id]].org + O[i].entry_off;
-            break;
+    if (entryname) {
+        unsigned char en[8]; int gi, found = 0;
+        member_name(en, entryname);
+        for (gi = 0; gi < nG; gi++) {
+            if (memcmp(G[gi].name, en, 8)) continue;
+            if (G[gi].is_sect) { entry_addr = G[gi].org; found = 1; break; }
+            if (G[gi].type == 0x03 && G[gi].owner >= 0 && G[G[gi].owner].is_sect) {
+                entry_addr = G[G[gi].owner].org + G[gi].in_addr; found = 1; break;
+            }
         }
+        if (!found) { fprintf(stderr, "ld370: --entry symbol '%s' not found or unresolved\n", entryname); return 1; }
+        trace("  --entry %s -> %06lX", entryname, entry_addr);
+    } else {
+        for (i = 0; i < nO; i++)
+            if (O[i].has_entry && O[i].entry_id >= 1 && O[i].entry_id < MAXESD && O[i].loc[O[i].entry_id].used) {
+                entry_addr = G[O[i].loc_g[O[i].entry_id]].org + O[i].entry_off;
+                break;
+            }
+    }
     trace("  module length = %ld  entry point = %06lX", modlen, entry_addr);
 
     /* --- build module text image + relocate address constants --- */
