@@ -33,7 +33,18 @@ Boston, MA 02111-1307, USA.  */
    TARGET_PDPMAC.  */
 
 #define TARGET_PDPMAC 1
-#define STARTFILE_SPEC ""
+
+/* One-shot link (cc370 foo.c -o foo.lm): the driver invokes ld370 (the target
+   `ld`).  Pull the crt0 startup as the first object (so the @@CRT0 startup is at
+   module offset 0), set the entry to @@CRT0, and emit no -lgcc -- the crent libc
+   (libc.a) carries the compiler-support routines, so there is no separate
+   libgcc.  crt0.o / libc.a live in the sysroot lib, found via the -L paths the
+   driver already passes.  */
+#define STARTFILE_SPEC "crt0.o%s"
+#undef  LIBGCC_SPEC
+#define LIBGCC_SPEC ""
+#undef  LINK_SPEC
+#define LINK_SPEC "--entry @@CRT0"
 
 /* Specify that we're using macro prolog/epilog.  */
 
