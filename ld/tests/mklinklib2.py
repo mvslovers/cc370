@@ -19,7 +19,7 @@ Phases (run individually or 'all'):
   install MOD   link + xmit + RECV370 into HTTPD.LINKLIB2
   all        archives, then link+install all 7 members
 """
-import os, sys, glob, subprocess, concurrent.futures as cf
+import os, sys, glob, re, subprocess, concurrent.futures as cf
 
 HOME = os.path.expanduser("~")
 REPO = f"{HOME}/repos/mvs/c2asm370"
@@ -205,10 +205,18 @@ def link_module(mod):
     unl = f"{WORK}/lm/{mod}.unl"
     xmit = f"{WORK}/lm/{mod}.xmit"
     cmd = [LD370, "-v", "-o", lm, "--name", mod, "--entry", "@@CRT0"]
-    for inc in spec["includes"]:
-        cmd += ["--include", inc]
+    incs = list(spec["includes"])
+    # force ALL of libufs (dep_includes ufsd="*") via --include, NOT as explicit
+    # objects: explicit objects are placed BEFORE the includes, which would shove
+    # @@crt1.o (and thus the @@CRT0 entry) past all of ufs to a high offset -- the
+    # t1 0x1F88 fetch-time-S0C4 signature.  As includes (after @@CRT1) @@crt1.o
+    # stays object 0 and @@CRT0 lands at offset 0, the IEWL-ENTRY-equivalent.
     if spec["force_ufs"]:
-        cmd += sorted(glob.glob(f"{WORK}/obj/ufs/*.o"))
+        for off, name in sorted(ar_offsets(f"{WORK}/libufs.a").items()):
+            base = name[:-2] if name.endswith(".o") else name
+            incs.append(base)
+    for inc in incs:
+        cmd += ["--include", inc]
     for a in spec["archives"]:
         cmd += ["-L", WORK, "-l", a]
     cmd += ["--unload", unl, "--xmit", xmit, "--dsn", TARGET_DSN]
@@ -245,11 +253,18 @@ def link_module(mod):
         print(f"    [{'ok' if cond else 'XX'}] {msg}")
         if not cond:
             ok = False
+    # entry offset: @@crt1.o is included first (object 0), so @@CRT0 must resolve
+    # LOW (~0).  A high offset is the t1 S0C4 signature (@@CRT0 shoved to 0x1F88
+    # by a second startup definer) -> fetch-time fault.  This is the one check
+    # that targets WHERE the entry landed, the historical failure variable.
+    em = re.search(r"--entry @@CRT0 -> ([0-9A-Fa-f]+)", trace)
+    entoff = int(em.group(1), 16) if em else -1
     check(bool(inccrt1), "--include @@CRT1 fired (no-IDENTIFY startup chosen)")
     check("@@crt1.o" in pulled, "@@crt1.o linked")
     check("@@crt0.o" not in pulled, "@@crt0.o NOT pulled (would duplicate @@CRT0)")
     check("@@crtm.o" not in pulled, "@@crtm.o bundle NOT pulled (conflict-aware autocall held)")
     check("@@exita.o" in pulled, "@@EXITA resolved to standalone @@exita.o")
+    check(0 <= entoff < 0x100, f"@@CRT0 entry at low offset 0x{entoff:X} (not shoved high -> no fetch-time S0C4)")
     return (lm if ok else None), trace
 
 
