@@ -25,20 +25,32 @@ The rest of this file describes **v2.0** (the `V2.0.0` branch).
 
 ## Build (v2.0 — C-only cross-compiler, modern macOS/Linux host)
 
-GCC 3.4.6 is old K&R-ish C; modern clang/gcc must be told not to error on it:
+The top-level `Makefile` drives everything. The toolchain is **one driver
+(`cc370`) plus three standalone tools (`as370`/`ld370`/`ar370`)**:
 
 ```sh
-CF="-g -O0 -fcommon -std=gnu89 -Wno-implicit-int -Wno-implicit-function-declaration \
-    -Wno-int-conversion -Wno-error -Wno-return-type -Wno-deprecated-non-prototype"
-mkdir build && cd build
-CFLAGS="$CF" CFLAGS_FOR_BUILD="$CF" ../configure \
-  --target=i370-ibm-mvspdp --enable-languages=c \
-  --disable-threads --disable-nls --disable-shared --without-headers \
-  --with-gcc-version-trigger=../gcc/version.c
-make all-gcc CFLAGS="$CF" CFLAGS_FOR_BUILD="$CF"
+make            # build the tools (as370 / ld370 / ar370)
+make gcc        # configure + build the driver (cc370) and cc1   [slow]
+make install    # install into $(PREFIX) (default ~/.local)
 ```
 
-Produces `build/gcc/cc1` (compiler proper) and `build/gcc/xgcc` (driver). Install: `cc1` → `~/.local/libexec/gcc/i370-ibm-mvspdp/3.4.6/cc1`, driver → `~/.local/bin/i370-ibm-mvspdp-gcc` (the `c2asm370` symlink points at the driver). Builds on x86-64 and ARM64.
+Install layout (a normal cross-toolchain under `$(PREFIX)`):
+
+- `bin/cc370` — the GCC 3.4.6 driver (the *only* driver); `cc1` →
+  `libexec/gcc/<triple>/<ver>/cc1` (driver-private compiler proper).
+- `<triple>/bin/{as370,ld370,ar370}` (+ `as`/`ld`/`ar`, the names the driver
+  invokes); `bin/{as370,ld370,ar370}` are PATH symlinks that resolve back to the
+  real target-bin binary, so as370's built-in default macro path
+  (`<exedir>/../macros`) still points at the sysroot. **No stopgap `as` wrapper**
+  — the driver invokes the real installed `as370`.
+- `<triple>/{include,lib,macros}` — the crent **libc sysroot** (installed by
+  `make -C crent370/sdk install`). cc370 finds `<stdio.h>` with no `-I`; ld370
+  `-lc` pulls `libc.a`; as370 finds the macros with no `-I`.
+
+GCC 3.4.6 is old K&R-ish C; `make gcc` passes the needed `-Wno-*`/`-std=gnu89`
+flags (`GCC_CF` in the Makefile) to configure + `make all-gcc`. The target triple
+is still `i370-ibm-mvspdp` (overridable via `make TRIPLE=…`; renaming it is a
+separate task — nothing in the tools bakes it in). Builds on x86-64 and ARM64.
 
 **Optimization: `-O1` only.** `-O2`/`-Os`/`-O3` are UNSAFE on this backend: at `-O2`+ the `-funit-at-a-time` DCE drops `static` tables whose address is held by a global pointer (`static t[]={..}; T *p=t;`) → dangling `=V`/`DC A(@V)` → IFOX RC=8; and `-Os` additionally **miscompiles the rexx parser** (loops → S322). `-O1` is validated correct (rexx370 TSTALLB 84/84, 0 ABEND). This — not the old "3.2.3 memory issues" note — is the real reason for "-O1 only".
 
