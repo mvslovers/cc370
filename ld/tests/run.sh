@@ -31,8 +31,10 @@ run_case() {
         "$AS" -o "$TMP/$name.$s.obj" "$FIX/$s" || { echo "as370 failed: $s"; fails=$((fails + 1)); return; }
         objs="$objs $TMP/$name.$s.obj"
     done
+    # --allow-unresolved: these fixtures byte-match IEWL NCAL output, which
+    # deliberately leaves ERs unresolved (e.g. rldt's V(EXTRTN)).
     # shellcheck disable=SC2086
-    "$LD" -o "$TMP/$name.ld.bin" --unload "$TMP/$name.unl" --name "$name" $objs \
+    "$LD" -o "$TMP/$name.ld.bin" --unload "$TMP/$name.unl" --name "$name" --allow-unresolved $objs \
         || { echo "ld370 failed: $name"; fails=$((fails + 1)); return; }
     printf '\n=== %s  (oracle %s) ===\n' "$name" "$oracle"
     $DIFF diff "$FIX/$oracle" "$TMP/$name.ld.bin" || fails=$((fails + 1))

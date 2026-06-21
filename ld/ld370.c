@@ -42,6 +42,10 @@ static long roundup8(long v) { return (v + 7) & ~7L; }
 
 /* ---- verbose trace: narrate the linker's phases (off by default) ---- */
 static int verbose = 0;
+/* leftover strong (type-02) ERs zero-fill to a NULL adcon -> the module installs
+ * clean but S0C4s on the first indirect call.  Fail the link by default; only an
+ * explicit --allow-unresolved leaves them for the loader. */
+static int allow_unresolved = 0;
 static void trace(const char *fmt, ...)
 {
     va_list ap;
@@ -1090,6 +1094,7 @@ int main(int argc, char **argv)
         else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc && ninc < 64) incspec[ninc++] = argv[++i];
         else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
+        else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) { if (nLdir < 32) Ldir[nLdir++] = argv[++i]; }
         else if (!strncmp(argv[i], "-L", 2)) { if (nLdir < 32) Ldir[nLdir++] = argv[i] + 2; }
         else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
@@ -1196,9 +1201,25 @@ int main(int argc, char **argv)
             G[gi].owner = (ol >= 1 && ol < MAXESD && o->loc[ol].used) ? o->loc_g[ol] : -1;
         }
     }
-    for (i = 0; i < nG; i++)
-        if (!G[i].is_sect && G[i].type == T_ER)
-            trace("  '%s': UNRESOLVED external (no defining section)", nm(G[i].name));
+    {
+        int nunres = 0;
+        for (i = 0; i < nG; i++)
+            if (!G[i].is_sect && G[i].type == T_ER) {
+                if (nunres == 0)
+                    fprintf(stderr, "ld370: unresolved external reference(s):\n");
+                fprintf(stderr, "    %s\n", nm(G[i].name));
+                nunres++;
+            }
+        if (nunres && !allow_unresolved) {
+            fprintf(stderr, "ld370: %d unresolved external(s) -- the module would S0C4 "
+                            "at runtime (each is a NULL adcon); add the defining object/"
+                            "archive, or pass --allow-unresolved to override\n", nunres);
+            return 1;
+        }
+        if (nunres)
+            fprintf(stderr, "ld370: %d unresolved external(s) left for the loader "
+                            "(--allow-unresolved)\n", nunres);
+    }
 
     /* --- address assignment ---
      * Stack whole OBJECTS, each at a doubleword base; within an object the
