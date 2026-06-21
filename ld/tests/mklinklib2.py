@@ -54,7 +54,13 @@ PROJECTS = {
                                 f"{MVS}/crent370/src/time64"]]),
     "ufs": dict(
         archive=f"{WORK}/libufs.a",
-        c_dirs=[f"{MVS}/ufsd/src", f"{MVS}/ufsd/client"],   # client/ = libufs API (UFSNEW, UFS#FOPN, ...)
+        # ONLY the libufs CLIENT library (client/libufs) -- NOT ufsd/src/ (the
+        # daemon: UFSDCLNP, UFSD#*), which is a separate application.  httpd talks
+        # to the daemon via the SSI at RUNTIME, never links it.  Including src/
+        # dragged UFSDCLNP into HTTPD via dep_includes="*" -> the server ran
+        # UFSDCLNP instead of httpd.  Exclude libufstst (the test main).
+        c_dirs=[f"{MVS}/ufsd/client"],
+        exclude=["libufstst"],
         asm_dirs=[],
         cflags=["-std=gnu99"], inc=["-I" + f"{MVS}/ufsd/include"]),
     "httpd": dict(
@@ -136,8 +142,11 @@ def build_archive(name):
     os.makedirs(odir, exist_ok=True)
     # gather .s (regenerating stale) and .asm
     src_s, src_asm = [], []
+    excl = proj.get("exclude", [])
     for d in proj["c_dirs"]:
         for c in sorted(glob.glob(f"{d}/**/*.c", recursive=True)):
+            if any(x in os.path.basename(c) for x in excl):
+                continue
             s = c[:-2] + ".s"
             note = regen_if_stale(c, s, proj)
             if note and note.startswith(("cc370 FAILED",)):

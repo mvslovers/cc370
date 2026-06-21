@@ -1209,6 +1209,15 @@ int main(int argc, char **argv)
         for (j = 0; j < o->nld; j++) {            /* label defs (entries) -> composite LR (type 03) */
             int gi = g_intern(o->ld[j].name, T_LD);
             int ol = o->ld[j].owner_local;
+            /* FIRST definition wins (IEWL semantics).  Every cc370 C program
+             * defines @@MAIN; a library file that also carries a main() (jespr,
+             * jesst) must NOT, when autocalled for a helper, overwrite the app's
+             * @@MAIN and hijack the entry.  Since --include members are processed
+             * before autocall, the app's entry is seen first and kept. */
+            if (G[gi].type == 0x03 && G[gi].owner >= 0) {
+                trace("  duplicate entry '%s' ignored (first definition kept)", nm(o->ld[j].name));
+                continue;
+            }
             G[gi].type = 0x03; G[gi].in_addr = o->ld[j].addr;
             G[gi].owner = (ol >= 1 && ol < MAXESD && o->loc[ol].used) ? o->loc_g[ol] : -1;
         }
