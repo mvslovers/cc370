@@ -536,10 +536,12 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
                  | (origin == 0 ? 0x40 : 0)                  /* PDS2ORG0: first-text origin is zero */
                  | (m->entry == 0 ? 0x20 : 0));              /* PDS2EP0:  entry point is zero */
     }
-    if (m->entry >= 0) {
+    if (m->entry >= 0)
         put24(ud + 15, m->entry);                            /* PDS2EPA (entry point) */
-        put24(ud + 21, m->entry);                            /* PDS2EPM (entry for member name) */
-    }
+    /* ud+21 (on-disk off 33-35) is the APF/SSI region past the basic section,
+     * NOT a second entry field -- IEWL leaves it zero (APFCODE 0).  Writing the
+     * entry here marked the module authorized (AMBLIST APFCODE=nonzero). */
+    ud[21] = ud[22] = ud[23] = 0;
 }
 
 /* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
@@ -1140,30 +1142,45 @@ int main(int argc, char **argv)
         }
     }
 
-    /* --- emit: CESD --- */
+    /* --- emit: CESD (composite ESD), <= 15 entries (240 bytes) per record like
+     * IEWL/HEWLFOUT.  A single oversized CESD record is a format violation
+     * (the doc/spec cap each record at 15 entries). Header: byte0=20, off4-5 =
+     * ESD-ID of first entry, off6-7 = 16 x entries. All records carry byte0=20
+     * (following IDR/text means none is the last-of-module 0x28). --- */
     trace("=== emit load-module record stream ===");
     long cesd_off = olen;
-    emitb(0x20); emitb(0); emitb(0); emitb(0);
-    { unsigned char h[4]; put16(h, 1); put16(h + 2, 16 * nG); emit(h, 4); }
-    for (gid = 1; gid <= nG; gid++) {
-        int gi = -1;
-        for (i = 0; i < nG; i++) if (G[i].gid == gid) { gi = i; break; }
-        unsigned char e[16]; memset(e, 0, 16);
-        memcpy(e, G[gi].name, 8);
-        e[8] = (unsigned char)G[gi].type;
-        if (G[gi].is_sect) {
-            put24(e + 9, G[gi].org); e[12] = 0x01; put24(e + 13, G[gi].len);
-        } else if (G[gi].type == 0x03) {  /* LR (label/entry): label address + owning section's ESDID */
-            long oorg = G[gi].owner >= 0 ? G[G[gi].owner].org : 0;
-            int  ogid = G[gi].owner >= 0 ? G[G[gi].owner].gid : 0;
-            put24(e + 9, oorg + G[gi].in_addr); e[12] = 0x01; put24(e + 13, ogid);
-        } else {                          /* unresolved ER: 00 .. 00 40 40 (matches IEWL) */
-            e[12] = 0x00; e[13] = 0x00; e[14] = 0x40; e[15] = 0x40;
+    {
+        int in_rec = 0, nrec = 0;
+        for (gid = 1; gid <= nG; gid++) {
+            int gi = -1;
+            for (i = 0; i < nG; i++) if (G[i].gid == gid) { gi = i; break; }
+            if (in_rec == 0) {                        /* open a new CESD record */
+                unsigned char h[8]; memset(h, 0, 8);
+                h[0] = 0x20; put16(h + 4, gid);       /* off4-5 = first ESD-ID; off6-7 set on close */
+                emit(h, 8); nrec++;
+            }
+            unsigned char e[16]; memset(e, 0, 16);
+            memcpy(e, G[gi].name, 8);
+            e[8] = (unsigned char)G[gi].type;
+            if (G[gi].is_sect) {
+                put24(e + 9, G[gi].org); e[12] = 0x01; put24(e + 13, G[gi].len);
+            } else if (G[gi].type == 0x03) {  /* LR (label/entry): label address + owning section's ESDID */
+                long oorg = G[gi].owner >= 0 ? G[G[gi].owner].org : 0;
+                int  ogid = G[gi].owner >= 0 ? G[G[gi].owner].gid : 0;
+                put24(e + 9, oorg + G[gi].in_addr); e[12] = 0x01; put24(e + 13, ogid);
+            } else {                          /* unresolved ER: 00 .. 00 40 40 (matches IEWL) */
+                e[12] = 0x00; e[13] = 0x00; e[14] = 0x40; e[15] = 0x40;
+            }
+            emit(e, 16); in_rec++;
+            if (in_rec == 15 || gid == nG) {          /* close record: byte count at record off 6 */
+                put16(out + olen - 16 * in_rec - 2, 16 * in_rec);
+                in_rec = 0;
+            }
         }
-        emit(e, 16);
+        trace("  CESD:            %d record(s) <=15 entries (%d entr%s: %d section(s) + %d ER)",
+              nrec, nG, nG == 1 ? "y" : "ies", nsect, nG - nsect);
     }
-    trace("  CESD record:     %ld bytes  (%d entr%s: %d section(s) + %d unresolved ER)",
-          olen - cesd_off, nG, nG == 1 ? "y" : "ies", nsect, nG - nsect);
+    (void)cesd_off;
 
     /* --- SPZAP IDR (fixed 251B, header 80 FA 01 00, zero) --- */
     emitb(0x80); emitb(0xFA); emitb(0x01); emitb(0x00);
