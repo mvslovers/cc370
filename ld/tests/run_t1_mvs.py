@@ -57,6 +57,19 @@ def main():
     if not os.path.exists(args.lib):
         sys.exit(f"missing runtime archive {args.lib} -- build libcrent.a first")
 
+    # The S0C4 fix needs an all-definers index: ld370's conflict-aware autocall
+    # can only avoid the @@crtm.o bundle for @@EXITA if @@exita.o is ALSO indexed.
+    # An archive built with the old "first-wins" ar370 lists @@CRT0/@@EXITA once
+    # each, so the fix silently does not engage and the run S0C4s.  Reject it.
+    ar370 = os.path.join(REPO, "ld", "ar370")
+    if os.path.exists(ar370):
+        idx = subprocess.run([ar370, "t", args.lib],
+                             capture_output=True, text=True).stdout
+        if sum(1 for ln in idx.splitlines() if ln.strip() == "@@CRT0") < 2:
+            sys.exit(f"{args.lib} has a first-wins symbol index (only one @@CRT0 "
+                     "definer) -- rebuild it with the current ar370 so conflict-"
+                     "aware autocall can pick @@exita.o over the @@crtm.o bundle")
+
     # --- host: compile + link + emit the FB80 XMIT -------------------------
     os.makedirs(args.work, exist_ok=True)
     csrc = os.path.join(args.work, "t1.c")
