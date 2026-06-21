@@ -199,7 +199,7 @@ MODULES = {
     "HTTPDMTT": dict(includes=["@@CRT1", "CGISTART", "HTTPDMTT"], archives=["httpd", "crent", "ufs"], force_ufs=False),
     "HTTPDSL":  dict(includes=["@@CRT1", "CGISTART", "HTTPDSL"],  archives=["httpd", "crent", "ufs"], force_ufs=False),
     "HTTPDSRV": dict(includes=["@@CRT1", "CGISTART", "HTTPDSRV"], archives=["httpd", "crent", "ufs"], force_ufs=False),
-    "HTTPD":    dict(includes=["@@CRT1", "HTTPSTRT", "HTTPD", "HTTPPRM"], archives=["httpd", "crent", "ufs"], force_ufs=True),
+    "HTTPD":    dict(includes=["@@CRT1", "HTTPSTRT", "HTTPD", "HTTPPRM"], archives=["httpd", "crent", "ufs"], force_ufs=True, ac=1),
     "MVSMF":    dict(includes=["@@CRT1", "CGXSTART", "MVSMF", "ROUTER", "AUTHMW", "LOGMW",
                                "COMMON", "JSON", "DSAPI", "JOBSAPI", "INFOAPI", "USSAPI", "TESTAPI"],
                      archives=["mvsmf", "httpd", "crent", "ufs"], force_ufs=True),
@@ -214,6 +214,8 @@ def link_module(mod):
     unl = f"{WORK}/lm/{mod}.unl"
     xmit = f"{WORK}/lm/{mod}.xmit"
     cmd = [LD370, "-v", "-o", lm, "--name", mod, "--entry", "@@CRT0"]
+    if spec.get("ac"):                                   # SETCODE AC(n) -> PDS2 APF section
+        cmd += ["--ac", str(spec["ac"])]
     incs = list(spec["includes"])
     # force ALL of libufs (dep_includes ufsd="*") via --include, NOT as explicit
     # objects: explicit objects are placed BEFORE the includes, which would shove

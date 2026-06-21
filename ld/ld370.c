@@ -46,6 +46,9 @@ static int verbose = 0;
  * clean but S0C4s on the first indirect call.  Fail the link by default; only an
  * explicit --allow-unresolved leaves them for the loader. */
 static int allow_unresolved = 0;
+/* APF authorization code (SETCODE AC(n)); goes into the PDS2 directory entry's
+ * APF section (PDSAPFAC).  Default 0; httpd's HTTPD module needs AC(1). */
+static int apfcode = 0;
 static void trace(const char *fmt, ...)
 {
     va_list ap;
@@ -688,10 +691,13 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
     }
     if (m->entry >= 0)
         put24(ud + 15, m->entry);                            /* PDS2EPA (entry point) */
-    /* ud+21 (on-disk off 33-35) is the APF/SSI region past the basic section,
-     * NOT a second entry field -- IEWL leaves it zero (APFCODE 0).  Writing the
-     * entry here marked the module authorized (AMBLIST APFCODE=nonzero). */
-    ud[21] = ud[22] = ud[23] = 0;
+    /* APF section (IHAPDS PDSAPF), valid because PDS2FTB1 PDSAPFLG (ud[18] bit4,
+     * 0x88 in the template) is set: PDSAPFCT = length of the AC in bytes (1),
+     * PDSAPFAC = the authorization code (SETCODE AC(n)).  Leaving PDSAPFCT 0 with
+     * PDSAPFLG set is malformed -- the directory shows AC '??'.  The entry point
+     * lives at PDS2EPA (ud+15), NOT here, so writing the AC does not re-authorize
+     * by accident (the bug 7a49c29d guarded against). */
+    ud[21] = 1; ud[22] = (unsigned char)apfcode; ud[23] = 0;
 }
 
 /* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
@@ -1104,6 +1110,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
+        else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) { if (nLdir < 32) Ldir[nLdir++] = argv[++i]; }
         else if (!strncmp(argv[i], "-L", 2)) { if (nLdir < 32) Ldir[nLdir++] = argv[i] + 2; }
         else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
