@@ -124,6 +124,45 @@ run_autocall() {
 run_autocall modab mod_a   mod_b
 run_autocall chain chain_r chain_a chain_b
 
+# conflict-aware autocall + --include (the @@CRT0/@@EXITA/@@crtm case in
+# miniature): the archive has a standalone definer for each wanted symbol
+# (cft0=CFT0, cfex=CFEX) AND a "bundle" member (cfdup) that re-defines BOTH.
+# cfdup is placed BEFORE cfex so it is the FIRST index entry for CFEX -- a naive
+# first-definer autocall would pull it and drag a DUPLICATE CFT0 into the link.
+# Conflict-aware autocall must instead skip cfdup (it re-defines the
+# already-resolved CFT0) and pull the standalone cfex => identical to explicitly
+# linking {cfmain,cft0,cfex}.  --include CFDUP then forces the bundle and leaves
+# autocall nothing to pull => identical to explicitly linking {cfmain,cfdup}.
+run_conflict() {
+    for m in cfmain cft0 cfex cfdup; do
+        "$AS" -o "$TMP/$m.o" "$FIX/$m.s" || { echo "as370 failed: $m"; fails=$((fails + 1)); return; }
+    done
+    "$AR" rc "$TMP/libcf.a" "$TMP/cft0.o" "$TMP/cfdup.o" "$TMP/cfex.o" \
+        || { echo "ar370 failed: cf"; fails=$((fails + 1)); return; }
+    printf '\n=== autocall conflict (skip the duplicate-defining bundle) ===\n'
+    "$LD" -o "$TMP/cf.auto" -L"$TMP" -lcf "$TMP/cfmain.o" \
+        || { echo "ld370 autocall failed: cf"; fails=$((fails + 1)); return; }
+    "$LD" -o "$TMP/cf.exp" "$TMP/cfmain.o" "$TMP/cft0.o" "$TMP/cfex.o" \
+        || { echo "ld370 explicit failed: cf"; fails=$((fails + 1)); return; }
+    if cmp -s "$TMP/cf.auto" "$TMP/cf.exp"; then
+        echo "autocall skipped the conflicting bundle (== explicit cft0+cfex)"
+    else
+        echo "autocall pulled the conflicting bundle"; fails=$((fails + 1))
+    fi
+    printf '\n=== include forces the bundle (--include CFDUP) ===\n'
+    "$LD" -o "$TMP/cf.inc" -L"$TMP" -lcf --include CFDUP "$TMP/cfmain.o" \
+        || { echo "ld370 include failed: cf"; fails=$((fails + 1)); return; }
+    "$LD" -o "$TMP/cf.incexp" "$TMP/cfmain.o" "$TMP/cfdup.o" \
+        || { echo "ld370 explicit failed: cf-inc"; fails=$((fails + 1)); return; }
+    if cmp -s "$TMP/cf.inc" "$TMP/cf.incexp"; then
+        echo "include forced the bundle (== explicit cfdup; autocall pulled nothing)"
+    else
+        echo "include did not force the bundle"; fails=$((fails + 1))
+    fi
+}
+
+run_conflict
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"

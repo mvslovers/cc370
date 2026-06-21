@@ -12,8 +12,18 @@
  * origins, relocates address constants, and remaps RLDs to global ESDIDs /
  * module-relative addresses. Validated against the ld/tests/fixtures oracles.
  *
+ * Automatic library call: -L DIR / -l NAME autocall unresolved ERs against an
+ * ar370 archive (libNAME.a).  When a wanted symbol has several definers (e.g.
+ * @@CRT0 by @@crt0/@@crt1/@@crtm), the one that does NOT also re-define an
+ * already-resolved section is preferred, so a "bundle" member cannot drag a
+ * duplicate startup into the link.  --include/-i NAME force-includes a member
+ * (by basename or a symbol it defines) BEFORE autocall -- the IEWL INCLUDE
+ * equivalent for pinning a specific runtime variant (e.g. --include @@CRT1).
+ * --entry/-e NAME sets the load-module entry point.
+ *
  * Build:  gcc -O2 -Wall -Wextra -Werror -o ld/ld370 ld/ld370.c
  * Usage:  ld370 [--verbose] -o OUT.bin OBJ1.obj [OBJ2.obj ...]
+ *               [-L DIR -l NAME] [--include NAME] [--entry NAME]
  */
 #include <stdarg.h>
 #include <stdio.h>
@@ -255,10 +265,13 @@ static int local_to_g(struct obj *o, int localid)
  * perturb the ESDID order (appearance order: explicit objects, then pulls). */
 #define MAXAR 32
 #define MAXARSYM 16384
+#define MAXARMEM 4096
 struct archive {
     unsigned char *data; long size;
     struct { char name[64]; long off; } sym[MAXARSYM];
     int nsym;
+    struct { char name[64]; long off; } mem[MAXARMEM];   /* member basenames, for --include */
+    int nmem;
 };
 static struct archive AR[MAXAR];
 static int nAR = 0;
@@ -273,7 +286,7 @@ static int load_archive(const char *path)
     a = read_file(path, &n);
     if (!a) return 1;
     if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ld370: %s: not an archive\n", path); free(a); return 1; }
-    ar = &AR[nAR]; ar->data = a; ar->size = n; ar->nsym = 0;
+    ar = &AR[nAR]; ar->data = a; ar->size = n; ar->nsym = 0; ar->nmem = 0;
     /* first member must be the "/" symbol table */
     if (a[8] == '/' && a[9] == ' ') {
         long q = 8 + 60;
@@ -290,9 +303,35 @@ static int load_archive(const char *path)
             names += strlen(names) + 1;
         }
     }
+    /* member-name table (for --include by member name): walk every header,
+     * resolving GNU short ("name/") and long ("/NNN" -> "//" member) names. */
+    {
+        long q = 8; const unsigned char *longnames = NULL; long longlen = 0;
+        while (q + 60 <= n) {
+            char szs[11]; long msize; int k, L = 0; char nmbuf[64];
+            memcpy(szs, a + q + 48, 10); szs[10] = 0; msize = atol(szs);
+            if (a[q] == '/' && a[q + 1] == '/') {                 /* long-name table */
+                longnames = a + q + 60; longlen = msize;
+            } else if (a[q] == '/' && (a[q + 1] == ' ' || a[q + 1] == 0x60)) {
+                /* "/" symbol table -- skip */
+            } else if (ar->nmem < MAXARMEM) {
+                if (a[q] == '/' && a[q + 1] >= '0' && a[q + 1] <= '9' && longnames) {
+                    long lo = atol((const char *)(a + q + 1));    /* /NNN -> offset in "//" */
+                    while (lo < longlen && longnames[lo] != '/' && longnames[lo] != '\n' && L < 63)
+                        nmbuf[L++] = (char)longnames[lo++];
+                } else {
+                    for (k = 0; k < 16 && a[q + k] != '/' && a[q + k] != ' ' && L < 63; k++)
+                        nmbuf[L++] = (char)a[q + k];
+                }
+                nmbuf[L] = 0;
+                strcpy(ar->mem[ar->nmem].name, nmbuf); ar->mem[ar->nmem].off = q; ar->nmem++;
+            }
+            q += 60 + msize + (msize & 1);
+        }
+    }
     (void)p;
     nAR++;
-    trace("- archive %s: %d exported symbol(s)", path, ar->nsym);
+    trace("- archive %s: %d exported symbol(s), %d member(s)", path, ar->nsym, ar->nmem);
     return 0;
 }
 
@@ -323,6 +362,39 @@ static int pull_member(int ai, long off)
     return 0;
 }
 
+/* does the archive member at AR[ai] header-offset `off` define a strong symbol
+ * (SD/LD/CM) that is ALREADY defined by a loaded object?  Scans its ESD without
+ * pulling it.  Used to prefer a NON-conflicting definer during autocall: a
+ * symbol like @@EXITA is defined both by the standalone @@exita.o and by the
+ * @@crtm.o startup that also re-defines @@CRT0 -- pulling @@crtm.o would drag a
+ * duplicate @@CRT0 into the link (and displace the real startup).
+ *
+ * Order assumption: this only flags a bundle whose colliding symbol is ALREADY
+ * resolved.  It works because the colliding section (@@CRT0) is pulled before
+ * the bundle's secondary symbol (@@EXITA) is resolved.  If a future closure
+ * resolved a bundle's secondary symbol first, the bundle could still win -- pin
+ * the wanted variant with --include in that case. */
+static int member_conflicts(int ai, long off)
+{
+    unsigned char *a = AR[ai].data; char szs[11]; long size, i;
+    unsigned char *d;
+    memcpy(szs, a + off + 48, 10); szs[10] = 0; size = atol(szs);
+    d = a + off + 60;
+    for (i = 0; i + 80 <= size; i += 80) {
+        unsigned char *c = d + i;
+        if (!(c[0] == 0x02 && c[1] == 0xC5 && c[2] == 0xE2 && c[3] == 0xC4)) continue;  /* ESD */
+        int cnt = (c[10] << 8) | c[11], k;
+        for (k = 0; k * 16 < cnt && 16 + (k + 1) * 16 <= 80; k++) {
+            unsigned char *e = c + 16 + k * 16;
+            int t = e[8] & 0x0f, j, blank = 1;
+            if (!(t == T_SD || t == T_LD || t == T_CM)) continue;   /* a section/label def */
+            for (j = 0; j < 8; j++) if (e[j] != 0x40) blank = 0;
+            if (!blank && is_defined(e)) return 1;                  /* already defined -> conflict */
+        }
+    }
+    return 0;
+}
+
 /* resolve unresolved ERs from the archives, to a fixpoint */
 static int autocall(void)
 {
@@ -336,22 +408,89 @@ static int autocall(void)
                 if (!O[i].loc[j].used || O[i].loc[j].type != T_ER) continue;
                 if (is_defined(O[i].loc[j].name)) continue;       /* already satisfied */
                 want = nm(O[i].loc[j].name);
-                for (a = 0; a < nAR; a++) {
-                    for (s = 0; s < AR[a].nsym; s++)
-                        if (!strcmp(AR[a].sym[s].name, want)) {
-                            long off = AR[a].sym[s].off; int pk, dup = 0;
-                            for (pk = 0; pk < npulled; pk++)
-                                if (pulled[pk].ar == a && pulled[pk].off == off) { dup = 1; break; }
-                            if (dup) break;                        /* already pulled; leave for loader */
-                            trace("  autocall: '%s' -> archive %d member @%ld", want, a, off);
-                            if (pull_member(a, off)) return 1;
-                            changed = 1;
-                            break;
-                        }
-                    if (changed) break;
+                /* among ALL definers of `want`, prefer one that does not also
+                 * re-define an already-resolved strong symbol; fall back to the
+                 * first definer only if every candidate conflicts. */
+                {
+                    int pick_ai = -1, conflicting = 0, fb_ai = -1; long pick_off = -1, fb_off = -1;
+                    for (a = 0; a < nAR && pick_off < 0; a++)
+                        for (s = 0; s < AR[a].nsym; s++)
+                            if (!strcmp(AR[a].sym[s].name, want)) {
+                                long off = AR[a].sym[s].off; int pk, dup = 0;
+                                for (pk = 0; pk < npulled; pk++)
+                                    if (pulled[pk].ar == a && pulled[pk].off == off) { dup = 1; break; }
+                                if (dup) continue;                 /* this definer already pulled; try others */
+                                if (fb_off < 0) { fb_ai = a; fb_off = off; }
+                                if (!member_conflicts(a, off)) { pick_ai = a; pick_off = off; break; }
+                            }
+                    if (pick_off < 0 && fb_off >= 0) { pick_ai = fb_ai; pick_off = fb_off; conflicting = 1; }
+                    if (pick_off >= 0) {
+                        trace("  autocall: '%s' -> archive %d member @%ld%s", want, pick_ai, pick_off,
+                              conflicting ? " [no clean definer; took first]" : "");
+                        if (pull_member(pick_ai, pick_off)) return 1;
+                        changed = 1;
+                    }
                 }
             }
         }
+    }
+    return 0;
+}
+
+/* case-insensitive ASCII string equality (member names are lower-case .o files;
+ * --include args follow the IEWL/NCALIB upper-case member convention) */
+static int ci_eq(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++) {
+        int ca = (*a >= 'a' && *a <= 'z') ? *a - 32 : *a;
+        int cb = (*b >= 'a' && *b <= 'z') ? *b - 32 : *b;
+        if (ca != cb) return 0;
+    }
+    return *a == *b;
+}
+
+/* locate the archive member an --include NAME refers to: first by member
+ * basename (a trailing ".o" ignored, case-insensitive -- so @@CRT1 finds
+ * @@crt1.o), then by a strong symbol it defines (preferring a non-conflicting
+ * definer). Returns 1 and sets ai/off, else 0. */
+static int find_include(const char *name, int *ai, long *off)
+{
+    int a, m, s, fa = -1; long fo = -1;
+    for (a = 0; a < nAR; a++)
+        for (m = 0; m < AR[a].nmem; m++) {
+            const char *mn = AR[a].mem[m].name; size_t L = strlen(mn); char base[64];
+            if (L >= 2 && mn[L - 2] == '.' && (mn[L - 1] == 'o' || mn[L - 1] == 'O')) L -= 2;
+            if (L > 63) L = 63;
+            memcpy(base, mn, L); base[L] = 0;
+            if (ci_eq(base, name)) { *ai = a; *off = AR[a].mem[m].off; return 1; }
+        }
+    for (a = 0; a < nAR; a++)
+        for (s = 0; s < AR[a].nsym; s++)
+            if (ci_eq(AR[a].sym[s].name, name)) {
+                long o = AR[a].sym[s].off;
+                if (!member_conflicts(a, o)) { *ai = a; *off = o; return 1; }
+                if (fo < 0) { fa = a; fo = o; }
+            }
+    if (fo >= 0) { *ai = fa; *off = fo; return 1; }
+    return 0;
+}
+
+/* force-include the members named by --include (IEWL INCLUDE) BEFORE autocall,
+ * so the chosen runtime variant (e.g. @@CRT1) is the one linked and autocall
+ * does not pull a conflicting one. */
+static int do_includes(const char **incspec, int ninc)
+{
+    int n, ai, pk, dup; long off;
+    for (n = 0; n < ninc; n++) {
+        if (!find_include(incspec[n], &ai, &off)) {
+            fprintf(stderr, "ld370: --include '%s' not found in any archive\n", incspec[n]);
+            return 1;
+        }
+        for (pk = 0, dup = 0; pk < npulled; pk++)
+            if (pulled[pk].ar == ai && pulled[pk].off == off) { dup = 1; break; }
+        if (dup) continue;
+        trace("  include: '%s' -> archive %d member @%ld", incspec[n], ai, off);
+        if (pull_member(ai, off)) return 1;
     }
     return 0;
 }
@@ -936,6 +1075,7 @@ int main(int argc, char **argv)
     const char *xmitfile = NULL, *dsn = NULL, *entryname = NULL;
     const char *objfiles[MAXOBJ];
     char *packspec[MAXOBJ], *Ldir[32];
+    const char *incspec[64]; int ninc = 0;
     int nobjf = 0, npack = 0, nLdir = 0, i, j;
     FILE *f;
 
@@ -947,6 +1087,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--dsn") && i + 1 < argc) dsn = argv[++i];
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
+        else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc && ninc < 64) incspec[ninc++] = argv[++i];
         else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) { if (nLdir < 32) Ldir[nLdir++] = argv[++i]; }
@@ -1002,7 +1143,8 @@ int main(int argc, char **argv)
 
     if (!nobjf || !outfile) {
         fprintf(stderr,
-                "usage: ld370 [-v] -o OUT.bin [--unload U] [--xmit X [--dsn DS]] [--name N] OBJ...\n"
+                "usage: ld370 [-v] -o OUT.bin [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
+                "             [--unload U] [--xmit X [--dsn DS]] [--name N] OBJ...\n"
                 "       ld370 --unload-from MEMBER.lm [--name N] [--unload U] [--xmit X]\n"
                 "       ld370 --pack N1=M1.lm [--pack N2=M2.lm ...] [--unload U] [--xmit X]\n");
         return 2;
@@ -1019,7 +1161,11 @@ int main(int argc, char **argv)
         nO++;
     }
 
-    /* --- autocall: pull archive members that resolve unresolved ERs --- */
+    /* --- force-include (IEWL INCLUDE) before autocall, then autocall --- */
+    if (ninc) {
+        trace("=== include: %d forced member(s) ===", ninc);
+        if (do_includes(incspec, ninc)) return 1;
+    }
     if (nAR) {
         trace("=== autocall: %d archive(s) ===", nAR);
         if (autocall()) return 1;
