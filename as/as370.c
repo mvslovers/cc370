@@ -842,7 +842,8 @@ static void aif_split(const char *opnd, char *cond, char *seq) {
 }
 
 /* ---- macro library (-I dirs): COPY members + macro lookup by name -------- */
-static char *maclib_dirs[8]; static int nmaclib;
+#define MAXMACLIB 16
+static char *maclib_dirs[MAXMACLIB]; static int nmaclib;
 static int lib_path(const char *name, char *path) {
     const char *exts[] = { ".macro", ".copy", ".mac", ".asm", "", NULL };
     char low[40]; int i; for (i = 0; name[i] && i < 39; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
@@ -1905,7 +1906,11 @@ static void usage(FILE *o) {
 "  --help             show this message and exit\n"
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
-"  -v                 print as utility version\n", o);
+"  -v                 print as utility version\n"
+"\n"
+"environment:\n"
+"  AS370_MACLIB       colon-separated default macro dirs (e.g. the installed\n"
+"                     sysroot macro library), searched after any -I\n", o);
 }
 int main(int argc, char **argv) {
     const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
@@ -1915,7 +1920,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", AS370_NAME, AS370_VER_H, __DATE__); return 0; }
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
-        else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < 8) maclib_dirs[nmaclib++] = argv[++ai]; }
+        else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strcmp(argv[ai], "-m") && ai + 1 < argc) ++ai;   /* -m HLASM-option: accepted, not yet implemented */
         else if (!strcmp(argv[ai], "--")) { /* end of options: recognised, no-op */ }
         else if (!strcmp(argv[ai], "-E")) eonly = 1;       /* (internal) dump macro-expanded source */
@@ -1933,6 +1938,23 @@ int main(int argc, char **argv) {
             if (!sel) { a_esd = a_rld = 1; }               /* bare -a -> LIST(MAX): every section we produce */
         }
         else src = argv[ai];
+    }
+    /* AS370_MACLIB: colon-separated default macro dirs (the installed sysroot
+     * macro library), appended AFTER explicit -I so -I still wins.  Lets the
+     * cc370 driver / a shell profile point at the sysroot macros without a
+     * per-call -I -- the assembler equivalent of C_INCLUDE_PATH. */
+    {
+        const char *env = getenv("AS370_MACLIB");
+        const char *s = env;
+        while (s && *s && nmaclib < MAXMACLIB) {
+            const char *e = s; while (*e && *e != ':') e++;
+            if (e > s) {
+                char *d = malloc((size_t)(e - s) + 1);
+                memcpy(d, s, (size_t)(e - s)); d[e - s] = 0;
+                maclib_dirs[nmaclib++] = d;
+            }
+            s = (*e == ':') ? e + 1 : e;
+        }
     }
     if (!src) { usage(stderr); return 16; }                /* options given but no input file */
     init_sysvars();
