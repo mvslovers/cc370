@@ -49,8 +49,13 @@ static const char *basename_of(const char *p)
     return s;
 }
 
-/* scan one object deck's ESD cards; record each exported symbol (SD/LD/PC/CM,
- * non-blank name) the first time it is seen (first definition wins) */
+/* scan one object deck's ESD cards; record EVERY exported symbol (SD/LD/CM,
+ * non-blank name) -- including duplicates across members.  A symbol defined by
+ * more than one member (e.g. @@CRT0 by @@crt0/@@crt1/@@crtm, @@EXITA by @@crtm
+ * and @@exita) gets one symtab entry per definer, so the linker (ld370) can
+ * pick a NON-CONFLICTING definer at autocall time -- pulling @@exita.o for
+ * @@EXITA instead of the @@crtm.o startup that also re-defines @@CRT0.  The GNU
+ * ar symbol table permits duplicate names. */
 static void scan_esd(int oi)
 {
     unsigned char *d = O[oi].data; long n = O[oi].size, i;
@@ -60,15 +65,14 @@ static void scan_esd(int oi)
         int cnt = (c[10] << 8) | c[11], k;
         for (k = 0; k * 16 < cnt && 16 + (k + 1) * 16 <= 80; k++) {
             unsigned char *e = c + 16 + k * 16;
-            int t = e[8] & 0x0f, j, blank = 1, s;
+            int t = e[8] & 0x0f, j, blank = 1;
             char nm[9];
             if (!(t == 0x00 || t == 0x01 || t == 0x04 || t == 0x05)) continue;  /* SD/LD/PC/CM */
             for (j = 0; j < 8; j++) { nm[j] = e2a1(e[j]); if (e[j] != 0x40) blank = 0; }
             nm[8] = 0;
             for (j = 7; j >= 0 && nm[j] == ' '; j--) nm[j] = 0;
             if (blank) continue;                                    /* unnamed private code */
-            for (s = 0; s < nS; s++) if (!strcmp(S[s].name, nm)) break;
-            if (s == nS && nS < MAXSYM) { strcpy(S[nS].name, nm); S[nS].obj = oi; nS++; }
+            if (nS < MAXSYM) { strcpy(S[nS].name, nm); S[nS].obj = oi; nS++; }
         }
     }
 }
