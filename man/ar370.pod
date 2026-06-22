@@ -1,0 +1,41 @@
+=head1 NAME
+
+ar370 - OS/360 object-deck archiver with an ESD symbol index
+
+=head1 SYNOPSIS
+
+B<ar370> B<rc> I<archive.a> I<obj>...
+
+B<ar370> B<t> I<archive.a>
+
+=head1 DESCRIPTION
+
+B<ar370> bundles OS/360 object decks into a B<.a> archive that L<ld370(1)>
+auto-calls against. The container is a standard C<ar> archive (host-inspectable),
+with a GNU C</>-member symbol table built from each deck's external symbol
+dictionary (ESD) so the linker can resolve references without scanning every
+member.
+
+=head1 OPERATIONS
+
+=over 4
+
+=item B<rc> I<archive.a> I<obj>...
+
+Create I<archive.a> from the given object decks, building the symbol table.
+
+=item B<t> I<archive.a>
+
+List the archive's members and the symbols each one exports.
+
+=back
+
+=head1 SEE ALSO
+
+L<cc370(1)>, L<as370(1)>, L<ld370(1)>, L<ar(1)>
+
+=head1 AUTHOR
+
+The mvslovers community L<https://github.com/mvslovers/cc370>.
+
+=cut

@@ -1,0 +1,85 @@
+=head1 NAME
+
+as370 - host-native MVS assembler (IBM Assembler-XF / IFOX00 clone)
+
+=head1 SYNOPSIS
+
+B<as370> [I<options>] I<file>
+
+=head1 DESCRIPTION
+
+B<as370> assembles System/370 HLASM source into an OS/360 object deck (80-byte
+EBCDIC ESD/TXT/RLD/END card images) on the host. It is a single-file
+reimplementation of IBM's Assembler-XF (B<IFOX00>): macro preprocessor, two-pass
+core and object writer, producing decks B<byte-identical to IFOX00> over the
+mvslovers ecosystem corpus.
+
+It is invoked automatically by L<cc370(1)> to assemble the compiler's output, and
+can also be run standalone on hand-written F<.s>/F<.asm> source.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-o> I<objfile>
+
+Write the object deck to I<objfile> (binary).
+
+=item B<-I> I<dir>
+
+Add a macro-library directory to the search list (repeatable).
+
+=item B<-a>[I<sub-options>]
+
+Produce a listing. Sub-options include B<e> (external symbol dictionary) and
+B<r> (relocation dictionary); B<=>I<FILE> writes the listing to I<FILE> (must be
+the last sub-option). Other sub-options (g/i/m/s/x) are accepted but not yet
+produced.
+
+=item B<-v>
+
+Print the assembler version.
+
+=item B<--help>
+
+Show usage and exit.
+
+=back
+
+=head1 MACRO SEARCH ORDER
+
+Highest priority first:
+
+=over 4
+
+=item 1.
+
+The B<-I> directories.
+
+=item 2.
+
+C<$AS370_MACLIB> --- a colon-separated override.
+
+=item 3.
+
+A built-in relocatable default F<< <exedir>/../macros >>. For an installed
+as370 (in F<I<prefix>/bin>) this resolves to F<I<prefix>/macros>, the macro
+library installed by B<libc370>, so as370 assembles with no B<-I> and no
+environment.
+
+=back
+
+=head1 EXIT STATUS
+
+Follows IFOX C<JERMSGCD>: B<0> clean, B<4> warning, B<8> error, B<12> severe,
+B<16> terminal. Silent on success.
+
+=head1 SEE ALSO
+
+L<cc370(1)>, L<ld370(1)>, L<ar370(1)>
+
+=head1 AUTHOR
+
+The mvslovers community L<https://github.com/mvslovers/cc370>.
+
+=cut

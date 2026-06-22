@@ -1,0 +1,102 @@
+=head1 NAME
+
+cc370 - C cross-compiler driver for MVS 3.8j (System/370)
+
+=head1 SYNOPSIS
+
+B<cc370> [I<options>] I<file>...
+
+=head1 DESCRIPTION
+
+B<cc370> is the driver of a host-native cross-toolchain that compiles C to IBM
+System/370 code for MVS 3.8j (TK4-, TK5, MVS/CE). It runs on the host
+(macOS / Linux) and orchestrates the compiler proper (F<cc1>), the assembler
+(L<as370(1)>) and the linker (L<ld370(1)>), so the only artifact that reaches the
+mainframe is the finished load module.
+
+It is a fork of GCC 3.4.6 for the C<cc370> target (an alias for the
+C<i370-ibm-mvspdp> backend) and accepts the usual GCC-style options. The output
+file's extension selects how far the pipeline runs:
+
+=over 4
+
+=item *
+
+F<.s> with B<-S> --- stop after compiling to System/370 HLASM assembler.
+
+=item *
+
+F<.o> with B<-c> --- compile and assemble to an OS/360 object deck.
+
+=item *
+
+F<.lm> --- compile, assemble and link to an MVS load-module image.
+
+=item *
+
+F<.xmit> --- the above, then package as a TSO TRANSMIT (NETDATA, RECFM=FB80)
+file ready to upload and install on MVS with C<RECV370>.
+
+=back
+
+The C library it links against is B<libc370>, found in the toolchain sysroot
+with no B<-I>, B<-L> or B<-lc> needed.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-S>
+
+Compile only; emit assembler (F<.s>).
+
+=item B<-c>
+
+Compile and assemble only; emit an object deck (F<.o>).
+
+=item B<-o> I<file>
+
+Place output in I<file>; the extension selects the pipeline stage (see above).
+
+=item B<-O1>
+
+Optimization level. B<Only -O1 is supported.> B<-O2>, B<-Os> and B<-O3> are
+unsafe on this backend (dead-code elimination drops address-held static tables,
+and B<-Os> miscompiles loops); B<-O1> is validated correct.
+
+=item B<-I> I<dir>, B<-L> I<dir>, B<-l> I<name>
+
+Add a header search directory, a library search directory, or link a library
+--- as in any GCC driver.
+
+=item B<-dumpmachine>, B<-dumpversion>, B<-v>, B<--version>
+
+Print the target (C<cc370>), the product version, or driver/version banners.
+
+=back
+
+All other standard GCC driver options are accepted.
+
+=head1 FILES
+
+=over 4
+
+=item F<I<prefix>/libexec/cc370/1.0.0/cc1>
+
+The compiler proper (driver-private).
+
+=item F<I<prefix>/cc370/{include,lib}>
+
+The libc370 sysroot (headers, F<libc.a>, startfiles).
+
+=back
+
+=head1 SEE ALSO
+
+L<as370(1)>, L<ld370(1)>, L<ar370(1)>
+
+=head1 AUTHOR
+
+The mvslovers community L<https://github.com/mvslovers/cc370>.
+
+=cut

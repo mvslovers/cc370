@@ -32,8 +32,12 @@ CFLAGS  ?= -O2 -Wall -Wextra -Werror
 BINDIR  := $(PREFIX)/bin
 TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
 LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(GCCVER)
+MANDIR  := $(PREFIX)/share/man/man1
 
 TOOLS   := as370/as370 ld370/ld370 ar370/ar370
+# man pages: one .pod per tool -> pod2man -> .1 (the same path GCC uses)
+MANPODS := $(wildcard man/*.pod)
+MAN1    := $(MANPODS:.pod=.1)
 
 # --- GCC (driver + cc1) build, out-of-tree in build/ ----------------------
 # Old K&R-ish 3.4.6 sources: tell the modern host compiler not to error on them.
@@ -44,10 +48,10 @@ BUILD   := build
 DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
-.PHONY: all tools gcc install install-tools install-gcc clean uninstall help
-# `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370).
+.PHONY: all tools gcc man install install-tools install-gcc install-man clean uninstall help
+# `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
-all: tools gcc
+all: tools gcc man
 
 # --- standalone tools (normal single-file C binaries) ---------------------
 tools: $(TOOLS)
@@ -57,6 +61,11 @@ ld370/ld370: ld370/src/ld370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
 ar370/ar370: ar370/src/ar370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
+
+# --- man pages (one .pod per tool -> pod2man -> .1) -----------------------
+man: $(MAN1)
+man/%.1: man/%.pod
+	pod2man --section=1 --center="cc370 toolchain" --release="cc370 $(GCCVER)" $< > $@
 
 # --- driver + cc1 (GCC autotools) -----------------------------------------
 $(BUILD)/config.status:
@@ -70,7 +79,7 @@ gcc: $(BUILD)/config.status
 	$(MAKE) -C $(BUILD) all-gcc CFLAGS="$(GCC_CF)" CFLAGS_FOR_BUILD="$(GCC_CF)"
 
 # --- install --------------------------------------------------------------
-install: install-tools install-gcc
+install: install-tools install-gcc install-man
 
 install-tools: tools
 	mkdir -p $(BINDIR) $(TGTBIN)
@@ -96,12 +105,18 @@ install-gcc:
 	mkdir -p $(PREFIX)/lib/$(TRIPLE)/$(GCCVER)
 	@echo "installed cc370 -> $(BINDIR)/cc370 ; cc1 -> $(LIBEXEC)/cc1"
 
+install-man: man
+	mkdir -p $(MANDIR)
+	install -m 644 $(MAN1) $(MANDIR)/
+	@echo "installed man pages -> $(MANDIR)"
+
 clean:
-	rm -f $(TOOLS)
+	rm -f $(TOOLS) $(MAN1)
 
 uninstall:
 	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 \
-	      $(TGTBIN)/as $(TGTBIN)/ld $(TGTBIN)/ar $(LIBEXEC)/cc1
+	      $(TGTBIN)/as $(TGTBIN)/ld $(TGTBIN)/ar $(LIBEXEC)/cc1 \
+	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1
 
 help:
 	@sed -n '1,30p' $(firstword $(MAKEFILE_LIST))

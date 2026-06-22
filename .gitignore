@@ -9,3 +9,6 @@ ar370/ar370
 # stale in-tree build artifacts — the real GCC build is out-of-tree in /build/
 /cc370/gcc/*.o
 /cc370/libiberty/*.o
+
+# generated man pages (pod2man) -- sources are man/*.pod
+/man/*.1
