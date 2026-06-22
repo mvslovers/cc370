@@ -211,8 +211,8 @@ def link_module(mod):
     spec = MODULES[mod]
     os.makedirs(f"{WORK}/lm", exist_ok=True)
     lm = f"{WORK}/lm/{mod}.lm"
-    unl = f"{WORK}/lm/{mod}.unl"
-    xmit = f"{WORK}/lm/{mod}.xmit"
+    unl = lm + ".unl"      # ld370 --unload derives <out>.unl
+    xmit = lm + ".xmit"    # ld370 --xmit derives <out>.xmit
     cmd = [LD370, "-v", "-o", lm, "--name", mod, "--entry", "@@CRT0"]
     if spec.get("ac"):                                   # SETCODE AC(n) -> PDS2 APF section
         cmd += ["--ac", str(spec["ac"])]
@@ -230,7 +230,7 @@ def link_module(mod):
         cmd += ["--include", inc]
     for a in spec["archives"]:
         cmd += ["-L", WORK, "-l", a]
-    cmd += ["--unload", unl, "--xmit", xmit, "--dsn", TARGET_DSN]
+    cmd += ["--unload", "--xmit", "--dsn", TARGET_DSN]
     r = run(cmd)
     trace = r.stdout + r.stderr
     if r.returncode != 0 or not os.path.exists(lm):

@@ -1094,6 +1094,12 @@ static int ends_with(const char *s, const char *suf)
     size_t ls = strlen(s), lf = strlen(suf);
     return ls >= lf && !strcmp(s + ls - lf, suf);
 }
+/* derive a transport-file name from the base output: <base><suf>, e.g. app.xmit */
+static const char *with_suffix(char *buf, size_t n, const char *base, const char *suf)
+{
+    snprintf(buf, n, "%s%s", base, suf);
+    return buf;
+}
 
 int main(int argc, char **argv)
 {
@@ -1103,13 +1109,15 @@ int main(int argc, char **argv)
     char *packspec[MAXOBJ], *Ldir[32];
     const char *incspec[64]; int ninc = 0;
     int nobjf = 0, npack = 0, nLdir = 0, i, j;
+    int want_xmit = 0, want_unload = 0;          /* --xmit/--unload: no-arg format flags */
+    char xmitbuf[2048], unlbuf[2048];            /* derived <out>.xmit / <out>.unl names */
     FILE *f;
 
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-o") && i + 1 < argc) outfile = argv[++i];
-        else if (!strcmp(argv[i], "--unload") && i + 1 < argc) unloadfile = argv[++i];
+        else if (!strcmp(argv[i], "--unload")) want_unload = 1;
         else if (!strcmp(argv[i], "--unload-from") && i + 1 < argc) unloadfrom = argv[++i];
-        else if (!strcmp(argv[i], "--xmit") && i + 1 < argc) xmitfile = argv[++i];
+        else if (!strcmp(argv[i], "--xmit")) want_xmit = 1;
         else if (!strcmp(argv[i], "--dsn") && i + 1 < argc) dsn = argv[++i];
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
@@ -1127,35 +1135,36 @@ int main(int argc, char **argv)
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INMDSNAM default; RECEIVE DA(...) overrides */
 
-    /* `-o X.xmit` selects the shippable XMIT as the output format (just as
-     * `-o X.lm` gives the raw load-module member): emit the XMIT of the linked
-     * member -- with its real entry/modlen, the path that runs on MVS -- instead
-     * of the bare member.  This is what lets cc370 do the full host->MVS one-shot
-     * (cc370 foo.c -o foo.xmit), since the driver passes the output via -o. */
-    if (outfile && ends_with(outfile, ".xmit")) { xmitfile = outfile; outfile = NULL; }
+    /* Output format is flag-driven (like gcc/binutils), not -o-extension-driven:
+     * `-o OUT` always names a raw load-module member, and `--xmit` / `--unload`
+     * are no-arg flags that ADDITIONALLY emit OUT.xmit / OUT.unl (the host->MVS
+     * transport wrappers).  They never replace the member -- e.g.
+     * `cc370 foo.c -o app --xmit` writes both `app` (LMOD) and `app.xmit`. */
 
     /* --- standalone wrap: an existing flat member, no object linking.
-     *     ld370 --unload-from MEMBER.lm [--name NAME] [--unload OUT] [--xmit OUT] --- */
+     *     ld370 --unload-from MEMBER.lm -o OUT [--name NAME] [--unload] [--xmit] --- */
     if (unloadfrom) {
         static unsigned char memb[1 << 20];
         long mlen; const char *name;
-        if (!unloadfile && !xmitfile) { fprintf(stderr, "ld370: --unload-from needs --unload and/or --xmit OUT\n"); return 2; }
+        if (!outfile) { fprintf(stderr, "ld370: --unload-from needs -o OUT (base name)\n"); return 2; }
+        if (!want_unload && !want_xmit) { fprintf(stderr, "ld370: --unload-from needs --unload and/or --xmit\n"); return 2; }
         f = fopen(unloadfrom, "rb");
         if (!f) { perror(unloadfrom); return 1; }
         mlen = (long)fread(memb, 1, sizeof memb, f);
         fclose(f);
         name = mname ? mname : basename_member(unloadfrom);
-        if (unloadfile && write_unload(unloadfile, name, memb, mlen, -1, -1)) return 1;
-        if (xmitfile && write_xmit1(xmitfile, name, memb, mlen, dsn, -1, -1)) return 1;
+        if (want_unload && write_unload(with_suffix(unlbuf, sizeof unlbuf, outfile, ".unl"), name, memb, mlen, -1, -1)) return 1;
+        if (want_xmit && write_xmit1(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), name, memb, mlen, dsn, -1, -1)) return 1;
         return 0;
     }
 
     /* --- multi-member: pack several flat members into one image/library.
-     *     ld370 --pack NAME1=FILE1 --pack NAME2=FILE2 ... [--unload OUT] [--xmit OUT]
+     *     ld370 --pack NAME1=FILE1 --pack NAME2=FILE2 ... -o OUT [--unload] [--xmit]
      *     (single-track geometry: total records must fit one track for now) --- */
     if (npack) {
         struct umember m[MAXOBJ]; int rc = 0;
-        if (!unloadfile && !xmitfile) { fprintf(stderr, "ld370: --pack needs --unload and/or --xmit OUT\n"); return 2; }
+        if (!outfile) { fprintf(stderr, "ld370: --pack needs -o OUT (base name)\n"); return 2; }
+        if (!want_unload && !want_xmit) { fprintf(stderr, "ld370: --pack needs --unload and/or --xmit\n"); return 2; }
         memset(m, 0, sizeof m);
         for (i = 0; i < npack; i++) {
             char *eq = strchr(packspec[i], '='); long n; unsigned char *buf; size_t got;
@@ -1170,30 +1179,34 @@ int main(int argc, char **argv)
             member_name(m[i].name, packspec[i]); m[i].bytes = buf; m[i].len = n;
             m[i].entry = -1; m[i].modlen = -1;          /* multi-member: echo dir template */
         }
-        if (unloadfile) rc = write_unload_mem(unloadfile, m, npack);
-        if (!rc && xmitfile) rc = write_xmit(xmitfile, m, npack, dsn);
+        if (want_unload) rc = write_unload_mem(with_suffix(unlbuf, sizeof unlbuf, outfile, ".unl"), m, npack);
+        if (!rc && want_xmit) rc = write_xmit(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), m, npack, dsn);
         for (i = 0; i < npack; i++) free((void *)m[i].bytes);
         return rc;
     }
 
-    /* normal link with no explicit output: default to a raw load-module member
-     * named a.out, like GNU ld -- so `cc370 foo.c` (no -o) yields a.out (a LMOD
-     * member). The output format is still chosen by extension elsewhere; bare/
-     * a.out/.lm = member, .xmit = the shippable package. */
-    if ((nobjf || ninc) && !outfile && !xmitfile && !unloadfile)
+    /* normal link, no explicit output: default to a raw load-module member named
+     * a.out, like GNU ld -- so `cc370 foo.c` (no -o) yields a.out (a LMOD member). */
+    if ((nobjf || ninc) && !outfile)
         outfile = "a.out";
 
     /* a link needs content: explicit objects, or --include members to pull
      * (the faithful mbt model -- INCLUDE the listed NCALIB members + autocall,
      * no "explicit object" concept). */
-    if ((!nobjf && !ninc) || (!outfile && !xmitfile && !unloadfile)) {
+    if (!nobjf && !ninc) {
         fprintf(stderr,
-                "usage: ld370 [-v] -o OUT.bin [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
-                "             [--unload U] [--xmit X [--dsn DS]] [--name N] OBJ...\n"
-                "       ld370 --unload-from MEMBER.lm [--name N] [--unload U] [--xmit X]\n"
-                "       ld370 --pack N1=M1.lm [--pack N2=M2.lm ...] [--unload U] [--xmit X]\n");
+                "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
+                "             [--xmit] [--unload] [--dsn DS] [--name N] OBJ...\n"
+                "         -o OUT writes a load-module member; --xmit/--unload also\n"
+                "         emit OUT.xmit / OUT.unl (host->MVS transport).  OUT defaults to a.out.\n"
+                "       ld370 --unload-from MEMBER.lm -o OUT [--name N] [--xmit] [--unload]\n"
+                "       ld370 --pack N1=M1.lm [--pack N2=M2.lm ...] -o OUT [--xmit] [--unload]\n");
         return 2;
     }
+
+    /* flag-driven transport outputs: derive OUT.xmit / OUT.unl from the member name */
+    if (want_xmit)   xmitfile   = with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit");
+    if (want_unload) unloadfile = with_suffix(unlbuf,  sizeof unlbuf,  outfile, ".unl");
 
     /* --- PASS 1: read every explicit object module --- */
     trace("=== PASS 1: read %d object module(s) ===", nobjf);
@@ -1510,7 +1523,7 @@ int main(int argc, char **argv)
     }
 
     (void)entry_pt;
-    if (outfile) {                              /* raw load-module member (-o X.lm) */
+    if (outfile) {                              /* the load-module member (always) */
         f = fopen(outfile, "wb");
         if (!f) { perror(outfile); return 1; }
         fwrite(out, 1, olen, f);
@@ -1518,12 +1531,11 @@ int main(int argc, char **argv)
         trace("=== done: wrote %ld-byte load module to %s ===", olen, outfile);
     }
 
-    /* also (or instead) emit the IEBCOPY unloaded image and/or the XMIT of the
-     * linked member -- the host->MVS install transport.  -o X.xmit routes the
-     * output here (outfile is NULL then); -o X.lm writes the bare member above
-     * and --xmit/--unload are additional. */
+    /* additionally emit the host->MVS transport wrappers when requested: --xmit
+     * -> OUT.xmit (TSO TRANSMIT/NETDATA), --unload -> OUT.unl (IEBCOPY unload).
+     * These never replace the member written above. */
     {
-        const char *name = mname ? mname : basename_member(outfile ? outfile : xmitfile);
+        const char *name = mname ? mname : basename_member(outfile);
         if (unloadfile && write_unload(unloadfile, name, out, olen, entry_addr, modlen)) return 1;
         if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn, entry_addr, modlen)) return 1;
     }

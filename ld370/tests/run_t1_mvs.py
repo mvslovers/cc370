@@ -77,8 +77,8 @@ def main():
         fp.write("int main(void) { return 7; }\n")
     obj = os.path.join(args.work, "t1.o")
     lm = os.path.join(args.work, "t1.lm")
-    unl = os.path.join(args.work, "t1.unl")
-    xmit = os.path.join(args.work, "t1.xmit")
+    unl = lm + ".unl"      # ld370 --unload derives <out>.unl
+    xmit = lm + ".xmit"    # ld370 --xmit derives <out>.xmit
 
     sh([CC370, "-O1", "-c", csrc, "-o", obj])
 
@@ -97,7 +97,7 @@ def main():
     rcv_dsn = f"{hlq}.{MEMBER}.RCV"
 
     sh([LD370, "-v", "-o", lm, "--name", MEMBER, "--entry", "@@CRT0",
-        "--unload", unl, "--xmit", xmit, "--dsn", xmit_dsn, obj, args.lib])
+        "--unload", "--xmit", "--dsn", xmit_dsn, obj, args.lib])
 
     if args.link_only:
         print(f"\n[link-only] wrote {xmit} -> target {xmit_dsn}")

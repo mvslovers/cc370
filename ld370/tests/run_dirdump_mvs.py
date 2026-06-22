@@ -70,8 +70,8 @@ def main():
         fp.write(build_asm(args.t1, args.t2))
     obj = os.path.join(args.work, "nopt.o")
     lm = os.path.join(args.work, "nopt.lm")
-    unl = os.path.join(args.work, "nopt.unl")
-    xmit = os.path.join(args.work, "nopt.xmit")
+    unl = lm + ".unl"      # ld370 --unload derives <out>.unl
+    xmit = lm + ".xmit"    # ld370 --xmit derives <out>.xmit
 
     sh([AS370, "-o", obj, asm])
 
@@ -88,8 +88,8 @@ def main():
     rcv_dsn = f"{hlq}.NOPTDD.RCV"      # ld370 reloaded
     iewl_dsn = f"{hlq}.NOPTDD.IEWL"    # IEWL oracle
 
-    sh([LD370, "-v", "-o", lm, "--name", MEMBER, "--unload", unl,
-        "--xmit", xmit, "--dsn", xmit_dsn, obj])
+    sh([LD370, "-v", "-o", lm, "--name", MEMBER, "--unload",
+        "--xmit", "--dsn", xmit_dsn, obj])
 
     objbytes = open(obj, "rb").read()
     xmitbytes = open(xmit, "rb").read()

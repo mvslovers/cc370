@@ -34,7 +34,7 @@ run_case() {
     # --allow-unresolved: these fixtures byte-match IEWL NCAL output, which
     # deliberately leaves ERs unresolved (e.g. rldt's V(EXTRTN)).
     # shellcheck disable=SC2086
-    "$LD" -o "$TMP/$name.ld.bin" --unload "$TMP/$name.unl" --name "$name" --allow-unresolved $objs \
+    "$LD" -o "$TMP/$name.ld.bin" --unload --name "$name" --allow-unresolved $objs \
         || { echo "ld370 failed: $name"; fails=$((fails + 1)); return; }
     printf '\n=== %s  (oracle %s) ===\n' "$name" "$oracle"
     $DIFF diff "$FIX/$oracle" "$TMP/$name.ld.bin" || fails=$((fails + 1))
@@ -42,7 +42,7 @@ run_case() {
     # Guards split_member on the control/RLD path real modules take (e2e is
     # RLD-free, so this is the only host-side check of the 0x0E branch).
     NM=$(printf '%s' "$name" | tr 'a-z' 'A-Z')   # member_name() upper-cases
-    python3 ld370/tests/unload_check.py "$TMP/$name.unl" "$NM=$TMP/$name.ld.bin" \
+    python3 ld370/tests/unload_check.py "$TMP/$name.ld.bin.unl" "$NM=$TMP/$name.ld.bin" \
         || fails=$((fails + 1))
 }
 
@@ -60,10 +60,10 @@ run_case klein  klein.bin  klein.s      # ENTRY/LD (-> composite LR) + RLD SAMER
 # installs (IEB154I) and runs (RC=7) through the multi-track emitter.
 run_unload() {
     name=$1; member=$2; mname=$3
-    "$LD" --unload-from "$FIX/$member" --name "$mname" --unload "$TMP/$name.unload" \
+    "$LD" --unload-from "$FIX/$member" --name "$mname" -o "$TMP/$name" --unload \
         || { echo "ld370 --unload failed: $name"; fails=$((fails + 1)); return; }
     printf '\n=== unload %s ===\n' "$name"
-    python3 ld370/tests/unload_check.py "$TMP/$name.unload" "$mname=$FIX/$member" \
+    python3 ld370/tests/unload_check.py "$TMP/$name.unl" "$mname=$FIX/$member" \
         || fails=$((fails + 1))
 }
 
@@ -75,8 +75,8 @@ run_unload e2e e2e.iewl-member.bin E2E
 # (IEB154I) and the member runs (RC=7) through the multi-track emitter.
 printf '\n=== xmit e2e ===\n'
 if "$LD" --unload-from "$FIX/e2e.iewl-member.bin" --name E2E --dsn IBMUSER.E2E.LOAD \
-        --unload "$TMP/e2e.x.unl" --xmit "$TMP/e2e.xmit" 2>/dev/null; then
-    python3 ld370/tests/xmit_check.py "$TMP/e2e.xmit" "$TMP/e2e.x.unl" \
+        -o "$TMP/e2e" --unload --xmit 2>/dev/null; then
+    python3 ld370/tests/xmit_check.py "$TMP/e2e.xmit" "$TMP/e2e.unl" \
         || fails=$((fails + 1))
 else
     echo "ld370 --xmit failed"; fails=$((fails + 1))
@@ -87,7 +87,7 @@ fi
 # name-sorted.  No byte oracle -- structural round-trip only (single track).
 printf '\n=== pack tiny+rldt (multi-member) ===\n'
 if "$LD" --pack TINY="$TMP/tiny.ld.bin" --pack RLDT="$TMP/rldt.ld.bin" \
-        --unload "$TMP/lib2.unl" 2>/dev/null; then
+        -o "$TMP/lib2" --unload 2>/dev/null; then
     python3 ld370/tests/unload_check.py "$TMP/lib2.unl" \
         "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" || fails=$((fails + 1))
 else
