@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural check for an IEBCOPY unloaded image emitted by ld370 --unload.
+"""Structural check for an IEBCOPY unloaded image emitted by ld370 -iebcopy.
 
 Parses the unload by its own CKD count fields and asserts:
   - the directory entries are in ascending EBCDIC-name order (PDS requirement),

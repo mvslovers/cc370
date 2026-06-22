@@ -5,7 +5,7 @@ The whole chain runs on the host -- no IFOX00/IEWL/IEBCOPY:
   cc370 (committed .s, regenerated if stale)  ->  .s
   as370                                        ->  OS/360 object decks (.o)
   ar370                                        ->  libcrent.a / libufs.a / libhttpd.a
-  ld370  --entry @@CRT0 --include @@CRT1 ...    ->  load module (+ --unload/--xmit)
+  ld370  --entry @@CRT0 --include @@CRT1 ...    ->  load module (+ -iebcopy/-xmit)
   upload + RECV370                             ->  member in HTTPD.LINKLIB2
 
 Each project's committed .s are the cc370 output; a .s older than its .c is
@@ -211,8 +211,8 @@ def link_module(mod):
     spec = MODULES[mod]
     os.makedirs(f"{WORK}/lm", exist_ok=True)
     lm = f"{WORK}/lm/{mod}.lm"
-    unl = lm + ".unl"      # ld370 --unload derives <out>.unl
-    xmit = lm + ".xmit"    # ld370 --xmit derives <out>.xmit
+    unl = lm + ".iebcopy"      # ld370 -iebcopy derives <out>.iebcopy
+    xmit = lm + ".xmit"    # ld370 -xmit derives <out>.xmit
     cmd = [LD370, "-v", "-o", lm, "--name", mod, "--entry", "@@CRT0"]
     if spec.get("ac"):                                   # SETCODE AC(n) -> PDS2 APF section
         cmd += ["--ac", str(spec["ac"])]
@@ -230,7 +230,7 @@ def link_module(mod):
         cmd += ["--include", inc]
     for a in spec["archives"]:
         cmd += ["-L", WORK, "-l", a]
-    cmd += ["--unload", "--xmit", "--dsn", TARGET_DSN]
+    cmd += ["-iebcopy", "-xmit", "--dsn", TARGET_DSN]
     r = run(cmd)
     trace = r.stdout + r.stderr
     if r.returncode != 0 or not os.path.exists(lm):

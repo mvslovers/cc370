@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Multi-text-record fetch isolation: assemble a 2-CSECT NOP module that splits
-into >=2 load-module text records, link it host-native (as370 -> ld370 --xmit),
+into >=2 load-module text records, link it host-native (as370 -> ld370 -xmit),
 ship it to MVS as an FB80 XMIT, RECV370-install it, and RUN it.
 
 The module is pure fall-through NOPs across the chunk boundary, with NO adcons
@@ -88,8 +88,8 @@ def main():
         fp.write(build_asm(args.t1, args.t2))
     obj = os.path.join(args.work, "nopt.o")
     lm = os.path.join(args.work, "nopt.lm")
-    unl = lm + ".unl"      # ld370 --unload derives <out>.unl
-    xmit = lm + ".xmit"    # ld370 --xmit derives <out>.xmit
+    unl = lm + ".iebcopy"      # ld370 -iebcopy derives <out>.iebcopy
+    xmit = lm + ".xmit"    # ld370 -xmit derives <out>.xmit
 
     sh([AS370, "-o", obj, asm])
 
@@ -104,8 +104,8 @@ def main():
     xmit_dsn = f"{hlq}.{MEMBER}.XMIT"
     rcv_dsn = f"{hlq}.{MEMBER}.RCV"
 
-    sh([LD370, "-v", "-o", lm, "--name", MEMBER, "--unload",
-        "--xmit", "--dsn", xmit_dsn, obj])
+    sh([LD370, "-v", "-o", lm, "--name", MEMBER, "-iebcopy",
+        "-xmit", "--dsn", xmit_dsn, obj])
 
     if args.link_only:
         print(f"\n[link-only] wrote {xmit} -> target {xmit_dsn}")

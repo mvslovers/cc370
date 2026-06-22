@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural check for an XMIT (TSO TRANSMIT / NETDATA) emitted by ld370 --xmit.
+"""Structural check for an XMIT (TSO TRANSMIT / NETDATA) emitted by ld370 -xmit.
 
 Reassembles the NETDATA segment stream and asserts:
   - RECFM=FB80 (length a multiple of 80),

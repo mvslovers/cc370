@@ -10,7 +10,7 @@ cc370 hello.c -o hello -flinker-output=xmit  # -> hello + hello.xmit : compile+a
 ```
 
 `-o` always writes the load-module member; `-flinker-output=xmit` *additionally*
-emits `hello.xmit` (and `=iebcopy` an `hello.unl` unloaded-PDS image). That
+emits `hello.xmit` (and `=iebcopy` an `hello.iebcopy` unloaded-PDS image). That
 `hello.xmit` ships to MVS and is installed into a load library with one `RECV370`
 step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
 
@@ -20,7 +20,7 @@ step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
 |------|------|------------|
 | **cc370** | the driver + C → i370 HLASM compiler (`cc370/gcc/`) | a GCC 3.4.6 fork for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`) |
 | **as370** | `.s`/`.asm` → OS/360 object deck — byte-identical to IBM's IFOX00 | `as370/src/as370.c` |
-| **ld370** | object decks → MVS load module (replaces IEWL) + automatic library call + `--unload`/`--xmit` host→MVS transport | `ld370/src/ld370.c` |
+| **ld370** | object decks → MVS load module (replaces IEWL) + automatic library call + `-iebcopy`/`-xmit` host→MVS transport | `ld370/src/ld370.c` |
 | **ar370** | object decks → `.a` archive with an ESD symbol index | `ar370/src/ar370.c` |
 
 `cc370` is the single front-end; `as370`/`ld370`/`ar370` are ordinary binaries it

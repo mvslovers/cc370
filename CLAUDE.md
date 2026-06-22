@@ -12,7 +12,7 @@ cc370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3
 |------|------|--------|
 | **cc370** | C → i370 HLASM `.s` (the GCC 3.4.6 fork; `cc370/gcc/`) | works; `-O1` only |
 | **as370** | `.s`/`.asm` → OS/360 OBJ deck (`as370/src/as370.c`) | **byte-identical to IFOX00 (950 modules); links + runs on MVS** |
-| **ld370** | OBJ decks → MVS load module (replace IEWL) + automatic library call (`-l`/`-L` over `.a`) + `--unload`/`--xmit` host→MVS transport (`ld370/src/ld370.c`) | member byte-identical to IEWL; `--unload`/`--xmit` byte-identical to their oracles (XMIT modulo timestamp); autocall validated (single + transitive pull == explicit link). **End-to-end on real MVS: `as370→ld370→--xmit` → upload → RECV370 → runs, RC=7 (Stage 2 done)** |
+| **ld370** | OBJ decks → MVS load module (replace IEWL) + automatic library call (`-l`/`-L` over `.a`) + `-iebcopy`/`-xmit` host→MVS transport (`ld370/src/ld370.c`) | member byte-identical to IEWL; `-iebcopy`/`-xmit` byte-identical to their oracles (XMIT modulo timestamp); autocall validated (single + transitive pull == explicit link). **End-to-end on real MVS: `as370→ld370→-xmit` → upload → RECV370 → runs, RC=7 (Stage 2 done)** |
 | **ar370** | OBJ decks → `.a` archive + ESD symbol index (`ar370/src/ar370.c`) | standard `ar` container (host-inspectable) with a GNU `/`-member symbol table built from each deck's ESD (variable-length names, long-symbol-ready); the static-library ld370 autocalls against |
 
 **End-to-end validated on real MVS (2026-06-18):** `cc370 → as370` built ctest locally (no IFOX00), the decks linked with IEWL (RC=0) and ran (`PGM=CTESTH`) with **RC=0** (all charset checks pass). See `as370/` and the [as370 section](#as370--host-native-mvs-assembler).
@@ -63,13 +63,13 @@ modern host gcc. Builds on x86-64 and ARM64.
 
 **Output format (`-flinker-output=`).** `cc370 foo.c -o app` writes a load-module
 member (LMOD). `-flinker-output=xmit` *additionally* emits `app.xmit` (TSO
-TRANSMIT/NETDATA); `=iebcopy` emits `app.unl` (IEBCOPY unloaded PDS). It is flag-
+TRANSMIT/NETDATA); `=iebcopy` emits `app.iebcopy` (IEBCOPY unloaded PDS). It is flag-
 driven, not -o-extension-driven. Mechanism: `flinker-output=` is registered in
 `gcc/common.opt` (`Common Joined`) with a no-op `case OPT_flinker_output_` in
 `gcc/opts.c` (else `common_handle_option`'s `default: abort()` ICEs); `LINK_SPEC`
-(`mvspdp.h`) maps the value to ld370's `--xmit`/`--unload` via
-`%{flinker-output=xmit:--xmit}`. ld370 itself is flag-driven too: `-o OUT` =
-member, `--xmit`/`--unload` (no-arg) add `OUT.xmit`/`OUT.unl`.
+(`mvspdp.h`) maps the value to ld370's `-xmit`/`-iebcopy` via
+`%{flinker-output=xmit:-xmit}`. ld370 itself is flag-driven too: `-o OUT` =
+member, `-xmit`/`-iebcopy` (no-arg) add `OUT.xmit`/`OUT.iebcopy`.
 
 **Optimization: `-O1` only.** `-O2`/`-Os`/`-O3` are UNSAFE on this backend: at `-O2`+ the `-funit-at-a-time` DCE drops `static` tables whose address is held by a global pointer (`static t[]={..}; T *p=t;`) → dangling `=V`/`DC A(@V)` → IFOX RC=8; and `-Os` additionally **miscompiles the rexx parser** (loops → S322). `-O1` is validated correct (rexx370 TSTALLB 84/84, 0 ABEND). This — not the old "3.2.3 memory issues" note — is the real reason for "-O1 only".
 
@@ -154,11 +154,11 @@ The GCC driver invokes an assembler literally named `as`, found in its own exec 
 - **Host-side regression harness** — fold the 950-module IFOX byte-identity corpus check into `as370/tests/` + CI so codegen/assembler changes can't silently regress (today it's ad-hoc `/tmp` scripts).
 - **mbt host-assembly backend** — teach mbt to assemble locally and upload OBJECT (skip the IFOX00 ASM step); after `ld`, upload only the load module.
 
-**`ld370`** — a host-native MVS linker (replace IEWL) producing the load module on the host, **end-to-end proven on real MVS**. Links multiple OBJ decks into a member byte-identical to IEWL over the `ld370/tests/fixtures` oracles, wraps it into the IEBCOPY **unloaded-PDS** image (`--unload`, multi-member `--pack`), and wraps THAT into a **TSO TRANSMIT / NETDATA** file (`--xmit`, RECFM=FB80). FB80 uploads byte-clean via mvsMF (the bare unload is RECFM=VS, which mvsMF can't rebuild on upload), and **`RECV370`** installs it into a load library. **Validated 2026-06-19:** `as370→ld370→--xmit` built E2E with zero IFOX/IEWL/IEBCOPY, uploaded, RECV370-installed (`IEB154I`), and ran with **RC=7** — the project endgame (only the final load module touches MVS, via one RECV370 step). Formats: `docs/unload-format.md`, `docs/xmit-format.md`.
+**`ld370`** — a host-native MVS linker (replace IEWL) producing the load module on the host, **end-to-end proven on real MVS**. Links multiple OBJ decks into a member byte-identical to IEWL over the `ld370/tests/fixtures` oracles, wraps it into the IEBCOPY **unloaded-PDS** image (`-iebcopy`, multi-member `--pack`), and wraps THAT into a **TSO TRANSMIT / NETDATA** file (`-xmit`, RECFM=FB80). FB80 uploads byte-clean via mvsMF (the bare unload is RECFM=VS, which mvsMF can't rebuild on upload), and **`RECV370`** installs it into a load library. **Validated 2026-06-19:** `as370→ld370→-xmit` built E2E with zero IFOX/IEWL/IEBCOPY, uploaded, RECV370-installed (`IEB154I`), and ran with **RC=7** — the project endgame (only the final load module touches MVS, via one RECV370 step). Formats: `docs/unload-format.md`, `docs/xmit-format.md`.
 
-**Stage 3 — single-member multi-track DONE & validated on real MVS (2026-06-20):** device-agnostic *one block per track* geometry (each physical block alone on its relative track at R=1, CC/HH wrap at 30 trk/cyl, UDEBX sized to span them). A multi-track single-member load module emitted via `--xmit`, uploaded FB80, RECV370-installed → reloads + runs (RC=7), no `IEB139I`.
+**Stage 3 — single-member multi-track DONE & validated on real MVS (2026-06-20):** device-agnostic *one block per track* geometry (each physical block alone on its relative track at R=1, CC/HH wrap at 30 trk/cyl, UDEBX sized to span them). A multi-track single-member load module emitted via `-xmit`, uploaded FB80, RECV370-installed → reloads + runs (RC=7), no `IEB139I`.
 
-**DEFERRED — multi-member packing (`--pack`: several load modules bundled into ONE `--unload`/`--xmit`).** The one-block-per-track layout places each member's `DL=0` EOF alone on its own track, but a real IEBCOPY unload packs members **contiguously** (the next member continues the R-sequence on the same track; the EOF is just the next record, not on its own track). So RECV370's member-loop reads past the last member and abends (`U0200-09 RECV370 .RECVCTL` / `IEB183I END OF FILE READ ON LOAD DATA SET`). **Single-member (one program = one member) is the practical case and works** — multi-member libraries are parked here. When we pick this up: the fix is contiguous member packing like the XFASM oracle (full diagnosis in the `ld-design-decisions` memory).
+**DEFERRED — multi-member packing (`--pack`: several load modules bundled into ONE `-iebcopy`/`-xmit`).** The one-block-per-track layout places each member's `DL=0` EOF alone on its own track, but a real IEBCOPY unload packs members **contiguously** (the next member continues the R-sequence on the same track; the EOF is just the next record, not on its own track). So RECV370's member-loop reads past the last member and abends (`U0200-09 RECV370 .RECVCTL` / `IEB183I END OF FILE READ ON LOAD DATA SET`). **Single-member (one program = one member) is the practical case and works** — multi-member libraries are parked here. When we pick this up: the fix is contiguous member packing like the XFASM oracle (full diagnosis in the `ld-design-decisions` memory).
 
 Still open (Stage 3): compute INMSIZE/source-DCB + PDS2 user-data for arbitrary members; an mbt host-link backend that ships the XMIT instead of submitting ASM/LINK JCL.
 

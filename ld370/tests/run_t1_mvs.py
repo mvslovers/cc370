@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end: link a real C program against the crent370 runtime entirely on
-the host (cc370 -> as370 -> ld370 --xmit), ship it to MVS as an FB80 XMIT, and
+the host (cc370 -> as370 -> ld370 -xmit), ship it to MVS as an FB80 XMIT, and
 materialise + run it with RECV370.  This is the "a C program runs" milestone.
 
 The chain is fully host-native -- no IFOX00, no IEWL, no IEBCOPY, no TRANSMIT.
@@ -77,8 +77,8 @@ def main():
         fp.write("int main(void) { return 7; }\n")
     obj = os.path.join(args.work, "t1.o")
     lm = os.path.join(args.work, "t1.lm")
-    unl = lm + ".unl"      # ld370 --unload derives <out>.unl
-    xmit = lm + ".xmit"    # ld370 --xmit derives <out>.xmit
+    unl = lm + ".iebcopy"      # ld370 -iebcopy derives <out>.iebcopy
+    xmit = lm + ".xmit"    # ld370 -xmit derives <out>.xmit
 
     sh([CC370, "-O1", "-c", csrc, "-o", obj])
 
@@ -97,7 +97,7 @@ def main():
     rcv_dsn = f"{hlq}.{MEMBER}.RCV"
 
     sh([LD370, "-v", "-o", lm, "--name", MEMBER, "--entry", "@@CRT0",
-        "--unload", "--xmit", "--dsn", xmit_dsn, obj, args.lib])
+        "-iebcopy", "-xmit", "--dsn", xmit_dsn, obj, args.lib])
 
     if args.link_only:
         print(f"\n[link-only] wrote {xmit} -> target {xmit_dsn}")
