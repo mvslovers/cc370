@@ -25,28 +25,36 @@ The top-level `Makefile` drives everything. The toolchain is **one driver
 (`cc370`) plus three standalone tools (`as370`/`ld370`/`ar370`)**:
 
 ```sh
-make            # build the tools (as370 / ld370 / ar370)
+make            # build the WHOLE toolchain: cc370 + as370/ld370/ar370
+make tools      # only the three standalone tools   [fast]
 make gcc        # configure + build the driver (cc370) and cc1   [slow]
 make install    # install into $(PREFIX) (default ~/.local)
 ```
 
-Install layout (a normal cross-toolchain under `$(PREFIX)`):
+Install layout (clean cc370-branded, under `$(PREFIX)`):
 
-- `bin/cc370` — the GCC 3.4.6 driver (the *only* driver); `cc1` →
-  `libexec/gcc/<triple>/<ver>/cc1` (driver-private compiler proper).
-- `<triple>/bin/{as370,ld370,ar370}` (+ `as`/`ld`/`ar`, the names the driver
-  invokes); `bin/{as370,ld370,ar370}` are PATH symlinks that resolve back to the
-  real target-bin binary, so as370's built-in default macro path
-  (`<exedir>/../macros`) still points at the sysroot. **No stopgap `as` wrapper**
-  — the driver invokes the real installed `as370`.
-- `<triple>/{include,lib,macros}` — the crent **libc sysroot** (installed by
-  `make -C ../libc370 install`). cc370 finds `<stdio.h>` with no `-I`; ld370
-  `-lc` pulls `libc.a`; as370 finds the macros with no `-I`.
+- `bin/cc370` — the driver (the *only* driver); `cc1` → `libexec/cc370/1.0.0/cc1`
+  (driver-private compiler proper).
+- `bin/{as370,ld370,ar370}` — the real tool binaries, on PATH.
+- `cc370/bin/{as,ld,ar}` — relative symlinks → `../../bin/*`; this is the driver's
+  **tooldir**, where it looks up `as`/`ld`/`ar` by short name. (Needs the empty
+  `lib/cc370/1.0.0/` dir to exist so the tooldir's relative `..` traversal
+  resolves — `install-gcc` creates it; otherwise the driver falls back to the
+  host assembler.)
+- `cc370/{include,lib}` — the libc370 **compiler sysroot** (installed by
+  `make -C ../libc370 install`); cc370 finds `<stdio.h>` with no `-I`, ld370 `-lc`
+  pulls `libc.a`. `macros/` (assembler macros) goes to `$(PREFIX)/macros`, found by
+  as370 (in `bin/`) via its `<exedir>/../macros` default.
 
+The target name is **`cc370`** — a `config.sub` alias (added near the `mvs)` arm)
+that canonicalizes to the real `i370-ibm-mvspdp` backend, so `config.gcc` is
+unchanged but `target_noncanonical` (hence every install path and `-dumpmachine`)
+is the clean `cc370`. The path version (`1.0.0`, from `gcc/Makefile.in`'s
+`version=`) is a product version, decoupled from the GCC version (still 3.4.6, in
+`version.c`); it is not an ABI gate. The `gcc/` path level is dropped in
+`Makefile.in` (`libsubdir`/`libexecsubdir`/`STANDARD_*_PREFIX`, `unlibsubdir=../..`).
 GCC 3.4.6 is old K&R-ish C; `make gcc` passes the needed `-Wno-*`/`-std=gnu89`
-flags (`GCC_CF` in the Makefile) to configure + `make all-gcc`. The target triple
-is still `i370-ibm-mvspdp` (overridable via `make TRIPLE=…`; renaming it is a
-separate task — nothing in the tools bakes it in). Builds on x86-64 and ARM64.
+flags (`GCC_CF`). Builds on x86-64 and ARM64.
 
 **Optimization: `-O1` only.** `-O2`/`-Os`/`-O3` are UNSAFE on this backend: at `-O2`+ the `-funit-at-a-time` DCE drops `static` tables whose address is held by a global pointer (`static t[]={..}; T *p=t;`) → dangling `=V`/`DC A(@V)` → IFOX RC=8; and `-Os` additionally **miscompiles the rexx parser** (loops → S322). `-O1` is validated correct (rexx370 TSTALLB 84/84, 0 ABEND). This — not the old "3.2.3 memory issues" note — is the real reason for "-O1 only".
 

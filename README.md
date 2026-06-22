@@ -40,20 +40,25 @@ Knobs: `PREFIX` (default `~/.local`), `TRIPLE` (default `i370-ibm-mvspdp`),
 `GCCVER` (default `3.4.6`). After `make install` you get:
 
 ```
-<prefix>/bin/cc370                              the one driver (+ PATH symlinks for the tools)
-<prefix>/libexec/gcc/<triple>/<ver>/cc1         the compiler proper
-<prefix>/<triple>/bin/{as370,ld370,ar370}       the tools (+ as/ld/ar the driver invokes)
+<prefix>/bin/cc370                     the driver
+<prefix>/bin/{as370,ld370,ar370}       the tools (real binaries, on PATH)
+<prefix>/libexec/cc370/1.0.0/cc1       the compiler proper (driver-private)
+<prefix>/cc370/bin/{as,ld,ar}          the driver's tooldir -> ../../bin/* (how it finds as/ld/ar)
+<prefix>/cc370/{include,lib}           the libc370 sysroot (headers, libc.a, crt*.o)
+<prefix>/macros                        as370's macros (libc370)
 ```
 
-Builds on x86-64 and ARM64.
+The target name is `cc370` (a `config.sub` alias for the real `i370-ibm-mvspdp`
+backend); nothing user-facing carries the old triple. Builds on x86-64 and ARM64.
 
 ### Sysroot — where cc370 finds the libc
 
-cc370 searches `<prefix>/<triple>/{include,lib}` by default (the path is derived
-from the driver itself via `-dumpmachine` / `-print-prog-name=cc1`, so renaming
-the triple later needs no edit). [libc370](https://github.com/mvslovers/libc370)
-drops its headers, `libc.a`, the `crt0/1/m.o` startfiles and the assembler macros
-there, after which the toolchain is self-contained:
+cc370 searches `<prefix>/cc370/{include,lib}` by default (the `cc370` component is
+the target name, from `-dumpmachine`). [libc370](https://github.com/mvslovers/libc370)
+drops its headers, `libc.a` and the `crt0/1/m.o` startfiles there, and the
+assembler macros into `<prefix>/macros` (where as370, living in `<prefix>/bin`,
+finds them via its built-in `<exedir>/../macros` default). After that the
+toolchain is self-contained:
 
 ```sh
 make -C ../libc370 install        # populate the sysroot once

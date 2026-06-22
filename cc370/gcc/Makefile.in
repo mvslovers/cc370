@@ -395,7 +395,7 @@ host_hook_obj=@out_host_hook_obj@
 # Be prepared for gcc2 merges.
 gcc_version=@gcc_version@
 gcc_version_trigger=@gcc_version_trigger@
-version=$(gcc_version)
+version=1.0.0
 mainversion=`grep version_string $(srcdir)/version.c | sed -e 's/.*\"\([0-9]*\.[0-9]*\).*/\1/'`
 
 # ------------------------
@@ -424,11 +424,11 @@ libexecdir = @libexecdir@
 # --------
 
 # Directory in which the compiler finds libraries etc.
-libsubdir = $(libdir)/gcc/$(target_noncanonical)/$(version)
+libsubdir = $(libdir)/$(target_noncanonical)/$(version)
 # Directory in which the compiler finds executables
-libexecsubdir = $(libexecdir)/gcc/$(target_noncanonical)/$(version)
+libexecsubdir = $(libexecdir)/$(target_noncanonical)/$(version)
 # Used to produce a relative $(gcc_tooldir) in gcc.o
-unlibsubdir = ../../..
+unlibsubdir = ../..
 # Directory in which to find other cross-compilation tools and headers.
 dollar = @dollar@
 # Used in install-cross.
@@ -1415,8 +1415,8 @@ c-pch.o : c-pch.c $(CONFIG_H) $(SYSTEM_H) coretypes.h $(CPPLIB_H) $(TREE_H) \
 
 DRIVER_DEFINES = \
   -DSTANDARD_STARTFILE_PREFIX=\"$(unlibsubdir)/\" \
-  -DSTANDARD_EXEC_PREFIX=\"$(libdir)/gcc/\" \
-  -DSTANDARD_LIBEXEC_PREFIX=\"$(libexecdir)/gcc/\" \
+  -DSTANDARD_EXEC_PREFIX=\"$(libdir)/\" \
+  -DSTANDARD_LIBEXEC_PREFIX=\"$(libexecdir)/\" \
   -DDEFAULT_TARGET_VERSION=\"$(version)\" \
   -DDEFAULT_TARGET_MACHINE=\"$(target_noncanonical)\" \
   -DSTANDARD_BINDIR_PREFIX=\"$(bindir)/\" \

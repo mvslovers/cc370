@@ -477,6 +477,11 @@ case $1 in
 				basic_machine=i370-ibm
 				basic_os=mvs
 				;;
+			cc370)
+				# cc370 toolchain's clean target name -> i370-ibm-mvspdp backend
+				basic_machine=i370-ibm
+				basic_os=mvspdp
+				;;
 			nacl)
 				basic_machine=le32-unknown
 				basic_os=nacl

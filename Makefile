@@ -1,33 +1,37 @@
 # cc370 -- host-native MVS cross-toolchain build + install.
 #
 # One driver (cc370) plus three standalone tools (as370 / ld370 / ar370).
-# Matches a normal cross-toolchain layout under $(PREFIX):
+# Clean cc370-branded layout under $(PREFIX) (the i370-ibm-mvspdp triple is an
+# internal config.sub alias; nothing user-facing carries it):
 #
-#   bin/cc370                      the GCC 3.4.6 driver (the only "driver")
-#   bin/{as370,ld370,ar370}        PATH symlinks -> the real tools below
-#   libexec/gcc/<triple>/<ver>/cc1 the compiler proper (driver-private)
-#   <triple>/bin/{as370,ld370,ar370} + {as,ld,ar}   the tools (driver finds as/ld here)
-#   <triple>/{include,lib,macros}  the crent libc sysroot (installed by crent370/sdk)
+#   bin/cc370                      the driver (the only "driver")
+#   bin/{as370,ld370,ar370}        the real tools, on PATH
+#   libexec/cc370/1.0.0/cc1        the compiler proper (driver-private)
+#   cc370/bin/{as,ld,ar}           relative symlinks -> ../../bin/* ; the driver's
+#                                  tooldir, where it looks up as/ld/ar by short name
+#   cc370/{include,lib}            the libc370 compiler sysroot
+#   macros/                        as370's macros (libc370); found via <exedir>/../macros
 #
-# The tools live in <triple>/bin so as370's built-in default macro path
-# (<exedir>/../macros) resolves to the sysroot; the bin/ symlinks resolve back
-# to the same real path, so `as370` on PATH still finds the macros.
+# as370's real binary is in bin/, so its default macro path <exedir>/../macros
+# resolves to $(PREFIX)/macros (where libc370 installs them).
 #
-#   make            build the tools
-#   make tools      as370 / ld370 / ar370
+#   make / make all build the whole toolchain (cc370 + as370/ld370/ar370)
+#   make tools      only as370 / ld370 / ar370   [fast]
 #   make gcc        configure + build the driver (cc370) and cc1   [slow]
-#   make install    install tools (+ gcc if built) into $(PREFIX)
+#   make install    install everything into $(PREFIX)
 #   make clean / uninstall / help
 
 PREFIX  ?= $(HOME)/.local
-TRIPLE  ?= i370-ibm-mvspdp
-GCCVER  ?= 3.4.6
+# cc370 is the toolchain's target name (config.sub aliases it to the real
+# i370-ibm-mvspdp backend); it is what shows up in the install paths.
+TRIPLE  ?= cc370
+GCCVER  ?= 1.0.0
 HOSTCC  ?= cc
 CFLAGS  ?= -O2 -Wall -Wextra -Werror
 
 BINDIR  := $(PREFIX)/bin
 TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
-LIBEXEC := $(PREFIX)/libexec/gcc/$(TRIPLE)/$(GCCVER)
+LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(GCCVER)
 
 TOOLS   := as370/as370 ld370/ld370 ar370/ar370
 
@@ -41,7 +45,9 @@ DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: all tools gcc install install-tools install-gcc clean uninstall help
-all: tools
+# `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370).
+# `make tools` is the fast path that builds only the three standalone tools.
+all: tools gcc
 
 # --- standalone tools (normal single-file C binaries) ---------------------
 tools: $(TOOLS)
@@ -67,18 +73,14 @@ gcc: $(BUILD)/config.status
 install: install-tools install-gcc
 
 install-tools: tools
-	mkdir -p $(TGTBIN) $(BINDIR)
-	install -m 755 as370/as370 $(TGTBIN)/as370
-	install -m 755 ld370/ld370 $(TGTBIN)/ld370
-	install -m 755 ar370/ar370 $(TGTBIN)/ar370
-	ln -sf as370 $(TGTBIN)/as          # names the cc370 driver invokes
-	ln -sf ld370 $(TGTBIN)/ld
-	ln -sf ar370 $(TGTBIN)/ar
-	ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370    # PATH access (symlink resolves
-	ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370    # back to the real target-bin
-	ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370    # binary -> macro path still works)
-	rm -f $(LIBEXEC)/as                # drop the obsolete stopgap as-wrapper
-	@echo "installed tools -> $(TGTBIN) (+ PATH symlinks in $(BINDIR))"
+	mkdir -p $(BINDIR) $(TGTBIN)
+	install -m 755 as370/as370 $(BINDIR)/as370    # the real binaries live on PATH
+	install -m 755 ld370/ld370 $(BINDIR)/ld370
+	install -m 755 ar370/ar370 $(BINDIR)/ar370
+	ln -sf ../../bin/as370 $(TGTBIN)/as    # the cc370 driver invokes as/ld/ar from
+	ln -sf ../../bin/ld370 $(TGTBIN)/ld    # its tooldir ($(TRIPLE)/bin); relative
+	ln -sf ../../bin/ar370 $(TGTBIN)/ar    # symlinks keep the tree relocatable
+	@echo "installed tools -> $(BINDIR) (driver tooldir links in $(TGTBIN))"
 
 # install cc1 + the driver renamed to cc370 (needs a prior `make gcc`)
 install-gcc:
@@ -87,6 +89,11 @@ install-gcc:
 	mkdir -p $(LIBEXEC) $(BINDIR)
 	install -m 755 $(CC1) $(LIBEXEC)/cc1
 	install -m 755 $(DRIVER) $(BINDIR)/cc370
+	# The driver locates the tooldir ($(TRIPLE)/bin, where it finds as/ld) by a
+	# path relative to its libsubdir ($(PREFIX)/lib/$(TRIPLE)/$(GCCVER)). We ship
+	# no target libs/specs there, but the dir must exist for that '..' traversal
+	# to resolve -- otherwise the driver falls back to the host assembler.
+	mkdir -p $(PREFIX)/lib/$(TRIPLE)/$(GCCVER)
 	@echo "installed cc370 -> $(BINDIR)/cc370 ; cc1 -> $(LIBEXEC)/cc1"
 
 clean:
@@ -94,7 +101,6 @@ clean:
 
 uninstall:
 	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 \
-	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 \
 	      $(TGTBIN)/as $(TGTBIN)/ld $(TGTBIN)/ar $(LIBEXEC)/cc1
 
 help:
