@@ -13,51 +13,54 @@
 #   cc370/bin/{as370,ld370,ar370}  the real tool binaries
 #   cc370/{include,lib,macros}     the libc370 sysroot (headers, libc.a, crt*.o,
 #                                  + macros; as370 finds them via <exedir>/../macros)
-#   lib/cc370/1.0.0/               GCC's libsubdir: empty (we ship no libgcc) but
-#                                  REQUIRED -- the driver locates the cc370/ sysroot
-#                                  (headers AND -lc) via a path relative to it
+#   lib/cc370/1.0.0/               EMPTY but REQUIRED -- this is GCC's libsubdir
+#                                  (would hold libgcc; we ship none, so it is empty).
+#                                  The compiler driver locates the cc370/ sysroot --
+#                                  both <stdio.h> and -lc -- via a path relative to
+#                                  it; remove it and the link fails ("cannot find
+#                                  -lc"). Created by install-compiler. Leave it be.
 #
-#   make / make all build the whole toolchain (cc370 + as370/ld370/ar370)
+#   make / make all build the whole toolchain (cc370 + as370/ld370/ar370 + man)
 #   make tools      only as370 / ld370 / ar370   [fast]
-#   make gcc        configure + build the driver (cc370) and cc1   [slow]
-#   make install    install everything into $(PREFIX)
+#   make compiler   configure + build the driver (cc370) and cc1   [slow]
+#   make install    build (if needed) + install everything into $(PREFIX)
 #   make clean / uninstall / help
 
 PREFIX  ?= $(HOME)/.local
 # cc370 is the toolchain's target name (config.sub aliases it to the real
 # i370-ibm-mvspdp backend); it is what shows up in the install paths.
 TRIPLE  ?= cc370
-GCCVER  ?= 1.0.0
+VERSION ?= 1.0.0
 HOSTCC  ?= cc
 CFLAGS  ?= -O2 -Wall -Wextra -Werror
 
 BINDIR  := $(PREFIX)/bin
 TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
-LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(GCCVER)
+LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(VERSION)
 MANDIR  := $(PREFIX)/share/man/man1
 
 TOOLS   := as370/as370 ld370/ld370 ar370/ar370
-# man pages: one .pod per tool -> pod2man -> .1 (the same path GCC uses)
+# man pages: one .pod per tool -> pod2man -> .1
 MANPODS := $(wildcard man/*.pod)
 MAN1    := $(MANPODS:.pod=.1)
 
-# --- GCC (driver + cc1) build, out-of-tree in build/ ----------------------
-# Old K&R-ish 3.4.6 sources on a modern host gcc: the -Wno-* downgrade gcc-14's
-# default *errors* (implicit-int etc.) so the build compiles; -w silences the
-# (harmless) warning noise from the upstream sources we don't modify. Errors
-# still show. -w rides in CFLAGS so it reaches every sub-build (GCC's own
-# WARN_CFLAGS can't be overridden from the top -- it sits after $(CFLAGS)).
-GCC_CF  := -g -O0 -fcommon -std=gnu89 -w -Wno-implicit-int \
-           -Wno-implicit-function-declaration -Wno-int-conversion -Wno-error \
-           -Wno-return-type -Wno-deprecated-non-prototype
+# --- compiler (cc370 driver + cc1) build, out-of-tree in build/ -----------
+# The compiler is a GCC 3.4.6 fork built as old K&R-ish C on a modern host:
+# the -Wno-* downgrade gcc-14's default *errors* (implicit-int etc.) so it
+# compiles; -w silences the (harmless) warning noise from the upstream sources
+# we don't modify. Errors still show. -w rides in CFLAGS so it reaches every
+# sub-build (the build's own WARN_CFLAGS can't be overridden from the top).
+COMPILER_CF := -g -O0 -fcommon -std=gnu89 -w -Wno-implicit-int \
+               -Wno-implicit-function-declaration -Wno-int-conversion -Wno-error \
+               -Wno-return-type -Wno-deprecated-non-prototype
 BUILD   := build
 DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
-.PHONY: all tools gcc man install install-tools install-gcc install-man clean uninstall help
+.PHONY: all tools compiler man install install-tools install-compiler install-man clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
-all: tools gcc man
+all: tools compiler man
 
 # --- standalone tools (normal single-file C binaries) ---------------------
 tools: $(TOOLS)
@@ -71,21 +74,21 @@ ar370/ar370: ar370/src/ar370.c
 # --- man pages (one .pod per tool -> pod2man -> .1) -----------------------
 man: $(MAN1)
 man/%.1: man/%.pod
-	pod2man --section=1 --center="cc370 toolchain" --release="cc370 $(GCCVER)" $< > $@
+	pod2man --section=1 --center="cc370 toolchain" --release="cc370 $(VERSION)" $< > $@
 
-# --- driver + cc1 (GCC autotools) -----------------------------------------
+# --- compiler: the cc370 driver + cc1 (a GCC 3.4.6 autotools build) -------
 $(BUILD)/config.status:
 	mkdir -p $(BUILD)
-	cd $(BUILD) && CFLAGS="$(GCC_CF)" CFLAGS_FOR_BUILD="$(GCC_CF)" ../cc370/configure \
+	cd $(BUILD) && CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)" ../cc370/configure \
 	    --target=$(TRIPLE) --enable-languages=c --disable-threads --disable-nls \
 	    --disable-shared --without-headers \
 	    --with-gcc-version-trigger=../cc370/gcc/version.c
 
-gcc: $(BUILD)/config.status
-	$(MAKE) -C $(BUILD) all-gcc CFLAGS="$(GCC_CF)" CFLAGS_FOR_BUILD="$(GCC_CF)"
+compiler: $(BUILD)/config.status
+	$(MAKE) -C $(BUILD) all-gcc CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
 
 # --- install --------------------------------------------------------------
-install: install-tools install-gcc install-man
+install: install-tools install-compiler install-man
 
 # Real tool binaries -> $(TGTBIN) (the sysroot bin); $(BINDIR) gets PATH symlinks
 # and $(LIBEXEC) gets the driver's tooldir symlinks (both relative -> relocatable).
@@ -102,14 +105,11 @@ install-tools: tools
 	@ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar
 	@echo "installed tools -> $(TGTBIN) (PATH links $(BINDIR), tooldir links $(LIBEXEC))"
 
-# cc1 (driver-private) + the driver as cc370.  Also creates GCC's libsubdir
-# $(PREFIX)/lib/$(TRIPLE)/$(GCCVER): empty (we ship no libgcc) but it MUST exist --
-# the driver locates the whole $(TRIPLE)/ sysroot (headers AND -lc) via a path
-# relative to it; without it you get "cannot find -lc".  Needs a prior `make gcc`.
-install-gcc:
-	@test -x $(DRIVER) -a -x $(CC1) || { \
-	  echo "no driver/cc1 in $(BUILD) -- run 'make gcc' first (slow)"; exit 1; }
-	@mkdir -p $(LIBEXEC) $(BINDIR) $(PREFIX)/lib/$(TRIPLE)/$(GCCVER)
+# cc1 (driver-private) + the driver as cc370.  Depends on `compiler`, so
+# `make install` builds it when needed (no more half-install).  Also creates the
+# empty libsubdir $(PREFIX)/lib/$(TRIPLE)/$(VERSION) -- see the note at the top.
+install-compiler: compiler
+	@mkdir -p $(LIBEXEC) $(BINDIR) $(PREFIX)/lib/$(TRIPLE)/$(VERSION)
 	@install -m 755 $(CC1) $(LIBEXEC)/cc1
 	@install -m 755 $(DRIVER) $(BINDIR)/cc370
 	@echo "installed cc370 -> $(BINDIR)/cc370 ; cc1 -> $(LIBEXEC)/cc1"

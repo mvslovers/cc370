@@ -31,13 +31,14 @@ GCC 3.4.6 is old K&R-ish C; a modern clang/gcc host must be told not to error on
 it. The top-level `Makefile` wraps the whole thing:
 
 ```sh
-make            # build the tools (as370, ld370, ar370)
-make gcc        # build the driver (cc370) + the compiler proper (cc1), out-of-tree in build/
-make install    # install everything under $(PREFIX)  (default ~/.local)
+make            # build the whole toolchain: cc370 + as370/ld370/ar370 + man pages
+make tools      # only the three tools (fast; skips the slow compiler build)
+make compiler   # just the driver (cc370) + the compiler proper (cc1), out-of-tree in build/
+make install    # build (if needed) + install everything under $(PREFIX) (default ~/.local)
 ```
 
-Knobs: `PREFIX` (default `~/.local`), `TRIPLE` (default `i370-ibm-mvspdp`),
-`GCCVER` (default `3.4.6`). After `make install` you get:
+Knobs: `PREFIX` (default `~/.local`), `TRIPLE` (default `cc370`),
+`VERSION` (default `1.0.0`). After `make install` you get:
 
 ```
 <prefix>/bin/cc370                          the driver
@@ -89,7 +90,7 @@ as370/   src/ include/ tests/   as370 — host-native MVS assembler  (as370/READ
 ld370/   src/ tests/            ld370 — host-native linker (replaces IEWL)
 ar370/   src/                   ar370 — .a archiver (ld370 autocalls against it)
 docs/                           object / load-module / unload / xmit formats + roadmap
-Makefile                        builds the tools (make) + the compiler (make gcc)
+Makefile                        make (whole toolchain) / make tools / make compiler
 ```
 
 Deep dives: [`CLAUDE.md`](CLAUDE.md) (architecture + gotchas),
@@ -124,10 +125,10 @@ What this snapshot carries over stock GCC 3.4.6:
   (other GCC targets, other-language front ends, the test suite, other-language
   runtimes), then the leftover build cruft (changelogs, contrib, stale objects).
 
-### Building GCC by hand
+### Building the compiler by hand
 
-`make gcc` wraps this; the equivalent direct invocation (GCC 3.4.6 needs the
-old-C `-Wno-*` flags on a modern host):
+`make compiler` wraps this; the equivalent direct invocation (the GCC 3.4.6 fork
+needs the old-C `-w`/`-Wno-*` flags on a modern host):
 
 ```sh
 CF="-g -O0 -fcommon -std=gnu89 -Wno-implicit-int -Wno-implicit-function-declaration \
