@@ -1076,6 +1076,43 @@ static const char *basename_member(const char *path)
     return nm8;
 }
 
+/* derive a member name from a file path for --pack: strip the directory and the
+ * final extension, uppercase the rest (do NOT truncate -- the caller validates
+ * the length so an over-long name is reported, not silently cut). */
+static const char *member_from_path(const char *path)
+{
+    static char nmbuf[256]; const char *s = path, *p, *dot; size_t len, i;
+    for (p = path; *p; p++) if (*p == '/' || *p == '\\') s = p + 1;
+    len = strlen(s);
+    dot = strrchr(s, '.');
+    if (dot && dot != s) len = (size_t)(dot - s);          /* drop final extension */
+    if (len >= sizeof nmbuf) len = sizeof nmbuf - 1;
+    for (i = 0; i < len; i++) {
+        char c = s[i];
+        nmbuf[i] = (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c;
+    }
+    nmbuf[len] = 0;
+    return nmbuf;
+}
+
+/* a conformant MVS PDS member name: 1-8 chars, first alphabetic or national
+ * (@ # $), the rest alphanumeric or national.  Case-insensitive (the name is
+ * uppercased when the 8-byte EBCDIC member name is built). */
+static int valid_member_name(const char *name)
+{
+    size_t i, n = strlen(name);
+    if (n < 1 || n > 8) return 0;
+    for (i = 0; i < n; i++) {
+        char c = name[i];
+        int alpha = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                    c == '@' || c == '#' || c == '$';
+        int digit = (c >= '0' && c <= '9');
+        if (i == 0) { if (!alpha) return 0; }
+        else if (!alpha && !digit) return 0;
+    }
+    return 1;
+}
+
 /* resolve -lNAME to lib<NAME>.a in the -L dirs (then '.') and load it */
 static int load_lib(const char *name, char **Ldir, int nLdir)
 {
@@ -1103,12 +1140,12 @@ static const char *with_suffix(char *buf, size_t n, const char *base, const char
 
 int main(int argc, char **argv)
 {
-    const char *outfile = NULL, *unloadfile = NULL, *unloadfrom = NULL, *mname = NULL;
+    const char *outfile = NULL, *unloadfile = NULL, *mname = NULL;
     const char *xmitfile = NULL, *dsn = NULL, *entryname = NULL;
     const char *objfiles[MAXOBJ];
     char *packspec[MAXOBJ], *Ldir[32];
     const char *incspec[64]; int ninc = 0;
-    int nobjf = 0, npack = 0, nLdir = 0, i, j;
+    int nobjf = 0, npack = 0, nLdir = 0, pack_mode = 0, i, j;
     int want_xmit = 0, want_unload = 0;          /* -xmit/-iebcopy: no-arg format flags (additive) */
     char xmitbuf[2048], unlbuf[2048];            /* derived <out>.xmit / <out>.iebcopy names */
     FILE *f;
@@ -1116,7 +1153,6 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-o") && i + 1 < argc) outfile = argv[++i];
         else if (!strcmp(argv[i], "-iebcopy")) want_unload = 1;   /* also emit OUT.iebcopy (unloaded PDS) */
-        else if (!strcmp(argv[i], "--unload-from") && i + 1 < argc) unloadfrom = argv[++i];
         else if (!strcmp(argv[i], "-xmit")) want_xmit = 1;        /* also emit OUT.xmit (TSO TRANSMIT) */
         /* NB: no -lmod flag -- it would collide with -l (link libmod.a); the
            load-module member at -o is the default output, no flag needed. */
@@ -1124,7 +1160,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
         else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc && ninc < 64) incspec[ninc++] = argv[++i];
-        else if (!strcmp(argv[i], "--pack") && i + 1 < argc && npack < MAXOBJ) packspec[npack++] = argv[++i];
+        else if (!strcmp(argv[i], "--pack")) pack_mode = 1;       /* positional args after this are members to pack */
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
         else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
@@ -1132,6 +1168,7 @@ int main(int argc, char **argv)
         else if (!strncmp(argv[i], "-L", 2)) { if (nLdir < 32) Ldir[nLdir++] = argv[i] + 2; }
         else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
         else if (!strncmp(argv[i], "-l", 2)) { if (load_lib(argv[i] + 2, Ldir, nLdir)) return 1; }
+        else if (pack_mode && npack < MAXOBJ) packspec[npack++] = argv[i];   /* member to pack */
         else if (ends_with(argv[i], ".a")) { if (load_archive(argv[i])) return 1; }
         else if (nobjf < MAXOBJ) objfiles[nobjf++] = argv[i];
     }
@@ -1143,43 +1180,44 @@ int main(int argc, char **argv)
      * host->MVS transport wrappers).  They never replace the member -- e.g.
      * `ld370 -o app -xmit` writes both `app` (LMOD) and `app.xmit`. */
 
-    /* --- standalone wrap: an existing flat member, no object linking.
-     *     ld370 --unload-from MEMBER.lm -o OUT [--name NAME] [-iebcopy] [-xmit] --- */
-    if (unloadfrom) {
-        static unsigned char memb[1 << 20];
-        long mlen; const char *name;
-        if (!outfile) { fprintf(stderr, "ld370: --unload-from needs -o OUT (base name)\n"); return 2; }
-        if (!want_unload && !want_xmit) { fprintf(stderr, "ld370: --unload-from needs -iebcopy and/or -xmit\n"); return 2; }
-        f = fopen(unloadfrom, "rb");
-        if (!f) { perror(unloadfrom); return 1; }
-        mlen = (long)fread(memb, 1, sizeof memb, f);
-        fclose(f);
-        name = mname ? mname : basename_member(unloadfrom);
-        if (want_unload && write_unload(with_suffix(unlbuf, sizeof unlbuf, outfile, ".iebcopy"), name, memb, mlen, -1, -1)) return 1;
-        if (want_xmit && write_xmit1(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), name, memb, mlen, dsn, -1, -1)) return 1;
-        return 0;
-    }
-
-    /* --- multi-member: pack several flat members into one image/library.
-     *     ld370 --pack NAME1=FILE1 --pack NAME2=FILE2 ... -o OUT [-iebcopy] [-xmit]
-     *     (single-track geometry: total records must fit one track for now) --- */
+    /* --- pack pre-built load-module members into one transport image/library.
+     *     ld370 --pack M1.lm M2.lm ... -o OUT [-xmit] [-iebcopy] [NAME=FILE ...]
+     *   No linking: each input is an already-built flat member.  One member is the
+     *   common case (== the old --unload-from); 2+ build a multi-member library.
+     *   The member name comes from the file's basename (extension stripped,
+     *   uppercased) unless given explicitly as NAME=FILE.  --pack only ever emits a
+     *   container, so with neither flag it defaults to -xmit. --- */
     if (npack) {
         struct umember m[MAXOBJ]; int rc = 0;
         if (!outfile) { fprintf(stderr, "ld370: --pack needs -o OUT (base name)\n"); return 2; }
-        if (!want_unload && !want_xmit) { fprintf(stderr, "ld370: --pack needs -iebcopy and/or -xmit\n"); return 2; }
+        if (!want_unload && !want_xmit) want_xmit = 1;   /* container-only: default to xmit */
         memset(m, 0, sizeof m);
         for (i = 0; i < npack; i++) {
-            char *eq = strchr(packspec[i], '='); long n; unsigned char *buf; size_t got;
-            if (!eq) { fprintf(stderr, "ld370: bad --pack '%s' (need NAME=FILE)\n", packspec[i]); return 2; }
-            *eq = 0;
-            f = fopen(eq + 1, "rb");
-            if (!f) { perror(eq + 1); return 1; }
+            char *spec = packspec[i], *eq = strchr(spec, '=');
+            const char *file, *name; long n; unsigned char *buf; size_t got;
+            if (eq) {                                    /* NAME=FILE: explicit member name */
+                *eq = 0; name = spec; file = eq + 1;
+                if (!valid_member_name(name)) {
+                    fprintf(stderr, "ld370: invalid member name '%s' in --pack (1-8 chars, "
+                                    "letter or @#$ first, then letters/digits/@#$)\n", name);
+                    return 2;
+                }
+            } else {                                     /* derive the name from the basename */
+                file = spec; name = member_from_path(file);
+                if (!valid_member_name(name)) {
+                    fprintf(stderr, "ld370: cannot derive a valid MVS member name from '%s' (got '%s')\n"
+                                    "       give it explicitly as NAME=%s\n", file, name, file);
+                    return 2;
+                }
+            }
+            f = fopen(file, "rb");
+            if (!f) { perror(file); return 1; }
             fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
-            buf = malloc((size_t)n);
+            buf = malloc((size_t)(n > 0 ? n : 1));
             if (!buf) { fclose(f); fprintf(stderr, "ld370: out of memory\n"); return 1; }
             got = fread(buf, 1, (size_t)n, f); (void)got; fclose(f);
-            member_name(m[i].name, packspec[i]); m[i].bytes = buf; m[i].len = n;
-            m[i].entry = -1; m[i].modlen = -1;          /* multi-member: echo dir template */
+            member_name(m[i].name, name); m[i].bytes = buf; m[i].len = n;
+            m[i].entry = -1; m[i].modlen = -1;           /* TODO: compute PDS2 entry/modlen from the member */
         }
         if (want_unload) rc = write_unload_mem(with_suffix(unlbuf, sizeof unlbuf, outfile, ".iebcopy"), m, npack);
         if (!rc && want_xmit) rc = write_xmit(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), m, npack, dsn);
@@ -1201,8 +1239,9 @@ int main(int argc, char **argv)
                 "             [-xmit] [-iebcopy] [--dsn DS] [--name N] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
-                "       ld370 --unload-from MEMBER.lm -o OUT [--name N] [-xmit] [-iebcopy]\n"
-                "       ld370 --pack N1=M1.lm [--pack N2=M2.lm ...] -o OUT [-xmit] [-iebcopy]\n");
+                "       ld370 --pack M1.lm [M2.lm ...] -o OUT [-xmit] [-iebcopy]\n"
+                "         pack pre-built member(s) into OUT.xmit / OUT.iebcopy (no linking);\n"
+                "         member name = file basename, or NAME=FILE to set it; default -xmit.\n");
         return 2;
     }
 

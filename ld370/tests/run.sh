@@ -60,7 +60,7 @@ run_case klein  klein.bin  klein.s      # ENTRY/LD (-> composite LR) + RLD SAMER
 # installs (IEB154I) and runs (RC=7) through the multi-track emitter.
 run_unload() {
     name=$1; member=$2; mname=$3
-    "$LD" --unload-from "$FIX/$member" --name "$mname" -o "$TMP/$name" -iebcopy \
+    "$LD" --pack "$mname=$FIX/$member" -o "$TMP/$name" -iebcopy \
         || { echo "ld370 -iebcopy failed: $name"; fails=$((fails + 1)); return; }
     printf '\n=== unload %s ===\n' "$name"
     python3 ld370/tests/unload_check.py "$TMP/$name.iebcopy" "$mname=$FIX/$member" \
@@ -74,7 +74,7 @@ run_unload e2e e2e.iewl-member.bin E2E
 # byte-faithfully.  Validated end-to-end on MVS: the FB80 upload RECV370-installs
 # (IEB154I) and the member runs (RC=7) through the multi-track emitter.
 printf '\n=== xmit e2e ===\n'
-if "$LD" --unload-from "$FIX/e2e.iewl-member.bin" --name E2E --dsn IBMUSER.E2E.LOAD \
+if "$LD" --pack "E2E=$FIX/e2e.iewl-member.bin" --dsn IBMUSER.E2E.LOAD \
         -o "$TMP/e2e" -iebcopy -xmit 2>/dev/null; then
     python3 ld370/tests/xmit_check.py "$TMP/e2e.xmit" "$TMP/e2e.iebcopy" \
         || fails=$((fails + 1))
@@ -86,7 +86,7 @@ fi
 # non-sorted input order) and confirm both reconstruct + the directory is
 # name-sorted.  No byte oracle -- structural round-trip only (single track).
 printf '\n=== pack tiny+rldt (multi-member) ===\n'
-if "$LD" --pack TINY="$TMP/tiny.ld.bin" --pack RLDT="$TMP/rldt.ld.bin" \
+if "$LD" --pack "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" \
         -o "$TMP/lib2" -iebcopy 2>/dev/null; then
     python3 ld370/tests/unload_check.py "$TMP/lib2.iebcopy" \
         "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" || fails=$((fails + 1))

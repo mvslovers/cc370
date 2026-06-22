@@ -121,5 +121,5 @@ records), then:
 * **Open:** compute `INMSIZE`/source-DCB for arbitrary members (Stage-3
   generalisation); multi-track unload geometry for large libraries; an mbt
   host-assembly/link backend that ships the XMIT instead of submitting ASM/LINK
-  JCL. The merge-separate-XMITs tool is deprioritised — `--pack --xmit` builds a
-  multi-member library XMIT directly.
+  JCL. The merge-separate-XMITs tool is deprioritised — `ld370 --pack m1.lm
+  m2.lm -o out` builds a multi-member library XMIT directly (default `-xmit`).

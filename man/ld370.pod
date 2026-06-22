@@ -4,24 +4,21 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 
 =head1 SYNOPSIS
 
-B<ld370> [B<-v>] B<-o> I<out.bin> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
-[B<--entry> I<name>] [B<--unload> I<u>] [B<--xmit> I<x> [B<--dsn> I<ds>]]
-[B<--name> I<n>] I<obj>...
+B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
+[B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] I<obj>...
 
-B<ld370> B<--unload-from> I<member.lm> [B<--name> I<n>] [B<--unload> I<u>] [B<--xmit> I<x>]
-
-B<ld370> B<--pack> I<n1>=I<m1.lm> [B<--pack> I<n2>=I<m2.lm> ...] [B<--unload> I<u>] [B<--xmit> I<x>]
+B<ld370> B<--pack> I<m1.lm> [I<m2.lm> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
 
 =head1 DESCRIPTION
 
 B<ld370> links one or more OS/360 object decks into an MVS load module on the
 host, replacing the mainframe linkage editor (B<IEWL>); the member it produces is
 byte-identical to IEWL's. It performs automatic library call against B<.a>
-archives (see L<ar370(1)>), and can wrap the result for transport to MVS: an
-IEBCOPY unloaded-PDS image (B<--unload>) and a TSO TRANSMIT / NETDATA file
-(B<--xmit>, RECFM=FB80) that uploads cleanly and installs with C<RECV370>.
+archives (see L<ar370(1)>), and can additionally wrap the result for transport to
+MVS: an IEBCOPY unloaded-PDS image (B<-iebcopy>) and a TSO TRANSMIT / NETDATA file
+(B<-xmit>, RECFM=FB80) that uploads cleanly and installs with C<RECV370>.
 
-It is invoked automatically by L<cc370(1)> for the F<.lm>/F<.xmit> stages.
+It is invoked automatically by L<cc370(1)> for the link/transport stages.
 
 =head1 OPTIONS
 
@@ -29,8 +26,8 @@ It is invoked automatically by L<cc370(1)> for the F<.lm>/F<.xmit> stages.
 
 =item B<-o> I<out>
 
-Output file. The extension selects the form: F<.o> a single object, F<.lm> a load
-module image, F<.xmit> a packaged NETDATA transmit file.
+The load-module member to write (defaults to F<a.out>). This member is always
+written; the transport wrappers below are B<additive> and never replace it.
 
 =item B<-e>, B<--entry> I<name>
 
@@ -45,35 +42,41 @@ strong external references fail the link unless B<--allow-unresolved> is given.
 
 Force-include an archive member even if nothing references it.
 
-=item B<--unload> I<u>
+=item B<-iebcopy>
 
-Also write the IEBCOPY unloaded-PDS image to I<u>.
+Also write the IEBCOPY unloaded-PDS image to I<out>F<.iebcopy>.
 
-=item B<--xmit> I<x> [B<--dsn> I<ds>]
+=item B<-xmit>
 
-Write a TSO TRANSMIT (NETDATA) file to I<x>, optionally naming the dataset I<ds>.
+Also write a TSO TRANSMIT (NETDATA) file to I<out>F<.xmit>.
+
+=item B<--dsn> I<ds>
+
+Name the target dataset recorded in the XMIT (default F<IBMUSER.HOST.LOAD>).
 
 =item B<--name> I<n>
 
-Set the PDS member name.
+Set the PDS member name (otherwise derived from I<out>'s basename).
 
-=item B<--unload-from> I<member.lm>
+=item B<--pack> I<m1.lm> [I<m2.lm> ...]
 
-Wrap a pre-built load-module member (rather than linking objects).
-
-=item B<--pack> I<name>=I<member.lm>
-
-Bundle several load modules into one unload/xmit (repeatable).
+Pack one or more B<pre-built> load-module members into the transport
+image(s) I<out>F<.xmit> / I<out>F<.iebcopy> without linking. One member is the
+common case; two or more build a multi-member library. Each member's name is the
+file's basename (extension stripped, uppercased); if that is not a valid MVS
+member name, give it explicitly as I<NAME>=I<FILE>. Because B<--pack> only ever
+produces a container, it defaults to B<-xmit> when neither B<-xmit> nor
+B<-iebcopy> is given.
 
 =item B<-v>
 
-Print the linker version.
+Verbose: trace the link / pack phases on stderr.
 
 =back
 
 =head1 SEE ALSO
 
-L<cc370(1)>, L<as370(1)>, L<ar370(1)>
+L<cc370(1)>, L<as370(1)>, L<ar370(1)>, L<file370(1)>
 
 =head1 AUTHOR
 
