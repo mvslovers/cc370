@@ -59,8 +59,41 @@ def check(host_path, unload_path):
         print("  FAIL: XMIT payload (%d B) != unload image (%d B)" % (len(payload), len(unload)))
         ok = False
 
+    # transport guard: IEBCOPY LOAD reads SYSUT1 one VS logical record at a time;
+    # a member's data packed BEHIND another member's DL=0 EOF in the same logical
+    # record is lost on reload (every 2-member layout abended IEB183I this way,
+    # regardless of unload geometry -- the sim cannot see this, it works on the
+    # unload image, not the XMIT framing).  Assert no count-record follows a DL=0
+    # within one data logical record.  (COPYR1/COPYR2 are raw env-header records,
+    # not count-prefixed, so skip the 328-byte header.)
+    ENV_HDR = 328
+    def be16(b, o):
+        return (b[o] << 8) | b[o + 1]
+    off, packed = 0, False
+    for c, r in recs:
+        if c:
+            continue
+        start, off = off, off + len(r)
+        if start < ENV_HDR:                 # COPYR1 / COPYR2 (no count field)
+            continue
+        q, saw_eof = 0, False
+        while q + 12 <= len(r):
+            if saw_eof:                     # a count-record follows a DL=0 -> packed
+                packed = True
+                break
+            kl, dl = r[q + 9], be16(r, q + 10)
+            if dl == 0:
+                saw_eof = True
+            q += 12 + kl + dl
+        if packed:
+            break
+    if packed:
+        print("  FAIL: member data packed behind a DL=0 EOF in one VS record "
+              "-> reload loses members after the first (IEB183I)")
+        ok = False
+
     if ok:
-        print("  OK: FB80, INMR01/02/03/06 present, payload == unload image")
+        print("  OK: FB80, INMR01/02/03/06 present, payload == unload, per-member VS framing")
     return ok
 
 
