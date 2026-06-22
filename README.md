@@ -40,25 +40,30 @@ Knobs: `PREFIX` (default `~/.local`), `TRIPLE` (default `i370-ibm-mvspdp`),
 `GCCVER` (default `3.4.6`). After `make install` you get:
 
 ```
-<prefix>/bin/cc370                     the driver
-<prefix>/bin/{as370,ld370,ar370}       the tools (real binaries, on PATH)
-<prefix>/libexec/cc370/1.0.0/cc1       the compiler proper (driver-private)
-<prefix>/cc370/bin/{as,ld,ar}          the driver's tooldir -> ../../bin/* (how it finds as/ld/ar)
-<prefix>/cc370/{include,lib}           the libc370 sysroot (headers, libc.a, crt*.o)
-<prefix>/macros                        as370's macros (libc370)
+<prefix>/bin/cc370                          the driver
+<prefix>/bin/{as370,ld370,ar370}            symlinks -> ../cc370/bin/* (PATH access)
+<prefix>/libexec/cc370/1.0.0/cc1            the compiler proper (driver-private)
+<prefix>/libexec/cc370/1.0.0/{as,ld,ar}     symlinks beside cc1; the driver's tooldir
+<prefix>/cc370/bin/{as370,ld370,ar370}      the real tool binaries
+<prefix>/cc370/{include,lib,macros}         the libc370 sysroot (headers, libc.a, crt*.o, macros)
+<prefix>/lib/cc370/1.0.0/                    empty: GCC's libsubdir, but required (see below)
 ```
 
 The target name is `cc370` (a `config.sub` alias for the real `i370-ibm-mvspdp`
-backend); nothing user-facing carries the old triple. Builds on x86-64 and ARM64.
+backend); nothing user-facing carries the old triple. Everything for the target
+lives in one `cc370/` tree; only the user-facing binaries sit on `PATH`. The
+empty `lib/cc370/1.0.0/` is GCC's *libsubdir*: it holds no libgcc (we ship none),
+but the driver locates the whole `cc370/` sysroot — both `<stdio.h>` and `-lc` —
+via a path relative to it, so it must exist. Builds on x86-64 and ARM64.
 
 ### Sysroot — where cc370 finds the libc
 
 cc370 searches `<prefix>/cc370/{include,lib}` by default (the `cc370` component is
 the target name, from `-dumpmachine`). [libc370](https://github.com/mvslovers/libc370)
-drops its headers, `libc.a` and the `crt0/1/m.o` startfiles there, and the
-assembler macros into `<prefix>/macros` (where as370, living in `<prefix>/bin`,
-finds them via its built-in `<exedir>/../macros` default). After that the
-toolchain is self-contained:
+drops its headers, `libc.a`, the `crt0/1/m.o` startfiles and the assembler macros
+all under `<prefix>/cc370/` (`include`, `lib`, `macros`); as370, whose real binary
+lives in `<prefix>/cc370/bin`, finds the macros via its `<exedir>/../macros`
+default. After that the toolchain is self-contained:
 
 ```sh
 make -C ../libc370 install        # populate the sysroot once

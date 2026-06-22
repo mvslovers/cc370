@@ -31,20 +31,23 @@ make gcc        # configure + build the driver (cc370) and cc1   [slow]
 make install    # install into $(PREFIX) (default ~/.local)
 ```
 
-Install layout (clean cc370-branded, under `$(PREFIX)`):
+Install layout (clean cc370-branded, under `$(PREFIX)`): everything for the target
+lives in one `cc370/` tree; only the user-facing binaries sit on PATH.
 
-- `bin/cc370` — the driver (the *only* driver); `cc1` → `libexec/cc370/1.0.0/cc1`
-  (driver-private compiler proper).
-- `bin/{as370,ld370,ar370}` — the real tool binaries, on PATH.
-- `cc370/bin/{as,ld,ar}` — relative symlinks → `../../bin/*`; this is the driver's
-  **tooldir**, where it looks up `as`/`ld`/`ar` by short name. (Needs the empty
-  `lib/cc370/1.0.0/` dir to exist so the tooldir's relative `..` traversal
-  resolves — `install-gcc` creates it; otherwise the driver falls back to the
-  host assembler.)
-- `cc370/{include,lib}` — the libc370 **compiler sysroot** (installed by
-  `make -C ../libc370 install`); cc370 finds `<stdio.h>` with no `-I`, ld370 `-lc`
-  pulls `libc.a`. `macros/` (assembler macros) goes to `$(PREFIX)/macros`, found by
-  as370 (in `bin/`) via its `<exedir>/../macros` default.
+- `bin/cc370` — the driver (the *only* driver). `bin/{as370,ld370,ar370}` are
+  symlinks → `../cc370/bin/*` for PATH access.
+- `libexec/cc370/1.0.0/cc1` — the driver-private compiler proper; beside it,
+  `{as,ld,ar}` symlinks → `../../../cc370/bin/*` are the driver's **tooldir** (it
+  looks up `as`/`ld`/`ar` there by short name).
+- `cc370/bin/{as370,ld370,ar370}` — the **real** tool binaries.
+- `cc370/{include,lib,macros}` — the libc370 **sysroot** (installed by
+  `make -C ../libc370 install`): cc370 finds `<stdio.h>` with no `-I`, ld370 `-lc`
+  pulls `libc.a`, and as370 (real in `cc370/bin`) finds the macros via its
+  `<exedir>/../macros` default.
+- `lib/cc370/1.0.0/` — GCC's **libsubdir**. Empty (we ship no libgcc) but it MUST
+  exist: the driver locates the whole `cc370/` sysroot (headers AND `-lc`) via a
+  path relative to it. Remove it and you get "cannot find -lc". `install-gcc`
+  creates it.
 
 The target name is **`cc370`** — a `config.sub` alias (added near the `mvs)` arm)
 that canonicalizes to the real `i370-ibm-mvspdp` backend, so `config.gcc` is

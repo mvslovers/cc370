@@ -1,19 +1,21 @@
 # cc370 -- host-native MVS cross-toolchain build + install.
 #
 # One driver (cc370) plus three standalone tools (as370 / ld370 / ar370).
-# Clean cc370-branded layout under $(PREFIX) (the i370-ibm-mvspdp triple is an
-# internal config.sub alias; nothing user-facing carries it):
+# Clean cc370-branded layout under $(PREFIX): everything for the target lives in
+# one cc370/ tree; only the user-facing binaries sit on PATH.  (The
+# i370-ibm-mvspdp triple is an internal config.sub alias; nothing here carries it.)
 #
 #   bin/cc370                      the driver (the only "driver")
-#   bin/{as370,ld370,ar370}        the real tools, on PATH
+#   bin/{as370,ld370,ar370}        symlinks -> ../cc370/bin/* (PATH access)
 #   libexec/cc370/1.0.0/cc1        the compiler proper (driver-private)
-#   cc370/bin/{as,ld,ar}           relative symlinks -> ../../bin/* ; the driver's
-#                                  tooldir, where it looks up as/ld/ar by short name
-#   cc370/{include,lib}            the libc370 compiler sysroot
-#   macros/                        as370's macros (libc370); found via <exedir>/../macros
-#
-# as370's real binary is in bin/, so its default macro path <exedir>/../macros
-# resolves to $(PREFIX)/macros (where libc370 installs them).
+#   libexec/cc370/1.0.0/{as,ld,ar} symlinks beside cc1; the driver's tooldir,
+#                                  where it looks up as/ld/ar by short name
+#   cc370/bin/{as370,ld370,ar370}  the real tool binaries
+#   cc370/{include,lib,macros}     the libc370 sysroot (headers, libc.a, crt*.o,
+#                                  + macros; as370 finds them via <exedir>/../macros)
+#   lib/cc370/1.0.0/               GCC's libsubdir: empty (we ship no libgcc) but
+#                                  REQUIRED -- the driver locates the cc370/ sysroot
+#                                  (headers AND -lc) via a path relative to it
 #
 #   make / make all build the whole toolchain (cc370 + as370/ld370/ar370)
 #   make tools      only as370 / ld370 / ar370   [fast]
@@ -82,14 +84,17 @@ gcc: $(BUILD)/config.status
 install: install-tools install-gcc install-man
 
 install-tools: tools
-	mkdir -p $(BINDIR) $(TGTBIN)
-	install -m 755 as370/as370 $(BINDIR)/as370    # the real binaries live on PATH
-	install -m 755 ld370/ld370 $(BINDIR)/ld370
-	install -m 755 ar370/ar370 $(BINDIR)/ar370
-	ln -sf ../../bin/as370 $(TGTBIN)/as    # the cc370 driver invokes as/ld/ar from
-	ln -sf ../../bin/ld370 $(TGTBIN)/ld    # its tooldir ($(TRIPLE)/bin); relative
-	ln -sf ../../bin/ar370 $(TGTBIN)/ar    # symlinks keep the tree relocatable
-	@echo "installed tools -> $(BINDIR) (driver tooldir links in $(TGTBIN))"
+	mkdir -p $(TGTBIN) $(BINDIR) $(LIBEXEC)
+	install -m 755 as370/as370 $(TGTBIN)/as370    # the real tools live in the sysroot bin
+	install -m 755 ld370/ld370 $(TGTBIN)/ld370
+	install -m 755 ar370/ar370 $(TGTBIN)/ar370
+	ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370       # PATH access (relative -> relocatable)
+	ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
+	ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
+	ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as   # the driver's tooldir, beside cc1:
+	ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld   # it looks up as/ld/ar here by short
+	ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar   # name (no empty lib/ dir needed)
+	@echo "installed tools -> $(TGTBIN) (PATH links $(BINDIR), tooldir links $(LIBEXEC))"
 
 # install cc1 + the driver renamed to cc370 (needs a prior `make gcc`)
 install-gcc:
@@ -98,10 +103,10 @@ install-gcc:
 	mkdir -p $(LIBEXEC) $(BINDIR)
 	install -m 755 $(CC1) $(LIBEXEC)/cc1
 	install -m 755 $(DRIVER) $(BINDIR)/cc370
-	# The driver locates the tooldir ($(TRIPLE)/bin, where it finds as/ld) by a
-	# path relative to its libsubdir ($(PREFIX)/lib/$(TRIPLE)/$(GCCVER)). We ship
-	# no target libs/specs there, but the dir must exist for that '..' traversal
-	# to resolve -- otherwise the driver falls back to the host assembler.
+	# GCC's libsubdir. Empty (we ship no libgcc), but it MUST exist: the driver
+	# locates the whole $(TRIPLE)/ sysroot -- both <stdio.h> and -lc -- via a path
+	# relative to it ($(PREFIX)/lib/$(TRIPLE)/$(GCCVER)/../../../$(TRIPLE)/...).
+	# Without it: "cannot find -lc" and no headers.
 	mkdir -p $(PREFIX)/lib/$(TRIPLE)/$(GCCVER)
 	@echo "installed cc370 -> $(BINDIR)/cc370 ; cc1 -> $(LIBEXEC)/cc1"
 
@@ -115,7 +120,8 @@ clean:
 
 uninstall:
 	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 \
-	      $(TGTBIN)/as $(TGTBIN)/ld $(TGTBIN)/ar $(LIBEXEC)/cc1 \
+	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 \
+	      $(LIBEXEC)/as $(LIBEXEC)/ld $(LIBEXEC)/ar $(LIBEXEC)/cc1 \
 	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1
 
 help:
