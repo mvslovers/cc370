@@ -1176,6 +1176,13 @@ int main(int argc, char **argv)
         return rc;
     }
 
+    /* normal link with no explicit output: default to a raw load-module member
+     * named a.out, like GNU ld -- so `cc370 foo.c` (no -o) yields a.out (a LMOD
+     * member). The output format is still chosen by extension elsewhere; bare/
+     * a.out/.lm = member, .xmit = the shippable package. */
+    if ((nobjf || ninc) && !outfile && !xmitfile && !unloadfile)
+        outfile = "a.out";
+
     /* a link needs content: explicit objects, or --include members to pull
      * (the faithful mbt model -- INCLUDE the listed NCALIB members + autocall,
      * no "explicit object" concept). */
