@@ -1,6 +1,6 @@
 # XMIT (TSO TRANSMIT / NETDATA) Format — the host→MVS install transport
 
-**Producer:** `ld370 --xmit` (`ld370/src/ld370.c`, the XMIT emitter).
+**Producer:** `ld370 -xmit` (`ld370/src/ld370.c`, the XMIT emitter).
 **Consumer on MVS:** `RECV370` (a batch XMIT unpacker, `PGM=RECV370` in
 `SYSC.LINKLIB`) — it parses the NETDATA stream and IEBCOPY-loads the member(s)
 into a load library. (Stock TSO/E `RECEIVE` is **not** present on the target;

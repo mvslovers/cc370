@@ -1,6 +1,6 @@
 # IEBCOPY Unloaded-PDS Format (the host→MVS install transport)
 
-**Producer:** `ld370 --unload` (`ld370/src/ld370.c`, the unload emitter).
+**Producer:** `ld370 -iebcopy` (`ld370/src/ld370.c`, the unload emitter).
 **Consumer:** IEBCOPY `COPY` with an unloaded sequential `SYSUT1` (the LOAD step),
 which writes the members back into a real load library on MVS.
 
@@ -8,7 +8,9 @@ which writes the members back into a real load library on MVS.
 host toolchain cannot upload a load module as a member. Instead `ld370` wraps
 the member(s) in the byte stream an IEBCOPY *UNLOAD* would produce; that stream
 uploads as an ordinary binary sequential dataset and IEBCOPY *LOADs* it into the
-target load library. (A future XMIT emitter will live next to this one.)
+target load library. In practice the unload is wrapped once more in TSO TRANSMIT
+(`-xmit`, RECFM=FB80) because mvsMF cannot rebuild the bare RECFM=VS unload on
+upload — see `docs/xmit-format.md`.
 
 **Authoritative sources** (MVS 3.8j, `~/repos/MVSSRC/.../Data Management Utilities (IEB)`):
 `IEBLDUL` (LOAD/UNLOAD init: COPYR1/COPYR2 field equates, the fake-DEB TTR

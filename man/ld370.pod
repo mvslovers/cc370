@@ -7,7 +7,7 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
 [B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] I<obj>...
 
-B<ld370> B<--pack> I<m1.lm> [I<m2.lm> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
+B<ld370> B<--pack> I<member> [I<member> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
 
 =head1 DESCRIPTION
 
@@ -58,15 +58,25 @@ Name the target dataset recorded in the XMIT (default F<IBMUSER.HOST.LOAD>).
 
 Set the PDS member name (otherwise derived from I<out>'s basename).
 
-=item B<--pack> I<m1.lm> [I<m2.lm> ...]
+=item B<--pack> I<member> [I<member> ...]
 
-Pack one or more B<pre-built> load-module members into the transport
-image(s) I<out>F<.xmit> / I<out>F<.iebcopy> without linking. One member is the
-common case; two or more build a multi-member library. Each member's name is the
-file's basename (extension stripped, uppercased); if that is not a valid MVS
-member name, give it explicitly as I<NAME>=I<FILE>. Because B<--pack> only ever
-produces a container, it defaults to B<-xmit> when neither B<-xmit> nor
+Pack one or more B<pre-built> members into the transport image(s)
+I<out>F<.xmit> / I<out>F<.iebcopy> without linking --- one member, or several to
+build a multi-member library. It defaults to B<-xmit> when neither B<-xmit> nor
 B<-iebcopy> is given.
+
+Each I<member> may be a bare load module (e.g. F<.lm>) or a single-member
+B<-iebcopy> image. A bare member carries no PDS2 directory metadata: the module
+length is recomputed from its CESD, but its entry point is unknown and assumed 0
+(start of module). A single-member B<-iebcopy> is B<self-describing> --- its
+directory carries the real entry point and length --- so B<pack a member with a
+non-zero entry from its> B<-iebcopy>, not its bare F<.lm>, or it loads at offset
+0 and abends.
+
+A member's name comes from its F<.iebcopy> directory, or (for a bare member) the
+file's basename with the extension stripped and uppercased. Override either with
+I<NAME>=I<FILE>; a bare member whose basename is not a valid MVS member name
+B<must> be named this way.
 
 =item B<-v>
 

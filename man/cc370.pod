@@ -15,27 +15,33 @@ System/370 code for MVS 3.8j (TK4-, TK5, MVS/CE). It runs on the host
 mainframe is the finished load module.
 
 It is a fork of GCC 3.4.6 for the C<cc370> target (an alias for the
-C<i370-ibm-mvspdp> backend) and accepts the usual GCC-style options. The output
-file's extension selects how far the pipeline runs:
+C<i370-ibm-mvspdp> backend) and accepts the usual GCC-style options. B<-S> /
+B<-c> set how far the pipeline runs, as in any GCC driver; by default it links a
+finished MVS load-module member. B<-flinker-output=>I<type> additionally emits a
+host-to-MVS transport wrapper beside the member:
 
 =over 4
 
 =item *
 
-F<.s> with B<-S> --- stop after compiling to System/370 HLASM assembler.
+B<-S> --- stop after compiling to System/370 HLASM assembler (F<.s>).
 
 =item *
 
-F<.o> with B<-c> --- compile and assemble to an OS/360 object deck.
+B<-c> --- compile and assemble to an OS/360 object deck (F<.o>).
 
 =item *
 
-F<.lm> --- compile, assemble and link to an MVS load-module image.
+default --- compile, assemble and link to an MVS load-module member, named by
+B<-o> (conventionally F<.lm>).
 
 =item *
 
-F<.xmit> --- the above, then package as a TSO TRANSMIT (NETDATA, RECFM=FB80)
-file ready to upload and install on MVS with C<RECV370>.
+B<-flinker-output=xmit> --- also package the member as a TSO TRANSMIT (NETDATA,
+RECFM=FB80) file I<out>F<.xmit>, ready to upload and install on MVS with
+C<RECV370>; B<-flinker-output=iebcopy> instead writes the IEBCOPY unloaded-PDS
+image I<out>F<.iebcopy> (e.g. to pack into a multi-member library with
+L<ld370(1)> B<--pack>).
 
 =back
 
@@ -56,7 +62,15 @@ Compile and assemble only; emit an object deck (F<.o>).
 
 =item B<-o> I<file>
 
-Place output in I<file>; the extension selects the pipeline stage (see above).
+Place output in I<file>. With a default (link) run this is the load-module
+member, and its basename also becomes the MVS member name.
+
+=item B<-flinker-output=>{B<xmit>|B<iebcopy>}
+
+Additionally emit a host-to-MVS transport wrapper beside the load-module member:
+B<xmit> (TSO TRANSMIT, I<out>F<.xmit>) installs with C<RECV370>; B<iebcopy>
+(unloaded PDS, I<out>F<.iebcopy>) is self-describing and can be packed into a
+library with L<ld370(1)> B<--pack>.
 
 =item B<-O1>
 

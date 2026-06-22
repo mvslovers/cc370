@@ -126,7 +126,7 @@ host-gebauten C-Programm.
 - `docs/object-module-format.md`, `docs/load-module-format.md` — die
   Objekt-/Load-Module-Formate (Grundlage für as370/ld370).
 - `docs/unload-format.md`, `docs/xmit-format.md` — die Transport-Formate
-  (Grundlage für `ld370 --unload`/`--xmit`).
+  (Grundlage für `ld370 -iebcopy`/`-xmit`).
 - `docs/multitext-fetch-truncation.md` — gelöster Blocker A1 (Multi-Text-Modul
   wurde bei 16 KB abgeschnitten — `ld370`-Textpuffer; 2026-06-21 behoben).
 - `as370/` — as370 (host-nativer Assembler) inkl. eigener Doku.
