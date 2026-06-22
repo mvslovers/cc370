@@ -667,6 +667,64 @@ static int split_member(const unsigned char *m, long n, struct lmblock **out)
     return k;
 }
 
+/* Total module storage (PDS2STOR) recovered from an already-linked member's
+ * record stream -- needed by --pack, which reads bare .lm members and has no
+ * link-time modlen.  A load module's CESD records (always first) carry every
+ * section's final addr + length; the module spans 0..max(addr+len), and the
+ * single-link path stores roundup8 of that (== roundup8(running)).  SD(0x00),
+ * PC(0x04) and CM(0x05) are the section types that reserve storage. */
+static long member_modlen(const unsigned char *m, long n)
+{
+    long maxend = 0, p = 0;
+    while (p + 8 <= n && (m[p] & 0xf0) == 0x20) {        /* CESD record */
+        long cnt = be16(m + p + 6), it;
+        for (it = 8; it + 16 <= 8 + cnt && p + it + 16 <= n; it += 16) {
+            int ty = m[p + it + 8];
+            if (ty == 0x00 || ty == 0x04 || ty == 0x05) {
+                long end = be24(m + p + it + 9) + be24(m + p + it + 13);
+                if (end > maxend) maxend = end;
+            }
+        }
+        p += 8 + cnt;
+    }
+    return roundup8(maxend);
+}
+
+/* Reconstruct a umember from a SINGLE-member IEBCOPY unload -- the self-describing
+ * form `ld370 -o X -iebcopy` writes.  Unlike a bare .lm, this carries the real
+ * PDS2 entry point + module length in its directory, so --pack recovers BOTH
+ * (the bare-.lm path can only recompute modlen, never the entry).  On success
+ * sets m->name/bytes/len/entry/modlen (m->bytes is freshly malloc'd; the caller
+ * frees it) and returns 0.  Returns -2 for a multi-member unload, -1 for a
+ * malformed one, -3 on OOM. */
+static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember *m)
+{
+    long p = 328, blen;                                 /* skip COPYR1 + COPYR2 */
+    const unsigned char *dir, *e, *ud; int used, nhw; unsigned char *buf;
+    if (ulen < 328 + 12 + 8 + 256 + 12) return -1;
+    if (u[p + 9] != 8 || be16(u + p + 10) != 256) return -1;   /* directory record */
+    dir = u + p + 20; used = be16(dir);
+    if (used < 2 + 36 || dir[2] == 0xFF) return -1;     /* need one real entry */
+    e = dir + 2; ud = e + 12; nhw = e[11] & 0x1F;
+    if (dir[2 + 12 + nhw * 2] != 0xFF) return -2;       /* a second entry -> multi-member */
+    memcpy(m->name, e, 8);
+    m->modlen = be24(ud + 10);                          /* PDS2STOR (total storage) */
+    m->entry  = be24(ud + 15);                          /* PDS2EPA  (entry point)   */
+    p += 12 + 8 + 256 + 12;                             /* past directory record + EOD marker */
+    buf = malloc((size_t)(ulen > 0 ? ulen : 1));
+    if (!buf) return -3;
+    blen = 0;
+    while (p + 12 <= ulen) {                            /* member data records until DL=0 */
+        int kl = u[p + 9]; long dl = be16(u + p + 10);
+        p += 12;
+        if (dl == 0) break;                            /* member EOF */
+        memcpy(buf + blen, u + p + kl, (size_t)dl); blen += dl;
+        p += kl + dl;
+    }
+    m->bytes = buf; m->len = blen;
+    return 0;
+}
+
 /* build the 24-byte PDS2 user-data for a member: echo template, overlay the
  * computed first-text TTR (relative track 0, record text_r). */
 static void build_userdata(unsigned char ud[24], const struct umember *m)
@@ -1245,7 +1303,7 @@ int main(int argc, char **argv)
         memset(m, 0, sizeof m);
         for (i = 0; i < npack; i++) {
             char *spec = packspec[i], *eq = strchr(spec, '=');
-            const char *file, *name; long n; unsigned char *buf; size_t got;
+            const char *file, *name = NULL; long n; unsigned char *buf; size_t got;
             if (eq) {                                    /* NAME=FILE: explicit member name */
                 *eq = 0; name = spec; file = eq + 1;
                 if (!valid_member_name(name)) {
@@ -1253,22 +1311,41 @@ int main(int argc, char **argv)
                                     "letter or @#$ first, then letters/digits/@#$)\n", name);
                     return 2;
                 }
-            } else {                                     /* derive the name from the basename */
-                file = spec; name = member_from_path(file);
-                if (!valid_member_name(name)) {
-                    fprintf(stderr, "ld370: cannot derive a valid MVS member name from '%s' (got '%s')\n"
-                                    "       give it explicitly as NAME=%s\n", file, name, file);
-                    return 2;
-                }
-            }
+            } else file = spec;
             f = fopen(file, "rb");
             if (!f) { perror(file); return 1; }
             fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
             buf = malloc((size_t)(n > 0 ? n : 1));
             if (!buf) { fclose(f); fprintf(stderr, "ld370: out of memory\n"); return 1; }
             got = fread(buf, 1, (size_t)n, f); (void)got; fclose(f);
-            member_name(m[i].name, name); m[i].bytes = buf; m[i].len = n;
-            m[i].entry = -1; m[i].modlen = -1;           /* TODO: compute PDS2 entry/modlen from the member */
+
+            /* Two input forms:
+             *  - single-member IEBCOPY unload (COPYR1 eyecatcher 00 CA 6D 0F):
+             *    self-describing -- recover the REAL PDS2 entry + modlen from its
+             *    directory (the only way to get a non-zero entry into --pack).
+             *  - bare .lm member: recompute modlen from the CESD (else build_userdata
+             *    echoes the template's 8 -> SIZE 8 on MVS); the entry is not present
+             *    in a bare member, so assume 0 (start of module). */
+            if (n >= 4 && buf[1] == 0xCA && buf[2] == 0x6D && buf[3] == 0x0F) {
+                int r2 = read_iebcopy_member(buf, n, &m[i]);
+                free(buf);                               /* member bytes copied out by the parser */
+                if (r2 == -2) { fprintf(stderr, "ld370: --pack: '%s' is a multi-member unload; "
+                                       "pass single-member -iebcopy files\n", file); return 2; }
+                if (r2 != 0)  { fprintf(stderr, "ld370: --pack: '%s' is a malformed unload\n", file); return 2; }
+                if (name) member_name(m[i].name, name);  /* explicit NAME= overrides the dir name */
+            } else {
+                if (!name) {                             /* derive the name from the basename */
+                    name = member_from_path(file);
+                    if (!valid_member_name(name)) {
+                        fprintf(stderr, "ld370: cannot derive a valid MVS member name from '%s' (got '%s')\n"
+                                        "       give it explicitly as NAME=%s\n", file, name, file);
+                        free(buf); return 2;
+                    }
+                }
+                member_name(m[i].name, name); m[i].bytes = buf; m[i].len = n;
+                m[i].modlen = member_modlen(buf, n);
+                m[i].entry = 0;
+            }
         }
         if (want_unload) rc = write_unload_mem(with_suffix(unlbuf, sizeof unlbuf, outfile, ".iebcopy"), m, npack);
         if (!rc && want_xmit) rc = write_xmit(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), m, npack, dsn);

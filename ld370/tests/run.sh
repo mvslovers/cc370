@@ -150,6 +150,22 @@ else
     echo "ld370 -xmit (multi-member) failed"; fails=$((fails + 1))
 fi
 
+# --pack PDS2 directory (modlen + entry): a bare .lm carries no entry point and
+# no module length, so --pack used to write SIZE 8 / entry 0 for every member.
+# modlen is now recomputed from the CESD, and packing a single-member -iebcopy
+# (the self-describing form) recovers BOTH the real entry and modlen -- so it
+# must be byte-identical to the single link that produced it.  nzent has a
+# NON-ZERO entry (GO at offset 16), guarding the entry recovery specifically.
+printf '\n=== --pack -iebcopy round-trips entry+modlen (byte-identical) ===\n'
+"$AS" -o "$TMP/nzent.o" "$FIX/nzent.s" 2>/dev/null
+"$LD" -o "$TMP/nzent_lnk" --name NZENT "$TMP/nzent.o" -iebcopy 2>/dev/null
+"$LD" --pack "NZENT=$TMP/nzent_lnk.iebcopy" -o "$TMP/nzent_pak" -iebcopy 2>/dev/null
+if cmp -s "$TMP/nzent_lnk.iebcopy" "$TMP/nzent_pak.iebcopy"; then
+    echo "  OK: pack-from-iebcopy == single-link directory (entry 0x10 + modlen recovered)"
+else
+    echo "  FAIL: pack-from-iebcopy directory differs from single-link"; fails=$((fails + 1))
+fi
+
 # automatic library call: a member pulled from an ar370 archive must yield the
 # SAME module as linking it explicitly (same appearance order => same ESDIDs).
 #   modab  = single pull   (mod_a references MODB, in libmodb.a)
