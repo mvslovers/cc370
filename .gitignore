@@ -4,6 +4,7 @@
 as370/as370
 ld370/ld370
 ar370/ar370
+file370/file370
 /build/
 
 # stale in-tree build artifacts — the real GCC build is out-of-tree in /build/

@@ -14,7 +14,7 @@ emits `hello.xmit` (and `=iebcopy` an `hello.iebcopy` unloaded-PDS image). That
 `hello.xmit` ships to MVS and is installed into a load library with one `RECV370`
 step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
 
-## The four tools
+## The tools
 
 | Tool | Role | Built from |
 |------|------|------------|
@@ -22,9 +22,11 @@ step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
 | **as370** | `.s`/`.asm` → OS/360 object deck — byte-identical to IBM's IFOX00 | `as370/src/as370.c` |
 | **ld370** | object decks → MVS load module (replaces IEWL) + automatic library call + `-iebcopy`/`-xmit` host→MVS transport | `ld370/src/ld370.c` |
 | **ar370** | object decks → `.a` archive with an ESD symbol index | `ar370/src/ar370.c` |
+| **file370** | read-only inspector — identify + analyze any of the formats above (`file`/`objdump` for the toolchain) | `file370/src/file370.c` |
 
 `cc370` is the single front-end; `as370`/`ld370`/`ar370` are ordinary binaries it
-drives (and which you can also run standalone). The C library it links against is
+drives (and which you can also run standalone); `file370` is a standalone
+inspector that reads the formats the others write. The C library it links against is
 **[libc370](https://github.com/mvslovers/libc370)**, installed into the cc370
 sysroot — see *Sysroot* below.
 
@@ -92,6 +94,7 @@ cc370/             the GCC 3.4.6 fork — the compiler (driver + cc1)
 as370/   src/ include/ tests/   as370 — host-native MVS assembler  (as370/README.md)
 ld370/   src/ tests/            ld370 — host-native linker (replaces IEWL)
 ar370/   src/                   ar370 — .a archiver (ld370 autocalls against it)
+file370/ src/                   file370 — format inspector (file/objdump for the formats above)
 docs/                           object / load-module / unload / xmit formats + roadmap
 Makefile                        make (whole toolchain) / make tools / make compiler
 ```

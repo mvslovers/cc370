@@ -1,0 +1,85 @@
+=head1 NAME
+
+file370 - identify and analyze the MVS formats produced by the cc370 toolchain
+
+=head1 SYNOPSIS
+
+B<file370> [B<-v>] I<file>...
+
+B<file370> B<--help> | B<--version>
+
+=head1 DESCRIPTION
+
+B<file370> is the read-only inspector for the host-native cc370 toolchain: the
+C<file>/C<objdump>-style counterpart to L<as370(1)>, L<ld370(1)> and
+L<ar370(1)>. It sniffs a file's format from its leading bytes and prints a
+one-line summary by default, or a full structural dump with B<-v>. It is a pure
+host tool and never contacts MVS.
+
+The five recognized formats and their magic:
+
+=over 4
+
+=item *
+
+B<OS/360 object deck> (L<as370(1)>) - byte 0 C<X'02'> plus an EBCDIC
+C<ESD>/C<TXT>/C<RLD>/C<END>/C<SYM> card type.
+
+=item *
+
+B<ar370 archive> (L<ar370(1)>) - the C<!E<lt>archE<gt>> magic.
+
+=item *
+
+B<MVS load module member> (L<ld370(1)> B<-o>) - the first record is a composite
+ESD (byte 0 C<X'20'>/C<X'28'>).
+
+=item *
+
+B<IEBCOPY unloaded PDS> (L<ld370(1)> B<-iebcopy>) - the COPYR1 eye-catcher
+C<X'CA6D0F'>.
+
+=item *
+
+B<TSO XMIT / NETDATA> (L<ld370(1)> B<-xmit>) - EBCDIC C<INMR01> at offset 2.
+
+=back
+
+An XMIT wraps an IEBCOPY unload, which wraps a load-module member; B<-v> peels
+the layers and decodes each one (NETDATA text units, the unloaded directory, the
+member's PDS2 entry point and length).
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-v>
+
+Verbose: dump the full structure - the ESD entries of an object deck, the record
+stream of a load module, the directory of an unload, the INMRxx control records
+and text units of an XMIT (plus the wrapped unload and member).
+
+=item B<--help>
+
+Print usage and exit.
+
+=item B<--version>
+
+Print the version and exit.
+
+=back
+
+=head1 EXIT STATUS
+
+C<0> when every file was recognized, C<2> when a file was not a recognized
+toolchain format, C<1> on a read error.
+
+=head1 SEE ALSO
+
+L<cc370(1)>, L<as370(1)>, L<ld370(1)>, L<ar370(1)>, L<file(1)>
+
+=head1 AUTHOR
+
+The mvslovers community L<https://github.com/mvslovers/cc370>.
+
+=cut

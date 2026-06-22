@@ -1,16 +1,18 @@
 # cc370 -- host-native MVS cross-toolchain build + install.
 #
-# One driver (cc370) plus three standalone tools (as370 / ld370 / ar370).
+# One driver (cc370) plus four standalone tools (as370 / ld370 / ar370 / file370).
+# file370 is the read-only inspector (`file`/objdump for the toolchain formats);
+# it is not invoked by the driver, so it gets a PATH link but no tooldir link.
 # Clean cc370-branded layout under $(PREFIX): everything for the target lives in
 # one cc370/ tree; only the user-facing binaries sit on PATH.  (The
 # i370-ibm-mvspdp triple is an internal config.sub alias; nothing here carries it.)
 #
 #   bin/cc370                      the driver (the only "driver")
-#   bin/{as370,ld370,ar370}        symlinks -> ../cc370/bin/* (PATH access)
+#   bin/{as370,ld370,ar370,file370} symlinks -> ../cc370/bin/* (PATH access)
 #   libexec/cc370/1.0.0/cc1        the compiler proper (driver-private)
 #   libexec/cc370/1.0.0/{as,ld,ar} symlinks beside cc1; the driver's tooldir,
 #                                  where it looks up as/ld/ar by short name
-#   cc370/bin/{as370,ld370,ar370}  the real tool binaries
+#   cc370/bin/{as370,ld370,ar370,file370}  the real tool binaries
 #   cc370/{include,lib,macros}     the libc370 sysroot (headers, libc.a, crt*.o,
 #                                  + macros; as370 finds them via <exedir>/../macros)
 #   lib/cc370/1.0.0/               EMPTY but REQUIRED -- this is GCC's libsubdir
@@ -20,8 +22,8 @@
 #                                  it; remove it and the link fails ("cannot find
 #                                  -lc"). Created by install-compiler. Leave it be.
 #
-#   make / make all build the whole toolchain (cc370 + as370/ld370/ar370 + man)
-#   make tools      only as370 / ld370 / ar370   [fast]
+#   make / make all build the whole toolchain (cc370 + as370/ld370/ar370/file370 + man)
+#   make tools      only as370 / ld370 / ar370 / file370   [fast]
 #   make compiler   configure + build the driver (cc370) and cc1   [slow]
 #   make install    build (if needed) + install everything into $(PREFIX)
 #   make clean / uninstall / help
@@ -39,7 +41,7 @@ TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
 LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(VERSION)
 MANDIR  := $(PREFIX)/share/man/man1
 
-TOOLS   := as370/as370 ld370/ld370 ar370/ar370
+TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370
 # man pages: one .pod per tool -> pod2man -> .1
 MANPODS := $(wildcard man/*.pod)
 MAN1    := $(MANPODS:.pod=.1)
@@ -70,6 +72,8 @@ ld370/ld370: ld370/src/ld370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
 ar370/ar370: ar370/src/ar370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
+file370/file370: file370/src/file370.c
+	$(HOSTCC) $(CFLAGS) -o $@ $<
 
 # --- man pages (one .pod per tool -> pod2man -> .1) -----------------------
 man: $(MAN1)
@@ -97,9 +101,11 @@ install-tools: tools
 	@install -m 755 as370/as370 $(TGTBIN)/as370
 	@install -m 755 ld370/ld370 $(TGTBIN)/ld370
 	@install -m 755 ar370/ar370 $(TGTBIN)/ar370
+	@install -m 755 file370/file370 $(TGTBIN)/file370
 	@ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370
 	@ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
 	@ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
+	@ln -sf ../$(TRIPLE)/bin/file370 $(BINDIR)/file370
 	@ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as
 	@ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld
 	@ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar
@@ -124,10 +130,10 @@ clean:
 	rm -f $(TOOLS) $(MAN1)
 
 uninstall:
-	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 \
-	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 \
+	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 $(BINDIR)/file370 \
+	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 $(TGTBIN)/file370 \
 	      $(LIBEXEC)/as $(LIBEXEC)/ld $(LIBEXEC)/ar $(LIBEXEC)/cc1 \
-	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1
+	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1 $(MANDIR)/file370.1
 
 help:
 	@sed -n '1,30p' $(firstword $(MAKEFILE_LIST))

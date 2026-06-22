@@ -14,6 +14,7 @@ cc370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3
 | **as370** | `.s`/`.asm` → OS/360 OBJ deck (`as370/src/as370.c`) | **byte-identical to IFOX00 (950 modules); links + runs on MVS** |
 | **ld370** | OBJ decks → MVS load module (replace IEWL) + automatic library call (`-l`/`-L` over `.a`) + `-iebcopy`/`-xmit` host→MVS transport (`ld370/src/ld370.c`) | member byte-identical to IEWL; `-iebcopy`/`-xmit` byte-identical to their oracles (XMIT modulo timestamp); autocall validated (single + transitive pull == explicit link). **End-to-end on real MVS: `as370→ld370→-xmit` → upload → RECV370 → runs, RC=7 (Stage 2 done)** |
 | **ar370** | OBJ decks → `.a` archive + ESD symbol index (`ar370/src/ar370.c`) | standard `ar` container (host-inspectable) with a GNU `/`-member symbol table built from each deck's ESD (variable-length names, long-symbol-ready); the static-library ld370 autocalls against |
+| **file370** | identify + analyze any toolchain format (`file370/src/file370.c`) | read-only `file`/`objdump` inspector: sniffs OBJ deck / `.a` / load module / `-iebcopy` unload / `-xmit` NETDATA from leading bytes; one-line summary (default) or `-v` structural dump (ESD / records / directory / INMR text units — peels the XMIT→unload→member onion). Standalone (not driven by cc370). |
 
 **End-to-end validated on real MVS (2026-06-18):** `cc370 → as370` built ctest locally (no IFOX00), the decks linked with IEWL (RC=0) and ran (`PGM=CTESTH`) with **RC=0** (all charset checks pass). See `as370/` and the [as370 section](#as370--host-native-mvs-assembler).
 
@@ -22,11 +23,11 @@ cc370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3
 ## Build (v2.0 — C-only cross-compiler, modern macOS/Linux host)
 
 The top-level `Makefile` drives everything. The toolchain is **one driver
-(`cc370`) plus three standalone tools (`as370`/`ld370`/`ar370`)**:
+(`cc370`) plus four standalone tools (`as370`/`ld370`/`ar370`/`file370`)**:
 
 ```sh
-make            # build the WHOLE toolchain: cc370 + as370/ld370/ar370
-make tools      # only the three standalone tools   [fast]
+make            # build the WHOLE toolchain: cc370 + as370/ld370/ar370/file370
+make tools      # only the four standalone tools   [fast]
 make compiler   # configure + build the driver (cc370) and cc1   [slow]
 make install    # build (if needed) + install into $(PREFIX) (default ~/.local)
 ```
@@ -34,12 +35,13 @@ make install    # build (if needed) + install into $(PREFIX) (default ~/.local)
 Install layout (clean cc370-branded, under `$(PREFIX)`): everything for the target
 lives in one `cc370/` tree; only the user-facing binaries sit on PATH.
 
-- `bin/cc370` — the driver (the *only* driver). `bin/{as370,ld370,ar370}` are
-  symlinks → `../cc370/bin/*` for PATH access.
+- `bin/cc370` — the driver (the *only* driver). `bin/{as370,ld370,ar370,file370}`
+  are symlinks → `../cc370/bin/*` for PATH access.
 - `libexec/cc370/1.0.0/cc1` — the driver-private compiler proper; beside it,
   `{as,ld,ar}` symlinks → `../../../cc370/bin/*` are the driver's **tooldir** (it
-  looks up `as`/`ld`/`ar` there by short name).
-- `cc370/bin/{as370,ld370,ar370}` — the **real** tool binaries.
+  looks up `as`/`ld`/`ar` there by short name). `file370` is *not* here — the
+  driver never invokes it (it is a standalone inspector, PATH-link only).
+- `cc370/bin/{as370,ld370,ar370,file370}` — the **real** tool binaries.
 - `cc370/{include,lib,macros}` — the libc370 **sysroot** (installed by
   `make -C ../libc370 install`): cc370 finds `<stdio.h>` with no `-I`, ld370 `-lc`
   pulls `libc.a`, and as370 (real in `cc370/bin`) finds the macros via its
