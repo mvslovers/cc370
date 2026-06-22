@@ -3027,6 +3027,7 @@ display_help (void)
   fputs (_("  -S                       Compile only; do not assemble or link\n"), stdout);
   fputs (_("  -c                       Compile and assemble, but do not link\n"), stdout);
   fputs (_("  -o <file>                Place the output into <file>\n"), stdout);
+  fputs (_("  -flinker-output=<type>   Also emit an MVS transport wrapper: xmit | iebcopy\n"), stdout);
   fputs (_("\
   -x <language>            Specify the language of the following input files\n\
                            Permissible languages include: c c++ assembler none\n\
