@@ -89,12 +89,15 @@ Boston, MA 02111-1307, USA.  */
    (gccmvs 3.2.3) compiler, which crent370 and the other runtimes key on:
    originally CPP_PREDEFINES "-D__GCC__ -D__MVS__ -Asystem=mvs -Acpu=i370
    -Amachine=i370".  In particular crent370's headers gate size_t and much
-   else on __MVS__.  */
+   else on __MVS__.
+
+   cpu=i370 / machine=i370 are CPU (not OS) attributes and are already asserted
+   by TARGET_CPU_CPP_BUILTINS() in i370.h; asserting them again here made cpp
+   warn "cpu/machine re-asserted" on every compile, so only system=mvs lives
+   here.  */
 #define TARGET_OS_CPP_BUILTINS()               \
     do {                                       \
        builtin_define ("__GCC__");             \
        builtin_define ("__MVS__");             \
        builtin_assert ("system=mvs");          \
-       builtin_assert ("cpu=i370");            \
-       builtin_assert ("machine=i370");        \
     } while (0)
