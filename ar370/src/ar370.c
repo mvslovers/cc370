@@ -31,8 +31,10 @@ static char e2a1(unsigned char e)
     if (e >= 0xE2 && e <= 0xE9) return (char)('S' + (e - 0xE2));
     if (e >= 0xF0 && e <= 0xF9) return (char)('0' + (e - 0xF0));
     if (e == 0x40) return ' ';
-    if (e == 0x5B) return '$'; if (e == 0x7B) return '#';
-    if (e == 0x7C) return '@'; if (e == 0x6D) return '_';
+    if (e == 0x5B) return '$';
+    if (e == 0x7B) return '#';
+    if (e == 0x7C) return '@';
+    if (e == 0x6D) return '_';
     return '?';
 }
 

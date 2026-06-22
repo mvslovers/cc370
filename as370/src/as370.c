@@ -892,7 +892,8 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
         if (seqout) { int k, sl = rawlen(l); for (k = 0; k < 8; k++) seqout[no][k] = (72 + k < sl) ? l[72 + k] : ' '; seqout[no][8] = 0; }
         if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) { out[no++] = strdup(l); i++; continue; }
         char acc[8192]; int a = 0, len = rawlen(l), copy = len > 71 ? 71 : len;
-        acc[0] = 0; memcpy(acc, l, copy); a = copy;
+        if (copy < 0) copy = 0;   /* rawlen() is always >= 0; make it provable (glibc _FORTIFY_SOURCE) */
+        acc[0] = 0; memcpy(acc, l, (size_t)copy); a = copy;
         int cont = (len > 71 && l[71] != ' ');
         i++;
         /* operand field starts after the label (col 1) and the opcode */

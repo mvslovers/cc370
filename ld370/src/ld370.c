@@ -64,8 +64,10 @@ static char e2a1(unsigned char e)
     if (e >= 0xE2 && e <= 0xE9) return (char)('S' + (e - 0xE2));
     if (e >= 0xF0 && e <= 0xF9) return (char)('0' + (e - 0xF0));
     if (e == 0x40) return ' ';
-    if (e == 0x5B) return '$'; if (e == 0x7B) return '#';
-    if (e == 0x7C) return '@'; if (e == 0x6D) return '_';
+    if (e == 0x5B) return '$';
+    if (e == 0x7B) return '#';
+    if (e == 0x7C) return '@';
+    if (e == 0x6D) return '_';
     return '?';
 }
 static const char *nm(const unsigned char *n)
@@ -83,8 +85,10 @@ static unsigned char a2e1(char a)
     if (a >= 'J' && a <= 'R') return (unsigned char)(0xD1 + (a - 'J'));
     if (a >= 'S' && a <= 'Z') return (unsigned char)(0xE2 + (a - 'S'));
     if (a >= '0' && a <= '9') return (unsigned char)(0xF0 + (a - '0'));
-    if (a == '$') return 0x5B; if (a == '#') return 0x7B;
-    if (a == '@') return 0x7C; if (a == '_') return 0x6D;
+    if (a == '$') return 0x5B;
+    if (a == '#') return 0x7B;
+    if (a == '@') return 0x7C;
+    if (a == '_') return 0x6D;
     return 0x40;
 }
 /* build an 8-byte EBCDIC, space-padded member name from an ASCII string */
@@ -933,9 +937,12 @@ static void netdata_seg(unsigned char *o, long *p, const unsigned char *rec, lon
 static void xmit_ftime(unsigned char e[16])
 {
     char a[17]; time_t t = time(NULL); struct tm *tm = localtime(&t); int i;
-    sprintf(a, "%04d%02d%02d%02d%02d%02d00",
-            tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-            tm->tm_hour, tm->tm_min, tm->tm_sec);
+    /* clamp each field to its print width [0..9999]/[0..99] so the fixed 16-char
+     * output is provably within a[17] (GCC can't bound struct tm otherwise). */
+    int yy = ((tm->tm_year + 1900) % 10000 + 10000) % 10000;
+    int mo = ((tm->tm_mon + 1) % 100 + 100) % 100, dd = (tm->tm_mday % 100 + 100) % 100;
+    int hh = (tm->tm_hour % 100 + 100) % 100, mi = (tm->tm_min % 100 + 100) % 100, ss = (tm->tm_sec % 100 + 100) % 100;
+    sprintf(a, "%04d%02d%02d%02d%02d%02d00", yy, mo, dd, hh, mi, ss);
     for (i = 0; i < 16; i++) e[i] = a2e1(a[i]);
 }
 
