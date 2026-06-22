@@ -42,8 +42,12 @@ MANPODS := $(wildcard man/*.pod)
 MAN1    := $(MANPODS:.pod=.1)
 
 # --- GCC (driver + cc1) build, out-of-tree in build/ ----------------------
-# Old K&R-ish 3.4.6 sources: tell the modern host compiler not to error on them.
-GCC_CF  := -g -O0 -fcommon -std=gnu89 -Wno-implicit-int \
+# Old K&R-ish 3.4.6 sources on a modern host gcc: the -Wno-* downgrade gcc-14's
+# default *errors* (implicit-int etc.) so the build compiles; -w silences the
+# (harmless) warning noise from the upstream sources we don't modify. Errors
+# still show. -w rides in CFLAGS so it reaches every sub-build (GCC's own
+# WARN_CFLAGS can't be overridden from the top -- it sits after $(CFLAGS)).
+GCC_CF  := -g -O0 -fcommon -std=gnu89 -w -Wno-implicit-int \
            -Wno-implicit-function-declaration -Wno-int-conversion -Wno-error \
            -Wno-return-type -Wno-deprecated-non-prototype
 BUILD   := build
@@ -83,39 +87,40 @@ gcc: $(BUILD)/config.status
 # --- install --------------------------------------------------------------
 install: install-tools install-gcc install-man
 
+# Real tool binaries -> $(TGTBIN) (the sysroot bin); $(BINDIR) gets PATH symlinks
+# and $(LIBEXEC) gets the driver's tooldir symlinks (both relative -> relocatable).
 install-tools: tools
-	mkdir -p $(TGTBIN) $(BINDIR) $(LIBEXEC)
-	install -m 755 as370/as370 $(TGTBIN)/as370    # the real tools live in the sysroot bin
-	install -m 755 ld370/ld370 $(TGTBIN)/ld370
-	install -m 755 ar370/ar370 $(TGTBIN)/ar370
-	ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370       # PATH access (relative -> relocatable)
-	ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
-	ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
-	ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as   # the driver's tooldir, beside cc1:
-	ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld   # it looks up as/ld/ar here by short
-	ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar   # name (no empty lib/ dir needed)
+	@mkdir -p $(TGTBIN) $(BINDIR) $(LIBEXEC)
+	@install -m 755 as370/as370 $(TGTBIN)/as370
+	@install -m 755 ld370/ld370 $(TGTBIN)/ld370
+	@install -m 755 ar370/ar370 $(TGTBIN)/ar370
+	@ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370
+	@ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
+	@ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
+	@ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as
+	@ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld
+	@ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar
 	@echo "installed tools -> $(TGTBIN) (PATH links $(BINDIR), tooldir links $(LIBEXEC))"
 
-# install cc1 + the driver renamed to cc370 (needs a prior `make gcc`)
+# cc1 (driver-private) + the driver as cc370.  Also creates GCC's libsubdir
+# $(PREFIX)/lib/$(TRIPLE)/$(GCCVER): empty (we ship no libgcc) but it MUST exist --
+# the driver locates the whole $(TRIPLE)/ sysroot (headers AND -lc) via a path
+# relative to it; without it you get "cannot find -lc".  Needs a prior `make gcc`.
 install-gcc:
 	@test -x $(DRIVER) -a -x $(CC1) || { \
 	  echo "no driver/cc1 in $(BUILD) -- run 'make gcc' first (slow)"; exit 1; }
-	mkdir -p $(LIBEXEC) $(BINDIR)
-	install -m 755 $(CC1) $(LIBEXEC)/cc1
-	install -m 755 $(DRIVER) $(BINDIR)/cc370
-	# GCC's libsubdir. Empty (we ship no libgcc), but it MUST exist: the driver
-	# locates the whole $(TRIPLE)/ sysroot -- both <stdio.h> and -lc -- via a path
-	# relative to it ($(PREFIX)/lib/$(TRIPLE)/$(GCCVER)/../../../$(TRIPLE)/...).
-	# Without it: "cannot find -lc" and no headers.
-	mkdir -p $(PREFIX)/lib/$(TRIPLE)/$(GCCVER)
+	@mkdir -p $(LIBEXEC) $(BINDIR) $(PREFIX)/lib/$(TRIPLE)/$(GCCVER)
+	@install -m 755 $(CC1) $(LIBEXEC)/cc1
+	@install -m 755 $(DRIVER) $(BINDIR)/cc370
 	@echo "installed cc370 -> $(BINDIR)/cc370 ; cc1 -> $(LIBEXEC)/cc1"
 
 install-man: man
-	mkdir -p $(MANDIR)
-	install -m 644 $(MAN1) $(MANDIR)/
+	@mkdir -p $(MANDIR)
+	@install -m 644 $(MAN1) $(MANDIR)/
 	@echo "installed man pages -> $(MANDIR)"
 
 clean:
+	rm -rf $(BUILD)
 	rm -f $(TOOLS) $(MAN1)
 
 uninstall:
