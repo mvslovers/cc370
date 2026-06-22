@@ -5,11 +5,14 @@ assemble, link and package MVS programs entirely on the host (macOS / Linux), so
 the only thing that touches the mainframe is the finished load module.
 
 ```sh
-cc370 hello.c -o hello.xmit      # compile + assemble + link + package, one command
+cc370 hello.c -o hello                       # -> hello : an MVS load module (LMOD)
+cc370 hello.c -o hello -flinker-output=xmit  # -> hello + hello.xmit : compile+assemble+link+package
 ```
 
-That `hello.xmit` ships to MVS and is installed into a load library with one
-`RECV370` step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
+`-o` always writes the load-module member; `-flinker-output=xmit` *additionally*
+emits `hello.xmit` (and `=iebcopy` an `hello.unl` unloaded-PDS image). That
+`hello.xmit` ships to MVS and is installed into a load library with one `RECV370`
+step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
 
 ## The four tools
 
@@ -67,8 +70,8 @@ lives in `<prefix>/cc370/bin`, finds the macros via its `<exedir>/../macros`
 default. After that the toolchain is self-contained:
 
 ```sh
-make -C ../libc370 install        # populate the sysroot once
-cc370 hello.c -o hello.xmit       # no -I, no -L, no -lc needed
+make -C ../libc370 install                   # populate the sysroot once
+cc370 hello.c -o hello -flinker-output=xmit  # no -I, no -L, no -lc needed
 ```
 
 ## Optimization: `-O1` only

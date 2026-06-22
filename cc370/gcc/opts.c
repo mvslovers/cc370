@@ -663,6 +663,11 @@ common_handle_option (size_t scode, const char *arg,
     default:
       abort ();
 
+    case OPT_flinker_output_:
+      /* MVS transport-wrapper selector (xmit/iebcopy): consumed by the link
+	 spec (see LINK_SPEC), ignored by the compiler proper. */
+      break;
+
     case OPT__help:
       print_help ();
       exit_after_options = true;

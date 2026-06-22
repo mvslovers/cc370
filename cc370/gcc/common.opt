@@ -420,6 +420,10 @@ fleading-underscore
 Common
 Give external symbols a leading underscore
 
+flinker-output=
+Common Joined
+-flinker-output=<type>	Also emit an MVS transport wrapper: xmit (TSO TRANSMIT) or iebcopy (unloaded PDS); consumed by ld370 via the link spec
+
 floop-optimize
 Common
 Perform loop optimizations

@@ -61,6 +61,16 @@ The compiler is a GCC 3.4.6 fork (old K&R-ish C); `make compiler` passes the
 needed `-w`/`-Wno-*`/`-std=gnu89` flags (`COMPILER_CF`) so it builds clean on a
 modern host gcc. Builds on x86-64 and ARM64.
 
+**Output format (`-flinker-output=`).** `cc370 foo.c -o app` writes a load-module
+member (LMOD). `-flinker-output=xmit` *additionally* emits `app.xmit` (TSO
+TRANSMIT/NETDATA); `=iebcopy` emits `app.unl` (IEBCOPY unloaded PDS). It is flag-
+driven, not -o-extension-driven. Mechanism: `flinker-output=` is registered in
+`gcc/common.opt` (`Common Joined`) with a no-op `case OPT_flinker_output_` in
+`gcc/opts.c` (else `common_handle_option`'s `default: abort()` ICEs); `LINK_SPEC`
+(`mvspdp.h`) maps the value to ld370's `--xmit`/`--unload` via
+`%{flinker-output=xmit:--xmit}`. ld370 itself is flag-driven too: `-o OUT` =
+member, `--xmit`/`--unload` (no-arg) add `OUT.xmit`/`OUT.unl`.
+
 **Optimization: `-O1` only.** `-O2`/`-Os`/`-O3` are UNSAFE on this backend: at `-O2`+ the `-funit-at-a-time` DCE drops `static` tables whose address is held by a global pointer (`static t[]={..}; T *p=t;`) → dangling `=V`/`DC A(@V)` → IFOX RC=8; and `-Os` additionally **miscompiles the rexx parser** (loops → S322). `-O1` is validated correct (rexx370 TSTALLB 84/84, 0 ABEND). This — not the old "3.2.3 memory issues" note — is the real reason for "-O1 only".
 
 ## Testing

@@ -44,7 +44,10 @@ Boston, MA 02111-1307, USA.  */
 #undef  LIBGCC_SPEC
 #define LIBGCC_SPEC ""
 #undef  LINK_SPEC
-#define LINK_SPEC "--entry @@CRT0"
+/* -flinker-output=TYPE picks the MVS transport wrapper ld370 ALSO emits beside the
+   load-module member: xmit (TSO TRANSMIT/NETDATA) -> OUT.xmit, iebcopy (unloaded
+   PDS) -> OUT.unl.  Default (no flag) = just the member. */
+#define LINK_SPEC "--entry @@CRT0 %{flinker-output=xmit:--xmit} %{flinker-output=iebcopy:--unload}"
 
 /* Specify that we're using macro prolog/epilog.  */
 
