@@ -5,3 +5,8 @@ as/as370
 ld/ld370
 ld/ar370
 /build/
+
+# stale in-tree build artifacts — the real build is out-of-tree in /build/
+/gcc/*.o
+/libiberty/*.o
+/i370/
