@@ -12,13 +12,13 @@ cd "$(dirname "$0")/../.." || exit 2          # repo root (cc370)
 AS=./as370/as370
 LD=./ld370/ld370
 AR=./ar370/ar370
-DIFF="python3 ld/tests/lmdiff.py"
-FIX=ld/tests/fixtures
+DIFF="python3 ld370/tests/lmdiff.py"
+FIX=ld370/tests/fixtures
 TMP="${TMPDIR:-/tmp}"
 
-[ -x "$AS" ] || gcc -O2 -Wall -Wextra -Werror -o "$AS" as/as370.c || exit 2
-gcc -O2 -Wall -Wextra -Werror -o "$LD" ld/ld370.c || exit 2
-gcc -O2 -Wall -Wextra -Werror -o "$AR" ld/ar370.c || exit 2
+[ -x "$AS" ] || gcc -O2 -Wall -Wextra -Werror -Ias370/include -o "$AS" as370/src/as370.c || exit 2
+gcc -O2 -Wall -Wextra -Werror -o "$LD" ld370/src/ld370.c || exit 2
+gcc -O2 -Wall -Wextra -Werror -o "$AR" ar370/src/ar370.c || exit 2
 
 fails=0
 
@@ -42,7 +42,7 @@ run_case() {
     # Guards split_member on the control/RLD path real modules take (e2e is
     # RLD-free, so this is the only host-side check of the 0x0E branch).
     NM=$(printf '%s' "$name" | tr 'a-z' 'A-Z')   # member_name() upper-cases
-    python3 ld/tests/unload_check.py "$TMP/$name.unl" "$NM=$TMP/$name.ld.bin" \
+    python3 ld370/tests/unload_check.py "$TMP/$name.unl" "$NM=$TMP/$name.ld.bin" \
         || fails=$((fails + 1))
 }
 
@@ -63,7 +63,7 @@ run_unload() {
     "$LD" --unload-from "$FIX/$member" --name "$mname" --unload "$TMP/$name.unload" \
         || { echo "ld370 --unload failed: $name"; fails=$((fails + 1)); return; }
     printf '\n=== unload %s ===\n' "$name"
-    python3 ld/tests/unload_check.py "$TMP/$name.unload" "$mname=$FIX/$member" \
+    python3 ld370/tests/unload_check.py "$TMP/$name.unload" "$mname=$FIX/$member" \
         || fails=$((fails + 1))
 }
 
@@ -76,7 +76,7 @@ run_unload e2e e2e.iewl-member.bin E2E
 printf '\n=== xmit e2e ===\n'
 if "$LD" --unload-from "$FIX/e2e.iewl-member.bin" --name E2E --dsn IBMUSER.E2E.LOAD \
         --unload "$TMP/e2e.x.unl" --xmit "$TMP/e2e.xmit" 2>/dev/null; then
-    python3 ld/tests/xmit_check.py "$TMP/e2e.xmit" "$TMP/e2e.x.unl" \
+    python3 ld370/tests/xmit_check.py "$TMP/e2e.xmit" "$TMP/e2e.x.unl" \
         || fails=$((fails + 1))
 else
     echo "ld370 --xmit failed"; fails=$((fails + 1))
@@ -88,7 +88,7 @@ fi
 printf '\n=== pack tiny+rldt (multi-member) ===\n'
 if "$LD" --pack TINY="$TMP/tiny.ld.bin" --pack RLDT="$TMP/rldt.ld.bin" \
         --unload "$TMP/lib2.unl" 2>/dev/null; then
-    python3 ld/tests/unload_check.py "$TMP/lib2.unl" \
+    python3 ld370/tests/unload_check.py "$TMP/lib2.unl" \
         "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" || fails=$((fails + 1))
 else
     echo "ld370 --pack failed"; fails=$((fails + 1))
