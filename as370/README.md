@@ -19,7 +19,7 @@ Build & validate:
 
 ```sh
 gcc -O2 -Wall -Wextra -Werror -o as370 as370.c
-sh ../ld/tests/run.sh        # the ld370 regression also drives as370 over the fixtures
+sh ../ld370/tests/run.sh        # the ld370 regression also drives as370 over the fixtures
 ```
 
 `as370 -v` → `as370 V1.0 - <build date>`; `as370 --help` for the CLI (z/OS-`as`

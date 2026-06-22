@@ -2,7 +2,7 @@
 
 > ## ✅ RESOLVED (2026-06-21) — it was never FETCH, never placement
 >
-> **Root cause:** `ld/ld370.c` `struct obj` stored the per-object text in a **fixed
+> **Root cause:** `ld370/src/ld370.c` `struct obj` stored the per-object text in a **fixed
 > 16384-byte array** (`unsigned char text[1 << 14]`), and the OBJ TXT-card reader
 > (`parse_object`) did `if (addr + cnt <= sizeof o->text) memcpy(...)` — it **silently
 > dropped every TXT card past 16384 B**. Any object with >16 KB of text was truncated:
@@ -18,7 +18,7 @@
 > -Werror`.
 >
 > **Verified on real MVS:** NOPT `--t1 17000 --t2 2056` *and* `--t1 12288 --t2 12288`
-> (both previously S0C1) now RECV370-install and **RUN COND CODE 0000**; `ld/tests/run.sh`
+> (both previously S0C1) now RECV370-install and **RUN COND CODE 0000**; `ld370/tests/run.sh`
 > fixture byte-identity to IEWL is **all green** (text < 16 K fills identically — no
 > regression).
 >
@@ -34,7 +34,7 @@
 > hit `U0200-13 RECV370 .RECVBLK` — again *not* a geometry limit, but ld370 emitting one
 > oversized text record for a section larger than MAXTEXT (intra-section split was
 > unimplemented). Fixed by splitting such a section at MAXTEXT boundaries, byte-for-byte
-> the IEWL layout (oracle `ld/tests/run_iewl_bigsect.py`: 40000 → 18432/18432/3136); the
+> the IEWL layout (oracle `ld370/tests/run_iewl_bigsect.py`: 40000 → 18432/18432/3136); the
 > 60 KB module installs and runs RC=0.
 >
 > **Real-C-program (`t1`) progress:** with the text + intra-section-split + RLD-record-split
@@ -43,7 +43,7 @@
 > - The **S106** that blocked fetch was ld370 emitting one oversized RLD record; program
 >   fetch reads RLD records into a 256-byte buffer, so an RLD record > ~236 B overflows it
 >   and fetch relocates garbage → S106-0E. Fixed by splitting RLD data into ≤236-byte
->   records like IEWL (oracle `ld/tests/run_iewl_mtrld.py`).
+>   records like IEWL (oracle `ld370/tests/run_iewl_mtrld.py`).
 > - **Now blocked on a runtime `S0C4`** (not fetch): crent prints
 >   `__CRTGET CRT for TCB was not found in PPA(00000000)` — `@@PPAGET` walks the TCB
 >   save-area chain for the `PPAEYE` eyecatcher and returns PPA=0, so `__CRTGET` returns
@@ -58,7 +58,7 @@ appears only when a module is split into **two or more** control+text records �
 real C program is (`libcrent.a` closure ≈ 58600 B / 4 text records).
 
 Companion reference: [load-module-format.md §5 / §5.1](load-module-format.md) (text record
-+ IEWL's splitting rule). Harness: [`ld/tests/run_nopt_mvs.py`](../ld/tests/run_nopt_mvs.py).
++ IEWL's splitting rule). Harness: [`ld370/tests/run_nopt_mvs.py`](../ld370/tests/run_nopt_mvs.py).
 
 ---
 
@@ -92,7 +92,7 @@ record crossed). The variation is a clue to the mechanism, not noise.
 |---|---|---|
 | Reloaded member is **logically perfect** — both control records correct (`06000000 40003000` / `06003000 40003000`), both text records full, `IEB154I … SUCCESSFULLY LOADED` | AMBLIST LISTLOAD (reads member as DATA via BSAM, executes nothing) | RECV370/IEBCOPY **reload is not the cause** |
 | text1 is **one contiguous 17000-byte block on one track** (CC=141 HH=3 R=1); install library is `SYSUT2 RECFM=U BLKSIZE=19069` (> 17000) | host-side parse of `/tmp/noptrun/nopt.unl` (the IEBCOPY-unload image = the physical CKD blocks), **zero MVS cycles** | not write/unload truncation (block is full), not IEBCOPY reblock-split (17000 < 19069); the cut is **mid a single physical block** |
-| `PDS21BLK` (ud[8] X'01') cleared when `ntext > 1` ([`ld370.c` build_userdata ~:522](../ld/ld370.c)) | moved the abend **12288 → 16376** | multi-block FETCH path is active; PDS2/ATR is not the bug |
+| `PDS21BLK` (ud[8] X'01') cleared when `ntext > 1` ([`ld370.c` build_userdata ~:522](../ld370/src/ld370.c)) | moved the abend **12288 → 16376** | multi-block FETCH path is active; PDS2/ATR is not the bug |
 | `PDS2FTBL` = first-text-block length (commit `aaaae7c7`) | moved the cap **12288 → 16384** | FETCH's first-read sizing reads from the **PDS2 directory user-data** |
 
 Net: AMBLIST proves the on-disk image is full; the `.unl` parse proves the first text
@@ -124,7 +124,7 @@ the *writer* should produce is the approach that kept failing.
 
 ## 4. Oracle result (2026-06-20) — member + PDS2 are CORRECT; bug is **placement**
 
-The oracle method was run ([`ld/tests/run_iewl_oracle.py`](../ld/tests/run_iewl_oracle.py)):
+The oracle method was run ([`ld370/tests/run_iewl_oracle.py`](../ld370/tests/run_iewl_oracle.py)):
 the **exact** failing `nopt.o` (t1=17000/t2=2056) was linked with **real IEWL** on MVS,
 AMBLISTed, **run**, and its directory dumped with IEHLIST LISTPDS FORMAT.
 
@@ -203,7 +203,7 @@ Steps 1-2 of the old oracle plan are **done** (IEWL runs RC=0; member identical)
 - `HEWLFSCD.ASM:74-106` — control + text record writer (authoritative byte layout).
 - `IEWFETCH.ASM` — loader (reader side; **not** the emission oracle, kept for the read path
   only). See memory `nopt-multitext-fetch-truncation` for the read-path mechanism notes.
-- [`ld/ld370.c`](../ld/ld370.c) — `:1154-1181` control+text emit (whole-section packing);
+- [`ld370/src/ld370.c`](../ld370/src/ld370.c) — `:1154-1181` control+text emit (whole-section packing);
   `build_userdata` ~`:504-523` (`PDS2FTBL`, `PDS21BLK`).
-- [`ld/tests/run_nopt_mvs.py`](../ld/tests/run_nopt_mvs.py) — the reproduction harness
+- [`ld370/tests/run_nopt_mvs.py`](../ld370/tests/run_nopt_mvs.py) — the reproduction harness
   (`--t1`/`--t2` sizes, `--amblist` mode).

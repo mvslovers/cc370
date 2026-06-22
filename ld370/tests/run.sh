@@ -9,9 +9,9 @@
 # byte-exact target is CESD + SPZAP-IDR + control + text + RLD.
 cd "$(dirname "$0")/../.." || exit 2          # repo root (cc370)
 
-AS=./as/as370
-LD=./ld/ld370
-AR=./ld/ar370
+AS=./as370/as370
+LD=./ld370/ld370
+AR=./ar370/ar370
 DIFF="python3 ld/tests/lmdiff.py"
 FIX=ld/tests/fixtures
 TMP="${TMPDIR:-/tmp}"

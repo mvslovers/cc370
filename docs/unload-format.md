@@ -1,6 +1,6 @@
 # IEBCOPY Unloaded-PDS Format (the host→MVS install transport)
 
-**Producer:** `ld370 --unload` (`ld/ld370.c`, the unload emitter).
+**Producer:** `ld370 --unload` (`ld370/src/ld370.c`, the unload emitter).
 **Consumer:** IEBCOPY `COPY` with an unloaded sequential `SYSUT1` (the LOAD step),
 which writes the members back into a real load library on MVS.
 
@@ -14,7 +14,7 @@ target load library. (A future XMIT emitter will live next to this one.)
 `IEBLDUL` (LOAD/UNLOAD init: COPYR1/COPYR2 field equates, the fake-DEB TTR
 conversion), `IEBRSAM`/`IEBWSAM` (read/write SAM), `IEBDSCPY` (copy engine).
 Directory user-data layout: `IHAPDS` (PDS2). Reverse-engineered against a real
-unload pair: `ld/tests/fixtures/e2e.iewl-member.bin` (the member) and
+unload pair: `ld370/tests/fixtures/e2e.iewl-member.bin` (the member) and
 `e2e.iebcopy-unload.bin` (its IEBCOPY unload — the byte oracle).
 
 > **This is synthesis, not a pure function of the member.** Unlike as370↔IFOX,
@@ -51,7 +51,7 @@ off len field
  9   1  KL         key length  (8 for directory, 0 for member data)
 10   2  DL         data length (big-endian)
 ```
-`put_count()` in `ld/ld370.c` writes exactly this. **Device-agnostic layout (v2):
+`put_count()` in `ld370/src/ld370.c` writes exactly this. **Device-agnostic layout (v2):
 one block per track.** Physical block `g` (global, across all members) sits
 *alone* on relative track `g` at `R=1`: `CC` = `0x8d + g/30`, `HH` = `g%30`
 (30 = 3350 tracks/cylinder). A single block ≤ `UBLKSIZE` therefore fits the track
@@ -131,7 +131,7 @@ TTR↔MBBCCHHR conversion spans every track used.
 
 * **Stage 1 (done):** `split_member` round-trips every linked regression member
   (incl. the `0x0E` RLD path); multi-member (`--pack`) reconstructs + name-sorts.
-  Host checks: `ld/tests/run.sh` + `ld/tests/unload_check.py` (multi-track-aware:
+  Host checks: `ld370/tests/run.sh` + `ld370/tests/unload_check.py` (multi-track-aware:
   reconstruct by directory `TT`, R reset per track).
 * **Stage 2 (done):** the FB80 XMIT uploads, `PGM=RECV370` installs it, the
   member runs on real MVS.

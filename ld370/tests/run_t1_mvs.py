@@ -33,7 +33,7 @@ import argparse
 import subprocess
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LD370 = os.path.join(REPO, "ld", "ld370")
+LD370 = os.path.join(REPO, "ld370", "ld370")
 CC370 = os.path.expanduser("~/.local/bin/i370-ibm-mvspdp-gcc")
 
 DEF_LIB = "/tmp/libcrent.a"     # crent370 runtime archive (ar370 output)
@@ -61,7 +61,7 @@ def main():
     # can only avoid the @@crtm.o bundle for @@EXITA if @@exita.o is ALSO indexed.
     # An archive built with the old "first-wins" ar370 lists @@CRT0/@@EXITA once
     # each, so the fix silently does not engage and the run S0C4s.  Reject it.
-    ar370 = os.path.join(REPO, "ld", "ar370")
+    ar370 = os.path.join(REPO, "ar370", "ar370")
     if os.path.exists(ar370):
         idx = subprocess.run([ar370, "t", args.lib],
                              capture_output=True, text=True).stdout

@@ -32,11 +32,11 @@ import argparse
 import subprocess
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-AS370 = os.path.join(REPO, "as", "as370")
+AS370 = os.path.join(REPO, "as370", "as370")
 WORK = "/tmp/iewloracle"
 MEMBER = "NOPT"
 
-sys.path.insert(0, os.path.join(REPO, "ld", "tests"))
+sys.path.insert(0, os.path.join(REPO, "ld370", "tests"))
 from run_nopt_mvs import build_asm        # reuse the exact module source  # noqa: E402
 
 

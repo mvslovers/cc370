@@ -21,7 +21,7 @@ import argparse
 import subprocess
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-AS370 = os.path.join(REPO, "as", "as370")
+AS370 = os.path.join(REPO, "as370", "as370")
 WORK = "/tmp/iewlmtrld"
 
 

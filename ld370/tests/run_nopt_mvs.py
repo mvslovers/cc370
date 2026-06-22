@@ -35,8 +35,8 @@ import argparse
 import subprocess
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LD370 = os.path.join(REPO, "ld", "ld370")
-AS370 = os.path.join(REPO, "as", "as370")
+LD370 = os.path.join(REPO, "ld370", "ld370")
+AS370 = os.path.join(REPO, "as370", "as370")
 
 WORK = "/tmp/noptrun"
 MEMBER = "NOPT"

@@ -1,6 +1,6 @@
 # XMIT (TSO TRANSMIT / NETDATA) Format — the host→MVS install transport
 
-**Producer:** `ld370 --xmit` (`ld/ld370.c`, the XMIT emitter).
+**Producer:** `ld370 --xmit` (`ld370/src/ld370.c`, the XMIT emitter).
 **Consumer on MVS:** `RECV370` (a batch XMIT unpacker, `PGM=RECV370` in
 `SYSC.LINKLIB`) — it parses the NETDATA stream and IEBCOPY-loads the member(s)
 into a load library. (Stock TSO/E `RECEIVE` is **not** present on the target;
@@ -37,7 +37,7 @@ flags:  0x80 first-segment-of-record | 0x40 last-segment | 0x20 control-record
 
 Max segment = 255 (so ≤253 data bytes); records longer than 253 span multiple
 segments, and segments freely span the 80-byte record boundaries.
-`netdata_seg()` in `ld/ld370.c` emits this.
+`netdata_seg()` in `ld370/src/ld370.c` emits this.
 
 ## 2. Logical records (9, for a one-file transmission)
 
@@ -117,7 +117,7 @@ records), then:
 * **Done:** single-member XMIT byte-identical to the TRANSMIT oracle modulo the
   INMFTIME timestamp; payload == the unload image; **RECV370-installs and runs
   on MVS (RC=7)** for both the IEWL member and ld370's own host-linked member.
-  Host checks: `ld/tests/run.sh` + `ld/tests/xmit_check.py`.
+  Host checks: `ld370/tests/run.sh` + `ld370/tests/xmit_check.py`.
 * **Open:** compute `INMSIZE`/source-DCB for arbitrary members (Stage-3
   generalisation); multi-track unload geometry for large libraries; an mbt
   host-assembly/link backend that ships the XMIT instead of submitting ASM/LINK

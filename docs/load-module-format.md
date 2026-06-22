@@ -402,5 +402,5 @@ The manual's RLD flag-field figure (Fig.16/27, `(TTTTLLST)`) **agrees** with the
 - `HEWLFSYM.ASM` — SYM record `:8-19,78,113-128`.
 - `IEWFETCH.ASM` — loader; ID/RLD EQUs `:209-227`; CCW EQUs `:260-273`; `DIERELOC` reloc decode + `BITMSK` `:3444-3504`; `IHAPDS DSECT=NO` `:3940`.
 - `IHAPDS` — PDS2 directory DSECT `:55-213`.
-- `as/as370.c` — object-deck oracle: RLD flag `((len-1)&3)<<2 | (isV?0x10:0)` `:1694,1696`; ESD type codes `:1641-1643`.
+- `as370/src/as370.c` — object-deck oracle: RLD flag `((len-1)&3)<<2 | (isV?0x10:0)` `:1694,1696`; ESD type codes `:1641-1643`.
 - `/tmp/lel_logic.txt` — DFP manual (cross-reference only; Figs.16/27 RLD flag `:3629-3645,5380-5400`).

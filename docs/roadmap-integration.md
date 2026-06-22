@@ -129,4 +129,4 @@ host-gebauten C-Programm.
   (Grundlage für `ld370 --unload`/`--xmit`).
 - `docs/multitext-fetch-truncation.md` — gelöster Blocker A1 (Multi-Text-Modul
   wurde bei 16 KB abgeschnitten — `ld370`-Textpuffer; 2026-06-21 behoben).
-- `as/` — as370 (host-nativer Assembler) inkl. eigener Doku.
+- `as370/` — as370 (host-nativer Assembler) inkl. eigener Doku.

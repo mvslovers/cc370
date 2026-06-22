@@ -24,9 +24,9 @@ import os, sys, glob, re, subprocess, concurrent.futures as cf
 HOME = os.path.expanduser("~")
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # <repo>/ld/tests/ -> <repo>
 CC370 = f"{HOME}/.local/bin/i370-ibm-mvspdp-gcc"
-AS370 = f"{REPO}/as/as370"
-AR370 = f"{REPO}/ld/ar370"
-LD370 = f"{REPO}/ld/ld370"
+AS370 = f"{REPO}/as370/as370"
+AR370 = f"{REPO}/ar370/ar370"
+LD370 = f"{REPO}/ld370/ld370"
 
 MVS = f"{HOME}/repos/mvs"
 WORK = "/tmp/linklib2"

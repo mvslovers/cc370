@@ -29,7 +29,7 @@ BINDIR  := $(PREFIX)/bin
 TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
 LIBEXEC := $(PREFIX)/libexec/gcc/$(TRIPLE)/$(GCCVER)
 
-TOOLS   := as/as370 ld/ld370 ld/ar370
+TOOLS   := as370/as370 ld370/ld370 ar370/ar370
 
 # --- GCC (driver + cc1) build, out-of-tree in build/ ----------------------
 # Old K&R-ish 3.4.6 sources: tell the modern host compiler not to error on them.
@@ -45,20 +45,20 @@ all: tools
 
 # --- standalone tools (normal single-file C binaries) ---------------------
 tools: $(TOOLS)
-as/as370: as/as370.c
+as370/as370: as370/src/as370.c as370/include/opc_table.h
+	$(HOSTCC) $(CFLAGS) -Ias370/include -o $@ $<
+ld370/ld370: ld370/src/ld370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
-ld/ld370: ld/ld370.c
-	$(HOSTCC) $(CFLAGS) -o $@ $<
-ld/ar370: ld/ar370.c
+ar370/ar370: ar370/src/ar370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
 
 # --- driver + cc1 (GCC autotools) -----------------------------------------
 $(BUILD)/config.status:
 	mkdir -p $(BUILD)
-	cd $(BUILD) && CFLAGS="$(GCC_CF)" CFLAGS_FOR_BUILD="$(GCC_CF)" ../configure \
+	cd $(BUILD) && CFLAGS="$(GCC_CF)" CFLAGS_FOR_BUILD="$(GCC_CF)" ../cc370/configure \
 	    --target=$(TRIPLE) --enable-languages=c --disable-threads --disable-nls \
 	    --disable-shared --without-headers \
-	    --with-gcc-version-trigger=../gcc/version.c
+	    --with-gcc-version-trigger=../cc370/gcc/version.c
 
 gcc: $(BUILD)/config.status
 	$(MAKE) -C $(BUILD) all-gcc CFLAGS="$(GCC_CF)" CFLAGS_FOR_BUILD="$(GCC_CF)"
@@ -68,9 +68,9 @@ install: install-tools install-gcc
 
 install-tools: tools
 	mkdir -p $(TGTBIN) $(BINDIR)
-	install -m 755 as/as370 $(TGTBIN)/as370
-	install -m 755 ld/ld370 $(TGTBIN)/ld370
-	install -m 755 ld/ar370 $(TGTBIN)/ar370
+	install -m 755 as370/as370 $(TGTBIN)/as370
+	install -m 755 ld370/ld370 $(TGTBIN)/ld370
+	install -m 755 ar370/ar370 $(TGTBIN)/ar370
 	ln -sf as370 $(TGTBIN)/as          # names the cc370 driver invokes
 	ln -sf ld370 $(TGTBIN)/ld
 	ln -sf ar370 $(TGTBIN)/ar

@@ -15,10 +15,10 @@ That `hello.xmit` ships to MVS and is installed into a load library with one
 
 | Tool | Role | Built from |
 |------|------|------------|
-| **cc370** | the driver + C → i370 HLASM compiler (`gcc/`) | a GCC 3.4.6 fork for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`) |
-| **as370** | `.s`/`.asm` → OS/360 object deck — byte-identical to IBM's IFOX00 | `as/as370.c` |
-| **ld370** | object decks → MVS load module (replaces IEWL) + automatic library call + `--unload`/`--xmit` host→MVS transport | `ld/ld370.c` |
-| **ar370** | object decks → `.a` archive with an ESD symbol index | `ld/ar370.c` |
+| **cc370** | the driver + C → i370 HLASM compiler (`cc370/gcc/`) | a GCC 3.4.6 fork for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`) |
+| **as370** | `.s`/`.asm` → OS/360 object deck — byte-identical to IBM's IFOX00 | `as370/src/as370.c` |
+| **ld370** | object decks → MVS load module (replaces IEWL) + automatic library call + `--unload`/`--xmit` host→MVS transport | `ld370/src/ld370.c` |
+| **ar370** | object decks → `.a` archive with an ESD symbol index | `ar370/src/ar370.c` |
 
 `cc370` is the single front-end; `as370`/`ld370`/`ar370` are ordinary binaries it
 drives (and which you can also run standalone). The C library it links against is
@@ -72,16 +72,18 @@ TSTALLB 84/84, 0 ABEND). This — not any memory limit — is the reason for
 ## Layout
 
 ```
-gcc/config/i370/   the i370/mvspdp target backend  — check here first for codegen bugs
-gcc/               GCC 3.4.6 core (C front end, RTL, optimizer), largely upstream
-libiberty/ include/ GNU support library + shared headers
-as/                as370 — host-native MVS assembler  (as/README.md)
-ld/                ld370 + ar370 — host-native linker + archiver
-docs/              object / load-module / unload / xmit formats + roadmap
+cc370/             the GCC 3.4.6 fork — the compiler (driver + cc1)
+  gcc/config/i370/   the i370/mvspdp target backend — check here first for codegen bugs
+  gcc/ libiberty/ intl/ include/ config/   GCC core + build deps, largely upstream
+as370/   src/ include/ tests/   as370 — host-native MVS assembler  (as370/README.md)
+ld370/   src/ tests/            ld370 — host-native linker (replaces IEWL)
+ar370/   src/                   ar370 — .a archiver (ld370 autocalls against it)
+docs/                           object / load-module / unload / xmit formats + roadmap
+Makefile                        builds the tools (make) + the compiler (make gcc)
 ```
 
 Deep dives: [`CLAUDE.md`](CLAUDE.md) (architecture + gotchas),
-[`as/README.md`](as/README.md), and `docs/` (the on-the-wire formats).
+[`as370/README.md`](as370/README.md), and `docs/` (the on-the-wire formats).
 
 ## Provenance
 
@@ -121,7 +123,7 @@ old-C `-Wno-*` flags on a modern host):
 CF="-g -O0 -fcommon -std=gnu89 -Wno-implicit-int -Wno-implicit-function-declaration \
     -Wno-int-conversion -Wno-error -Wno-return-type -Wno-deprecated-non-prototype"
 mkdir build && cd build
-CFLAGS="$CF" CFLAGS_FOR_BUILD="$CF" ../configure \
+CFLAGS="$CF" CFLAGS_FOR_BUILD="$CF" ../cc370/configure \
   --target=i370-ibm-mvspdp --enable-languages=c \
   --disable-threads --disable-nls --disable-shared --without-headers
 make all-gcc CFLAGS="$CF" CFLAGS_FOR_BUILD="$CF"   # -> build/gcc/{cc1,xgcc}

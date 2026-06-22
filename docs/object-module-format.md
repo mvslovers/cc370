@@ -1,6 +1,6 @@
 # OS/360 Object-Module (OBJ Deck) Format — as370 Reference Spec
 
-**Oracle:** `as/as370.c` — the host-native MVS Assembler-XF (IFOX00) clone, byte-identical to IFOX00 over 950 ecosystem modules.
+**Oracle:** `as370/src/as370.c` — the host-native MVS Assembler-XF (IFOX00) clone, byte-identical to IFOX00 over 950 ecosystem modules.
 **Authority rule:** This document describes **what as370 actually emits**. Source code is authoritative; the IBM manual (LY26-3921, Fig. 69–75) is cross-reference only. Where the manual and the source diverge, the source wins and the divergence is flagged. All citations are to `as370.c` line numbers.
 
 All card images are **80-byte EBCDIC** records, written by `fwrite(c, 1, 80, f)`. Every field below is given as **byte offset (0-based)** and **column (1-based)** with fixed hex values where applicable.

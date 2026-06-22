@@ -1,12 +1,11 @@
 .DS_Store
 
 # host toolchain build output (Makefile)
-as/as370
-ld/ld370
-ld/ar370
+as370/as370
+ld370/ld370
+ar370/ar370
 /build/
 
-# stale in-tree build artifacts — the real build is out-of-tree in /build/
-/gcc/*.o
-/libiberty/*.o
-/i370/
+# stale in-tree build artifacts — the real GCC build is out-of-tree in /build/
+/cc370/gcc/*.o
+/cc370/libiberty/*.o
