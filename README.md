@@ -80,18 +80,51 @@ ld/                ld370 + ar370 — host-native linker + archiver
 docs/              object / load-module / unload / xmit formats + roadmap
 ```
 
-Deep dives: [`V2.0.0-README.md`](V2.0.0-README.md) (provenance of the GCC fork),
-[`CLAUDE.md`](CLAUDE.md) (architecture + gotchas), [`as/README.md`](as/README.md),
-and `docs/` (the on-the-wire formats).
+Deep dives: [`CLAUDE.md`](CLAUDE.md) (architecture + gotchas),
+[`as/README.md`](as/README.md), and `docs/` (the on-the-wire formats).
 
 ## Provenance
 
 The compiler is a fork of GCC **3.4.6** — the last GCC to carry the i370 machine
-definition — for the `i370-ibm-mvspdp` HLASM target, slimmed to that one target.
+definition — for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`: HLASM/EBCDIC,
+`COPY PDPTOP` / `PDPPRLG` / `PDPEPIL`, [libc370](https://github.com/mvslovers/libc370)-compatible
+calling conventions), slimmed to that one target.
+
 It descends from the gccmvs / [i370-gcc](https://github.com/linas/i370-gcc) line
-(Paul Edwards, Dave Pitts, and others) and from the earlier GCC 3.2.3-based
-**c2asm370** v1.x. The charset and ABI match the
-[libc370](https://github.com/mvslovers/libc370) runtime (EBCDIC CP037 with the
-ecosystem NEL newline).
+(Paul Edwards, Dave Pitts, and others). Specifically, this tree is a snapshot of
+`mvslovers/i370-gcc` @ `feature/ebcdic-char-constants` (commit `0710af0c`),
+brought in as v2.0 because the upstream PRs to linas went unanswered — so the
+compiler is developed against the ecosystem's own requirements from here on. The
+earlier GCC 3.2.3-based generation is the frozen `mvslovers/c2asm370` repo
+(**v1.x**), kept as a fallback for projects still on the old name.
+
+What this snapshot carries over stock GCC 3.4.6:
+
+- **EBCDIC charset (CP037 + ecosystem NEL):** char constants and string literals
+  map to CP037; `\n` maps to EBCDIC NEL `0x15` (byte-identical to the ecosystem
+  httpd `cp037_atoe`/`cp037_etoa`, so it matches mvsMF upload and HTTP output);
+  `\x..`/`\NNN` escapes stay binary-literal.
+- **Codegen for IFOX00:** fixed-column assembler text, valid MVS symbol names for
+  private statics, signed 32-bit literals; the `asm()`-extern address-of fix.
+- **Host portability:** builds on macOS and Linux, x86-64 and ARM64, modern
+  clang/gcc-14 hosts.
+- **Slimmed to i370:** the tree was cut from ~20 640 to ~1 100 tracked files
+  (other GCC targets, other-language front ends, the test suite, other-language
+  runtimes), then the leftover build cruft (changelogs, contrib, stale objects).
+
+### Building GCC by hand
+
+`make gcc` wraps this; the equivalent direct invocation (GCC 3.4.6 needs the
+old-C `-Wno-*` flags on a modern host):
+
+```sh
+CF="-g -O0 -fcommon -std=gnu89 -Wno-implicit-int -Wno-implicit-function-declaration \
+    -Wno-int-conversion -Wno-error -Wno-return-type -Wno-deprecated-non-prototype"
+mkdir build && cd build
+CFLAGS="$CF" CFLAGS_FOR_BUILD="$CF" ../configure \
+  --target=i370-ibm-mvspdp --enable-languages=c \
+  --disable-threads --disable-nls --disable-shared --without-headers
+make all-gcc CFLAGS="$CF" CFLAGS_FOR_BUILD="$CF"   # -> build/gcc/{cc1,xgcc}
+```
 
 Maintained by the [mvslovers](https://github.com/mvslovers) community.

@@ -17,7 +17,7 @@ cc370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3
 
 **End-to-end validated on real MVS (2026-06-18):** `cc370 → as370` built ctest locally (no IFOX00), the decks linked with IEWL (RC=0) and ran (`PGM=CTESTH`) with **RC=0** (all charset checks pass). See `as/` and the [as370 section](#as370--host-native-mvs-assembler).
 
-**This repo is the v2.0 toolchain:** GCC **3.4.6** for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`), slimmed to the i370 target, plus as370/ld370/ar370. Imported from the `i370-gcc` fork. See `V2.0.0-README.md` for provenance. The earlier GCC **3.2.3**-based **c2asm370 v1.x** lives in the frozen `mvslovers/c2asm370` repo (kept as a fallback so existing ecosystem projects keep building against the old name); the matching v1.x libc is the frozen `crent370`. The current libc is `mvslovers/libc370`.
+**This repo is the v2.0 toolchain:** GCC **3.4.6** for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`), slimmed to the i370 target, plus as370/ld370/ar370. Imported from the `i370-gcc` fork (snapshot of `mvslovers/i370-gcc` @ `0710af0c`; see README "Provenance"). The earlier GCC **3.2.3**-based **c2asm370 v1.x** lives in the frozen `mvslovers/c2asm370` repo (kept as a fallback so existing ecosystem projects keep building against the old name); the matching v1.x libc is the frozen `crent370`. The current libc is `mvslovers/libc370`.
 
 ## Build (v2.0 — C-only cross-compiler, modern macOS/Linux host)
 
