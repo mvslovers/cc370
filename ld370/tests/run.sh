@@ -82,9 +82,12 @@ else
     echo "ld370 -xmit failed"; fails=$((fails + 1))
 fi
 
-# multi-member: pack two linked members into one image (deliberately in
-# non-sorted input order) and confirm both reconstruct + the directory is
-# name-sorted.  No byte oracle -- structural round-trip only (single track).
+# multi-member: pack linked members into one library image (deliberately in
+# non-sorted input order) and confirm every member RELOADS via the faithful
+# IEBRSAM simulator (per-member DL=0 EOF + directory-driven find), with the
+# directory name-sorted.  No byte oracle -- the MVS RECV370 round-trip is the
+# arbiter; the simulator is its host-side stand-in (it fails the old single-EOM
+# layout, so a green here is meaningful, not a slice-back-out tautology).
 printf '\n=== pack tiny+rldt (multi-member) ===\n'
 if "$LD" --pack "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" \
         -o "$TMP/lib2" -iebcopy 2>/dev/null; then
@@ -92,6 +95,59 @@ if "$LD" --pack "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" \
         "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" || fails=$((fails + 1))
 else
     echo "ld370 --pack failed"; fails=$((fails + 1))
+fi
+
+# 3 members: exercises a MIDDLE member (found after a prior member's EOF and
+# itself followed by another) -- the position a 2-member pack cannot reach.
+printf '\n=== pack tiny+rldt+klein (3 members) ===\n'
+if "$LD" --pack "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" "KLEIN=$TMP/klein.ld.bin" \
+        -o "$TMP/lib3" -iebcopy 2>/dev/null; then
+    python3 ld370/tests/unload_check.py "$TMP/lib3.iebcopy" \
+        "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" "KLEIN=$TMP/klein.ld.bin" || fails=$((fails + 1))
+else
+    echo "ld370 --pack (3) failed"; fails=$((fails + 1))
+fi
+
+# POSITIVE CONTROL: the simulator must reconstruct a REAL 2-member IEBCOPY UNLOAD
+# (captured from MVS by run_2mem_oracle.py: IEWL 2 members -> IEBCOPY UNLOAD).
+# The earlier simulator had only a negative control, so it confidently accepted a
+# layout MVS rejected.  Reading the geometry from the header lets the same check
+# validate this real oracle (start CC 0x178) -- if it can't reload the layout
+# IEBCOPY itself writes, it cannot be trusted to bless ld370's.
+printf '\n=== oracle: real 2-member IEBCOPY UNLOAD reloads (positive control) ===\n'
+if [ -f "$FIX/e2e2.iebcopy-unload.bin" ]; then
+    python3 ld370/tests/unload_check.py "$FIX/e2e2.iebcopy-unload.bin" E2EA E2EB \
+        || fails=$((fails + 1))
+else
+    echo "  SKIP: $FIX/e2e2.iebcopy-unload.bin missing (run run_2mem_oracle.py)"
+fi
+
+# SIM SANITY (negative): a single-EOM image (member 1 runs into member 2) MUST be
+# rejected -- otherwise a green above is a slice-back-out tautology.  NB this is
+# NOT the layout that abended on MVS; that was an XMIT transport bug (below), which
+# this unload-image simulator structurally cannot see.
+printf '\n=== sim sanity: single-EOM layout is rejected ===\n'
+python3 ld370/tests/strip_interior_eof.py "$TMP/lib2.iebcopy" "$TMP/lib2_seom.iebcopy"
+if python3 ld370/tests/unload_check.py "$TMP/lib2_seom.iebcopy" \
+        "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" >/dev/null 2>&1; then
+    echo "  FAIL: simulator accepted the single-EOM layout (no teeth)"; fails=$((fails + 1))
+else
+    echo "  OK: simulator rejected the single-EOM layout (has teeth)"
+fi
+
+# TRANSPORT GUARD: the multi-member XMIT must frame each member in its OWN VS
+# logical record.  IEBCOPY LOAD reads SYSUT1 one VS record at a time, so a later
+# member packed behind an earlier member's DL=0 EOF in one record is lost on
+# reload (IEB183I) -- the ACTUAL cause of every failed 2-member round-trip,
+# invisible to the unload-image sim.  Validated on MVS 2026-06-22: per-member
+# framing installs both members (IEB154I x2) and each runs (RUNA=0007, RUNB=0003).
+printf '\n=== multi-member XMIT per-member VS framing (transport guard) ===\n'
+if "$LD" --pack "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" \
+        --dsn IBMUSER.LIB2.LOAD -o "$TMP/lib2x" -iebcopy -xmit 2>/dev/null; then
+    python3 ld370/tests/xmit_check.py "$TMP/lib2x.xmit" "$TMP/lib2x.iebcopy" \
+        || fails=$((fails + 1))
+else
+    echo "ld370 -xmit (multi-member) failed"; fails=$((fails + 1))
 fi
 
 # automatic library call: a member pulled from an ar370 archive must yield the

@@ -32,10 +32,24 @@ unload pair: `ld370/tests/fixtures/e2e.iewl-member.bin` (the member) and
 [ COPYR1 + COPYR2 ]            328 bytes, env header (UDEBX extent grown to fit)
 [ directory record ]          count12(KL=8,DL=256) + key FF*8 + 256-byte dir block
 [ end-of-directory record ]   12 zero bytes (a DL=0 marker record)
-  per member, per physical block, one block per relative track:
-    [ member-data record ]    count12(KL=0, DL=blocklen) + DATA[blocklen]
-[ end-of-module record ]      count12(KL=0, DL=0)   -- one, after the last block
+  per member:
+    [ member-data record ]*   count12(KL=0, DL=blocklen) + DATA[blocklen]
+    [ member EOF record ]     count12(KL=0, DL=0)   -- ends this member
 ```
+
+**Single member:** one block per relative track (R=1) -- device-agnostic.
+**Several members (`--pack`):** records pack CONTIGUOUSLY -- R increments along
+each track, each member's `DL=0` EOF is the next record in the R-sequence (not its
+own track), and the directory TTR / `PDS2TTRT` carry the real R. This matches a
+real IEBCOPY UNLOAD (oracle `tests/fixtures/e2e2.iebcopy-unload.bin`).
+
+> **The multi-member transport requirement lives in the XMIT layer, not here.**
+> IEBCOPY LOAD reads the reloaded `SYSUT1` one RECFM=VS logical record at a time,
+> so `emit_xmit` MUST frame each member in its own VS record (end the logical
+> record at each per-member EOF). A member packed *behind* an earlier member's
+> `DL=0` EOF in one VS record is lost on reload -> `IEB183I`. This was the actual
+> cause of every failed 2-member round-trip; the unload byte layout above is
+> necessary but not sufficient. See `docs/xmit-format.md` and `xmit_check.py`.
 
 All records after COPYR2 are **CKD record images**: a 12-byte count field
 optionally followed by a key and data. There is **no** RDW/BDW in the stream
@@ -140,6 +154,10 @@ TTR↔MBBCCHHR conversion spans every track used.
   runs (**RC=7**) on mvsdev.lan. `UDEBX` cylinder growth is coded. Byte-identity
   to the real single-track IEBCOPY oracle is intentionally dropped (we under-pack
   for device independence); the MVS round-trip is the arbiter.
-* **Open:** multi-member multi-track on MVS (single EOM at end, not per-member —
-  untested >1 member); >30-track members (UDEBX growth not yet round-tripped);
-  computed PDS2 attributes (still echoed); multi-block directories.
+* **Multi-member (`--pack`) DONE & validated on MVS (2026-06-22):** contiguous
+  packing + per-member `DL=0` EOF + per-member XMIT VS framing -> both members
+  install (`IEB154I` ×2) and run (RUNA=0007, RUNB=0003).
+* **Open:** members whose data exceeds `MAXTEXT` (18432) span multiple VS records
+  with no EOF between them (untested, as for the 69KB t1 case); >30-track members
+  (UDEBX growth not yet round-tripped); computed PDS2 attributes (still echoed);
+  multi-block directories (need the same per-record XMIT framing).

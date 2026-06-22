@@ -527,8 +527,14 @@ static void emitb(int b) { out[olen++] = (unsigned char)b; }
  *   [328B env header]          COPYR1 + COPYR2                (echoed verbatim)
  *   [dir record]               count(KL=8,DL=256) + key FF*8 + 256B dir block
  *   [dir EOF]                  12 zero bytes (end-of-directory marker record)
- *   per member, per block:     count(KL=0, DL=blocklen, R ascending) + DATA
- *   [EOM]                      count(KL=0, DL=0, R = last+1)
+ *   per member, per block:     count(KL=0, DL=blocklen, MBBCCHHR) + DATA
+ *   per member:  a DL=0 EOF record ends the member.
+ *                Single member: one block per track (R=1).  Several members:
+ *                records pack CONTIGUOUSLY (R incrementing along each track),
+ *                the EOF being the next record in the sequence -- the layout a
+ *                real IEBCOPY unload produces (oracle e2e2.iebcopy-unload.bin).
+ *                Members in directory (name-sorted) order; the load is
+ *                directory-driven (each member found via its directory TTR).
  *
  * Field classes (advisor reframe -- this is synthesis, not byte-identity to a
  * member function): COPYR1/COPYR2, device geometry (CC=0x8d) and the base R
@@ -602,13 +608,15 @@ static void put_count(unsigned char *p, int cc, int hh, int r, int kl, int dl)
 }
 
 /* one physical block of a load-module member */
-struct lmblock { long off, len; int is_text; };
+struct lmblock { long off, len; int is_text; int tt, r; };  /* tt,r assigned in emit_unload */
 /* a member to be unloaded */
 struct umember {
     unsigned char name[8];
     const unsigned char *bytes; long len;
     struct lmblock *blk; int nblk;   /* allocated by split_member; free after emit */
-    int first_tt, text_tt;   /* relative track of first block / first text block (one block/track, R=1) */
+    int first_tt, first_r;   /* relative (track, record) of the member's first block -> directory TTR */
+    int text_tt, text_r;     /* relative (track, record) of the first text block   -> PDS2TTRT */
+    int eof_tt, eof_r;       /* relative (track, record) of the member's DL=0 EOF record */
     long entry, modlen;   /* PDS2EPA / PDS2STOR for the dir entry; <0 = echo template */
 };
 
@@ -664,7 +672,7 @@ static int split_member(const unsigned char *m, long n, struct lmblock **out)
 static void build_userdata(unsigned char ud[24], const struct umember *m)
 {
     memcpy(ud, unload_userdata, 24);
-    put16(ud, m->text_tt); ud[2] = 1;                /* PDS2TTRT = (text_tt, 1) */
+    put16(ud, m->text_tt); ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (text_tt, text_r) */
     if (m->modlen >= 0) {                                     /* computed from the link */
         long ftbl = m->modlen, origin = 0; int j, ntext = 0, have_rld = 0, first_text = -1;
         for (j = 0; j < m->nblk; j++) {
@@ -713,10 +721,12 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
  * byte length.  If bounds!=NULL, fill the 4 logical-record end offsets the
  * unload is split into when transmitted: COPYR1, COPYR2, directory(+EOD),
  * member-data(+EOM) -- the 4 data records of the XMIT payload.
- * v2: device-agnostic -- one block per track (block g alone on relative track g
- * at R=1).  A single block <= UBLKSIZE fits any target DASD track, so the image
- * loads regardless of the end-user's device (3.8j IEBCOPY writes RECFM=U blocks
- * as-is + relocates TTRs; it has no COPYMOD).  One directory block. */
+ * Single member: device-agnostic one block per track (a block <= UBLKSIZE fits
+ * any target DASD track, so the image loads regardless of the end-user's device;
+ * 3.8j IEBCOPY writes RECFM=U blocks as-is + relocates TTRs, it has no COPYMOD).
+ * Several members: contiguous packing (R incrementing along each track), the
+ * layout a real IEBCOPY unload produces -- the only layout RECV370 reloads.
+ * One directory block. */
 static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *bounds)
 {
     long p = 0; int i, j, ntracks, ncyl;
@@ -735,26 +745,54 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     memcpy(o + p, unload_env_hdr, 328); p += 328;       /* COPYR1 + COPYR2 */
     if (bounds) { bounds[0] = UNLOAD_COPYR1_LEN; bounds[1] = 328; }
 
-    /* one block per track: block g (global, across all members) lives alone on
-     * relative track g.  Record each member's first-block and first-text-block
-     * track so the directory TTR / PDS2TTRT point at them (R is always 1). */
+    /* Assign each block (and each member's DL=0 EOF) a relative (track, record).
+     *  - single member (validated, device-agnostic): ONE block per track at R=1
+     *    (track_cap 0 => every record forces a new track).  A block <= UBLKSIZE
+     *    fits any DASD track, so a big multi-track member loads regardless of the
+     *    end-user's device.
+     *  - several members (a library): pack records CONTIGUOUSLY, R incrementing
+     *    along each track, as a real IEBCOPY unload does (oracle
+     *    e2e2.iebcopy-unload.bin: both members + EOFs share one track, R 7..18).
+     *    The per-member EOF is the next record in the R-sequence, NOT its own
+     *    track, and the directory TTR / PDS2TTRT carry the real R.  A member that
+     *    fills a track wraps to R=1 on the next (multi-track-multi-member is coded
+     *    here but only the single-track case is validated on MVS).
+     *    NOTE: the operative multi-member fix was the XMIT per-member VS framing
+     *    in emit_xmit (a member packed behind another's EOF in one VS record was
+     *    lost on reload).  This contiguous layout is oracle-faithful and was
+     *    validated ALONGSIDE that transport fix; it was not isolated as strictly
+     *    necessary vs one-block-per-track, but it matches what IEBCOPY writes. */
     {
-        int g = 0, sawtext;
+        long track_cap = (nmem == 1) ? 0 : UNLOAD_SRC_BLKSIZE;
+        int tt = 0, r = 1; long trkbytes = 0;
         for (i = 0; i < nmem; i++) {
-            mem[i].first_tt = g;
-            mem[i].text_tt = g;
-            sawtext = 0;
+            int sawtext = 0;
+            mem[i].first_tt = tt; mem[i].first_r = r;       /* defaults (nblk==0) */
+            mem[i].text_tt = tt; mem[i].text_r = r;
             for (j = 0; j < mem[i].nblk; j++) {
-                if (mem[i].blk[j].is_text && !sawtext) { mem[i].text_tt = g; sawtext = 1; }
-                g++;
+                long need = 12 + mem[i].blk[j].len;         /* count field + block data */
+                if (r > 1 && trkbytes + need > track_cap) { tt++; r = 1; trkbytes = 0; }
+                if (j == 0) {                               /* member's first block (post-wrap) */
+                    mem[i].first_tt = tt; mem[i].first_r = r;
+                    mem[i].text_tt = tt; mem[i].text_r = r;
+                }
+                mem[i].blk[j].tt = tt; mem[i].blk[j].r = r;
+                if (mem[i].blk[j].is_text && !sawtext) {
+                    mem[i].text_tt = tt; mem[i].text_r = r; sawtext = 1;
+                }
+                r++; trkbytes += need;
             }
+            if (r > 1 && trkbytes + 12 > track_cap) { tt++; r = 1; trkbytes = 0; }
+            mem[i].eof_tt = tt; mem[i].eof_r = r;           /* DL=0 EOF = next record */
+            r++; trkbytes += 12;
         }
-        ntracks = g;                                    /* data tracks; EOM sits on track g */
+        ntracks = tt + 1;                                   /* highest relative track used + 1 */
     }
 
-    /* grow the UDEBX data extent to span every track used (incl. the EOM track),
-     * in whole cylinders, so the fake-DEB TTR<->MBBCCHHR conversion stays valid. */
-    ncyl = (ntracks + 1 + UNLOAD_TRKPERCYL - 1) / UNLOAD_TRKPERCYL;
+    /* grow the UDEBX data extent to span every track used (incl. each member's
+     * EOF track), in whole cylinders, so the fake-DEB TTR<->MBBCCHHR conversion
+     * stays valid. */
+    ncyl = (ntracks + UNLOAD_TRKPERCYL - 1) / UNLOAD_TRKPERCYL;
     if (ncyl < 1) ncyl = 1;
     put16(o + UDEBX_ENDCC, UNLOAD_DATA_CC + ncyl - 1);
     put16(o + UDEBX_ENDHH, UNLOAD_TRKPERCYL - 1);
@@ -767,7 +805,8 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     for (i = 0; i < nmem; i++) {
         unsigned char *e = dir + used;
         memcpy(e, mem[i].name, 8);
-        put16(e + 8, mem[i].first_tt); e[10] = 1;    /* TTR = (first_tt, 1) */
+        put16(e + 8, mem[i].first_tt);
+        e[10] = (unsigned char)mem[i].first_r;       /* TTR = (first_tt, first_r) */
         e[11] = 0x2c;                                /* alias=0, 1 TTR, 12 halfwords user data */
         build_userdata(e + 12, &mem[i]);
         used += 8 + 3 + 1 + 24;
@@ -783,23 +822,26 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     memset(o + p, 0, 12); p += 12;                     /* end-of-directory marker record */
     if (bounds) bounds[2] = p;                          /* directory record + EOD marker */
 
-    /* member data: one CKD record image per physical block, one block per
-     * relative track (CC advances every UNLOAD_TRKPERCYL tracks), R always 1. */
-    {
-        int g = 0;
-        for (i = 0; i < nmem; i++)
-            for (j = 0; j < mem[i].nblk; j++) {
-                long bl = mem[i].blk[j].len;
-                put_count(o + p, UNLOAD_DATA_CC + g / UNLOAD_TRKPERCYL,
-                          g % UNLOAD_TRKPERCYL, 1, 0, (int)bl); p += 12;
-                memcpy(o + p, mem[i].bytes + mem[i].blk[j].off, bl); p += bl;
-                g++;
-            }
-        /* EOM: zero-length record alone on the track after the last block */
-        put_count(o + p, UNLOAD_DATA_CC + g / UNLOAD_TRKPERCYL,
-                  g % UNLOAD_TRKPERCYL, 1, 0, 0); p += 12;
+    /* member data: one CKD record image per physical block at its assigned
+     * relative (track, record) -- CC = UNLOAD_DATA_CC + tt/UNLOAD_TRKPERCYL,
+     * HH = tt%UNLOAD_TRKPERCYL.  Single member: one block per track, R=1.
+     * Several members: contiguous, R incrementing along each track. */
+    for (i = 0; i < nmem; i++) {
+        for (j = 0; j < mem[i].nblk; j++) {
+            long bl = mem[i].blk[j].len;
+            int tt = mem[i].blk[j].tt, r = mem[i].blk[j].r;
+            put_count(o + p, UNLOAD_DATA_CC + tt / UNLOAD_TRKPERCYL,
+                      tt % UNLOAD_TRKPERCYL, r, 0, (int)bl); p += 12;
+            memcpy(o + p, mem[i].bytes + mem[i].blk[j].off, bl); p += bl;
+        }
+        /* per-member DL=0 EOF -- the on-disk end of file ends the member on
+         * reload (IEBRSAM sets RDEOF).  The next member's data continues the
+         * R-sequence (contiguous); directory exhaustion stops the load after the
+         * last member (IEBDSCPY), so no extra trailer is needed. */
+        put_count(o + p, UNLOAD_DATA_CC + mem[i].eof_tt / UNLOAD_TRKPERCYL,
+                  mem[i].eof_tt % UNLOAD_TRKPERCYL, mem[i].eof_r, 0, 0); p += 12;
     }
-    if (bounds) bounds[3] = p;                          /* member data + EOM */
+    if (bounds) bounds[3] = p;                          /* member data + per-member EOF */
     return p;
 }
 
@@ -1004,17 +1046,26 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     netdata_seg(o, &p, unl,             bounds[0],              0);
     netdata_seg(o, &p, unl + bounds[0], bounds[1] - bounds[0], 0);
     netdata_seg(o, &p, unl + bounds[1], bounds[2] - bounds[1], 0);
-    /* member data: the IEBCOPY-unload's variable records cannot exceed the
-     * reload buffer, so pack whole CKD records (count12 + KL + DL) into logical
-     * records of <= MAXTEXT bytes instead of one giant record. */
+    /* member data: pack whole CKD records (count12 + KL + DL) into logical
+     * records of <= MAXTEXT bytes (the IEBCOPY-unload's variable records cannot
+     * exceed the reload buffer).  CRUCIAL for multi-member: end the logical
+     * record at every per-member DL=0 EOF.  IEBCOPY LOAD reads SYSUT1 one VS
+     * record at a time; packing a later member's data BEHIND a member's EOF in
+     * the same VS record loses it on reload -> IEB183I (every 2-member layout
+     * abended this way).  A real TSO TRANSMIT frames each unload record
+     * separately; this matches it at the member boundary.  (Single member:
+     * its only DL=0 is the trailing EOM, so the framing is unchanged -- the
+     * validated RC=7 image is byte-identical.) */
     {
         long q = bounds[2];
         while (q < bounds[3]) {
             long cs = q, clen = 0;
             while (q < bounds[3]) {
-                long reclen = 12 + unl[q + 9] + be16(unl + q + 10);
+                long dl = be16(unl + q + 10);
+                long reclen = 12 + unl[q + 9] + dl;
                 if (clen > 0 && clen + reclen > MAXTEXT) break;
                 clen += reclen; q += reclen;
+                if (dl == 0) break;             /* member EOF -> end this VS record */
                 if (clen >= MAXTEXT) break;
             }
             netdata_seg(o, &p, unl + cs, clen, 0);
