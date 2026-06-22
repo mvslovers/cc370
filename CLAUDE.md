@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-c2asm370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3.8j. It is a **cross-compiler**: it runs on the host (macOS/Linux) and emits mainframe assembler.
+cc370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3.8j. It is a **cross-compiler**: it runs on the host (macOS/Linux) and emits mainframe assembler.
 
 **The goal (v2.0): a fully host-native MVS cross-toolchain.** Historically the `.s` was uploaded to the IBM assembler (**IFOX00**) on the target. v2.0 adds **`as370`** (`as/as370.c`) — a host-native MVS Assembler-XF clone that produces OS/360 object decks **on the host**, byte-identical to IFOX00. The endgame is to compile, assemble, **and link** on the host so the only thing that touches MVS is the final load module (eventually nothing). Components:
 
@@ -17,11 +17,7 @@ c2asm370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MV
 
 **End-to-end validated on real MVS (2026-06-18):** `cc370 → as370` built ctest locally (no IFOX00), the decks linked with IEWL (RC=0) and ran (`PGM=CTESTH`) with **RC=0** (all charset checks pass). See `as/` and the [as370 section](#as370--host-native-mvs-assembler).
 
-**Two generations live in this repo:**
-- **`main` — v1.x:** GCC **3.2.3** fork (the original c2asm370).
-- **`V2.0.0` — v2.0:** GCC **3.4.6** for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`), slimmed to the i370 target. Imported from the `i370-gcc` fork. **Active work is on v2.0.** See `V2.0.0-README.md` for provenance.
-
-The rest of this file describes **v2.0** (the `V2.0.0` branch).
+**This repo is the v2.0 toolchain:** GCC **3.4.6** for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`), slimmed to the i370 target, plus as370/ld370/ar370. Imported from the `i370-gcc` fork. See `V2.0.0-README.md` for provenance. The earlier GCC **3.2.3**-based **c2asm370 v1.x** lives in the frozen `mvslovers/c2asm370` repo (kept as a fallback so existing ecosystem projects keep building against the old name); the matching v1.x libc is the frozen `crent370`. The current libc is `mvslovers/libc370`.
 
 ## Build (v2.0 — C-only cross-compiler, modern macOS/Linux host)
 
@@ -128,9 +124,8 @@ The GCC driver invokes an assembler literally named `as`, found in its own exec 
 - **Assembler options from IFOX00 sources** — derive the real `PARM=` option set + RC/severity semantics from the IFOX source (`~/repos/mvs/ifox-src/all/`).
 
 **cc370 / packaging work:**
-- **New `cc370` repo** carved from the c2asm370 V2 sources (the GCC fork as its own project).
-- **Rework Makefiles** to build the driver as **`cc370`** (program prefix / `--program-transform-name`) instead of the target-prefixed `i370-ibm-mvspdp-gcc`.
-- **cc370 cosmetics to fit as370** — banners already say `cc370 V1.0`; fix the doubled `cpu`/`machine` `#assert` warnings (`gcc/config/i370/mvspdp.h:84-85` re-assert what `i370.h:34-35` already does → harmless "re-asserted" cpp warnings); align `-v`/`--help` wording with as370.
+- **Done:** carved into its own `mvslovers/cc370` repo (this one); the top-level `Makefile` builds the driver as **`cc370`** and installs as370/ld370/ar370 as ordinary tools; `c2asm370` v1.x is frozen as the fallback.
+- **cc370 cosmetics** — banners say `cc370 V1.0`; still open: the doubled `cpu`/`machine` `#assert` warnings (`gcc/config/i370/mvspdp.h:84-85` re-assert what `i370.h:34-35` already does → harmless "re-asserted" cpp warnings); align `-v`/`--help` wording with as370.
 
 **Cross-cutting (additions):**
 - **Host-side regression harness** — fold the 950-module IFOX byte-identity corpus check into `as/tests/` + CI so codegen/assembler changes can't silently regress (today it's ad-hoc `/tmp` scripts).

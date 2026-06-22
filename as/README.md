@@ -1,6 +1,6 @@
 # as370 — host-native MVS assembler
 
-Part of the **c2asm370** host-native MVS cross-toolchain (cc370 / as370 / ld370 /
+Part of the **cc370** host-native MVS cross-toolchain (cc370 / as370 / ld370 /
 ar370). `as370` is an Assembler-XF (**IFOX00**) clone that runs on the host
 (macOS/Linux) and emits OS/360 object decks directly — so the C→object path no
 longer needs IFOX00 on MVS. Single C file (`as370.c`), no separate binutils.

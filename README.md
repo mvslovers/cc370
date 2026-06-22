@@ -1,174 +1,97 @@
-> **c2asm370 — host-native MVS cross-toolchain.** On the `V2.0.0` branch this
-> repo is more than the GCC fork below: it is a full toolchain that **compiles,
-> assembles, links and packages MVS programs entirely on the host** (macOS/Linux),
-> so only the finished load module is shipped to MVS — **cc370** (this GCC 3.4.6
-> fork), **as370** (assembler, byte-identical to IFOX00), **ld370** (linker,
-> replaces IEWL) + **ar370** (`.a` archives) and the `--unload`/`--xmit`
-> host→MVS transport. Start here:
-> [`docs/roadmap-integration.md`](docs/roadmap-integration.md) (plain-language
-> status + integration plan), [`V2.0.0-README.md`](V2.0.0-README.md),
-> [`CLAUDE.md`](CLAUDE.md), [`as/README.md`](as/README.md). The text below is the
-> inherited upstream `i370-gcc` README (general background for the compiler).
+# cc370
 
----
+A **host-native cross-toolchain for MVS 3.8j** (TK4-, TK5, MVS/CE): compile,
+assemble, link and package MVS programs entirely on the host (macOS / Linux), so
+the only thing that touches the mainframe is the finished load module.
 
-README for i370-gcc
--------------------
-This git repo contains several versions of GNU GCC, including GCCMVS,
-adapted for the IBM System/370 instruction set. It produces code that
-can be assembled either with HLASM or with the i370-binutils assembler.
-
-(Do not be fooled by the ancient date-stamps on some of the files in
-git: this version is current, as of November 2024.)
-
-Both this target, the i370, and the s390 target create binaries that can
-run on the IBM System/390 mainframes. However, the generated assembly
-language is quite different, as well as the ABI's. The i370 port
-generates assembly for both HLASM and GNU binutils (ELF). The HLASM
-targets include CMS, VMS, Dignus, OpenEdition, MVS/Language
-Environment (MVS/LE) and VSE.
-
-The i370-ibm-linux backend is needed to compile the i370 port of the
-Linux kernel.  This kernel can be found on github, at
-[linas/i370-linux-2.2.1](https://github.com/linas/i370-linux-2.2.1).
-General background is provided on
-[Linas' i370 website](https://linas.org/linux/i370/i370.html).
-A working demo is in the
-[i370-bigfoot Docker container](https://github.com/linas/i370-bigfoot).
-
-### HOWTO
-The last version of gcc with the i370 machine definition in it was
-version 3.4.6. This is tagged in github as `releases/gcc-3.4.6`.
-The i370 code was removed by `releases/gcc-4.0.0`.
-
-The code here starts with gcc release 3.4.6 and applies a large number
-of fixes that (a) were lost during the infighting between egcs and gcc,
-(b) fix bugs that were discovered after gcc-4.0.0 came out, and thus,
-the fixes were never upstreamed.  This includes fixes from Paul Edwards
-and Dave Pitts, among others. (c) Extensions for a number of different
-HLASM OS targets.
-
-To get the latest, either clone everything:
-```
-git clone https://github.com/linas/i370-gcc
-```
-or clone only one branch (this will save some time and bandwidth):
-```
-git clone -b i370-gcc-3.4.6 --single-branch https://github.com/linas/i370-gcc
-```
-Then build the version for binutils/ELF:
-```
-git checkout i370-gcc-3.4.6
-mkdir build; cd build
-../configure --target=i370-ibm-linux --enable-languages="c" --disable-threads
-make -j12
-sudo make install
+```sh
+cc370 hello.c -o hello.xmit      # compile + assemble + link + package, one command
 ```
 
-The `sudo make install` will install `gcc` into two places, with two
-different names. First, using the plain name `gcc`, in
-`/usr/local/i370-ibm-linux/bin/gcc`. Since this conflicts with the host
-gcc in a cross-compile environment, it is also installed to
-`/usr/local/bin/i370-ibm-linux-gcc`.
+That `hello.xmit` ships to MVS and is installed into a load library with one
+`RECV370` step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
 
-Objects and libraries such as `crtbegin.o`, `libgcc_s.so.1` etc.
-are installed into `/usr/local/lib/gcc/i370-ibm-linux/3.4.6`.
+## The four tools
 
-Other targets for other operating systems include:
+| Tool | Role | Built from |
+|------|------|------------|
+| **cc370** | the driver + C → i370 HLASM compiler (`gcc/`) | a GCC 3.4.6 fork for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`) |
+| **as370** | `.s`/`.asm` → OS/360 object deck — byte-identical to IBM's IFOX00 | `as/as370.c` |
+| **ld370** | object decks → MVS load module (replaces IEWL) + automatic library call + `--unload`/`--xmit` host→MVS transport | `ld/ld370.c` |
+| **ar370** | object decks → `.a` archive with an ESD symbol index | `ld/ar370.c` |
+
+`cc370` is the single front-end; `as370`/`ld370`/`ar370` are ordinary binaries it
+drives (and which you can also run standalone). The C library it links against is
+**[libc370](https://github.com/mvslovers/libc370)**, installed into the cc370
+sysroot — see *Sysroot* below.
+
+## Build & install
+
+GCC 3.4.6 is old K&R-ish C; a modern clang/gcc host must be told not to error on
+it. The top-level `Makefile` wraps the whole thing:
+
+```sh
+make            # build the tools (as370, ld370, ar370)
+make gcc        # build the driver (cc370) + the compiler proper (cc1), out-of-tree in build/
+make install    # install everything under $(PREFIX)  (default ~/.local)
 ```
---target=i370-ibm-cms
---target=i370-ibm-mvsle
---target=i370-ibm-mvsdignus
---target=i370-ibm-mvspdp
---target=i370-ibm-mvs38_dignus
---target=i370-ibm-opened
+
+Knobs: `PREFIX` (default `~/.local`), `TRIPLE` (default `i370-ibm-mvspdp`),
+`GCCVER` (default `3.4.6`). After `make install` you get:
+
 ```
-These differ from each-other in how subroutine calls work (argument
-passing, stack management, return values). They all emit pure HLASM.
-These differ from `i370-ibm-linux` in the type of assembly emitted:
-the `i370-ibm-linux` target emits svr4-elf style assembly (lower-case
-pseudo-ops, labels with a dot prefix, standard ELF section names, etc.)
-
-Both types of emitted assembly can be assembled with the binutils
-assembler, available here:
-[github.com/linas/i370-binutils](https://github.com/linas/i370-binutils).
-This assembler is explicitly HLASM-compatible. At this time, this
-assembler emits only ELF file format binaries (it does not support
-the [ESD/XSD/GOFF](https://en.wikipedia.org/wiki/GOFF) object format
-used by MVS.) There is a linker/loader that can link together both
-ELF and MVS binaries together; inquire with the PDOS maintainer.
-(Thus, in principle, the ELF binaries created by binutils can be
-transformed into executables that run on MVS. !? Thus, one has a
-complete free & open source toolchain for MVS. !?)
-
-The configuration for the different OS targets is defined in the
-`gcc/config.gcc` file.
-
-
-## Cross-host builds
-Cross-host builds are a bit tricky. The goal here is to build a version
-of gcc that will run on the i370. Assuming you have a C Library for the
-i370, then the following should have been enough:
+<prefix>/bin/cc370                              the one driver (+ PATH symlinks for the tools)
+<prefix>/libexec/gcc/<triple>/<ver>/cc1         the compiler proper
+<prefix>/<triple>/bin/{as370,ld370,ar370}       the tools (+ as/ld/ar the driver invokes)
 ```
-mkdir build-libc
-cd build-libc
-export SYSROOT=/usr/local/i370-linux-uclibc
-../configure --target=i370-ibm-linux --host=i370-ibm-linux --build=x86_64-unknown-linux-gnu --enable-languages="c" --disable-threads --prefix=$SYSROOT/usr
-make
+
+Builds on x86-64 and ARM64.
+
+### Sysroot — where cc370 finds the libc
+
+cc370 searches `<prefix>/<triple>/{include,lib}` by default (the path is derived
+from the driver itself via `-dumpmachine` / `-print-prog-name=cc1`, so renaming
+the triple later needs no edit). [libc370](https://github.com/mvslovers/libc370)
+drops its headers, `libc.a`, the `crt0/1/m.o` startfiles and the assembler macros
+there, after which the toolchain is self-contained:
+
+```sh
+make -C ../libc370 install        # populate the sysroot once
+cc370 hello.c -o hello.xmit       # no -I, no -L, no -lc needed
 ```
-Here, `SYSROOT` provides the location of the C Library to link to.
-Change as appropriate.
 
-FYI: See the [cross-compiling reference](https://gcc.gnu.org/onlinedocs/gccint/Configure-Terms.html).
+## Optimization: `-O1` only
 
-The above should have been enough. Yet it isn't; things break in strange
-weird ways.  The following does seem to work (for me):
+`-O2`/`-Os`/`-O3` are **unsafe** on this backend. At `-O2`+ the
+`-funit-at-a-time` DCE drops `static` tables whose address is held by a global
+pointer → dangling address constants → assembler RC=8; `-Os` additionally
+miscompiles the rexx parser (loops → S322). `-O1` is validated correct (rexx370
+TSTALLB 84/84, 0 ABEND). This — not any memory limit — is the reason for
+"`-O1` only".
+
+## Layout
+
 ```
-cd /usr/local
-sudo cp -pr i370-linux-uclibc/usr/include i370-ibm-linux
-sudo cp -pr i370-linux-uclibc/usr/lib/* i370-ibm-linux/lib
-
-CC="i370-ibm-linux-gcc -B$SYSROOT/usr/lib -L$SYSROOT/usr/lib" \
-CC_FOR_BUILD="gcc -I/usr/include -I/usr/include/x86_64-linux-gnu/ -D__x86_64__ -U__ILP32__" \
-../configure --host=i370-ibm-linux \
-             --target=i370-ibm-linux \
-             --build=x86_64-unknown-linux-gnu \
-             --prefix=$SYSROOT/usr \
-             --enable-languages="c" --disable-threads
+gcc/config/i370/   the i370/mvspdp target backend  — check here first for codegen bugs
+gcc/               GCC 3.4.6 core (C front end, RTL, optimizer), largely upstream
+libiberty/ include/ GNU support library + shared headers
+as/                as370 — host-native MVS assembler  (as/README.md)
+ld/                ld370 + ar370 — host-native linker + archiver
+docs/              object / load-module / unload / xmit formats + roadmap
 ```
-The two `sudo cp` put the i370 C library and header files where they
-can be found. The C library must have been built and installed sometime
-earlier. Despite this, the build will use the incorrect `crt1.o` if the
-`-B` flag isn't given. The `-L` is there for good luck.
 
-The `CC_FOR_BUILD` is needed because the build gcc seems to have trouble
-finding header files, and then there's some weirdness with `<gnu/stubs.h>`
-that has to be hacked around with the `-D` and `-U` flags. At least for me.
-YMMV.
+Deep dives: [`V2.0.0-README.md`](V2.0.0-README.md) (provenance of the GCC fork),
+[`CLAUDE.md`](CLAUDE.md) (architecture + gotchas), [`as/README.md`](as/README.md),
+and `docs/` (the on-the-wire formats).
 
-How to get a C library is explained at
-[github.com/linas/i370-bigfoot](https://github.com/linas/i370-bigfoot).
-That demonstrates a working uClibc and also a working BusyBox. It's
-possible that PDPCLIB might work, but that remains unclear.
+## Provenance
 
+The compiler is a fork of GCC **3.4.6** — the last GCC to carry the i370 machine
+definition — for the `i370-ibm-mvspdp` HLASM target, slimmed to that one target.
+It descends from the gccmvs / [i370-gcc](https://github.com/linas/i370-gcc) line
+(Paul Edwards, Dave Pitts, and others) and from the earlier GCC 3.2.3-based
+**c2asm370** v1.x. The charset and ABI match the
+[libc370](https://github.com/mvslovers/libc370) runtime (EBCDIC CP037 with the
+ecosystem NEL newline).
 
-
-Original GNU README
-===================
-This directory contains the GNU Compiler Collection (GCC).
-
-The GNU Compiler Collection is free software.  See the file COPYING
-for copying permission.  The manuals, and some of the runtime
-libraries, are under different terms; see the individual source files
-for details.
-
-The directory INSTALL contains copies of the installation information
-as HTML and plain text.  The source of this information is
-gcc/doc/install.texi.  The installation information includes details
-of what is included in the GCC sources and what files GCC installs.
-
-See the file gcc/doc/gcc.texi (together with other files that it
-includes) for usage and porting information.  An online readable
-version of the manual is in the files gcc/doc/gcc.info*.
-
-See http://gcc.gnu.org/bugs.html for how to report bugs usefully.
+Maintained by the [mvslovers](https://github.com/mvslovers) community.

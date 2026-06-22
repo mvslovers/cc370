@@ -7,7 +7,7 @@
 # The diff is carve-out-aware: the IDR identity records (LKED/translator)
 # legitimately differ (ld stamps its own identity) and are skipped; the
 # byte-exact target is CESD + SPZAP-IDR + control + text + RLD.
-cd "$(dirname "$0")/../.." || exit 2          # repo root (c2asm370)
+cd "$(dirname "$0")/../.." || exit 2          # repo root (cc370)
 
 AS=./as/as370
 LD=./ld/ld370

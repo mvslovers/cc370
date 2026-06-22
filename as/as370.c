@@ -1,16 +1,11 @@
-/* as370 - host-native MVS assembler for c2asm370 (WP-2/WP-3 skeleton).
+/* as370 - host-native MVS assembler for the cc370 cross-toolchain.
  *
- * Reproduces IFOX00 object decks for the reference tests (cards before END
- * byte-identical; END matches except the optional IDR):
- *   sample1.s  named CSECT (SD) + ER, single TXT card
- *   sample3.s  unnamed CSECT (PC) + ENTRY (LD), multi-card TXT, RLD packing
- *   sample4.s  RS (STM/LM), SS (MVC), SI (MVI), B (RX branch), DC C (EBCDIC)
- *
- * Scope: formats RR/RX/RS/SI/SS + extended branches BR/B; directives CSECT
- * (named=SD / unnamed=PC), ENTRY, USING, DROP, DC A/F/C, DS, EQU, LTORG, END;
- * literals =V/=A/=F; explicit d(x,b)/d(len,b)/d(b) operands and symbolic
- * operands via USING. Next: full opcode-table lift, more DC types, the macro
- * processor (WP-4).
+ * A single-file clone of IBM's Assembler-XF (IFOX00): macro preprocessor +
+ * two-pass core + OS/360 object writer (80-byte EBCDIC ESD/TXT/RLD/END cards).
+ * Runs on macOS/Linux and produces object decks byte-identical to IFOX00 —
+ * validated over 950 ecosystem modules (crent370/libc370, rexx370, UFSD, HTTPD,
+ * samples). The END-card translator IDR is IFOX-specific and intentionally not
+ * reproduced; "byte-identical" means ESD/TXT/RLD content.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -1616,7 +1611,7 @@ static void do_pass(int pass, char **lines, int nlines) {
 
 /* ---- OS/360 OBJ writer ---------------------------------------------------- */
 /* ASCII -> EBCDIC, CP037 + ecosystem NEL (\n -> 0x15). Verbatim from the
- * c2asm370 compiler's i370_ascii_to_ebcdic, so DC C output is byte-identical to
+ * cc370 compiler's i370_ascii_to_ebcdic, so DC C output is byte-identical to
  * the mvsMF upload (which uses the same table) and hence to what IFOX assembled. */
 static const unsigned char a2e_tab[256] = {
   0x00,0x01,0x02,0x03,0x37,0x2D,0x2E,0x2F, 0x16,0x05,0x15,0x0B,0x0C,0x0D,0x0E,0x0F,

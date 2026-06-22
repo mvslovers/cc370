@@ -17,7 +17,7 @@ Two milestones are read SEPARATELY (they fail in different places):
                   externals).  COND CODE 0007 = the program ran and returned 7.
 
 Prerequisites (host):
-  * cc370 driver installed  (i370-ibm-mvspdp-gcc / c2asm370 symlink)
+  * cc370 driver installed  (i370-ibm-mvspdp-gcc / cc370 symlink)
   * as370, ld370 built in this repo
   * libcrent.a  -- the crent370 runtime archived by ar370 (see --lib);
                    built once via the as370+ar370 loop over crent370 sources.

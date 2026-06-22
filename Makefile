@@ -1,4 +1,4 @@
-# c2asm370 -- host-native MVS cross-toolchain build + install.
+# cc370 -- host-native MVS cross-toolchain build + install.
 #
 # One driver (cc370) plus three standalone tools (as370 / ld370 / ar370).
 # Matches a normal cross-toolchain layout under $(PREFIX):

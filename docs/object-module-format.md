@@ -1,6 +1,6 @@
 # OS/360 Object-Module (OBJ Deck) Format — as370 Reference Spec
 
-**Oracle:** `~/repos/mvs/c2asm370/as/as370.c` — the host-native MVS Assembler-XF (IFOX00) clone, byte-identical to IFOX00 over 950 ecosystem modules.
+**Oracle:** `as/as370.c` — the host-native MVS Assembler-XF (IFOX00) clone, byte-identical to IFOX00 over 950 ecosystem modules.
 **Authority rule:** This document describes **what as370 actually emits**. Source code is authoritative; the IBM manual (LY26-3921, Fig. 69–75) is cross-reference only. Where the manual and the source diverge, the source wins and the divergence is flagged. All citations are to `as370.c` line numbers.
 
 All card images are **80-byte EBCDIC** records, written by `fwrite(c, 1, 80, f)`. Every field below is given as **byte offset (0-based)** and **column (1-based)** with fixed hex values where applicable.
@@ -27,7 +27,7 @@ static void cname(unsigned char *c,const char *n){ c[0]=0x02; c[1]=a2e(n[0]); ..
 
 ### 1.1 Character encoding
 
-Card-type letters, names, and the deck id are translated host-ASCII → EBCDIC by `a2e` / `a2e_tab` (`as370.c:1589–1607`). This is **CP037 + ecosystem NEL** (`\n`→`0x15`), byte-identical to the c2asm370 compiler's `i370_ascii_to_ebcdic` and to the mvsMF upload table, which is why `DC C'...'` text matches what IFOX assembled. Binary fields (addresses, counts, ESD-IDs) are written **big-endian** by `cbe` (`as370.c:1610`):
+Card-type letters, names, and the deck id are translated host-ASCII → EBCDIC by `a2e` / `a2e_tab` (`as370.c:1589–1607`). This is **CP037 + ecosystem NEL** (`\n`→`0x15`), byte-identical to the cc370 compiler's `i370_ascii_to_ebcdic` and to the mvsMF upload table, which is why `DC C'...'` text matches what IFOX assembled. Binary fields (addresses, counts, ESD-IDs) are written **big-endian** by `cbe` (`as370.c:1610`):
 
 ```c
 static void cbe(unsigned char *c,int off,long v,int n){ int i; for(i=n-1;i>=0;i--){ c[off+i]=(unsigned char)(v&0xff); v>>=8; } }   // :1610
