@@ -81,6 +81,11 @@ man/%.1: man/%.pod
 	pod2man --section=1 --center="cc370 toolchain" --release="cc370 $(VERSION)" $< > $@
 
 # --- compiler: the cc370 driver + cc1 (a GCC 3.4.6 autotools build) -------
+# U= neutralizes a stray `U` in the environment: old-autoconf libiberty emits
+# `LIBOBJS = mempcpy$U.o` (ansi2knr suffix, meant to be empty) without defining
+# U in the Makefile, so an exported $U (e.g. an MVS userid) leaks in and makes
+# `ar` look for mempcpy$U.o. Forcing U= on the command line overrides the env
+# and propagates to the recursive sub-makes.
 $(BUILD)/config.status:
 	mkdir -p $(BUILD)
 	cd $(BUILD) && CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)" ../cc370/configure \
@@ -89,7 +94,7 @@ $(BUILD)/config.status:
 	    --with-gcc-version-trigger=../cc370/gcc/version.c
 
 compiler: $(BUILD)/config.status
-	$(MAKE) -C $(BUILD) all-gcc CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
+	$(MAKE) -C $(BUILD) all-gcc U= CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
 
 # --- install --------------------------------------------------------------
 install: install-tools install-compiler install-man
