@@ -46,8 +46,9 @@ B<TSO XMIT / NETDATA> (L<ld370(1)> B<-xmit>) - EBCDIC C<INMR01> at offset 2.
 =back
 
 An XMIT wraps an IEBCOPY unload, which wraps a load-module member; B<-v> peels
-the layers and decodes each one (NETDATA text units, the unloaded directory, the
-member's PDS2 entry point and length).
+the layers and decodes each one (NETDATA text units, the unloaded directory, and
+for each member its PDS2 entry point, length and load-module attributes ---
+B<RENT>, B<REUS>, B<REFR>, the APF authorization code B<AC>=I<n>, etc.).
 
 =head1 OPTIONS
 

@@ -67,11 +67,14 @@ B<-iebcopy> is given.
 
 Each I<member> may be a bare load module (e.g. F<.lm>) or a single-member
 B<-iebcopy> image. A bare member carries no PDS2 directory metadata: the module
-length is recomputed from its CESD, but its entry point is unknown and assumed 0
-(start of module). A single-member B<-iebcopy> is B<self-describing> --- its
-directory carries the real entry point and length --- so B<pack a member with a
-non-zero entry from its> B<-iebcopy>, not its bare F<.lm>, or it loads at offset
-0 and abends.
+length is recomputed from its CESD, but the entry point, the APF authorization
+code (B<AC>) and the B<RENT>/B<REUS>/B<REFR>/... attributes live only in the
+directory and cannot be recovered --- entry is assumed 0, the rest defaulted. A
+single-member B<-iebcopy> is B<self-describing>: its whole directory entry is
+carried through (only the relocated text TTR is re-stamped), so the entry point,
+length, AC and attributes all survive. B<Pack any member that needs a non-zero
+entry, a non-zero AC or non-default attributes from its> B<-iebcopy>, not its
+bare F<.lm>.
 
 A member's name comes from its F<.iebcopy> directory, or (for a bare member) the
 file's basename with the extension stripped and uppercased. Override either with

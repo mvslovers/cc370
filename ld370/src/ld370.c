@@ -618,6 +618,9 @@ struct umember {
     int text_tt, text_r;     /* relative (track, record) of the first text block   -> PDS2TTRT */
     int eof_tt, eof_r;       /* relative (track, record) of the member's DL=0 EOF record */
     long entry, modlen;   /* PDS2EPA / PDS2STOR for the dir entry; <0 = echo template */
+    int have_src_ud;         /* 1 if src_ud holds the member's real PDS2 user-data... */
+    unsigned char src_ud[24];/* ...captured from a -iebcopy input (--pack); preserves AC,
+                              * RENT/REUS/REFR/... that the bare member cannot carry */
 };
 
 /* Split a load-module member byte stream into its physical blocks (the records
@@ -710,6 +713,12 @@ static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember
     memcpy(m->name, e, 8);
     m->modlen = be24(ud + 10);                          /* PDS2STOR (total storage) */
     m->entry  = be24(ud + 15);                          /* PDS2EPA  (entry point)   */
+    /* Capture the WHOLE 24-byte PDS2 user-data so the re-packed directory keeps
+     * every member-intrinsic attribute -- AC (PDSAPFAC), RENT/REUS/REFR/OVLY/...
+     * (PDS2ATR1/2), FTBL etc. -- not just entry+modlen.  build_userdata then only
+     * re-stamps PDS2TTRT (the one field that moves when the member is re-laid-out).
+     * These attributes are NOT in the member records, only here. */
+    if (nhw >= 12) { memcpy(m->src_ud, ud, 24); m->have_src_ud = 1; }
     p += 12 + 8 + 256 + 12;                             /* past directory record + EOD marker */
     buf = malloc((size_t)(ulen > 0 ? ulen : 1));
     if (!buf) return -3;
@@ -729,6 +738,15 @@ static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember
  * computed first-text TTR (relative track 0, record text_r). */
 static void build_userdata(unsigned char ud[24], const struct umember *m)
 {
+    /* --pack from a -iebcopy: the input directory already has the member's real,
+     * complete PDS2 user-data (entry, modlen, AC, RENT/REUS/REFR/...).  Keep it
+     * verbatim and only re-stamp PDS2TTRT, the one field that depends on where
+     * the member is laid out in the (possibly multi-member) output. */
+    if (m->have_src_ud) {
+        memcpy(ud, m->src_ud, 24);
+        put16(ud, m->text_tt); ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT */
+        return;
+    }
     memcpy(ud, unload_userdata, 24);
     put16(ud, m->text_tt); ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (text_tt, text_r) */
     if (m->modlen >= 0) {                                     /* computed from the link */

@@ -150,18 +150,19 @@ else
     echo "ld370 -xmit (multi-member) failed"; fails=$((fails + 1))
 fi
 
-# --pack PDS2 directory (modlen + entry): a bare .lm carries no entry point and
-# no module length, so --pack used to write SIZE 8 / entry 0 for every member.
-# modlen is now recomputed from the CESD, and packing a single-member -iebcopy
-# (the self-describing form) recovers BOTH the real entry and modlen -- so it
-# must be byte-identical to the single link that produced it.  nzent has a
-# NON-ZERO entry (GO at offset 16), guarding the entry recovery specifically.
-printf '\n=== --pack -iebcopy round-trips entry+modlen (byte-identical) ===\n'
+# --pack PDS2 directory: a bare .lm carries NO directory metadata (entry point,
+# module length, AC, RENT/REUS/... are all attributes IEWL writes only to the
+# directory).  --pack used to template these -> SIZE 8 / entry 0 / AC 0 for every
+# packed member.  Packing a single-member -iebcopy (self-describing) now copies
+# the WHOLE PDS2 user-data and only re-stamps PDS2TTRT, so the result is
+# byte-identical to the single link that produced it.  nzent has a NON-ZERO entry
+# (GO at offset 16) and is linked --ac 1, guarding entry + modlen + AC together.
+printf '\n=== --pack -iebcopy round-trips PDS2 dir (entry+modlen+AC, byte-identical) ===\n'
 "$AS" -o "$TMP/nzent.o" "$FIX/nzent.s" 2>/dev/null
-"$LD" -o "$TMP/nzent_lnk" --name NZENT "$TMP/nzent.o" -iebcopy 2>/dev/null
+"$LD" --ac 1 -o "$TMP/nzent_lnk" --name NZENT "$TMP/nzent.o" -iebcopy 2>/dev/null
 "$LD" --pack "NZENT=$TMP/nzent_lnk.iebcopy" -o "$TMP/nzent_pak" -iebcopy 2>/dev/null
 if cmp -s "$TMP/nzent_lnk.iebcopy" "$TMP/nzent_pak.iebcopy"; then
-    echo "  OK: pack-from-iebcopy == single-link directory (entry 0x10 + modlen recovered)"
+    echo "  OK: pack-from-iebcopy == single-link directory (entry 0x10 + modlen + AC 1)"
 else
     echo "  FAIL: pack-from-iebcopy directory differs from single-link"; fails=$((fails + 1))
 fi

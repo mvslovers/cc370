@@ -292,6 +292,31 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v)
 /* ====================================================================== */
 /* PDS directory block decode (shared by IEBCOPY unload + the XMIT peel)   */
 /* ====================================================================== */
+/* Decode the load-module attributes in a member's PDS2 user data (IHAPDS
+ * PDS2ATR1 at ud[8], PDS2ATR2 at ud[9], the APF AC at ud[22] valid when
+ * PDSAPFLG ud[18] bit4 is set) into a readable flag list, e.g.
+ * "RENT REUS EXEC 1BLK NRLD AC=1".  out is left empty if nothing is set. */
+static void pds2_attrs(const unsigned char *ud, int nud, char *out, size_t cap)
+{
+    static const struct { int idx; unsigned char bit; const char *name; } F[] = {
+        { 8, 0x80, "RENT" }, { 8, 0x40, "REUS" }, { 8, 0x20, "OVLY" },
+        { 8, 0x10, "TEST" }, { 8, 0x08, "OL"   }, { 8, 0x04, "SCTR" },
+        { 8, 0x02, "EXEC" }, { 8, 0x01, "1BLK" }, { 9, 0x10, "NRLD" },
+        { 9, 0x01, "REFR" },
+    };
+    size_t n = 0; unsigned i; int r;
+    if (cap) out[0] = 0;
+    for (i = 0; i < sizeof F / sizeof F[0]; i++) {
+        if (!(ud[F[i].idx] & F[i].bit)) continue;
+        r = snprintf(out + n, cap - n, "%s%s", n ? " " : "", F[i].name);
+        if (r > 0 && (size_t)r < cap - n) n += (size_t)r;
+    }
+    if (nud >= 24 && (ud[18] & 0x08)) {                 /* PDSAPFLG -> the AC is meaningful */
+        r = snprintf(out + n, cap - n, "%sAC=%d", n ? " " : "", ud[22]);
+        if (r > 0 && (size_t)r < cap - n) n += (size_t)r;
+    }
+}
+
 /* parse one 256-byte PDS dir block at blk[0..]; print each member entry.
  * Returns the number of member entries found.  `indent` prefixes each line. */
 static int show_dir_block(const unsigned char *blk, const char *indent, int v)
@@ -312,7 +337,10 @@ static int show_dir_block(const unsigned char *blk, const char *indent, int v)
                alias ? " (alias)" : "", be24(e + 8));
         if (nud >= 18) {                            /* load-module PDS2 user data */
             long modlen = be24(ud + 10), entry = be24(ud + 15);
+            char attrs[96];
+            pds2_attrs(ud, nud, attrs, sizeof attrs);
             printf("  entry=%06lX  modlen=%ld", entry, modlen);
+            if (attrs[0]) printf("  [%s]", attrs);
             if (v) {
                 printf("\n%s         ATR1=%02X ATR2=%02X  AC=%02X  PDS2TTRT=%06lX",
                        indent, ud[8], ud[9], (nud >= 24) ? ud[22] : 0, be24(ud));
