@@ -187,6 +187,33 @@ else
     echo "  FAIL: GO unresolved -- rld[]/ld[] overflow regressed"; fails=$((fails + 1))
 fi
 
+# multi-block PDS directory: >6 members spill into multiple 256-byte directory
+# blocks.  The directory was a single fixed dir[256] that overflowed at the 7th
+# member (>6 entries + the FF terminator) -> SIGABRT; rexx370 packs 12.  Pack 7
+# and 20 members; the result must not crash and every member must reload (the sim
+# walks all directory blocks, 7 entries per non-last block + FF terminator block).
+printf '\n=== multi-block directory (>6 members, no dir[256] overflow) ===\n'
+mb_fails=0
+for cnt in 7 20; do
+    specs=""; names=""; i=1
+    while [ "$i" -le "$cnt" ]; do
+        m=$(printf 'MOD%02d' "$i")
+        printf '%-8s CSECT\n         BR    14\n         END   %s\n' "$m" "$m" > "$TMP/$m.s"
+        "$AS" -o "$TMP/$m.o" "$TMP/$m.s" 2>/dev/null
+        "$LD" -o "$TMP/$m.lm" --name "$m" "$TMP/$m.o" 2>/dev/null
+        specs="$specs $m=$TMP/$m.lm"; names="$names $m"
+        i=$((i + 1))
+    done
+    # shellcheck disable=SC2086
+    if "$LD" --pack $specs -o "$TMP/lib$cnt" -iebcopy 2>/dev/null \
+       && python3 ld370/tests/unload_check.py "$TMP/lib$cnt.iebcopy" $names >/dev/null 2>&1; then
+        echo "  OK: $cnt members -> multi-block directory, all reload"
+    else
+        echo "  FAIL: $cnt-member pack crashed or a member did not reload"; mb_fails=1
+    fi
+done
+[ "$mb_fails" -eq 0 ] || fails=$((fails + 1))
+
 # automatic library call: a member pulled from an ar370 archive must yield the
 # SAME module as linking it explicitly (same appearance order => same ESDIDs).
 #   modab  = single pull   (mod_a references MODB, in libmodb.a)

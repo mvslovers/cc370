@@ -68,20 +68,18 @@ def check(unload_path, expect):
     u = open(unload_path, 'rb').read()
     p = ENV_HDR
 
-    # --- directory record: count12 (KL=8, DL=256) + key(8) + 256-byte block ---
-    kl, dl = u[p + 9], be16(u, p + 10)
-    if kl != 8 or dl != 256:
-        print("  FAIL: directory count KL=%d DL=%d (want 8/256)" % (kl, dl))
-        return False
-    block = u[p + 20:p + 20 + 256]
-    p += 12 + 8 + 256
-
-    used = be16(block, 0)
-    entries, q = [], 2
-    while q < used and block[q] != 0xFF:
-        name = ''.join(e2a(c) for c in block[q:q + 8]).rstrip()
-        entries.append((name, be16(block, q + 8), block[q + 10]))   # name, TT, R
-        q += 12 + (block[q + 11] & 0x1F) * 2
+    # --- directory: one or more count12(KL=8,DL=256)+key(8)+256B blocks, in
+    #     ascending-name order, ending at the FF terminator in the last block ---
+    entries = []
+    while p + 12 <= len(u) and u[p + 9] == 8 and be16(u, p + 10) == 256:
+        block = u[p + 20:p + 20 + 256]
+        p += 12 + 8 + 256
+        used = be16(block, 0)
+        q = 2
+        while q + 12 <= used and block[q] != 0xFF:
+            name = ''.join(e2a(c) for c in block[q:q + 8]).rstrip()
+            entries.append((name, be16(block, q + 8), block[q + 10]))   # name, TT, R
+            q += 12 + (block[q + 11] & 0x1F) * 2
     if not entries:
         print("  FAIL: no directory entries")
         return False

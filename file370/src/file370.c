@@ -366,12 +366,13 @@ static void show_iebcopy(const char *path, const unsigned char *b, long n, int v
 
     printf("%s: IEBCOPY unloaded PDS (RECFM=U source)", path);
     if (!v) {
-        /* one-liner: name the member(s) inline */
-        if (UNLOAD_DIRBLK + 256 <= n) {
-            const unsigned char *blk = b + UNLOAD_DIRBLK;
-            int used = be16(blk), p = 2, first = 1;
+        /* one-liner: name the member(s) inline, across all directory blocks */
+        long dp = UNLOAD_ENVHDR; int first = 1;
+        printf(" --");
+        while (dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && be16(b + dp + 10) == 256) {
+            const unsigned char *blk = b + dp + 20;
+            int used = be16(blk), p = 2;
             if (used < 2 || used > 256) used = 256;
-            printf(" --");
             while (p + 12 <= used) {
                 const unsigned char *e = blk + p; int c, nud;
                 if (memcmp(e, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF", 8) == 0) break;
@@ -380,18 +381,27 @@ static void show_iebcopy(const char *path, const unsigned char *b, long n, int v
                 first = 0; members++;
                 p += 12 + nud;
             }
-            if (!members) printf(" (no member entries found)");
+            dp += 12 + 8 + 256;
         }
+        if (!members) printf(" (no member entries found)");
         printf("\n");
         return;
     }
 
     printf("\n");
     printf("    env header %d bytes (COPYR1 X'CA6D0F' + COPYR2)\n", UNLOAD_ENVHDR);
-    if (UNLOAD_DIRBLK + 256 <= n)
-        members = show_dir_block(b + UNLOAD_DIRBLK, "    ", v);
-    else
-        printf("    (truncated: directory block beyond end of file)\n");
+    {
+        /* the directory is one or more count12(KL=8,DL=256)+key(8)+256B block
+         * records (>6 members spill into further blocks), ending at the EOD
+         * marker; walk them all. */
+        long dp = UNLOAD_ENVHDR; int nblk = 0;
+        while (dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && be16(b + dp + 10) == 256) {
+            members += show_dir_block(b + dp + 20, "    ", v);
+            dp += 12 + 8 + 256; nblk++;
+        }
+        if (!nblk) printf("    (truncated: directory block beyond end of file)\n");
+        else if (nblk > 1) printf("    %d directory block(s)\n", nblk);
+    }
     printf("    %d directory member entr(y/ies)\n", members);
 }
 

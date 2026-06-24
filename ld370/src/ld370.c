@@ -895,29 +895,44 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     put16(o + UDEBX_ENDHH, UNLOAD_TRKPERCYL - 1);
     put16(o + UDEBX_NMTRK, ncyl * UNLOAD_TRKPERCYL);
 
-    /* directory block: 2-byte used count, member entries (assumed name-sorted
-     * by the caller -- true for v1), FF terminator entry, zero pad. */
-    memset(dir, 0, sizeof dir);
-    used = 2;
-    for (i = 0; i < nmem; i++) {
-        unsigned char *e = dir + used;
-        memcpy(e, mem[i].name, 8);
-        put16(e + 8, mem[i].first_tt);
-        e[10] = (unsigned char)mem[i].first_r;       /* TTR = (first_tt, first_r) */
-        e[11] = 0x2c;                                /* alias=0, 1 TTR, 12 halfwords user data */
-        build_userdata(e + 12, &mem[i]);
-        used += 8 + 3 + 1 + 24;
+    /* directory: name-sorted entries split across 256-byte PDS directory blocks.
+     * 7 entries per NON-last block (2 + 7*36 = 254 <= 256); the LAST block holds
+     * the remaining entries + the FF end-of-directory terminator (so <=6 entries,
+     * or 0 when nmem is a multiple of 7).  Each block is one CKD record
+     * count(0,0,0,KL=8,DL=256) + key + 256B; key = the high member name in the
+     * block, FF*8 on the last block.  Matches a real IEBCOPY UNLOAD (verified vs
+     * the CBT571 XFASM oracle: 7/7/2-entry blocks, keys IFOX06/IFOX51/FF, all
+     * dir records at MBBCCHHR 0).  Was a single fixed dir[256] that overflowed at
+     * the 7th member (>6 entries + terminator) -> SIGABRT. */
+    {
+        int per = 7, ndb, b;
+        if (nmem == 0) ndb = 1;
+        else { ndb = (nmem + per - 1) / per; if (nmem % per == 0) ndb++; }
+        for (b = 0; b < ndb; b++) {
+            int lo = b * per, hi = lo + per, last = (b == ndb - 1);
+            if (hi > nmem) hi = nmem;
+            memset(dir, 0, sizeof dir);
+            used = 2;
+            for (i = lo; i < hi; i++) {
+                unsigned char *e = dir + used;
+                memcpy(e, mem[i].name, 8);
+                put16(e + 8, mem[i].first_tt);
+                e[10] = (unsigned char)mem[i].first_r;       /* TTR = (first_tt, first_r) */
+                e[11] = 0x2c;                                /* alias=0, 1 TTR, 12 halfwords user data */
+                build_userdata(e + 12, &mem[i]);
+                used += 8 + 3 + 1 + 24;
+            }
+            if (last) { memset(dir + used, 0xff, 8); used += 12; }   /* FF end-of-dir terminator */
+            put16(dir, (int)used);
+            put_count(o + p, 0, 0, 0, 8, 256); p += 12;              /* dir block record */
+            if (last) memset(o + p, 0xff, 8);                        /* key = high values */
+            else memcpy(o + p, mem[hi - 1].name, 8);                 /* key = high name in block */
+            p += 8;
+            memcpy(o + p, dir, 256); p += 256;
+        }
+        memset(o + p, 0, 12); p += 12;                               /* end-of-directory marker */
     }
-    memset(dir + used, 0xff, 8); used += 12;          /* end-of-directory: FF name + zero TTR/C */
-    put16(dir, (int)used);
-    if (used > 256) trace("WARNING: directory overflows one block -- multi-block dir not yet emitted");
-
-    put_count(o + p, 0, 0, 0, 8, 256); p += 12;        /* directory record */
-    memset(o + p, 0xff, 8); p += 8;                    /* key = high values */
-    memcpy(o + p, dir, 256); p += 256;
-
-    memset(o + p, 0, 12); p += 12;                     /* end-of-directory marker record */
-    if (bounds) bounds[2] = p;                          /* directory record + EOD marker */
+    if (bounds) bounds[2] = p;                          /* directory blocks + EOD marker */
 
     /* member data: one CKD record image per physical block at its assigned
      * relative (track, record) -- CC = UNLOAD_DATA_CC + tt/UNLOAD_TRKPERCYL,
@@ -1139,10 +1154,27 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     tui(r, &rp, INMRECFM, 0x0001, 2);
     netdata_seg(o, &p, r, rp, 1);
 
-    /* COPYR1 / COPYR2 / directory+EOD are one logical record each */
+    /* COPYR1 / COPYR2 are one logical record each. */
     netdata_seg(o, &p, unl,             bounds[0],              0);
     netdata_seg(o, &p, unl + bounds[0], bounds[1] - bounds[0], 0);
-    netdata_seg(o, &p, unl + bounds[1], bounds[2] - bounds[1], 0);
+    /* directory: each 256-byte directory block is its OWN VS record -- IEBCOPY
+     * reads SYSUT1 one VS record at a time, so packing several dir blocks into one
+     * would lose all but the first (same failure mode as the per-member case
+     * below).  The trailing EOD marker (DL=0) rides with the LAST dir block, so
+     * the single-block image stays byte-identical to the validated one. */
+    {
+        long q = bounds[1];
+        while (q < bounds[2]) {
+            long reclen = 12 + unl[q + 9] + be16(unl + q + 10);
+            long nq = q + reclen;
+            if (nq < bounds[2]) {                  /* bundle the trailing EOD with the last block */
+                long nlen = 12 + unl[nq + 9] + be16(unl + nq + 10);
+                if (nq + nlen >= bounds[2]) reclen += nlen;
+            }
+            netdata_seg(o, &p, unl + q, reclen, 0);
+            q += reclen;
+        }
+    }
     /* member data: pack whole CKD records (count12 + KL + DL) into logical
      * records of <= MAXTEXT bytes (the IEBCOPY-unload's variable records cannot
      * exceed the reload buffer).  CRUCIAL for multi-member: end the logical
