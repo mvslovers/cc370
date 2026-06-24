@@ -160,6 +160,7 @@ static int g_intern(const unsigned char *name, int type)
 /* per input object (each is single-CSECT in the cc370/as370 case) */
 struct lent { int used; unsigned char name[8]; int type; long addr, len; };
 struct orld { int R, P, flag; long addr; };
+struct ldent { unsigned char name[8]; long addr; int owner_local; };   /* label def (entry) */
 struct obj {
     struct lent loc[MAXESD];          /* local ESD by local ESDID */
     int loc_g[MAXESD];                /* composite gsym index for each local ESDID */
@@ -167,13 +168,33 @@ struct obj {
     unsigned char *text;              /* object text, grown on demand (was a fixed 16384-byte */
     long textcap;                     /*   buffer that SILENTLY dropped text past 16K -> any   */
     long textlen;                     /*   module > 16K truncated to zeros, S0C1 at run time)  */
-    struct orld rld[512];
+    /* rld and ld grow on demand.  They were fixed rld[512]/ld[64] arrays with NO
+     * bounds check on the write; an object with >512 RLD items (large C cores --
+     * rexx370's irx#pars/bcom/bifs/bvm) overflowed rld[] into the adjacent ld[]
+     * (RLD cards follow ESD cards, so the LD entries were recorded correctly then
+     * CLOBBERED), so exported LD symbols silently vanished -> "unresolved" at a
+     * later link.  Same class as the text-buffer bug above. */
+    struct orld *rld; long rldcap;
     int nrld;
-    struct { unsigned char name[8]; long addr; int owner_local; } ld[64];   /* label defs (entries) */
+    struct ldent *ld; long ldcap;     /* label defs (entries) */
     int nld;
     long object_base;                 /* assigned base address of this object's section(s) */
     int has_entry, entry_id; long entry_off;   /* END-card entry: section local ESDID + offset */
 };
+
+/* grow a malloc'd array to hold at least `need` elements of `elsz` bytes (NULL/0
+ * cap start ok); persists for the program's life like `text` (no explicit free). */
+static void *grow_arr(void *arr, long *cap, long need, size_t elsz)
+{
+    long nc;
+    if (need <= *cap) return arr;
+    nc = *cap ? *cap : 256;
+    while (nc < need) nc *= 2;
+    arr = realloc(arr, (size_t)nc * elsz);
+    if (!arr) { fprintf(stderr, "ld370: out of memory growing array to %ld\n", nc); exit(1); }
+    *cap = nc;
+    return arr;
+}
 static struct obj O[MAXOBJ];
 static int nO = 0;
 static long entry_pt = 0;
@@ -204,12 +225,11 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                 const unsigned char *e = c + 16 + k * 16;
                 int ty = e[8] & 0x0f;
                 if (ty == T_LD) {            /* label def (entry): carries no ESDID; record for the composite ESD */
-                    if (o->nld < 64) {
-                        memcpy(o->ld[o->nld].name, e, 8);
-                        o->ld[o->nld].addr = be24(e + 9);
-                        o->ld[o->nld].owner_local = (int)be24(e + 13);   /* owning section's local ESDID */
-                        o->nld++;
-                    }
+                    o->ld = grow_arr(o->ld, &o->ldcap, o->nld + 1, sizeof *o->ld);
+                    memcpy(o->ld[o->nld].name, e, 8);
+                    o->ld[o->nld].addr = be24(e + 9);
+                    o->ld[o->nld].owner_local = (int)be24(e + 13);   /* owning section's local ESDID */
+                    o->nld++;
                     continue;
                 }
                 int id = first + nid; nid++;                 /* non-LD entries are numbered; LD slots are skipped */
@@ -245,6 +265,7 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
             while (p + 4 <= end && p + 4 <= 80) {
                 if (!same) { R = be16(c + p); P = be16(c + p + 2); p += 4; }
                 if (p + 4 > end) break;
+                o->rld = grow_arr(o->rld, &o->rldcap, o->nrld + 1, sizeof *o->rld);
                 o->rld[o->nrld].R = R; o->rld[o->nrld].P = P;
                 o->rld[o->nrld].flag = c[p]; o->rld[o->nrld].addr = be24(c + p + 1);
                 same = c[p] & 0x01; p += 4; o->nrld++;

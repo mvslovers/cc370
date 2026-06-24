@@ -167,6 +167,26 @@ else
     echo "  FAIL: pack-from-iebcopy directory differs from single-link"; fails=$((fails + 1))
 fi
 
+# large-RLD object keeps its exported LD symbols.  parse_object used fixed
+# rld[512]/ld[64] arrays with no bounds check; an object with >512 RLD items
+# (large C cores -- rexx370's irx#pars/bcom/bifs/bvm) overflowed rld[] into the
+# adjacent ld[] (RLD cards follow ESD cards, so LD entries were recorded then
+# CLOBBERED), so a cross-object reference to such a symbol came back "unresolved"
+# -- the rexx370 mbt-v2 link failure.  600 A-cons -> >512 RLD items; GO (an LD in
+# that object) must still resolve from a second object.  Linked WITHOUT
+# --allow-unresolved, so an unresolved GO fails the link (non-zero exit).
+printf '\n=== large-RLD object keeps its LD symbols (>512 RLD, no overflow) ===\n'
+{ echo "BIGRLD   CSECT"; echo "         ENTRY GO"; echo "GO       BR    14"
+  awk 'BEGIN{for(i=0;i<600;i++)print "         DC    A(GO)"}'; echo "         END"; } > "$TMP/bigrld.s"
+printf 'REF      CSECT\n         DC    V(GO)\n         BR    14\n         END   REF\n' > "$TMP/ref.s"
+if "$AS" -o "$TMP/bigrld.o" "$TMP/bigrld.s" 2>/dev/null \
+   && "$AS" -o "$TMP/ref.o" "$TMP/ref.s" 2>/dev/null \
+   && "$LD" -e REF "$TMP/ref.o" "$TMP/bigrld.o" -iebcopy -o "$TMP/bigrld_link" 2>/dev/null; then
+    echo "  OK: GO (LD in a >512-RLD object) resolved across objects"
+else
+    echo "  FAIL: GO unresolved -- rld[]/ld[] overflow regressed"; fails=$((fails + 1))
+fi
+
 # automatic library call: a member pulled from an ar370 archive must yield the
 # SAME module as linking it explicitly (same appearance order => same ESDIDs).
 #   modab  = single pull   (mod_a references MODB, in libmodb.a)
