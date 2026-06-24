@@ -1664,9 +1664,25 @@ int main(int argc, char **argv)
     int nsect = gid;
     for (i = 0; i < nG; i++)
         if (!G[i].is_sect) G[i].gid = ++gid;          /* unresolved ERs get ids after sections */
-    static int *gidx = NULL; static long gidxcap;     /* gid -> G[] index; grows with G */
-    gidx = grow_arr(gidx, &gidxcap, nG + 1, sizeof *gidx);
-    for (i = 0; i < nG; i++) gidx[G[i].gid] = i;
+    /* gidx[1..nsect] = section G[] indices in INCREASING ORIGIN order -- the order
+     * the text packer walks the module image.  This is NOT gid order: gid is
+     * assigned in G[] creation order, so a section referenced early but DEFINED in a
+     * late object (an ER later resolved to an SD -- e.g. ISTSO, defined in the last
+     * linked object) gets a LOW gid but a HIGH origin.  The packer below greedily
+     * walks gidx[1..nsect] assuming each origin is >= the previous; with a gid-order
+     * index it broke the chunk at the out-of-order section and skipped every section
+     * in between -> ~241 KB of text silently dropped from IRX#HELO -> S106 on FETCH.
+     * Sorting by origin fixes that; for a module whose gid order already equals its
+     * origin order (the common case) this produces the identical index, so its
+     * output is byte-for-byte unchanged. */
+    static int *gidx = NULL; static long gidxcap;
+    gidx = grow_arr(gidx, &gidxcap, nsect + 1, sizeof *gidx);
+    { int s = 0; for (i = 0; i < nG; i++) if (G[i].is_sect) gidx[++s] = i; }   /* 1-based */
+    for (i = 2; i <= nsect; i++) {                     /* insertion sort by origin */
+        int t = gidx[i], j2;
+        for (j2 = i; j2 > 1 && G[gidx[j2 - 1]].org > G[t].org; j2--) gidx[j2] = gidx[j2 - 1];
+        gidx[j2] = t;
+    }
 
     /* entry point: --entry NAME resolves a named section/LD entry (the working
      * crent convention is ENTRY @@CRT0 -- the C startup that establishes the
@@ -1813,12 +1829,13 @@ int main(int argc, char **argv)
                     cr[8] = 0x06; put24(cr + 9, p); cr[12] = 0x40; put16(cr + 14, (int)rlen);
                     if (multi) {
                         for (g = first, k = 0; g < sg; g++, k++) {
-                            int gi = gidx[g];
+                            int gi = gidx[g];           /* gidx is origin-sorted: g is a POSITION */
                             long span = (g < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
-                            put16(cr + 16 + 4 * k, g); put16(cr + 18 + 4 * k, (int)span);
+                            put16(cr + 16 + 4 * k, G[gi].gid);    /* ID/length list = the CSECT's CESD-ID */
+                            put16(cr + 18 + 4 * k, (int)span);
                         }
                     } else {                            /* one section (whole or a split piece) */
-                        put16(cr + 16, first); put16(cr + 18, (int)rlen);
+                        put16(cr + 16, G[gidx[first]].gid); put16(cr + 18, (int)rlen);
                     }
                     emit(cr, 16 + idlen);               /* control record */
                     emit(mod + p, rlen);                /* text record (<= MAXTEXT) */
