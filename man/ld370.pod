@@ -5,7 +5,8 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 =head1 SYNOPSIS
 
 B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
-[B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>] I<obj>...
+[B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>]
+[B<--ac> I<n>] [B<--norent>] [B<--noreus>] I<obj>...
 
 B<ld370> B<--pack> I<member> [I<member> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
 
@@ -69,7 +70,24 @@ library. Use B<6144> for a small or older device, B<19069> for a 3350-full-track
 library. B<Use the same value when building a module and when> B<--pack>-ing it:
 B<--pack> does not re-split, so packing a member built at a larger blocksize while
 declaring a smaller one is refused (the oversized blocks would not fit the target).
-Range 1024..32760.
+Range 1024..32740.
+
+=item B<--ac> I<n>
+
+Set the APF authorization code (C<SETCODE AC(>I<n>C<)>) in the PDS2 directory
+entry. Default 0. Applied to the freshly linked module; a B<--pack> of a
+B<-iebcopy> member keeps that member's own AC.
+
+=item B<--norent>, B<--noreus>
+
+Clear the reentrant / reusable attributes (C<PDS2ATR1>) that the link otherwise
+marks on every module. B<--norent> clears B<RENT>, B<--noreus> clears B<REUS>.
+RENT implies REUS, so B<--norent> alone leaves a serially-reusable (not reentrant)
+module; pass both for a module that cannot be reused at all. Use this for a module
+with modifiable storage that must not be marked reentrant. Like B<--ac>, the flags
+apply to the module being linked; a B<--pack> of a B<-iebcopy> member keeps that
+member's own attributes (set when it was built), so per-member attributes mix in
+one library.
 
 =item B<--pack> I<member> [I<member> ...]
 

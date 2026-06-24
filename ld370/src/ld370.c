@@ -49,6 +49,12 @@ static int allow_unresolved = 0;
 /* APF authorization code (SETCODE AC(n)); goes into the PDS2 directory entry's
  * APF section (PDSAPFAC).  Default 0; httpd's HTTPD module needs AC(1). */
 static int apfcode = 0;
+/* Clear the PDS2ATR1 reentrant/reusable attributes (the template marks every
+ * module RENT+REUS).  --norent clears PDS2RENT (0x80); --noreus clears PDS2REUS
+ * (0x40).  RENT implies REUS, so --norent alone leaves a serially-reusable module;
+ * a module that can't even be serially reused wants both.  For a module with
+ * modifiable storage that must not be marked reentrant (a REXX370 module needs this). */
+static int no_rent = 0, no_reus = 0;
 static void trace(const char *fmt, ...)
 {
     va_list ap;
@@ -843,6 +849,13 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
      * lives at PDS2EPA (ud+15), NOT here, so writing the AC does not re-authorize
      * by accident (the bug 7a49c29d guarded against). */
     ud[21] = 1; ud[22] = (unsigned char)apfcode; ud[23] = 0;
+
+    /* PDS2ATR1 reentrant/reusable overrides, applied like --ac to the freshly built
+     * module (a --pack of a pre-built -iebcopy returned above, keeping the member's
+     * own attributes set at ITS build).  RENT implies REUS, so --norent alone leaves
+     * the module serially reusable; --noreus drops that too. */
+    if (no_rent) ud[8] = (unsigned char)(ud[8] & ~0x80);     /* clear PDS2RENT */
+    if (no_reus) ud[8] = (unsigned char)(ud[8] & ~0x40);     /* clear PDS2REUS */
 }
 
 /* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
@@ -1424,6 +1437,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
         else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--norent")) no_rent = 1;       /* clear PDS2RENT */
+        else if (!strcmp(argv[i], "--noreus")) no_reus = 1;       /* clear PDS2REUS */
         else if (!strcmp(argv[i], "--blocksize") && i + 1 < argc) src_blksize = atol(argv[++i]);
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) Ldir[nLdir++] = argv[++i];
         else if (!strncmp(argv[i], "-L", 2)) Ldir[nLdir++] = argv[i] + 2;
@@ -1528,7 +1543,8 @@ int main(int argc, char **argv)
     if (!nobjf && !ninc) {
         fprintf(stderr,
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
-                "             [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N] OBJ...\n"
+                "             [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
+                "             [--ac N] [--norent] [--noreus] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
                 "       ld370 --pack M1.lm [M2.lm ...] -o OUT [-xmit] [-iebcopy]\n"
