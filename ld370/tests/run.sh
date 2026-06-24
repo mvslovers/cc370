@@ -330,6 +330,82 @@ run_conflict() {
 
 run_conflict
 
+# --blocksize: the target library BLKSIZE is runtime (default 15040, the de-facto
+# LINKLIB blocksize, so a member fits ANY LINKLIB with BLKSIZE >= 15040 -- where the
+# old fixed 19069 fit only a fresh >=19069 lib).  A module built at --blocksize B must
+# (a) split its text into blocks <= B and (b) stamp COPYR1 off6 = B (library BLKSIZE
+# == INMR02#1 INMBLKSZ) and off14 = B+20 (unloaded-PS BLKSIZE == INMR02#2 INMBLKSZ),
+# the field mapping confirmed against real oracles (e2e 3350/19069, CBT 3380/6144).
+# The XMIT's INMR02#1 INMBLKSZ must match COPYR1 off6.  A 32 KB-text module forces
+# the intra-section split so the block ceiling is actually exercised.
+printf '\n=== --blocksize: COPYR1 + block sizing + INMR02 (default 15040 + override) ===\n'
+{ echo "BIGTXT   CSECT"; echo "         DC    8000F'0'"; echo "GO       BR    14"; echo "         END   GO"; } > "$TMP/bigtxt.s"
+"$AS" -o "$TMP/bigtxt.o" "$TMP/bigtxt.s" 2>/dev/null
+blk_probe() {  # $1 = ld370 blocksize args (may be empty), $2 = expected BLKSIZE
+    # shellcheck disable=SC2086
+    "$LD" $1 -o "$TMP/bt" --name BIGTXT "$TMP/bigtxt.o" -iebcopy -xmit 2>/dev/null
+    python3 - "$TMP/bt.iebcopy" "$TMP/bt.xmit" "$2" <<'PY'
+import sys
+u=open(sys.argv[1],'rb').read(); x=open(sys.argv[2],'rb').read(); B=int(sys.argv[3])
+def be16(b,o): return (b[o]<<8)|b[o+1]
+off6, off14 = be16(u,6), be16(u,14)               # COPYR1 library / PS blocksize
+p=328                                             # walk member-data blocks, max DL
+while p+12<=len(u) and u[p+9]==8 and be16(u,p+10)==256: p+=12+8+256
+p+=12
+mx=0
+while p+12<=len(u):
+    dl=be16(u,p+10); mx=max(mx,dl); p+=12+u[p+9]+dl
+# INMR02#1 INMBLKSZ (text unit 0x0030) from the XMIT NETDATA stream
+def reassemble(z):
+    out,q,cur,ctl=[],0,b'',False
+    while q+2<=len(z):
+        sl,fl=z[q],z[q+1]
+        if sl<2: q+=1; continue
+        cur+=z[q+2:q+sl]
+        if fl&0x20: ctl=True
+        q+=sl
+        if fl&0x40: out.append((ctl,cur)); cur,ctl=b'',False
+    return out
+def tu(rec,key):
+    q=10
+    while q+4<=len(rec):
+        k,num=be16(rec,q),be16(rec,q+2); q+=4; vl=be16(rec,q)
+        if k==key:
+            v=0
+            for j in range(vl): v=(v<<8)|rec[q+2+j]
+            return v
+        t=q
+        for _ in range(num or 1):
+            if t+2>len(rec): break
+            t+=2+be16(rec,t)
+        q=t
+    return None
+inmr02=[r for c,r in reassemble(x) if c and r[:6]==bytes([0xc9,0xd5,0xd4,0xd9,0xf0,0xf2])]
+inmblk=tu(inmr02[0],0x0030) if inmr02 else None
+ok = off6==B and off14==B+20 and mx<=B and inmblk==B
+print(f"  BLKSIZE={B}: off6={off6} off14={off14}(exp {B+20}) maxblock={mx}(<= {B}) "
+      f"INMR02#1.BLKSZ={inmblk} -> {'OK' if ok else 'FAIL'}")
+sys.exit(0 if ok else 1)
+PY
+}
+blk_probe "" 15040 || fails=$((fails + 1))                 # default
+blk_probe "--blocksize 19069" 19069 || fails=$((fails + 1)) # old default; maxtext 18432
+blk_probe "--blocksize 6144" 6144 || fails=$((fails + 1))   # table entry; block may == B
+
+# pack-time guard: --pack reads members as-is (split_member reproduces build-time
+# block sizes, it does NOT re-chunk by maxtext), so packing a member built at a
+# LARGER --blocksize while declaring a smaller one would emit an oversized block into
+# the target -> the exact deploy-time sizing abend this whole BLKSIZE machinery
+# exists to prevent (and mbt's SHA256 stamps make a stale large-block member the
+# LIKELY first-deploy state).  ld370 must REFUSE on the host, not emit it.
+printf '\n=== --blocksize: pack-time guard rejects an oversized member block ===\n'
+"$LD" -o "$TMP/bt15" --name BIGTXT "$TMP/bigtxt.o" -iebcopy 2>/dev/null   # built at 15040 -> 13312 blocks
+if "$LD" --pack "BIGTXT=$TMP/bt15.iebcopy" --blocksize 6144 -o "$TMP/btpack" -iebcopy 2>/dev/null; then
+    echo "  FAIL: packed a 13312-B block into a 6144 library (guard absent)"; fails=$((fails + 1))
+else
+    echo "  OK: guard refused the oversized member block (13312 > 6144)"
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"

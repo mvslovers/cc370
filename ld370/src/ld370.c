@@ -110,18 +110,43 @@ static void member_name(unsigned char d[8], const char *s)
  * so a large runtime closure (hundreds of pulled members, thousands of symbols)
  * has no fixed ceiling. */
 #define MAXESD 512
-#define MAXTEXT 18432             /* pack member-data into logical records <= this; must stay
-                                   * <= the unload BLKSIZE (below) so RECVRCPY writes each one
-                                   * in a single unblocked PUT -- a record larger than BLKSIZE
-                                   * would span and break the IEBCOPY reload (IEB139I) */
+
+/* Target load-library BLKSIZE.  Default 15040 -- the de-facto LINKLIB blocksize on
+ * 3.8j; a member built at 15040 fits ANY LINKLIB with BLKSIZE >= 15040 (15040 and
+ * 19069 alike), where the old 19069 only fit a fresh >=19069 library.  --blocksize
+ * overrides it (6144 for a small/old device, 19069 for a 3350-full-track lib).  It
+ * drives the text-record split limit (maxtext), the unloaded-form BLKSIZE, the
+ * COPYR1 UBLKSIZE and the INMR02 INMBLKSZ -- all must agree, or the IEBCOPY reload /
+ * RECEIVE self-alloc mis-sizes the target (the SB37 class of failure). */
+static long src_blksize = 15040;
+/* Text-record split limit: pack member-data into logical records <= this.  Must be
+ * <= the library BLKSIZE so each block fits one PDS block on reload, and <= the
+ * unload BLKSIZE so RECVRCPY writes each record in a single unblocked PUT (a record
+ * larger than BLKSIZE would span and break the IEBCOPY reload, IEB139I).  Set in
+ * main() from src_blksize via pick_maxtext(); 13312 = pick_maxtext(15040). */
+static long maxtext = 13312;
+#define MAXTEXT            maxtext
+#define UNLOAD_SRC_BLKSIZE src_blksize
 /* The IEBCOPY-unloaded form's BLKSIZE.  Real IEBCOPY's unload DCB-exit forces
- * BLKSIZE = MINBLK = 12 + 8 + keylen + source-BLKSIZE (IEBLDUL); a load library
- * has keylen=0, so for a 19069-byte source library it is 19089.  ld370 must
- * declare this in the INMCOPY INMR02 so RECVRCPY blocks SYSUT1 wide enough to
- * hold a full member-data record unspanned (the 3120 it replaced was xmit370's
- * static template placeholder, never the real unloaded blocksize). */
-#define UNLOAD_SRC_BLKSIZE 19069
-#define UNLOAD_BLKSIZE     (12 + 8 + 0 + UNLOAD_SRC_BLKSIZE)   /* IEBCOPY MINBLK = 19089 */
+ * BLKSIZE = MINBLK = 12 + 8 + keylen + source-BLKSIZE (IEBLDUL); a load library has
+ * keylen=0, so it is src_blksize + 20.  ld370 declares this in the INMCOPY INMR02 so
+ * RECVRCPY blocks SYSUT1 wide enough to hold a full member-data record unspanned. */
+#define UNLOAD_BLKSIZE     (12 + 8 + 0 + src_blksize)
+
+/* IEWL SYSLMOD text-record-size table (HEWLFINT TXT18K..TXT1K).  IEWL picks TXTSIZE
+ * as the largest entry <= the device's max block (DEVMAXBS, e.g. 18432 for a 3350);
+ * we drive it by the LIBRARY BLKSIZE instead, so a library deliberately smaller than
+ * the device track still yields blocks that fit it.  Keying off the table (not the
+ * raw BLKSIZE) keeps maxtext at a standard, loader-tested value strictly < src_blksize
+ * for any non-table size (15040 -> 13312), so no member block ever equals BLKSIZE. */
+static const int iewl_txtsize[] = { 18432, 13312, 12288, 7680, 6144, 5120, 4096, 3072, 2048, 1024 };
+static long pick_maxtext(long blksize)
+{
+    unsigned k;
+    for (k = 0; k < sizeof iewl_txtsize / sizeof iewl_txtsize[0]; k++)
+        if (iewl_txtsize[k] <= blksize) return iewl_txtsize[k];
+    return 1024;                      /* BLKSIZE < 1K (rejected at parse) -- clamp */
+}
 enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05 };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
@@ -850,7 +875,29 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
         mem[j] = t;
     }
 
-    memcpy(o + p, unload_env_hdr, 328); p += 328;       /* COPYR1 + COPYR2 */
+    /* Guard: a pre-built member block larger than the declared library BLKSIZE
+     * cannot be reloaded (it would not fit one PDS block) -- the silent path to a
+     * deploy-time sizing abend.  --pack does not re-split, and mbt's SHA256 stamps
+     * skip rebuilding unchanged .c, so a member built at a larger --blocksize is the
+     * likely first-deploy state, not a corner case.  Refuse on the host instead. */
+    for (i = 0; i < nmem; i++)
+        for (j = 0; j < mem[i].nblk; j++)
+            if (mem[i].blk[j].len > src_blksize) {
+                fprintf(stderr, "ld370: member '%s' has a %ld-byte block > --blocksize "
+                        "%ld; rebuild it with a matching --blocksize\n",
+                        nm(mem[i].name), mem[i].blk[j].len, src_blksize);
+                return -1;
+            }
+
+    memcpy(o + p, unload_env_hdr, 328);                 /* COPYR1 + COPYR2 */
+    /* Stamp the runtime BLKSIZE into the echoed COPYR1: off 6 = library BLKSIZE
+     * (== INMR02#1 INMBLKSZ, the target lib), off 14 = unloaded-PS BLKSIZE
+     * (== INMR02#2 INMBLKSZ).  Both confirmed against real oracles: e2e 3350/19069,
+     * CBT 3380/6144 (off6 == INMR02#1, off14 == INMR02#2).  The template baked 19069
+     * at both; off 14 was a latent skew (its INMR02#2 already declared MINBLK). */
+    put16(o + p + 6,  (int)src_blksize);
+    put16(o + p + 14, (int)UNLOAD_BLKSIZE);
+    p += 328;
     if (bounds) { bounds[0] = UNLOAD_COPYR1_LEN; bounds[1] = 328; }
 
     /* Assign each block (and each member's DL=0 EOF) a relative (track, record).
@@ -985,6 +1032,7 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
               nm(mem[i].name), mem[i].nblk, mem[i].len);
     }
     ulen = emit_unload(unl, mem, nmem, NULL);
+    if (ulen < 0) { for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     f = fopen(path, "wb");
     if (!f) { perror(path); return 1; }
     fwrite(unl, 1, (size_t)ulen, f);
@@ -1248,7 +1296,7 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
         }
     }
     ulen = emit_unload(unl, mem, nmem, bounds);
-    (void)ulen;
+    if (ulen < 0) { for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     xlen = emit_xmit(xm, unl, bounds, dsn);
     f = fopen(path, "wb");
     if (!f) { perror(path); return 1; }
@@ -1373,6 +1421,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
         else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--blocksize") && i + 1 < argc) src_blksize = atol(argv[++i]);
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) Ldir[nLdir++] = argv[++i];
         else if (!strncmp(argv[i], "-L", 2)) Ldir[nLdir++] = argv[i] + 2;
         else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
@@ -1382,6 +1431,17 @@ int main(int argc, char **argv)
         else objfiles[nobjf++] = argv[i];
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INMDSNAM default; RECEIVE DA(...) overrides */
+
+    /* --blocksize bounds: >= 1K (smallest IEWL text size), and small enough that the
+     * unloaded-PS BLKSIZE (UNLOAD_BLKSIZE = src_blksize + 20) stays within the
+     * conventional 32760 QSAM/BLKSIZE ceiling -- so RECEIVE can allocate the PS form
+     * and the COPYR1 off-14 / INMR02 halfword fields never overflow.  32740 keeps
+     * both the library blocksize and N+20 valid (real LINKLIBs are 6144..19069). */
+    if (src_blksize < 1024 || src_blksize > 32740) {
+        fprintf(stderr, "ld370: --blocksize %ld out of range (1024..32740)\n", src_blksize);
+        return 2;
+    }
+    maxtext = pick_maxtext(src_blksize);
 
     /* Output format is flag-driven (ld-style), not -o-extension-driven:
      * `-o OUT` always names a raw load-module member, and `-xmit` / `-iebcopy`
@@ -1465,12 +1525,14 @@ int main(int argc, char **argv)
     if (!nobjf && !ninc) {
         fprintf(stderr,
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
-                "             [-xmit] [-iebcopy] [--dsn DS] [--name N] OBJ...\n"
+                "             [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
                 "       ld370 --pack M1.lm [M2.lm ...] -o OUT [-xmit] [-iebcopy]\n"
                 "         pack pre-built member(s) into OUT.xmit / OUT.iebcopy (no linking);\n"
-                "         member name = file basename, or NAME=FILE to set it; default -xmit.\n");
+                "         member name = file basename, or NAME=FILE to set it; default -xmit.\n"
+                "         --blocksize N sets the target library BLKSIZE (default 15040;\n"
+                "         use the SAME value when building and packing a module).\n");
         return 2;
     }
 

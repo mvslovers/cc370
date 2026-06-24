@@ -69,18 +69,22 @@ emit them; `inmr_hdr()` writes the eye-catcher.
 | Record | Text units (key) |
 |--------|------------------|
 | **INMR01** | INMLRECL=80, INMFNODE, INMFUID, INMTNODE, INMTUID, **INMFTIME** (timestamp), INMNUMF=1 |
-| **INMR02 #1** | file#=1, INMUTILN=`IEBCOPY`, INMSIZE, INMDIR, INMLRECL=0, INMDSORG=PO, INMBLKSZ, INMRECFM=U, **INMDSNAM** (target dsn qualifiers) |
-| **INMR02 #2** | file#=1, INMUTILN=`INMCOPY`, INMSIZE, INMLRECL=19085, INMDSORG=PS, INMBLKSZ=3120, INMRECFM=VS |
+| **INMR02 #1** | file#=1, INMUTILN=`IEBCOPY`, INMSIZE, INMDIR, INMLRECL=0, INMDSORG=PO, INMBLKSZ=`src_blksize`, INMRECFM=U, **INMDSNAM** (target dsn qualifiers) |
+| **INMR02 #2** | file#=1, INMUTILN=`INMCOPY`, INMSIZE, INMLRECL=`UNLOAD_BLKSIZE`−4, INMDSORG=PS, INMBLKSZ=`UNLOAD_BLKSIZE`, INMRECFM=VS |
 | **INMR03** | INMSIZE, INMLRECL=80, INMDSORG=PS, INMRECFM |
 | **INMR06** | (none — trailer) |
 
 Field classes: `INMDSNAM` is a **parameter** (`--dsn`, the install target);
-`INMFTIME` is **computed** (current time — the byte-identity carve-out); the
-DCB constants (RECFM/DSORG/LRECL of the source U-PO library and the VS unloaded
-form) are **echoed** E2E-correct. **Open (TODO):** `INMSIZE` (= the file's
-approximate size in bytes, an allocation hint) and the source `INMBLKSZ/INMDIR`
-are echoed E2E values — compute them from the member for arbitrary modules (a
-wrong size only bites RECEIVE on a larger member).
+`INMFTIME` is **computed** (current time — the byte-identity carve-out);
+`INMRECFM`/`INMDSORG`/`INMLRECL=0` (the U-PO library) are **echoed** constants.
+`INMBLKSZ` is **derived** from `--blocksize` (default 15040): INMR02#1 carries the
+library BLKSIZE `src_blksize`, INMR02#2 the unloaded-PS BLKSIZE `UNLOAD_BLKSIZE`
+(= `src_blksize`+20). `INMSIZE`/`INMDIR` are **computed** from the packed image —
+INMR02#1 `INMSIZE` is the member-data region, `INMDIR` the directory-block count,
+INMR02#2/#3 `INMSIZE` the whole unloaded form. (Both were once fixed E2E constants;
+a hardcoded `INMSIZE` SB37'd a large multi-module pack because TSO/NJE38 `RECEIVE`
+self-allocates the target from it, and a hardcoded `INMBLKSZ=3120` was the old
+xmit370 template placeholder, never the real unloaded blocksize.)
 
 > **Cross-checked against the authoritative `mainframed/xmi` reference**
 > (<https://github.com/mainframed/xmi>, <https://xmi.readthedocs.io/en/latest/netdata.html>):
@@ -106,9 +110,15 @@ records), then:
 //SYSIN  DD DUMMY
 //SYSUT1 DD UNIT=VIO,SPACE=(CYL,(10,5)),DISP=(NEW,DELETE)
 //SYSUT2 DD DSN=target.LOADLIB,DISP=(NEW,CATLG),UNIT=SYSDA,
-//          SPACE=(CYL,(1,1,10)),DCB=(RECFM=U,BLKSIZE=19069)
+//          SPACE=(CYL,(1,1,10)),DCB=(RECFM=U,BLKSIZE=15040)
 //XMITIN DD DSN=uploaded.FB80.XMIT,DISP=SHR
 ```
+
+`RECV370` pre-allocates `SYSUT2` from the JCL DCB and **ignores** the XMIT's
+`INMBLKSZ`, so set `BLKSIZE` here to the `--blocksize` the members were built with
+(default 15040; it must be >= every member block). TSO/NJE38 `RECEIVE
+INDSN(..) DATASET(..)` is the other path — it *self-allocates* the target from the
+XMIT's `INMR02` instead, which is why `INMBLKSZ`/`INMSIZE` must be correct there.
 
 `SYSUT2` is the (PO, RECFM=U) load library RECV370 STOWs the member into.
 

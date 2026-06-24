@@ -5,7 +5,7 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 =head1 SYNOPSIS
 
 B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
-[B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] I<obj>...
+[B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>] I<obj>...
 
 B<ld370> B<--pack> I<member> [I<member> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
 
@@ -57,6 +57,19 @@ Name the target dataset recorded in the XMIT (default F<IBMUSER.HOST.LOAD>).
 =item B<--name> I<n>
 
 Set the PDS member name (otherwise derived from I<out>'s basename).
+
+=item B<--blocksize> I<n>
+
+Set the target load-library B<BLKSIZE> (default B<15040>, the de-facto LINKLIB
+blocksize on MVS 3.8j). It drives the text-record split limit, the unloaded-form
+blocksize, the COPYR1 C<UBLKSIZE> and the INMR02 C<INMBLKSZ>, so a member built at
+I<n> installs into any LINKLIB whose BLKSIZE is E<gt>= I<n>. The default 15040 fits
+both 15040 and 19069 libraries; the old fixed 19069 fit only a fresh E<gt>=19069
+library. Use B<6144> for a small or older device, B<19069> for a 3350-full-track
+library. B<Use the same value when building a module and when> B<--pack>-ing it:
+B<--pack> does not re-split, so packing a member built at a larger blocksize while
+declaring a smaller one is refused (the oversized blocks would not fit the target).
+Range 1024..32760.
 
 =item B<--pack> I<member> [I<member> ...]
 
