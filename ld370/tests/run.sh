@@ -214,6 +214,40 @@ for cnt in 7 20; do
 done
 [ "$mb_fails" -eq 0 ] || fails=$((fails + 1))
 
+# grow-on-demand whole-link tables: O[] (objects), G[] (composite symbols), the
+# archive symbol index and the pulled-member list all grow now (were fixed
+# O[1024]/G[8192]/sym[16384]; the silent ones could DROP symbols).  These tests
+# cross the 256-element initial-capacity boundary (forcing reallocs) and require
+# a HIGH-index symbol/object to still resolve -- so a corrupting or truncating
+# grow fails the link, not just a count over the old cap.
+printf '\n=== grow: archive symbol index + composite G[] (300 sections) ===\n'
+awk 'BEGIN{for(i=1;i<=300;i++)printf "C%03d     CSECT\n         BR    14\n",i; print "         END"}' > "$TMP/big.s"
+printf 'GROOT    CSECT\n         DC    V(C290)\n         BR    14\n         END   GROOT\n' > "$TMP/groot.s"
+if "$AS" -o "$TMP/big.o" "$TMP/big.s" 2>/dev/null && "$AS" -o "$TMP/groot.o" "$TMP/groot.s" 2>/dev/null \
+   && "$AR" rc "$TMP/big.a" "$TMP/big.o" 2>/dev/null \
+   && "$LD" -e GROOT "$TMP/groot.o" "$TMP/big.a" -iebcopy -o "$TMP/gbig" 2>/dev/null; then
+    echo "  OK: C290 (past the 256 grow boundary) resolved via the archive index"
+else
+    echo "  FAIL: high symbol unresolved -- archive index / G[] grow regressed"; fails=$((fails + 1))
+fi
+
+printf '\n=== grow: object array O[] (300 loose objects, &O[i] across realloc) ===\n'
+g_specs=""; i=0
+while [ "$i" -lt 300 ]; do
+    s=$(printf 'S%03d' "$i")
+    if [ "$i" -eq 0 ]; then ref="         DC    V(S299)\n"; else ref=""; fi
+    printf "%-8s CSECT\n${ref}         BR    14\n         END\n" "$s" > "$TMP/$s.s"
+    "$AS" -o "$TMP/$s.o" "$TMP/$s.s" 2>/dev/null
+    g_specs="$g_specs $TMP/$s.o"
+    i=$((i + 1))
+done
+# shellcheck disable=SC2086
+if "$LD" -e S000 $g_specs -iebcopy -o "$TMP/gobjs" 2>/dev/null; then
+    echo "  OK: 300 objects linked; S000->S299 (object 299, past 256) resolved"
+else
+    echo "  FAIL: O[] grow / &O[i] aliasing across realloc regressed"; fails=$((fails + 1))
+fi
+
 # automatic library call: a member pulled from an ar370 archive must yield the
 # SAME module as linking it explicitly (same appearance order => same ESDIDs).
 #   modab  = single pull   (mod_a references MODB, in libmodb.a)

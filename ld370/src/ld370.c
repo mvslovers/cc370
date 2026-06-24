@@ -103,12 +103,13 @@ static void member_name(unsigned char d[8], const char *s)
 }
 
 /* ---- model ----
- * MAXESD bounds one OBJECT's local ESD (small); MAXOBJ and MAXG bound the
- * whole link -- a real C program autocalls a large runtime closure, so these
- * are sized for hundreds of pulled members and thousands of composite symbols. */
+ * MAXESD bounds one OBJECT's local ESD (per object, guarded with a silent drop;
+ * cc370/as370 objects are far below it).  The whole-link tables -- the object
+ * array O[], the composite symbol table G[], the archive symbol/member indexes,
+ * the pulled-member list and the command-line lists -- all grow on demand now,
+ * so a large runtime closure (hundreds of pulled members, thousands of symbols)
+ * has no fixed ceiling. */
 #define MAXESD 512
-#define MAXOBJ 1024
-#define MAXG   8192
 #define MAXTEXT 18432             /* pack member-data into logical records <= this; must stay
                                    * <= the unload BLKSIZE (below) so RECVRCPY writes each one
                                    * in a single unblocked PUT -- a record larger than BLKSIZE
@@ -124,11 +125,13 @@ static void member_name(unsigned char d[8], const char *s)
 enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05 };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
+static void *grow_arr(void *arr, long *cap, long need, size_t elsz);   /* defined below */
+
 /* composite (global) symbol = one CESD entry */
 struct gsym { unsigned char name[8]; int type; int is_sect; int gid; long org, len;
               int def_obj; long in_addr;   /* section: defining object + origin within it */
               int owner; };                /* LR (label/entry): gsym index of the owning section */
-static struct gsym G[MAXG];
+static struct gsym *G; static long Gcap;   /* grow on demand (was G[MAXG]) */
 static int nG = 0;
 
 static int g_find(const unsigned char *name)
@@ -142,7 +145,7 @@ static int g_find(const unsigned char *name)
  * sections, which are distinct per object even though they share a blank name */
 static int g_new(const unsigned char *name)
 {
-    if (nG >= MAXG) { fprintf(stderr, "ld370: composite symbol table full (MAXG=%d)\n", MAXG); exit(1); }
+    G = grow_arr(G, &Gcap, nG + 1, sizeof *G);
     memcpy(G[nG].name, name, 8);
     G[nG].type = 0; G[nG].is_sect = 0; G[nG].gid = 0; G[nG].org = 0; G[nG].len = 0;
     G[nG].def_obj = -1; G[nG].in_addr = 0; G[nG].owner = -1;
@@ -195,7 +198,9 @@ static void *grow_arr(void *arr, long *cap, long need, size_t elsz)
     *cap = nc;
     return arr;
 }
-static struct obj O[MAXOBJ];
+static struct obj *O; static long Ocap;   /* grow on demand (was O[MAXOBJ]); cached
+                                           * &O[i] are only taken in PASS 2 / emit,
+                                           * after all parse/pull grows are done */
 static int nO = 0;
 static long entry_pt = 0;
 
@@ -296,18 +301,19 @@ static int local_to_g(struct obj *o, int localid)
  * Runs as a standalone step BEFORE the composite ESD is built, so it does not
  * perturb the ESDID order (appearance order: explicit objects, then pulls). */
 #define MAXAR 32
-#define MAXARSYM 16384
-#define MAXARMEM 4096
+/* sym/mem grow on demand (were fixed sym[16384]/mem[4096] -> ~48 MB static AND a
+ * SILENT truncation: an archive with >16384 exported symbols dropped the rest
+ * from the index, so autocall would miss them with no diagnostic). */
+struct arsym { char name[64]; long off; };
 struct archive {
     unsigned char *data; long size;
-    struct { char name[64]; long off; } sym[MAXARSYM];
-    int nsym;
-    struct { char name[64]; long off; } mem[MAXARMEM];   /* member basenames, for --include */
-    int nmem;
+    struct arsym *sym; long symcap; int nsym;
+    struct arsym *mem; long memcap; int nmem;        /* member basenames, for --include */
 };
 static struct archive AR[MAXAR];
 static int nAR = 0;
-static struct { int ar; long off; } pulled[MAXOBJ];
+struct pulledref { int ar; long off; };
+static struct pulledref *pulled; static long pulledcap;   /* grow on demand */
 static int npulled = 0;
 
 /* load an ar370/GNU `ar` archive and parse its "/" symbol table */
@@ -318,16 +324,19 @@ static int load_archive(const char *path)
     a = read_file(path, &n);
     if (!a) return 1;
     if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ld370: %s: not an archive\n", path); free(a); return 1; }
-    ar = &AR[nAR]; ar->data = a; ar->size = n; ar->nsym = 0; ar->nmem = 0;
+    ar = &AR[nAR]; ar->data = a; ar->size = n;
+    ar->sym = NULL; ar->symcap = 0; ar->nsym = 0;
+    ar->mem = NULL; ar->memcap = 0; ar->nmem = 0;
     /* first member must be the "/" symbol table */
     if (a[8] == '/' && a[9] == ' ') {
         long q = 8 + 60;
         unsigned long cnt = ((unsigned long)a[q] << 24) | ((unsigned long)a[q+1] << 16)
                           | ((unsigned long)a[q+2] << 8) | a[q+3], k;
         const char *names = (const char *)(a + q + 4 + 4 * cnt);
-        for (k = 0; k < cnt && ar->nsym < MAXARSYM; k++) {
+        for (k = 0; k < cnt; k++) {
             long off = ((long)a[q+4+4*k] << 24) | ((long)a[q+4+4*k+1] << 16)
                      | ((long)a[q+4+4*k+2] << 8) | a[q+4+4*k+3];
+            ar->sym = grow_arr(ar->sym, &ar->symcap, ar->nsym + 1, sizeof *ar->sym);
             strncpy(ar->sym[ar->nsym].name, names, 63);
             ar->sym[ar->nsym].name[63] = 0;
             ar->sym[ar->nsym].off = off;
@@ -346,7 +355,7 @@ static int load_archive(const char *path)
                 longnames = a + q + 60; longlen = msize;
             } else if (a[q] == '/' && (a[q + 1] == ' ' || a[q + 1] == 0x60)) {
                 /* "/" symbol table -- skip */
-            } else if (ar->nmem < MAXARMEM) {
+            } else {
                 if (a[q] == '/' && a[q + 1] >= '0' && a[q + 1] <= '9' && longnames) {
                     long lo = atol((const char *)(a + q + 1));    /* /NNN -> offset in "//" */
                     while (lo < longlen && longnames[lo] != '/' && longnames[lo] != '\n' && L < 63)
@@ -356,6 +365,7 @@ static int load_archive(const char *path)
                         nmbuf[L++] = (char)a[q + k];
                 }
                 nmbuf[L] = 0;
+                ar->mem = grow_arr(ar->mem, &ar->memcap, ar->nmem + 1, sizeof *ar->mem);
                 strcpy(ar->mem[ar->nmem].name, nmbuf); ar->mem[ar->nmem].off = q; ar->nmem++;
             }
             q += 60 + msize + (msize & 1);
@@ -386,9 +396,10 @@ static int is_defined(const unsigned char *name8)
 static int pull_member(int ai, long off)
 {
     unsigned char *a = AR[ai].data; char szs[11]; long size;
-    if (nO >= MAXOBJ) { fprintf(stderr, "ld370: too many objects (autocall)\n"); return 1; }
     memcpy(szs, a + off + 48, 10); szs[10] = 0; size = atol(szs);
+    O = grow_arr(O, &Ocap, nO + 1, sizeof *O);
     parse_object(a + off + 60, size, &O[nO]);
+    pulled = grow_arr(pulled, &pulledcap, npulled + 1, sizeof *pulled);
     pulled[npulled].ar = ai; pulled[npulled].off = off; npulled++;
     nO++;
     return 0;
@@ -1322,9 +1333,13 @@ int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *mname = NULL;
     const char *xmitfile = NULL, *dsn = NULL, *entryname = NULL;
-    const char *objfiles[MAXOBJ];
-    char *packspec[MAXOBJ], *Ldir[32];
-    const char *incspec[64]; int ninc = 0;
+    /* command-line lists, sized to argc (their exact upper bound -- each entry is
+     * a distinct argv slot); no fixed cap to silently drop past. */
+    const char **objfiles = malloc((size_t)argc * sizeof *objfiles);
+    char **packspec      = malloc((size_t)argc * sizeof *packspec);
+    char **Ldir          = malloc((size_t)argc * sizeof *Ldir);
+    const char **incspec = malloc((size_t)argc * sizeof *incspec); int ninc = 0;
+    if (!objfiles || !packspec || !Ldir || !incspec) { fprintf(stderr, "ld370: out of memory\n"); return 1; }
     int nobjf = 0, npack = 0, nLdir = 0, pack_mode = 0, i, j;
     int want_xmit = 0, want_unload = 0;          /* -xmit/-iebcopy: no-arg format flags (additive) */
     char xmitbuf[2048], unlbuf[2048];            /* derived <out>.xmit / <out>.iebcopy names */
@@ -1339,18 +1354,18 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--dsn") && i + 1 < argc) dsn = argv[++i];
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
-        else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc && ninc < 64) incspec[ninc++] = argv[++i];
+        else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc) incspec[ninc++] = argv[++i];
         else if (!strcmp(argv[i], "--pack")) pack_mode = 1;       /* positional args after this are members to pack */
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
         else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
-        else if (!strcmp(argv[i], "-L") && i + 1 < argc) { if (nLdir < 32) Ldir[nLdir++] = argv[++i]; }
-        else if (!strncmp(argv[i], "-L", 2)) { if (nLdir < 32) Ldir[nLdir++] = argv[i] + 2; }
+        else if (!strcmp(argv[i], "-L") && i + 1 < argc) Ldir[nLdir++] = argv[++i];
+        else if (!strncmp(argv[i], "-L", 2)) Ldir[nLdir++] = argv[i] + 2;
         else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
         else if (!strncmp(argv[i], "-l", 2)) { if (load_lib(argv[i] + 2, Ldir, nLdir)) return 1; }
-        else if (pack_mode && npack < MAXOBJ) packspec[npack++] = argv[i];   /* member to pack */
+        else if (pack_mode) packspec[npack++] = argv[i];   /* member to pack */
         else if (ends_with(argv[i], ".a")) { if (load_archive(argv[i])) return 1; }
-        else if (nobjf < MAXOBJ) objfiles[nobjf++] = argv[i];
+        else objfiles[nobjf++] = argv[i];
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INMDSNAM default; RECEIVE DA(...) overrides */
 
@@ -1368,10 +1383,10 @@ int main(int argc, char **argv)
      *   uppercased) unless given explicitly as NAME=FILE.  --pack only ever emits a
      *   container, so with neither flag it defaults to -xmit. --- */
     if (npack) {
-        struct umember m[MAXOBJ]; int rc = 0;
+        struct umember *m = calloc((size_t)npack, sizeof *m); int rc = 0;
+        if (!m) { fprintf(stderr, "ld370: out of memory\n"); return 1; }
         if (!outfile) { fprintf(stderr, "ld370: --pack needs -o OUT (base name)\n"); return 2; }
         if (!want_unload && !want_xmit) want_xmit = 1;   /* container-only: default to xmit */
-        memset(m, 0, sizeof m);
         for (i = 0; i < npack; i++) {
             char *spec = packspec[i], *eq = strchr(spec, '=');
             const char *file, *name = NULL; long n; unsigned char *buf; size_t got;
@@ -1421,6 +1436,7 @@ int main(int argc, char **argv)
         if (want_unload) rc = write_unload_mem(with_suffix(unlbuf, sizeof unlbuf, outfile, ".iebcopy"), m, npack);
         if (!rc && want_xmit) rc = write_xmit(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), m, npack, dsn);
         for (i = 0; i < npack; i++) free((void *)m[i].bytes);
+        free(m);
         return rc;
     }
 
@@ -1454,6 +1470,7 @@ int main(int argc, char **argv)
         long n; unsigned char *b = read_file(objfiles[i], &n);
         trace("- object: %s", objfiles[i]);
         if (!b) return 1;
+        O = grow_arr(O, &Ocap, nO + 1, sizeof *O);
         parse_object(b, n, &O[nO]);
         free(b);
         nO++;
@@ -1552,7 +1569,8 @@ int main(int argc, char **argv)
     int nsect = gid;
     for (i = 0; i < nG; i++)
         if (!G[i].is_sect) G[i].gid = ++gid;          /* unresolved ERs get ids after sections */
-    static int gidx[MAXG + 1];                        /* gid -> G[] index */
+    static int *gidx = NULL; static long gidxcap;     /* gid -> G[] index; grows with G */
+    gidx = grow_arr(gidx, &gidxcap, nG + 1, sizeof *gidx);
     for (i = 0; i < nG; i++) gidx[G[i].gid] = i;
 
     /* entry point: --entry NAME resolves a named section/LD entry (the working
@@ -1671,7 +1689,8 @@ int main(int argc, char **argv)
         int sg = 1, nchunk = 0;
         while (sg <= nsect) {
             long cstart = G[gidx[sg]].org, cend = cstart; int first = sg, g, k, idlen;
-            static unsigned char cr[16 + 4 * MAXG];
+            static unsigned char *cr = NULL; static long crcap;   /* one ID per section in the chunk */
+            cr = grow_arr(cr, &crcap, 16 + 4 * (nsect + 1), 1);
             while (sg <= nsect) {                      /* greedily pack whole sections, >= 1 */
                 long send = (sg < nsect) ? G[gidx[sg]].org + roundup8(G[gidx[sg]].len) : modlen;
                 if (sg > first && send - cstart > MAXTEXT) break;
