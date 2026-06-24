@@ -443,6 +443,20 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
                 printf("%sINMRECFM   %s\n", indent,
                        (code & 0xC000) == 0xC000 ? "U" : (code & 0x4800) == 0x4800 ? "VS" :
                        (code & 0x8000) ? "F" : (code & 0x4000) ? "V" : "data");
+            } else if ((key == 0x0030 || key == 0x0042 || key == 0x003c ||
+                        key == 0x102c || key == 0x000c) && vp + 2 <= len) {
+                /* integer DCB / allocation text units: BLKSIZE, LRECL, DSORG,
+                 * INMSIZE (alloc size hint), INMDIR (directory blocks) */
+                int vl = be16(r + vp), z; long val = 0;
+                for (z = 0; z < vl && vp + 2 + z < len; z++) val = (val << 8) | r[vp + 2 + z];
+                if (key == 0x003c)                              /* INMDSORG */
+                    printf("%sINMDSORG   %s\n", indent,
+                           val == 0x0200 ? "PO" : val == 0x4000 ? "PS" :
+                           val == 0x0040 ? "DA" : "?");
+                else
+                    printf("%s%s   %ld\n", indent,
+                           key == 0x0030 ? "INMBLKSZ" : key == 0x0042 ? "INMLRECL" :
+                           key == 0x102c ? "INMSIZE " : "INMDIR  ", val);
             }
         }
         { int j; long q = vp; for (j = 0; j < num && q + 2 <= len; j++) { int l = be16(r + q); q += 2 + l; } p = q; }
@@ -515,12 +529,22 @@ static void show_xmit(const char *path, const unsigned char *b, long n, int v)
     {
         enum fmt inner = detect(data, datalen);
         const char *member = "";
-        if (inner == F_IEBCOPY && UNLOAD_DIRBLK + 12 <= datalen) {
-            const unsigned char *blk = data + UNLOAD_DIRBLK;
-            int used = be16(blk);
-            if (used >= 14 && used <= 256 &&
-                memcmp(blk + 2, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF", 8) != 0)
-                member = nm(blk + 2);
+        int nmemb = 0;
+        if (inner == F_IEBCOPY) {                    /* count members across all dir blocks */
+            long dp = UNLOAD_ENVHDR;
+            while (dp + 12 + 8 + 256 <= datalen && data[dp + 9] == 8 && be16(data + dp + 10) == 256) {
+                const unsigned char *blk = data + dp + 20;
+                int used = be16(blk), q = 2;
+                if (used < 2 || used > 256) used = 256;
+                while (q + 12 <= used) {
+                    const unsigned char *e = blk + q;
+                    if (memcmp(e, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF", 8) == 0) break;
+                    if (!nmemb) member = nm(e);      /* first member name */
+                    nmemb++;
+                    q += 12 + (e[11] & 0x1f) * 2;
+                }
+                dp += 12 + 8 + 256;
+            }
         }
 
         printf("%s: TSO XMIT/NETDATA", path);
@@ -528,7 +552,8 @@ static void show_xmit(const char *path, const unsigned char *b, long n, int v)
         if (utility[0]) printf(", %s", utility);
         if (inner == F_IEBCOPY) {
             printf(", wraps IEBCOPY unload");
-            if (member[0]) printf(" (member %s)", member);
+            if (nmemb == 1 && member[0]) printf(" (member %s)", member);
+            else if (nmemb > 1)          printf(" (%d members)", nmemb);
         } else if (datalen) {
             printf(", wraps %s", inner == F_LMOD ? "load module" : "data");
         }

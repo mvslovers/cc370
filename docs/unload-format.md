@@ -78,19 +78,30 @@ directory record sits at all-zero MBBCCHHR (IEBCOPY's directory sentinel).
 
 ## 3. COPYR1 / COPYR2 (the 328-byte environment header)
 
-Echoed verbatim (`unload_env_hdr[]`). Decoded for reference (COPYR1 content
-starts at the eye-catcher's INDC byte; field equates from `IEBLDUL`):
+Echoed from `unload_env_hdr[]`, with the two BLKSIZE halfwords (off 6, off 14)
+re-stamped at emit time from the runtime `--blocksize` (default 15040); the rest is
+verbatim. Decoded for reference (COPYR1 content starts at the eye-catcher's INDC
+byte; field equates from `IEBLDUL`):
 
 | COPYR1 off | field | value here | meaning |
 |---|---|---|---|
 | 0 | INDC | 00 | flags |
 | 1 | ID | `CA6D0F` | "this is an unloaded data set" eye-catcher |
 | 4 | UDSORG | `0200` | PO (partitioned) |
-| 6 | UBLKSIZE | 19069 | source library BLKSIZE |
+| 6 | UBLKSIZE | `src_blksize` (default 15040) | **library BLKSIZE** = `INMR02#1` `INMBLKSZ` (the target lib); re-stamped at emit |
 | 8 | ULRECL | 0 | RECFM=U ⇒ lrecl 0 |
 | 10 | URECFM | `C0` | U (undefined) |
 | 11 | UKEYLEN | 0 | |
-| 16 | UDEVTYPE | 20 B | source UCB device characteristics |
+| 14 | (unload PS BLKSIZE) | `UNLOAD_BLKSIZE` = `src_blksize`+20 | **unloaded-PS BLKSIZE** = `INMR02#2` `INMBLKSZ`; re-stamped at emit |
+| 16 | UDEVTYPE | 20 B | source UCB device characteristics (kept at 3350; only for the fake-DEB TTR conversion) |
+
+The off-6 vs off-14 split was pinned empirically: in two real oracles —
+`e2e` (3350, library 19069) and CBT571 `LOADLIB` (3380, library 6144) — COPYR1
+off 6 always equals the IEBCOPY `INMR02` `INMBLKSZ` (the loaded library) and off 14
+always equals the INMCOPY `INMR02` `INMBLKSZ` (the sequential unloaded form, e.g.
+3120 for a spanned-VS oracle, `src_blksize`+20 for ld370's unspanned form). The
+template baked 19069 at both; off 14 was a latent skew (its own `INMR02#2` already
+declared MINBLK), now corrected.
 
 COPYR2 = `UDEBL16`(16) + `UDEBX`(256, the source DEB extent descriptions). On
 LOAD, IEBCOPY builds a *fake DEB* from UDEBX+UDEVTYPE purely to convert the
