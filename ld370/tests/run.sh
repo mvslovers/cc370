@@ -248,6 +248,17 @@ else
     echo "  FAIL: O[] grow / &O[i] aliasing across realloc regressed"; fails=$((fails + 1))
 fi
 
+printf '\n=== grow: archive member index (--include a member past 256) ===\n'
+printf 'IROOT    CSECT\n         BR    14\n         END   IROOT\n' > "$TMP/iroot.s"
+"$AS" -o "$TMP/iroot.o" "$TMP/iroot.s" 2>/dev/null
+# shellcheck disable=SC2086
+if "$AR" rc "$TMP/g300.a" $g_specs 2>/dev/null \
+   && "$LD" -e IROOT "$TMP/iroot.o" "$TMP/g300.a" --include S290 -iebcopy -o "$TMP/ginc" 2>/dev/null; then
+    echo "  OK: --include S290 (archive member past 256) found -> mem[] index grew"
+else
+    echo "  FAIL: archive member index (mem[]) grow regressed"; fails=$((fails + 1))
+fi
+
 # automatic library call: a member pulled from an ar370 archive must yield the
 # SAME module as linking it explicitly (same appearance order => same ESDIDs).
 #   modab  = single pull   (mod_a references MODB, in libmodb.a)
