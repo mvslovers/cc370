@@ -445,6 +445,44 @@ PY
 if [ "$pa" = "43" ]; then echo "  OK: --pack preserves the member's cleared RENT (ATR1=$pa)"
 else echo "  FAIL: --pack did not preserve --norent (ATR1=$pa)"; fails=$((fails + 1)); fi
 
+# dropped-text on early-ref / late-def section (S106-0F on FETCH of large modules).
+# The text packer walked sections in gid order (G[] creation order) but ASSUMED
+# origin order.  A section referenced early (low gid) but DEFINED in the last linked
+# object (high origin) -- e.g. REXX370's ISTSO, an ER resolved to an SD in the last
+# object -- broke that assumption: the packer cut the chunk at the out-of-order
+# section and SKIPPED every section in between, silently dropping their text (241 KB
+# in IRX#HELO).  The half-loaded module then failed program fetch with S106 reason
+# 0F (permanent I/O error, NOT a bad record).  Reproduce: RA (defined first) refs
+# RLATE; RB is a big (20 KB) section; RLATE is defined LAST -> RLATE gets a low gid
+# but the highest origin, with RB between.  All text must be emitted.
+printf '\n=== dropped-text: early-ref / late-def section keeps all text (S106-0F) ===\n'
+printf 'RA       CSECT\n         DC    V(RLATE)\n         BR    14\n         END\n'   > "$TMP/ra.s"
+printf 'RB       CSECT\n         DC    5000F'\''1'\''\n         BR    14\n         END\n' > "$TMP/rb.s"
+printf 'RLATE    CSECT\n         BR    14\n         END\n'                            > "$TMP/rc.s"
+for m in ra rb rc; do "$AS" -o "$TMP/$m.o" "$TMP/$m.s" 2>/dev/null; done
+"$LD" -o "$TMP/s106" "$TMP/ra.o" "$TMP/rb.o" "$TMP/rc.o" 2>/dev/null
+ts=$(python3 - "$TMP/s106" <<'PY'
+import sys
+def be16(b,o): return (b[o]<<8)|b[o+1]
+b=open(sys.argv[1],'rb').read(); n=len(b); p=0
+while p<n and (b[p]&0xF0)==0x20: p+=8+be16(b,p+6)   # CESD
+while p<n and b[p]==0x80: p+=b[p+1]+1               # IDR
+ts=0
+while p<n:
+    lo=b[p]&0x0F
+    if lo in (0x01,0x05,0x0D):
+        idlen=be16(b,p+4); tl=be16(b,p+14); ts+=tl; p+=16+idlen+tl
+    elif lo in (0x02,0x06,0x0E): p+=16+be16(b,p+6)
+    else: break
+print(ts)
+PY
+)
+if [ "${ts:-0}" -ge 20000 ]; then
+    echo "  OK: big section's text emitted (text=$ts, not dropped)"
+else
+    echo "  FAIL: text dropped (text=$ts, big RB section skipped -> S106-0F on fetch)"; fails=$((fails + 1))
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"
