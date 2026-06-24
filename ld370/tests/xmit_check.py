@@ -59,6 +59,44 @@ def check(host_path, unload_path):
         print("  FAIL: XMIT payload (%d B) != unload image (%d B)" % (len(payload), len(unload)))
         ok = False
 
+    def be16(b, o):
+        return (b[o] << 8) | b[o + 1]
+
+    # INMSIZE (INMR02 #1 = IEBCOPY) sizes the target load library; TSO/NJE38 RECEIVE
+    # allocates the target dataset from it, so a hardcoded constant SB37s a large
+    # multi-module pack (the rexx370 deploy hit this).  It must equal the member-data
+    # region = the unload minus the env header, the directory blocks and the EOD
+    # marker -- i.e. scale with the actual package, never a fixed value.
+    def tu_int(rec, key):                       # decode an integer text unit's value
+        p = 10                                  # past 'INMR02' eyecatcher (6) + file number (4)
+        while p + 4 <= len(rec):
+            k, num = be16(rec, p), be16(rec, p + 2); p += 4
+            vl = be16(rec, p)
+            if k == key:
+                v = 0
+                for j in range(vl):
+                    v = (v << 8) | rec[p + 2 + j]
+                return v
+            t = p
+            for _ in range(num or 1):
+                if t + 2 > len(rec):
+                    break
+                t += 2 + be16(rec, t)
+            p = t
+        return None
+    inmr02 = [r for c, r in recs if c and bytes(r[:6]).decode('cp037', 'replace') == 'INMR02']
+    inmsize = tu_int(inmr02[0], 0x102c) if inmr02 else None   # first INMR02 = IEBCOPY
+    q = ENV_HDR = 328
+    while q + 12 <= len(unload) and unload[q + 9] == 8 and be16(unload, q + 10) == 256:
+        q += 12 + 8 + 256                       # directory block records
+    q += 12                                     # end-of-directory marker
+    member_data = len(unload) - q
+    if inmsize is None:
+        print("  FAIL: no INMSIZE in INMR02"); ok = False
+    elif inmsize != member_data:
+        print("  FAIL: INMSIZE %d != member-data %d B -> RECEIVE would mis-size the "
+              "target (SB37 on a large pack)" % (inmsize, member_data)); ok = False
+
     # transport guard: IEBCOPY LOAD reads SYSUT1 one VS logical record at a time;
     # a member's data packed BEHIND another member's DL=0 EOF in the same logical
     # record is lost on reload (every 2-member layout abended IEB183I this way,
@@ -66,9 +104,6 @@ def check(host_path, unload_path):
     # unload image, not the XMIT framing).  Assert no count-record follows a DL=0
     # within one data logical record.  (COPYR1/COPYR2 are raw env-header records,
     # not count-prefixed, so skip the 328-byte header.)
-    ENV_HDR = 328
-    def be16(b, o):
-        return (b[o] << 8) | b[o + 1]
     off, packed = 0, False
     for c, r in recs:
         if c:

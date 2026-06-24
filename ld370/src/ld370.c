@@ -1034,8 +1034,9 @@ static int write_unload(const char *path, const char *name,
  * for --pack).  Validated host-side structurally vs an e2e.xmit.bin oracle
  * modulo INMFTIME (an inherent timestamp carve-out); real oracle = RECEIVE+run.
  *
- * Size hints (INMSIZE) and the source DCB are echoed E2E-correct constants for
- * now; computing them from the member is the open generalisation -- see TODOs.
+ * INMSIZE / INMDIR are computed from the packed data so RECEIVE allocates the
+ * target large enough (a hardcoded constant caused SB37 on multi-module packs);
+ * the source DCB (BLKSIZE/RECFM) is still echoed -- see TODO.
  * ==========================================================================*/
 
 /* NETDATA text-unit keys (subset emitted here) */
@@ -1118,6 +1119,19 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
                       const char *dsn)
 {
     unsigned char r[1024]; long rp, p = 0; unsigned char ft[16];
+    /* Size the target from the ACTUAL packed data.  INMSIZE was a hardcoded E2E
+     * constant (19069 = one 3350 block), so TSO/NJE38 RECEIVE -- which allocates
+     * the target dataset itself from INMSIZE -- gave ~1 track to ANY library and
+     * a multi-module pack abended SB37 (out of space) even on a near-empty volume.
+     * INMR02 #1 (IEBCOPY) sizes the reloaded load library = the member DATA space
+     * (the directory is separate, via INMDIR); #2 (INMCOPY) sizes the unloaded VS
+     * form.  INMDIR scales with the directory block count. */
+    long data_size = bounds[3] - bounds[2];          /* member-data records (PDS data space) */
+    long unl_size  = bounds[3];                       /* whole unloaded VS form */
+    long q; int ndb = 0, inmdir;
+    for (q = bounds[1]; q < bounds[2] && unl[q + 9] == 8 && be16(unl + q + 10) == 256; q += 12 + 8 + 256)
+        ndb++;                                        /* count directory blocks */
+    inmdir = (ndb + 5 < 10) ? 10 : ndb + 5;           /* >= entries needed, with headroom */
 
     /* INMR01 -- transmission header */
     rp = inmr_hdr(r, 1);
@@ -1131,13 +1145,13 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     netdata_seg(o, &p, r, rp, 1);
 
     /* INMR02 #1 -- IEBCOPY: attributes of the SOURCE load library (recreated by
-     * RECEIVE).  TODO(generalise): compute INMSIZE/INMBLKSZ/INMDIR + parameterise
-     * the DCB from the target library instead of echoing E2E constants. */
+     * RECEIVE, which allocates the target from INMSIZE/INMDIR).  TODO: the DCB
+     * (BLKSIZE/RECFM) is still echoed from the E2E source library. */
     rp = inmr_hdr(r, 2);
     put24(r + rp, 0); r[rp + 3] = 1; rp += 4;            /* file number = 1 */
     tus(r, &rp, INMUTILN, "IEBCOPY");
-    tui(r, &rp, INMSIZE, 19069, 4);
-    tui(r, &rp, INMDIR, 10, 3);
+    tui(r, &rp, INMSIZE, data_size, 4);
+    tui(r, &rp, INMDIR, inmdir, 3);
     tui(r, &rp, INMLRECL, 0, 4);
     tui(r, &rp, INMDSORG, 0x0200, 2);                   /* PO */
     tui(r, &rp, INMBLKSZ, UNLOAD_SRC_BLKSIZE, 4);       /* source load-library BLKSIZE */
@@ -1150,7 +1164,7 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     rp = inmr_hdr(r, 2);
     put24(r + rp, 0); r[rp + 3] = 1; rp += 4;
     tus(r, &rp, INMUTILN, "INMCOPY");
-    tui(r, &rp, INMSIZE, 15600, 4);
+    tui(r, &rp, INMSIZE, unl_size, 4);
     tui(r, &rp, INMLRECL, UNLOAD_BLKSIZE - 4, 4);       /* VS: max logical record = BLKSIZE-4 */
     tui(r, &rp, INMDSORG, 0x4000, 2);                   /* PS */
     tui(r, &rp, INMBLKSZ, UNLOAD_BLKSIZE, 4);           /* = IEBCOPY MINBLK; must hold one record unspanned */
