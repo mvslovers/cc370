@@ -1219,9 +1219,12 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     tui(r, &rp, INMRECFM, 0x4802, 2);                   /* VS */
     netdata_seg(o, &p, r, rp, 1);
 
-    /* INMR03 -- data record descriptor */
+    /* INMR03 -- data record descriptor.  INMSIZE mirrors INMR02#1 (the IEBCOPY
+     * file), as the e2e oracle has it (INMR03 INMSIZE == INMR02#1 INMSIZE); it was
+     * the last hardcoded 19069 the INMSIZE/SB37 fix left behind -- RECEIVE ignores
+     * it (a wrong value never abended), but keep it consistent with the packed data. */
     rp = inmr_hdr(r, 3);
-    tui(r, &rp, INMSIZE, 19069, 4);
+    tui(r, &rp, INMSIZE, data_size, 4);
     tui(r, &rp, INMLRECL, 80, 4);
     tui(r, &rp, INMDSORG, 0x4000, 2);
     tui(r, &rp, INMRECFM, 0x0001, 2);
