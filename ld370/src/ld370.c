@@ -655,6 +655,17 @@ static const unsigned char unload_userdata[24] = {
 #define UNLOAD_DATA_CC  0x008d
 #define UNLOAD_FIRST_R  0x0c
 #define UNLOAD_TRKPERCYL 30      /* 3350 tracks/cylinder (env header DEBNMTRK / offset 83) */
+/* Multi-member contiguous packing must respect the REAL 3350 track geometry, not the
+ * BLKSIZE.  A 3350 track holds 19069 data bytes, and each record costs ~185 bytes of
+ * gap+count overhead beyond its data (the 12-byte unload count field is NOT that
+ * cost).  Packing by BLKSIZE/12-overhead over-packed tracks with many small records
+ * (50+ records / 24 KB onto a 19 KB track) -> physically-impossible geometry that
+ * program FETCH's channel program rejects with S106-0F (RCIOERR) even though BPAM
+ * can still read the member.  Real IEBCOPY packs to this density (oracle e2e2: ~12
+ * records/track, valid, fetches fine); single-member one-block-per-track also fetches
+ * fine -- only the over-dense multi-member tracks fail. */
+#define TRK_CAP_3350    19069    /* 3350 usable bytes per track */
+#define TRK_OVH_3350    185      /* 3350 keyless per-record gap+count overhead */
 /* UDEBX (DEB data extent) fields within the 328-byte env header, patched when a
  * member needs more than one cylinder of tracks. */
 #define UDEBX_ENDCC  78          /* DEBENDCC  (end cylinder)   */
@@ -931,14 +942,17 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
      *    validated ALONGSIDE that transport fix; it was not isolated as strictly
      *    necessary vs one-block-per-track, but it matches what IEBCOPY writes. */
     {
-        long track_cap = (nmem == 1) ? 0 : UNLOAD_SRC_BLKSIZE;
+        /* track_cap/cost model in REAL 3350 bytes (TRK_OVH_3350 + data per record),
+         * NOT unload bytes (12 + data) -- so a track never claims more records than a
+         * 3350 physically holds.  Single member: 0 => one block per track. */
+        long track_cap = (nmem == 1) ? 0 : TRK_CAP_3350;
         int tt = 0, r = 1; long trkbytes = 0;
         for (i = 0; i < nmem; i++) {
             int sawtext = 0;
             mem[i].first_tt = tt; mem[i].first_r = r;       /* defaults (nblk==0) */
             mem[i].text_tt = tt; mem[i].text_r = r;
             for (j = 0; j < mem[i].nblk; j++) {
-                long need = 12 + mem[i].blk[j].len;         /* count field + block data */
+                long need = TRK_OVH_3350 + mem[i].blk[j].len;   /* real 3350 track cost */
                 if (r > 1 && trkbytes + need > track_cap) { tt++; r = 1; trkbytes = 0; }
                 if (j == 0) {                               /* member's first block (post-wrap) */
                     mem[i].first_tt = tt; mem[i].first_r = r;
@@ -950,9 +964,9 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
                 }
                 r++; trkbytes += need;
             }
-            if (r > 1 && trkbytes + 12 > track_cap) { tt++; r = 1; trkbytes = 0; }
+            if (r > 1 && trkbytes + TRK_OVH_3350 > track_cap) { tt++; r = 1; trkbytes = 0; }
             mem[i].eof_tt = tt; mem[i].eof_r = r;           /* DL=0 EOF = next record */
-            r++; trkbytes += 12;
+            r++; trkbytes += TRK_OVH_3350;
         }
         ntracks = tt + 1;                                   /* highest relative track used + 1 */
     }
