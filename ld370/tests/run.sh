@@ -483,6 +483,29 @@ else
     echo "  FAIL: text dropped (text=$ts, big RB section skipped -> S106-0F on fetch)"; fails=$((fails + 1))
 fi
 
+# >4 MB multi-member pack must not overflow the formerly-fixed 4 MB unload/XMIT
+# buffers (same fixed-buffer class as the rld/ld, multi-block-dir and link-table
+# fixes).  A 45-module rexx370 test pack (~15.5 MB) SIGBUS'd writing past unl[4 MB];
+# write_unload_mem/write_xmit now malloc to the data.  Build one ~400 KB member,
+# pack 12 copies (~4.8 MB unload).  Pre-fix this crashed (rc=139) -> the if fails.
+printf '\n=== >4MB pack: unload/XMIT buffers grow on demand (no SIGBUS) ===\n'
+{ echo "BIG4MB   CSECT"; echo "         DC    100000F'1'"; echo "         BR    14"; echo "         END"; } > "$TMP/big4.s"
+"$AS" -o "$TMP/big4.o" "$TMP/big4.s" 2>/dev/null
+"$LD" -o "$TMP/big4" --name BIG4MB "$TMP/big4.o" -iebcopy 2>/dev/null
+big4specs=""
+for i in 00 01 02 03 04 05 06 07 08 09 10 11; do big4specs="$big4specs M$i=$TMP/big4.iebcopy"; done
+# shellcheck disable=SC2086
+if "$LD" --pack $big4specs -o "$TMP/big4pack" -xmit --dsn X.Y.LINKLIB 2>/dev/null; then
+    sz=$(wc -c < "$TMP/big4pack.xmit")
+    if [ "$sz" -gt 4194304 ]; then
+        echo "  OK: packed ${sz}-byte XMIT (>4MB, no buffer overflow)"
+    else
+        echo "  FAIL: XMIT only ${sz} bytes (expected >4MB)"; fails=$((fails + 1))
+    fi
+else
+    echo "  FAIL: ld370 --pack of a >4MB member set failed/crashed"; fails=$((fails + 1))
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"

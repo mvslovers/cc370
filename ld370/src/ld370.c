@@ -570,10 +570,13 @@ static int do_includes(const char **incspec, int ninc)
 }
 
 /* ---- emitter ---- */
-static unsigned char out[1 << 22];        /* load-module emit buffer (4 MB) */
-static long olen = 0;
-static void emit(const unsigned char *b, long n) { memcpy(out + olen, b, n); olen += n; }
-static void emitb(int b) { out[olen++] = (unsigned char)b; }
+/* load-module emit buffer -- grows on demand.  A single linked module can exceed
+ * any fixed size (the old 4 MB static would SIGBUS on a large link); grow_arr
+ * doubles as needed. */
+static unsigned char *out = NULL;
+static long olen = 0, ocap = 0;
+static void emit(const unsigned char *b, long n) { out = grow_arr(out, &ocap, olen + n, 1); memcpy(out + olen, b, n); olen += n; }
+static void emitb(int b) { out = grow_arr(out, &ocap, olen + 1, 1); out[olen++] = (unsigned char)b; }
 
 /* ============================================================================
  * IEBCOPY unloaded-PDS emitter
@@ -1044,10 +1047,28 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
 
 /* Split each member, emit the unloaded image of all of them and write it to
  * path.  mem[].name/.bytes/.len must be set by the caller. Returns 0 on ok. */
+/* Exact byte size emit_unload() writes for these (already split_member'd) members:
+ * env header + directory blocks + EOD marker + per-block (12B count + data) + per-
+ * member DL=0 EOF.  write_unload_mem / write_xmit malloc to this instead of a fixed
+ * 4 MB buffer -- a multi-member test pack can be tens of MB (45 modules ~= 15.5 MB),
+ * which overran the old static and SIGBUS'd. */
+static long unload_size(struct umember *mem, int nmem)
+{
+    long sz = (long)sizeof unload_env_hdr + 12;   /* env header (328) + EOD marker */
+    int per = 7, ndb, i, j;
+    if (nmem == 0) ndb = 1;
+    else { ndb = (nmem + per - 1) / per; if (nmem % per == 0) ndb++; }
+    sz += (long)ndb * (12 + 8 + 256);             /* directory blocks (count12 + key8 + 256B) */
+    for (i = 0; i < nmem; i++) {
+        for (j = 0; j < mem[i].nblk; j++) sz += 12 + mem[i].blk[j].len;
+        sz += 12;                                 /* per-member DL=0 EOF */
+    }
+    return sz;
+}
+
 static int write_unload_mem(const char *path, struct umember *mem, int nmem)
 {
-    static unsigned char unl[1 << 22];     /* unload image (4 MB) */
-    long ulen; FILE *f; int i;
+    unsigned char *unl; long ulen; FILE *f; int i;
 
     for (i = 0; i < nmem; i++) {
         mem[i].nblk = split_member(mem[i].bytes, mem[i].len, &mem[i].blk);
@@ -1058,12 +1079,16 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
         trace("=== unload: member '%s', %d block(s), %ld bytes ===",
               nm(mem[i].name), mem[i].nblk, mem[i].len);
     }
+    unl = malloc((size_t)(unload_size(mem, nmem) + 64));   /* +64 paranoia margin */
+    if (!unl) { fprintf(stderr, "ld370: out of memory for unload image\n");
+                for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     ulen = emit_unload(unl, mem, nmem, NULL);
-    if (ulen < 0) { for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
+    if (ulen < 0) { free(unl); for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     f = fopen(path, "wb");
-    if (!f) { perror(path); return 1; }
+    if (!f) { perror(path); free(unl); for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     fwrite(unl, 1, (size_t)ulen, f);
     fclose(f);
+    free(unl);
     for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; }
     trace("=== done: wrote %ld-byte unloaded image (%d member%s) to %s ===",
           ulen, nmem, nmem == 1 ? "" : "s", path);
@@ -1315,8 +1340,7 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
 /* Build the XMIT image of members[] and write it to path. */
 static int write_xmit(const char *path, struct umember *mem, int nmem, const char *dsn)
 {
-    static unsigned char unl[1 << 22], xm[1 << 22];   /* unload + XMIT (4 MB each) */
-    long bounds[4], ulen, xlen; FILE *f; int i;
+    unsigned char *unl, *xm; long bounds[4], ulen, xlen, usize; FILE *f; int i;
 
     for (i = 0; i < nmem; i++) {
         mem[i].nblk = split_member(mem[i].bytes, mem[i].len, &mem[i].blk);
@@ -1325,13 +1349,24 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
             return 1;
         }
     }
+    /* unl sized exactly to the unload; xm bounds the XMIT = unload + NETDATA segment
+     * headers (<=1%) + INMR control records + FB80 rounding -- usize/32 + 64 KB covers it. */
+    usize = unload_size(mem, nmem);
+    unl = malloc((size_t)(usize + 64));
+    xm  = malloc((size_t)(usize + usize / 32 + 65536));
+    if (!unl || !xm) { fprintf(stderr, "ld370: out of memory for XMIT image\n");
+                       free(unl); free(xm);
+                       for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     ulen = emit_unload(unl, mem, nmem, bounds);
-    if (ulen < 0) { for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
+    if (ulen < 0) { free(unl); free(xm);
+                    for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     xlen = emit_xmit(xm, unl, bounds, dsn);
     f = fopen(path, "wb");
-    if (!f) { perror(path); return 1; }
+    if (!f) { perror(path); free(unl); free(xm);
+              for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     fwrite(xm, 1, (size_t)xlen, f);
     fclose(f);
+    free(unl); free(xm);
     for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; }
     trace("=== done: wrote %ld-byte XMIT (%d FB80 recs, %d member%s) to %s ===",
           xlen, (int)(xlen / 80), nmem, nmem == 1 ? "" : "s", path);
