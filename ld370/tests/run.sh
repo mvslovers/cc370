@@ -406,6 +406,45 @@ else
     echo "  OK: guard refused the oversized member block (13312 > 6144)"
 fi
 
+# --norent / --noreus: clear the PDS2ATR1 reentrant / reusable attributes for a
+# module that must not be marked RENT (a REXX370 module needs this).  The template
+# marks every module RENT+REUS; RENT (0x80) implies REUS (0x40).  --norent clears
+# RENT (-> serially reusable), --noreus clears REUS, both clear both.  Applied at
+# build like --ac; a --pack of a -iebcopy preserves the member's OWN attributes
+# (set at ITS build), so per-member attributes mix in one library.  ATR1 = ud[8] =
+# first dir entry (env 328 + count12 + key8 + used2 + name8+ttr3+c1).  tiny is a
+# single-block no-RLD module so 1BLK (0x01) is set too: default C3, not C2.
+printf '\n=== --norent / --noreus: PDS2ATR1 attribute overrides ===\n'
+"$AS" -o "$TMP/attr.o" "$FIX/tiny.s" 2>/dev/null
+get_atr1() {                                   # $1 = flags -> echo first member's ATR1 (hex)
+    # shellcheck disable=SC2086
+    "$LD" $1 -o "$TMP/attr" --name ATTR "$TMP/attr.o" -iebcopy 2>/dev/null
+    python3 - "$TMP/attr.iebcopy" <<'PY'
+import sys
+b = open(sys.argv[1], 'rb').read()
+print("%02x" % b[328 + 12 + 8 + 2 + 20])       # env+count12+key8+used2 -> entry; +20 = ud[8]=ATR1
+PY
+}
+expect_atr1() {                                # $1=flags $2=want $3=label
+    got=$(get_atr1 "$1")
+    if [ "$got" = "$2" ]; then echo "  OK: $3 -> ATR1=$got"
+    else echo "  FAIL: $3 ATR1=$got (want $2)"; fails=$((fails + 1)); fi
+}
+expect_atr1 ""                  c3 "default           (RENT REUS)"
+expect_atr1 "--norent"          43 "--norent          (REUS, not RENT)"
+expect_atr1 "--noreus"          83 "--noreus          (RENT, not REUS)"
+expect_atr1 "--norent --noreus" 03 "--norent --noreus (neither)"
+# a --pack of the pre-built -iebcopy must PRESERVE the member's cleared RENT
+"$LD" --norent -o "$TMP/nrb" --name NRB "$TMP/attr.o" -iebcopy 2>/dev/null
+"$LD" --pack "NRB=$TMP/nrb.iebcopy" -o "$TMP/nrpack" -iebcopy 2>/dev/null
+pa=$(python3 - "$TMP/nrpack.iebcopy" <<'PY'
+import sys
+b = open(sys.argv[1], 'rb').read(); print("%02x" % b[328 + 12 + 8 + 2 + 20])
+PY
+)
+if [ "$pa" = "43" ]; then echo "  OK: --pack preserves the member's cleared RENT (ATR1=$pa)"
+else echo "  FAIL: --pack did not preserve --norent (ATR1=$pa)"; fails=$((fails + 1)); fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"
