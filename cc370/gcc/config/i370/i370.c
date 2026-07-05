@@ -1919,14 +1919,14 @@ i370_print_operand (FILE *fh, rtx XV, int CODE)
 	  }
 	else if (CODE == 'W')
 	  {
-	    /* hand-built sign-extension of signed 32-bit to 64-bit */
+	    /* The full 64-bit value as an 8-byte hex literal, high word
+	       first.  The double shift avoids undefined behavior when
+	       HOST_WIDE_INT is 32 bits wide (the value is then its own
+	       sign-extension).  */
 	    mvs_page_lit += 8;
-	    if (0 <=  INTVAL (XV)) {
-	       fprintf (fh, "=XL8'00000000");
-            } else {
-	       fprintf (fh, "=XL8'FFFFFFFF");
-            }
-	    fprintf (fh, "%08lX'", INTVAL (XV));
+	    fprintf (fh, "=XL8'%08X%08X'",
+		     (unsigned int) ((INTVAL (XV) >> 31 >> 1) & 0xffffffff),
+		     (unsigned int) (INTVAL (XV) & 0xffffffff));
 	  }
 	else
 	  {
@@ -2195,14 +2195,14 @@ i370_print_operand (FILE *fh, rtx XV, int CODE)
 	  }
 	else if (CODE == 'W')
 	  {
-	    /* hand-built sign-extension of signed 32-bit to 64-bit */
+	    /* The full 64-bit value as an 8-byte hex literal, high word
+	       first.  The double shift avoids undefined behavior when
+	       HOST_WIDE_INT is 32 bits wide (the value is then its own
+	       sign-extension).  */
 	    mvs_page_lit += 8;
-	    if (0 <=  INTVAL (XV)) {
-	       fprintf (fh, "=XL8'00000000");
-            } else {
-	       fprintf (fh, "=XL8'FFFFFFFF");
-            }
-	    fprintf (fh, "%08lX'", INTVAL (XV));
+	    fprintf (fh, "=XL8'%08X%08X'",
+		     (unsigned int) ((INTVAL (XV) >> 31 >> 1) & 0xffffffff),
+		     (unsigned int) (INTVAL (XV) & 0xffffffff));
 	  }
 	else
 	  {
