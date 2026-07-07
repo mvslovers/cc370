@@ -1206,6 +1206,15 @@ static void note_unknown(const char *o, int line) {
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
     if (nunk < 128) { scopy(unkops[nunk], o, 11); unkln[nunk] = line; nunk++; }   /* one record per flagged statement */
 }
+/* an RS/SI/S storage operand carrying an index/length subscript -- D2(,B2) or
+ * D2(X2,B2) -- has two subscripts where only a base is allowed. IFOX00 rejects
+ * this (ERR216 ILLEGAL OPERAND FORMAT, severity 12); we must too, rather than
+ * silently taking the empty/index field as the base and emitting base 0 (an
+ * absolute low-core reference). */
+static char badfmt_op[128][12]; static int badfmt_ln[128]; static int nbadfmt;
+static void note_badfmt(const char *o, int line) {
+    if (nbadfmt < 128) { scopy(badfmt_op[nbadfmt], o, 11); badfmt_ln[nbadfmt] = line; nbadfmt++; }
+}
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
@@ -1373,13 +1382,14 @@ static void do_pass(int pass, char **lines, int nlines) {
                 case F_RS: { int r1 = (int)eval_reg(F[0]), r3, b;
                     if (nf >= 3) { r3 = (int)eval_reg(F[1]); resolve(F[2], &d, sub, &ns, &sy); }
                     else { r3 = 0; resolve(F[1], &d, sub, &ns, &sy); }  /* shift form R1,D2(B2): R3 field unused */
+                    if (ns >= 2) note_badfmt(op, i);   /* D2(,B2)/D2(X2,B2) on an RS operand: no index field exists here */
                     b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
-                case F_SI: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
+                case F_SI: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
-                case F_S: { resolve(F[0], &d, sub, &ns, &sy); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
+                case F_S: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
                     put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len; resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len;
@@ -2015,6 +2025,7 @@ int main(int argc, char **argv) {
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     do_pass(2, lines, nl);
+    int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
     if (nunk) {   /* op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
         int j; for (j = 0; j < nunk; j++) {
             const char *s = lines[unkln[j]]; int sl = (int)strlen(s);
@@ -2023,6 +2034,17 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ERROR: Undefined operation code in line %d - %s\n", line_org[unkln[j]], unkops[j]);
         }
         errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (nbadfmt) {   /* RS/SI/S storage operand with an illegal index/length subscript (D(,B) / D(X,B)) */
+        int j; for (j = 0; j < nbadfmt; j++) {
+            const char *s = lines[badfmt_ln[j]]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Illegal operand format (index/length not allowed on RS/SI/S operand) in line %d - %s\n", line_org[badfmt_ln[j]], badfmt_op[j]);
+        }
+        errors += nbadfmt;   /* IFOX ERR216: severity 12 (severe) */
+        if (max_sev < 12) max_sev = 12;
     }
 
     if (objfn) {
@@ -2030,7 +2052,7 @@ int main(int argc, char **argv) {
         emit_obj(of); fclose(of);
     }
     emit_listing_a(lines, nl);
-    if (errors)   /* highest severity is 8 (our only diagnostic class today) */
-        fprintf(stderr, " Assembler Done   %d Statement%s Flagged /   8 was Highest Severity\n", errors, errors == 1 ? "" : "s");
-    return errors ? 8 : 0;   /* RC: 0 = clean (silent), 8 = error(s). Finer 4/12/16 once we classify warnings/severe/terminal. */
+    if (errors)
+        fprintf(stderr, " Assembler Done   %d Statement%s Flagged / %3d was Highest Severity\n", errors, errors == 1 ? "" : "s", max_sev);
+    return errors ? max_sev : 0;   /* RC: 0 = clean (silent), else the highest IFOX severity seen (8 = error, 12 = severe). */
 }

@@ -28,5 +28,27 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
     if cmp -s /tmp/_a.$$ /tmp/_b.$$; then echo "$s: OK (== IFOX00)"; else echo "$s: MISMATCH"; fail=1; fi
 done
 rm -f /tmp/_a.$$ /tmp/_b.$$
+
+# --- issue #12: RS/SI/S empty-index operand rejection -----------------------
+# D2(,B2) (or D2(X2,B2)) on an RS/SI/S storage operand has no index field;
+# IFOX00 rejects it (ERR216, severity 12). as370 must reject it too rather than
+# silently emit base 0. The correct D(B) form -- and the RX D(,B) form, which
+# DOES have an index field -- must still assemble.
+if ./as370 tests/rs_badidx.s -o /tmp/_rsbad.obj >/tmp/_rsbad.out 2>&1; then
+    echo "rs_badidx: NOT REJECTED (expected RC 12)"; fail=1
+elif ! grep -q "Illegal operand format" /tmp/_rsbad.out; then
+    echo "rs_badidx: rejected but no diagnostic emitted"; fail=1
+else
+    echo "rs_badidx: OK (rejected -- RS D(,B) flagged)"
+fi
+if ./as370 tests/rs_goodidx.s -o /tmp/_rsgood.obj >/dev/null 2>&1 &&
+   od -An -tx1 /tmp/_rsgood.obj | tr -d ' \n' | grep -q '980cd014' &&
+   od -An -tx1 /tmp/_rsgood.obj | tr -d ' \n' | grep -q '58e0d00c'; then
+    echo "rs_goodidx: OK (RS D(B)=980CD014, RX D(,B)=58E0D00C)"
+else
+    echo "rs_goodidx: FAIL (valid RS/RX operands must assemble)"; fail=1
+fi
+rm -f /tmp/_rsbad.obj /tmp/_rsbad.out /tmp/_rsgood.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
