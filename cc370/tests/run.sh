@@ -65,8 +65,8 @@ else
     echo "distinct: OK (no false positive)"
 fi
 
-# (4) the __asm__ workaround: verbatim names, no truncation -> must NOT warn,
-# even when the 8-char asm names share their first 7 characters.
+# (4) the __asm__ workaround: two 8-char linkage names that differ are distinct
+# object-deck symbols -> must NOT warn (no false positive on the workaround).
 cat > "$WORK/asm.c" <<'EOF'
 extern int cfg_p __asm__("FTPCFGDP");
 extern int cfg_f __asm__("FTPCFGDF");
@@ -75,12 +75,29 @@ int cfg_f = 2;
 EOF
 compile asm "$WORK/asm.c"
 if grep -q "collides with" "$WORK/diag"; then
-    echo "asm-name: FAIL (false positive on verbatim __asm__ names)"; fail=1
+    echo "asm-name: FAIL (false positive on distinct 8-char __asm__ names)"; fail=1
 else
-    echo "asm-name: OK (verbatim asm names not truncated)"
+    echo "asm-name: OK (distinct 8-char asm names)"
 fi
 
-# (5) -Werror must promote the collision to a hard error (nonzero exit).
+# (5) __asm__ names LONGER than 8 chars that share their first 8 -> as370 (like
+# the linkage editor) truncates the external symbol to 8, so PREFIXAB1 and
+# PREFIXAB2 both become PREFIXAB. The detector must model that truncation and
+# warn -- the workaround does not save a name that is itself too long.
+cat > "$WORK/asmlong.c" <<'EOF'
+extern int p __asm__("PREFIXAB1");
+extern int f __asm__("PREFIXAB2");
+int p = 1;
+int f = 2;
+EOF
+compile asmlong "$WORK/asmlong.c"
+if grep -q "collides with" "$WORK/diag" && grep -q "PREFIXAB" "$WORK/diag"; then
+    echo "asm-long: OK (warned, both truncate to PREFIXAB)"
+else
+    echo "asm-long: FAIL (>8-char asm names truncating to PREFIXAB not caught)"; fail=1
+fi
+
+# (6) -Werror must promote the collision to a hard error (nonzero exit).
 compile fnw "$WORK/fn.c" -Werror
 if [ $? -ne 0 ]; then
     echo "werror: OK (collision is an error under -Werror)"

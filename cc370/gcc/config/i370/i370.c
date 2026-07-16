@@ -2807,12 +2807,16 @@ typedef struct extsym_node
 
 static extsym_node_t *extsym_anchor = 0;
 
-/* Store in MVSNAME the object-deck symbol NAME maps to, exactly as
-   assemble_name emits it.  An explicit __asm__ name (leading '*') is emitted
-   verbatim with the '*' stripped, no truncation or case/'_' mapping;
-   otherwise mvs_get_alias truncates to 8 characters and ASM_OUTPUT_LABELREF
-   upper-cases and maps '_' -> '@'.  MVSNAME must have room for strlen (NAME)
-   + 1 characters (the mapping never lengthens the name).  */
+/* Store in MVSNAME the object-deck symbol NAME maps to.  An explicit __asm__
+   name (leading '*') is taken literally: assemble_name strips the '*' and
+   emits the rest with no case/'_' mapping, but as370 (like IFOX00) truncates
+   any external symbol to 8 characters -- so two >8-character asm names sharing
+   their first 8 characters (PREFIXAB1/PREFIXAB2 -> PREFIXAB) collide just as C
+   identifiers do.  A plain C identifier instead has mvs_get_alias truncate to
+   8 characters and ASM_OUTPUT_LABELREF upper-case it and map '_' -> '@' (the
+   PDPMAC/DIGNUS mapping; the TARGET_LE variant maps '_' -> '#' for MVS
+   functions, but cc370 builds only PDPMAC).  Either way the result is at most
+   8 characters, so MVSNAME need only hold MAX_MVS_LABEL_SIZE + 1.  */
 
 static void
 mvs_map_extname (const char *name, char *mvsname)
@@ -2822,7 +2826,8 @@ mvs_map_extname (const char *name, char *mvsname)
 
   if (name[0] == '*')
     {
-      strcpy (mvsname, name + 1);
+      strncpy (mvsname, name + 1, MAX_MVS_LABEL_SIZE);
+      mvsname[MAX_MVS_LABEL_SIZE] = '\0';
       return;
     }
   if (!mvs_get_alias (name, temp))
@@ -2836,14 +2841,24 @@ mvs_map_extname (const char *name, char *mvsname)
 }
 
 /* Warn if the external symbol NAME collapses to the same object-deck symbol
-   as a distinct external already emitted in this compilation.  Called for
-   every globalized definition (i370_globalize_label) and every common
-   (ASM_OUTPUT_COMMON) -- the two paths that create an external ESD symbol.  */
+   as a distinct external already emitted in this compilation.  Called for the
+   two paths that DEFINE an external ESD symbol: globalized definitions
+   (i370_globalize_label -- functions and initialized globals) and commons
+   (ASM_OUTPUT_COMMON -- uninitialized file-scope globals).  This catches two
+   colliding definitions in one translation unit (the issue #17 case).
+
+   Not diagnosed: a definition colliding with a same-TU *reference* to a
+   different symbol (a call to codec_stream_decode from a TU defining
+   codec_stream_encode) -- cc370 emits no EXTRN for a =V(...) call (as370
+   creates the external reference from the V-con) and the reference is printed
+   at several literal-pool sites with no single hook; and cross-TU collisions
+   (each name defined in a separate .c), which a per-TU compile cannot see.
+   Both surface at link/assemble time, not here.  */
 
 void
 mvs_check_extname_collision (const char *name)
 {
-  char *mvsname = (char *) xmalloc (strlen (name) + 1);
+  char mvsname[MAX_MVS_LABEL_SIZE + 1];
   extsym_node_t *ep;
 
   mvs_map_extname (name, mvsname);
@@ -2854,14 +2869,14 @@ mvs_check_extname_collision (const char *name)
 	  if (strcmp (ep->real_name, name) != 0)
 	    warning ("external symbol `%s' collides with `%s': both map to "
 		     "the MVS name `%s'", name, ep->real_name, mvsname);
-	  free (mvsname);
 	  return;
 	}
     }
   ep = (extsym_node_t *) xmalloc (sizeof (extsym_node_t));
   ep->real_name = (char *) xmalloc (strlen (name) + 1);
   strcpy (ep->real_name, name);
-  ep->mvs_name = mvsname;
+  ep->mvs_name = (char *) xmalloc (strlen (mvsname) + 1);
+  strcpy (ep->mvs_name, mvsname);
   ep->next = extsym_anchor;
   extsym_anchor = ep;
 }
