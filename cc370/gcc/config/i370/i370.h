@@ -1604,6 +1604,7 @@ enum reg_class
 #define ASM_OUTPUT_COMMON(FILE, NAME, SIZE, ROUNDED) 			\
 {									\
   char temp[MAX_MVS_LABEL_SIZE + 1];					\
+  mvs_check_extname_collision (NAME);					\
   if (mvs_check_alias(NAME, temp) == 2)					\
     {									\
       fprintf (FILE, "%s\tALIAS\tC'%s'\n", temp, NAME);			\

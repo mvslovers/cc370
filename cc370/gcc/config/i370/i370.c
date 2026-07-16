@@ -2790,6 +2790,83 @@ i370_output_function_prologue (FILE *f, HOST_WIDE_INT l)
 }
 #endif /* TARGET_PDOSGB */
 
+#ifdef TARGET_HLASM
+/* Registry of external symbols emitted in this compilation, keyed by the
+   name they map to in the object deck.  MVS/370 externals are limited to 8
+   characters (upper case, '_' -> '@'); distinct C identifiers that share a
+   long prefix collapse to the same external symbol with no diagnostic, so a
+   call to one silently resolves to the other at link time.  Each external is
+   recorded as it is emitted and a collision is warned.  */
+
+typedef struct extsym_node
+{
+  struct extsym_node *next;
+  char *real_name;
+  char *mvs_name;
+} extsym_node_t;
+
+static extsym_node_t *extsym_anchor = 0;
+
+/* Store in MVSNAME the object-deck symbol NAME maps to, exactly as
+   assemble_name emits it.  An explicit __asm__ name (leading '*') is emitted
+   verbatim with the '*' stripped, no truncation or case/'_' mapping;
+   otherwise mvs_get_alias truncates to 8 characters and ASM_OUTPUT_LABELREF
+   upper-cases and maps '_' -> '@'.  MVSNAME must have room for strlen (NAME)
+   + 1 characters (the mapping never lengthens the name).  */
+
+static void
+mvs_map_extname (const char *name, char *mvsname)
+{
+  char temp[MAX_MVS_LABEL_SIZE + 1];
+  char *bp;
+
+  if (name[0] == '*')
+    {
+      strcpy (mvsname, name + 1);
+      return;
+    }
+  if (!mvs_get_alias (name, temp))
+    {
+      strncpy (temp, name, MAX_MVS_LABEL_SIZE);
+      temp[MAX_MVS_LABEL_SIZE] = '\0';
+    }
+  for (bp = temp; *bp; bp++)
+    *bp = (*bp == '_' ? '@' : TOUPPER (*bp));
+  strcpy (mvsname, temp);
+}
+
+/* Warn if the external symbol NAME collapses to the same object-deck symbol
+   as a distinct external already emitted in this compilation.  Called for
+   every globalized definition (i370_globalize_label) and every common
+   (ASM_OUTPUT_COMMON) -- the two paths that create an external ESD symbol.  */
+
+void
+mvs_check_extname_collision (const char *name)
+{
+  char *mvsname = (char *) xmalloc (strlen (name) + 1);
+  extsym_node_t *ep;
+
+  mvs_map_extname (name, mvsname);
+  for (ep = extsym_anchor; ep; ep = ep->next)
+    {
+      if (!strcmp (ep->mvs_name, mvsname))
+	{
+	  if (strcmp (ep->real_name, name) != 0)
+	    warning ("external symbol `%s' collides with `%s': both map to "
+		     "the MVS name `%s'", name, ep->real_name, mvsname);
+	  free (mvsname);
+	  return;
+	}
+    }
+  ep = (extsym_node_t *) xmalloc (sizeof (extsym_node_t));
+  ep->real_name = (char *) xmalloc (strlen (name) + 1);
+  strcpy (ep->real_name, name);
+  ep->mvs_name = mvsname;
+  ep->next = extsym_anchor;
+  extsym_anchor = ep;
+}
+#endif /* TARGET_HLASM */
+
 static void
 i370_globalize_label (FILE *stream, const char *name)
 #ifdef TARGET_ALIASES
@@ -2893,6 +2970,7 @@ i370_globalize_label (FILE *stream, const char *name)
       fputs ("\tLTORG\n", stream);
       mvs_gotmain = 1; /* was 1 */
     }
+  mvs_check_extname_collision (name);
   if (mvs_check_alias (name, temp) == 2)
     {
       fprintf (stream, "%s\tALIAS\tC'%s'\n", temp, name);

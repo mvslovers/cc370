@@ -49,6 +49,7 @@ extern void mvs_add_alias (const char *, const char *, int);
 extern int mvs_need_alias (const char *);
 extern int mvs_get_alias (const char *, char *);
 extern int mvs_check_alias (const char *, char *);
+extern void mvs_check_extname_collision (const char *);
 extern void check_label_emit (void);
 extern char *mvs_make_float (REAL_VALUE_TYPE);
 
