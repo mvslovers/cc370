@@ -3,10 +3,13 @@
 # card, which legitimately differs only in the IDR) is byte-identical to the
 # IFOX00 reference in tests/ref/.
 cd "$(dirname "$0")/.." || exit 2
-# Macro libraries: crent370/maclib (crent370's own PDP macros) and
-# crent370/sysmac (host-only mirror of the SYS1.MACLIB members the build needs:
-# SAVE/RETURN/IHBERMAC, SVC macros). Override the repo root with CRENT=... .
-CRENT=${CRENT:-../../crent370}
+# Macro libraries: maclib (the PDP macros -- PDPTOP/PDPPRLG/PDPEPIL) and sysmac
+# (host-only mirror of the SYS1.MACLIB members the build needs: SAVE/RETURN/
+# IHBERMAC, SVC macros). These now live in libc370; the default used to point at
+# crent370, the frozen v1.x libc, which no longer needs to be checked out -- so
+# the suite failed with "Undefined operation code ... PDPPRLG" wherever it was
+# absent. Override the repo root with CRENT=... .
+CRENT=${CRENT:-../../libc370}
 MACLIB="-I $CRENT/maclib -I $CRENT/sysmac"
 # sample8 (tinitvl, WTO) and sample9 (irxtmpw, XCTL->IHBINNRB) are real rexx370
 # modules that exercise the hardest macro paths — they guard against regressing

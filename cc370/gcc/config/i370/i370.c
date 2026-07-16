@@ -2809,14 +2809,18 @@ static extsym_node_t *extsym_anchor = 0;
 
 /* Store in MVSNAME the object-deck symbol NAME maps to.  An explicit __asm__
    name (leading '*') is taken literally: assemble_name strips the '*' and
-   emits the rest with no case/'_' mapping, but as370 (like IFOX00) truncates
-   any external symbol to 8 characters -- so two >8-character asm names sharing
-   their first 8 characters (PREFIXAB1/PREFIXAB2 -> PREFIXAB) collide just as C
-   identifiers do.  A plain C identifier instead has mvs_get_alias truncate to
-   8 characters and ASM_OUTPUT_LABELREF upper-case it and map '_' -> '@' (the
-   PDPMAC/DIGNUS mapping; the TARGET_LE variant maps '_' -> '#' for MVS
-   functions, but cc370 builds only PDPMAC).  Either way the result is at most
-   8 characters, so MVSNAME need only hold MAX_MVS_LABEL_SIZE + 1.  */
+   emits the rest with no case/'_' mapping.  as370 then truncates an
+   over-length external symbol to 8 characters *silently* -- a divergence from
+   Assembler XF (IFOX00), which diagnoses a symbol longer than 8 characters
+   rather than truncating it.  We model as370, since that is what actually
+   assembles our output: two >8-character asm names sharing their first 8
+   (PREFIXAB1/PREFIXAB2 -> PREFIXAB) collide just as C identifiers do.  (If
+   as370 is fixed to diagnose or unify over-length symbols, this branch becomes
+   redundant and should go.)  A plain C identifier instead has mvs_get_alias
+   truncate to 8 characters and ASM_OUTPUT_LABELREF upper-case it and map
+   '_' -> '@' (the PDPMAC/DIGNUS mapping; the TARGET_LE variant maps '_' -> '#'
+   for MVS functions, but cc370 builds only PDPMAC).  Either way the result is
+   at most 8 characters, so MVSNAME need only hold MAX_MVS_LABEL_SIZE + 1.  */
 
 static void
 mvs_map_extname (const char *name, char *mvsname)
@@ -2985,7 +2989,13 @@ i370_globalize_label (FILE *stream, const char *name)
       fputs ("\tLTORG\n", stream);
       mvs_gotmain = 1; /* was 1 */
     }
+#ifdef TARGET_HLASM
+  /* Guarded exactly as the definition is: this branch is also the fallback for
+     non-HLASM targets (PDOSGB), where mvs_check_extname_collision is compiled
+     away.  The check sits in this variant alone only because mvspdp.h is the
+     sole tm_file -- the ALIASES/DIGNUS/LE variants are unreachable today.  */
   mvs_check_extname_collision (name);
+#endif
   if (mvs_check_alias (name, temp) == 2)
     {
       fprintf (stream, "%s\tALIAS\tC'%s'\n", temp, name);

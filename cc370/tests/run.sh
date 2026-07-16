@@ -80,10 +80,11 @@ else
     echo "asm-name: OK (distinct 8-char asm names)"
 fi
 
-# (5) __asm__ names LONGER than 8 chars that share their first 8 -> as370 (like
-# the linkage editor) truncates the external symbol to 8, so PREFIXAB1 and
-# PREFIXAB2 both become PREFIXAB. The detector must model that truncation and
-# warn -- the workaround does not save a name that is itself too long.
+# (5) __asm__ names LONGER than 8 chars that share their first 8: as370
+# truncates the external symbol to 8 silently (diverging from Assembler XF,
+# which diagnoses an over-length symbol), so PREFIXAB1 and PREFIXAB2 both
+# become PREFIXAB. cc370 models as370 and must warn -- the workaround does not
+# save a name that is itself too long.
 cat > "$WORK/asmlong.c" <<'EOF'
 extern int p __asm__("PREFIXAB1");
 extern int f __asm__("PREFIXAB2");

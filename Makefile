@@ -26,6 +26,7 @@
 #   make tools      only as370 / ld370 / ar370 / file370   [fast]
 #   make compiler   configure + build the driver (cc370) and cc1   [slow]
 #   make install    build (if needed) + install everything into $(PREFIX)
+#   make test       host-side regression suites (as370 + cc370)
 #   make clean / uninstall / help
 
 PREFIX  ?= $(HOME)/.local
@@ -60,7 +61,7 @@ DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: all tools compiler man install install-tools install-compiler install-man \
-        test-corpus clean uninstall help
+        test test-as370 test-cc370 test-corpus clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler man
@@ -104,6 +105,20 @@ $(BUILD)/config.status:
 
 compiler: $(BUILD)/config.status
 	$(MAKE) -C $(BUILD) all-gcc U= CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
+
+# --- tests ----------------------------------------------------------------
+# Host-side regression suites. as370 drives its own (byte-identity to the
+# IFOX00 reference decks + its operand regressions); the cc370 codegen suite
+# needs the driver-private cc1, so it depends on `compiler`.
+# ld370/tests/run.sh is deliberately not wired in: ld370 has no Makefile and
+# its suite needs the IEWL/IEBCOPY oracle fixtures.
+test: test-as370 test-cc370 test-corpus
+
+test-as370:
+	@$(MAKE) -C as370 test
+
+test-cc370: compiler
+	@sh cc370/tests/run.sh
 
 # --- install --------------------------------------------------------------
 install: install-tools install-compiler install-man
