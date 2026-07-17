@@ -430,8 +430,10 @@ static void reloc_sym(const char *expr, char *out, int outsz) {
  * Subscript->field mapping is format-specific (RX: sub0=index; RS/SI/SS: base). */
 static int r_ibase;   /* implied base reg from USING when a paren operand's prefix is relocatable, else -1 */
 static int r_len;     /* length attribute L' of the symbol resolved by the last resolve() call (for SS implicit length) */
+static int r_reloc;   /* the displacement prefix of the last resolve() was relocatable (a symbol) */
+static long r_raw;    /* its un-reduced value (before USING subtraction); the displacement IFOX prints in ADDR1 */
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
-    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0;
+    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0;
     if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; r_len = l->size; sub[0] = using_for(l->loc, l->sect, d); return; }
     const char *lp = strchr(f, '(');
     if (lp) {
@@ -440,6 +442,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             char nm[64]; int nn = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && nn < 63) nm[nn++] = *e++; nm[nn] = 0;
             struct sym *s = sym_find(nm); int ssect = expr_sect(f);
             r_len = s ? s->len : 0;
+            r_reloc = 1; r_raw = v;
             r_ibase = using_for(v, ssect, d);
         } else *d = v;                                 /* numeric displacement, e.g. 4+120(13) */
         const char *rp = strchr(lp, ')');
@@ -457,6 +460,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             char nm[64]; int n = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0;
             struct sym *s = sym_find(nm); int ssect = expr_sect(f);
             r_len = s ? s->len : 0;
+            r_reloc = 1; r_raw = v;
             *sym = 1; sub[0] = using_for(v, ssect, d);
         } else { *d = v; *sym = 0; sub[0] = 0; }       /* absolute: displacement value, base 0 */
     }
@@ -1215,6 +1219,15 @@ static char badfmt_op[128][12]; static int badfmt_ln[128]; static int nbadfmt;
 static void note_badfmt(const char *o, int line) {
     if (nbadfmt < 128) { scopy(badfmt_op[nbadfmt], o, 11); badfmt_ln[nbadfmt] = line; nbadfmt++; }
 }
+/* A machine instruction whose displacement is a relocatable symbol while the
+ * base register is given explicitly (SYM(Rn)).  IFOX00 rejects this with IFO228
+ * (severity 8) and assembles the whole instruction as zero -- an explicit
+ * address requires an absolute displacement; only the implicit form SYM(len),
+ * which lets the assembler choose the base from a USING, may be relocatable. */
+static char reld_op[128][12]; static int reld_ln[128]; static int nreld;
+static void note_relocdisp(const char *o, int line) {
+    if (nreld < 128) { scopy(reld_op[nreld], o, 11); reld_ln[nreld] = line; nreld++; }
+}
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
@@ -1377,6 +1390,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int r1 = (o->fmt == F_BC) ? o->m1 : (int)eval_reg(F[0]);
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
                     int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : (r_ibase >= 0 ? r_ibase : 0));
+                    if (!sy && ns >= 2 && r_reloc) {   /* explicit base D(X,B) + relocatable displacement -> IFO228 */
+                        note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_RS: { int r1 = (int)eval_reg(F[0]), r3, b;
@@ -1384,20 +1400,41 @@ static void do_pass(int pass, char **lines, int nlines) {
                     else { r3 = 0; resolve(F[1], &d, sub, &ns, &sy); }  /* shift form R1,D2(B2): R3 field unused */
                     if (ns >= 2) note_badfmt(op, i);   /* D2(,B2)/D2(X2,B2) on an RS operand: no index field exists here */
                     b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];
+                    if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
+                        note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_SI: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
+                    if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
+                        note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_S: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
+                    if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
+                        note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
                     put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
-                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len; resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len;
+                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc; long raw1 = r_raw;
+                    resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc; long raw2 = r_raw;
                     int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
                     int len1 = (ns  >= 1 ? (int)sub[0]  : (l1 ? l1 : 1));
                     int len2 = (ns2 >= 1 ? (int)sub2[0] : (l2 ? l2 : 1));
                     int b1 = (ns  >= 2 ? (int)sub[1]  : (ib1 >= 0 ? ib1 : (int)sub[0]));
                     int b2 = (ns2 >= 2 ? (int)sub2[1] : (ib2 >= 0 ? ib2 : (int)sub2[0]));
+                    /* explicit base + relocatable displacement on either operand -> IFO228.
+                     * Operand 1 D1(L1,B1) always carries a length, so its explicit base is
+                     * the 2nd subscript (ns>=2). Operand 2 is D2(B2) for a one-length SS
+                     * (MVC/CLC: base is the sole subscript, ns2>=1) but D2(L2,B2) for a
+                     * two-length SS (PACK/UNPK/AP...: the sole subscript is the LENGTH and
+                     * the base comes from a USING, so an explicit base needs ns2>=2). */
+                    int bad1 = (ns >= 2 && rl1), bad2 = (rl2 && (twol ? ns2 >= 2 : ns2 >= 1));
+                    if (bad1 || bad2) {   /* IFOX zeroes the whole 6-byte instruction, opcode included */
+                        note_relocdisp(op, i); put(lc, 0, 6); lc += 6;
+                        lrecs[i].a1 = bad1 ? raw1 : ((d  & 0xfffL) + using_base_of(b1)); lrecs[i].hasa1 = 1;
+                        lrecs[i].a2 = bad2 ? raw2 : ((d2 & 0xfffL) + using_base_of(b2)); lrecs[i].hasa2 = 1; break; }
                     /* the machine length field is (length-1); an explicitly-coded length of 0
                      * (the `*-*` self-modify idiom) is emitted as field 0, not 0xFF */
                     int lenb = twol ? (((len1 ? (len1 - 1) & 0xf : 0) << 4) | (len2 ? (len2 - 1) & 0xf : 0))
@@ -2045,6 +2082,16 @@ int main(int argc, char **argv) {
         }
         errors += nbadfmt;   /* IFOX ERR216: severity 12 (severe) */
         if (max_sev < 12) max_sev = 12;
+    }
+    if (nreld) {   /* relocatable displacement with an explicit base register (SYM(Rn)) */
+        int j; for (j = 0; j < nreld; j++) {
+            const char *s = lines[reld_ln[j]]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Relocatable displacement in machine instruction (explicit base requires an absolute displacement) in line %d - %s\n", line_org[reld_ln[j]], reld_op[j]);
+        }
+        errors += nreld;   /* IFOX IFO228: severity 8 (error) */
+        if (max_sev < 8) max_sev = 8;
     }
 
     if (objfn) {

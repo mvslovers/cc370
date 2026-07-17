@@ -50,5 +50,42 @@ else
 fi
 rm -f /tmp/_rsbad.obj /tmp/_rsbad.out /tmp/_rsgood.obj
 
+# --- issue #18: relocatable displacement with an explicit base --------------
+# SYM(Rn) where SYM is relocatable (a DSECT/section symbol) and Rn is explicit
+# is an addressability error: IFOX00 rejects it (IFO228, severity 8) and
+# assembles the whole instruction as zero. Only the implicit form SYM(len) --
+# where the assembler picks the base from a USING -- may be relocatable.
+# as370 used to emit SYM - <active USING base>, a silently wrong displacement.
+# reloc_disp.s exercises the shape in all five operand formats that carry a
+# storage operand (RX/RS/SI/SS and the 2-byte-opcode S format STCK/SPKA); its
+# expected bytes were pinned against real IFOX00 on MVS 3.8j (IFOXTST/JOB00229).
+# as370 must reject (RC 8) and zero each flagged instruction, while the four
+# legal forms stay byte-identical:
+#   LA  1,LAB(2)            implicit D(X), base from USING   -> 4112 C02E
+#   STCK LAB               implicit S, base from USING       -> B205 C02E
+#   MVC LAB(8),0(3)         implicit length, base from USING -> D207 C02E 3000
+#   MVC FLD-MYDS(8,2),0(3)  absolute difference              -> D207 2028 3000
+# The object deck concatenates the six flagged instructions zeroed (RX/RS/SI 4B,
+# SS 6B, STCK/SPKA 4B), then the four legal instructions above.
+if ./as370 tests/reloc_disp.s -o /tmp/_reld.obj >/tmp/_reld.out 2>&1; then
+    echo "reloc_disp: NOT REJECTED (expected RC 8)"; fail=1
+elif [ $? -ne 8 ]; then
+    echo "reloc_disp: rejected but RC != 8"; fail=1
+elif [ "$(grep -c 'Relocatable displacement in machine instruction' /tmp/_reld.out)" != 6 ]; then
+    echo "reloc_disp: expected 6 IFO228 diagnostics (RX/RS/SI/SS/STCK/SPKA), got $(grep -c 'Relocatable displacement' /tmp/_reld.out)"; fail=1
+else
+    txt=$(od -An -tx1 /tmp/_reld.obj | tr -d ' \n')
+    # the six flagged instructions zeroed (RX/RS/SI 4B + SS 6B + STCK/SPKA 4B =
+    # 26 bytes = 52 hex zeros), in order, followed by the four legal forms
+    want="$(printf '%052d' 0)4112c02eb205c02ed207c02e3000d20720283000"
+    if echo "$txt" | grep -q "$want"; then
+        echo "reloc_disp: OK (RX/RS/SI/SS/S IFO228 zeroed; legal LA/STCK/MVC forms byte-identical to IFOX00)"
+    else
+        echo "reloc_disp: FAIL (object deck not byte-identical to IFOX00)"
+        echo "  want ...$want"; echo "  got  $txt"; fail=1
+    fi
+fi
+rm -f /tmp/_reld.obj /tmp/_reld.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
