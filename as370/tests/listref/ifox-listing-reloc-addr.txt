@@ -1,0 +1,39 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 03.11 07/18/26
+RELOC21P  SD  0001 000000 000030
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 03.11 07/18/26
+000000                                1 RELOC21P CSECT
+                                      2          PRINT GEN
+                                      3 *  1 plain CSECT symbol, no USING -> :363 -> IFO209
+000000 0000 0000      00000           4          L     1,LABX
+         *** ERROR ***
+                                      5 *  2 literal, no USING -> IFO209
+000004 0000 0000      00000           6          L     1,=F'7'
+         *** ERROR ***
+                            00000     7          USING RELOC21P,12
+                                      8 *  3 addressable compound, same section r12 -> resolves
+000008 5810 C020      00020           9          L     1,LABX+4-4
+                                     10 *  4 addressable literal r12 -> resolves
+00000C 5810 C02C      0002C          11          L     1,=F'9'
+                                     12 *  5 plain DSECT symbol, r12 in range, no MYDS USING -> :361 -> IFO209
+000010 0000 0000      00000          13          L     1,FLDX
+         *** ERROR ***
+                                     14 *  6 compound DSECT expr, r12 in range, no MYDS USING -> :361 -> IFO209
+000014 0000 0000      00000          15          L     1,FLDX+8-8
+         *** ERROR ***
+                            00000    16          USING MYDS,13
+                                     17 *  7 compound DSECT expr with r13 -> resolves  (case-b alarm)
+000018 5810 D028      00028          18          L     1,FLDX+8-8
+                                     19 *  8 plain DSECT symbol with r13 -> resolves
+00001C 5810 D028      00028          20          L     1,FLDX
+                                     21          DROP  13
+                                     22          DROP  12
+000020                               23 LABX     DS    F
+000028                               24          LTORG
+000028 00000007                      25                =F'7'
+00002C 00000009                      26                =F'9'
+000000                               27 MYDS     DSECT
+000000                               28          DS    XL40
+000028                               29 FLDX     DS    F
+                                     30          END

@@ -87,5 +87,37 @@ else
 fi
 rm -f /tmp/_reld.obj /tmp/_reld.out
 
+# --- issue #21: relocatable implicit-base operand with no covering USING ------
+# A relocatable operand addressed implicitly (base chosen from a USING) resolves
+# iff its own section has a USING in range, else IFO209 (severity 8, instruction
+# zeroed, ADDR 0). as370 used to resolve it through a cross-section USING (:361)
+# or emit base 0 (:363). reloc_addr.s pins this against real IFOX00 (JOB00233):
+#   reject -> IFO209 zeroed: 1 LABX(:363) 2 =F'7'(literal) 5 FLDX(:361) 6 FLDX+8-8
+#   resolve (unchanged):     3 LABX+4-4  4 =F'9'  7 FLDX+8-8 via r13  8 FLDX via r13
+# Instructions in source order (RX, 4 bytes): zeroed,zeroed,5810C020,5810C02C,
+# zeroed,zeroed,5810D028,5810D028.
+RA_CODE=00000000000000005810c0205810c02c00000000000000005810d0285810d028
+if ./as370 tests/reloc_addr.s -o /tmp/_ra.obj >/tmp/_ra.out 2>&1; then
+    echo "reloc_addr: NOT REJECTED (expected RC 8)"; fail=1
+elif [ $? -ne 8 ]; then
+    echo "reloc_addr: rejected but RC != 8"; fail=1
+elif [ "$(grep -c 'Addressability error' /tmp/_ra.out)" != 4 ]; then
+    echo "reloc_addr: expected 4 IFO209 diagnostics, got $(grep -c 'Addressability error' /tmp/_ra.out)"; fail=1
+elif ! od -An -tx1 /tmp/_ra.obj | tr -d ' \n' | grep -q "$RA_CODE"; then
+    echo "reloc_addr: FAIL object deck differs from IFOX00"; fail=1
+else
+    echo "reloc_addr: OK (IFO209 rejected + zeroed; resolves byte-identical to IFOX00)"
+fi
+# case-(b) tripwire, shown explicitly: stmt 7 (FLDX+8-8 via r13) is the SAME
+# operand as stmt 6 but addressable only because r13->MYDS is active. It must
+# RESOLVE to 5810 D028; a flip to IFO209 means expr_sect and the USING section
+# disagree on a same-section compound -- the fix is wrong, not the test.
+if od -An -tx1 /tmp/_ra.obj 2>/dev/null | tr -d ' \n' | grep -q '5810d028'; then
+    echo "reloc_addr: OK stmt7 case-(b) tripwire  FLDX+8-8 via r13 = 5810 D028  RESOLVES"
+else
+    echo "reloc_addr: FAIL stmt7 case-(b) tripwire flipped -- same-section compound rejected"; fail=1
+fi
+rm -f /tmp/_ra.obj /tmp/_ra.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
