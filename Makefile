@@ -59,7 +59,8 @@ BUILD   := build
 DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
-.PHONY: all tools compiler man install install-tools install-compiler install-man clean uninstall help
+.PHONY: all tools compiler man install install-tools install-compiler install-man \
+        test-corpus clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler man
@@ -79,6 +80,14 @@ file370/file370: file370/src/file370.c
 man: $(MAN1)
 man/%.1: man/%.pod
 	pod2man --section=1 --center="cc370 toolchain" --release="cc370 $(VERSION)" $< > $@
+
+# --- corpus regression gate (#23-lite) ------------------------------------
+# Assemble every non-wip libc370 module with as370 and check each object deck
+# against the committed SHA256 manifest. Needs the libc370 checkout next to
+# this repo (override with LIBC370=/path). A regression guard, not an oracle
+# guard -- see as370/tests/corpus/README.md.
+test-corpus: as370/as370
+	@sh as370/tests/corpus/check.sh
 
 # --- compiler: the cc370 driver + cc1 (a GCC 3.4.6 autotools build) -------
 # U= neutralizes a stray `U` in the environment: old-autoconf libiberty emits
