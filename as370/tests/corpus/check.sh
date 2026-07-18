@@ -45,6 +45,7 @@ modules() {
 }
 
 if [ "$1" = "--generate" ]; then
+    prior=0; [ -f "$MANIFEST" ] && prior=$(wc -l < "$MANIFEST" | tr -d ' ')
     : > "$MANIFEST"
     n=0; skipped=0
     for rel in $(modules); do
@@ -56,7 +57,12 @@ if [ "$1" = "--generate" ]; then
         fi
     done
     rm -f "$TMP"
-    echo "corpus: manifest regenerated -- $n modules, $skipped non-assembling skipped"
+    echo "corpus: manifest regenerated -- $n modules, $skipped non-assembling skipped (was $prior)"
+    # a shrink means a change stopped some modules assembling and baked them out
+    # of the manifest -- surface it so a silent coverage loss can't slip through
+    if [ "$prior" -gt "$n" ]; then
+        echo "corpus: WARNING -- manifest SHRANK from $prior to $n; $((prior - n)) module(s) stopped assembling"
+    fi
     exit 0
 fi
 
@@ -74,10 +80,23 @@ while read -r want rel; do
 done < "$MANIFEST"
 rm -f "$TMP"
 
-# informational: a module on disk that assembles but is not in the manifest
-# means the manifest is stale (regenerate) -- not a failure by itself
+# Coverage: fail closed on drift. A non-wip module on disk that ASSEMBLES but is
+# not in the manifest is uncovered -- without this the gate would certify a
+# subset while reading as if it certified the corpus (the hollow-guard failure).
+# A module that does not assemble (e.g. @@stow.s) is legitimately absent, so we
+# only flag the ones that DO assemble; drift then forces a conscious --generate.
+covered=$(awk '{print $2}' "$MANIFEST" | sort)
+for rel in $(modules); do
+    printf '%s\n' "$covered" | grep -qx "$rel" && continue        # in the manifest
+    if ./as370 "$LIBC370/$rel" $MAC -o "$TMP" >/dev/null 2>&1; then
+        echo "corpus: $rel ASSEMBLES but is absent from the manifest (coverage drift -- run --generate)"
+        fail=1
+    fi
+done
+rm -f "$TMP"
+
 disk=$(modules | wc -l | tr -d ' ')
 echo "corpus: manifest covers $checked modules; $disk non-wip modules on disk"
-[ $fail = 0 ] && echo "corpus: all $checked libc370 modules byte-identical to manifest" \
+[ $fail = 0 ] && echo "corpus: all $checked libc370 modules byte-identical to manifest (no coverage drift)" \
              || echo "corpus: FAILURES"
 exit $fail
