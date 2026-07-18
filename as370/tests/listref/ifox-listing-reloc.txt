@@ -1,0 +1,39 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.15 07/17/26
+RELOC18   SD  0001 000000 000036
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.15 07/17/26
+000000                                1 RELOC18  CSECT
+                                      2          PRINT GEN
+                            00000     3          USING RELOC18,12
+                                      4 *  RX illegal: explicit base + reloc disp
+000000 0000 0000      0002E           5          L     1,LAB(,2)
+         *** ERROR ***
+                                      6 *  RS illegal: STM explicit base + reloc disp
+000004 0000 0000      0002E           7          STM   14,12,LAB(13)
+         *** ERROR ***
+                                      8 *  SI illegal: CLI explicit base + reloc disp
+000008 0000 0000      0002E           9          CLI   LAB(13),X'00'
+         *** ERROR ***
+                                     10 *  SS illegal: MVC explicit base + reloc disp
+00000C 0000 0000 0000 0002E 00000    11          MVC   LAB(8,2),0(3)
+         *** ERROR ***
+                                     12 *  S illegal: STCK explicit base + reloc disp
+000012 0000 0000      0002E          13          STCK  LAB(2)
+         *** ERROR ***
+                                     14 *  S illegal: SPKA explicit base + reloc disp
+000016 0000 0000      0002E          15          SPKA  LAB(2)
+         *** ERROR ***
+                                     16 *  legal RX implicit D(X): index 2, base from USING
+00001A 4112 C02E      0002E          17          LA    1,LAB(2)
+                                     18 *  legal S implicit: base from USING
+00001E B205 C02E      0002E          19          STCK  LAB
+                                     20 *  legal SS implicit length: base from USING
+000022 D207 C02E 3000 0002E 00000    21          MVC   LAB(8),0(3)
+                                     22 *  legal SS absolute difference: FLD-MYDS is absolute
+000028 D207 2028 3000 00028 00000    23          MVC   FLD-MYDS(8,2),0(3)
+00002E                               24 LAB      DS    CL8
+000000                               25 MYDS     DSECT
+000000                               26          DS    XL40
+000028                               27 FLD      DS    CL8
+                                     28          END
