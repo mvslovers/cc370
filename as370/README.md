@@ -8,7 +8,7 @@ longer needs IFOX00 on MVS. Single C file (`as370.c`), no separate binutils.
 ## Status — done (the assembler matches its IFOX00 oracle)
 
 `as370` reproduces IFOX00 **byte-for-byte** over the 950-module ecosystem corpus
-(crent370 736/736, rexx370 81/81, UFSD 20/20, HTTPD 105/105, 9 samples). Its
+(libc370 [formerly crent370] 736/736, rexx370 81/81, UFSD 20/20, HTTPD 105/105, 9 samples). Its
 object decks link with IEWL and with the host-native **ld370**, and the result
 runs on real MVS (the end-to-end `cc370 → as370 → ld370 → --xmit` chain ran a C
 test program with the expected result). "Byte-identical" means the ESD/TXT/RLD
@@ -23,7 +23,7 @@ sh ../ld370/tests/run.sh        # the ld370 regression also drives as370 over th
 ```
 
 `as370 -v` → `as370 V1.0 - <build date>`; `as370 --help` for the CLI (z/OS-`as`
-aligned). Macro search path via `-I dir` (repeatable: crent370 maclib + sysmac +
+aligned). Macro search path via `-I dir` (repeatable: libc370 maclib + sysmac +
 SYS1.MACLIB members).
 
 ## What it does

@@ -9,7 +9,10 @@
 # The XREF / LITERAL XREF / DIAGNOSTICS pages are likewise not produced yet and
 # are excluded from the comparison.
 cd "$(dirname "$0")/../.." || exit 2
-CRENT=${CRENT:-../../crent370}
+# Macro-library root (maclib + sysmac). These live in libc370 now; the default
+# used to point at crent370, the frozen v1.x libc, which no longer needs to be
+# checked out. Override with CRENT=... .
+CRENT=${CRENT:-../../libc370}
 fail=0
 
 # --- case 1: tstlist -- general listing (ESD + SOURCE + RLD) ----------------
