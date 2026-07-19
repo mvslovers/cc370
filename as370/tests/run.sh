@@ -122,5 +122,33 @@ else
 fi
 rm -f /tmp/_ra.obj /tmp/_ra.out
 
+# --- issue #20: over-length symbol diagnosed, not silently truncated ---------
+# A symbol longer than 8 characters exceeds the MVS object-deck (ESD) name
+# limit. as370 used to store it truncated on insert while comparing the full
+# name on lookup, so two distinct names sharing their first 8 characters
+# (PREFIXAB1/PREFIXAB2 -> PREFIXAB) both landed on one ESD entry with no
+# diagnostic (rc=0) -- a silent mislinkage. IFOX00 rejects an over-length symbol
+# (ERR187, severity 8); as370 must too. overlong_sym.s is the issue reproducer
+# (two ENTRY names colliding on their first 8 chars); expect RC 8 and one
+# diagnostic per distinct over-length symbol (2).
+if ./as370 tests/overlong_sym.s -o /tmp/_ovl.obj >/tmp/_ovl.out 2>&1; then
+    echo "overlong_sym: NOT REJECTED (expected RC 8)"; fail=1
+elif [ $? -ne 8 ]; then
+    echo "overlong_sym: rejected but RC != 8"; fail=1
+elif [ "$(grep -c 'Symbol longer than 8 characters' /tmp/_ovl.out)" != 2 ]; then
+    echo "overlong_sym: expected 2 ERR187 diagnostics (PREFIXAB1/PREFIXAB2), got $(grep -c 'Symbol longer than 8 characters' /tmp/_ovl.out)"; fail=1
+else
+    echo "overlong_sym: OK (over-length ENTRY names flagged ERR187, not silently truncated)"
+fi
+rm -f /tmp/_ovl.obj /tmp/_ovl.out
+# boundary control: an exactly-8-char external name must still assemble clean.
+printf 'OK8TEST  CSECT\n         ENTRY PREFIXAB\nPREFIXAB DC     F%s1%s\n         END\n' "'" "'" > /tmp/_ok8.s
+if ./as370 /tmp/_ok8.s -o /tmp/_ok8.obj >/dev/null 2>&1; then
+    echo "overlong_sym: OK (8-char name PREFIXAB assembles clean -- no over-rejection)"
+else
+    echo "overlong_sym: FAIL (8-char name wrongly rejected)"; fail=1
+fi
+rm -f /tmp/_ok8.s /tmp/_ok8.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

@@ -98,6 +98,7 @@ static char dsect_sect[256];                  /* dsect_sect[id]=1 if section id 
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
+static int  g_curln;           /* lines[] index of the statement being assembled -- line context for diagnostics raised from helpers (e.g. sym_get) */
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
 static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
 static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
@@ -144,6 +145,26 @@ static int hexv(int c);            /* fwd */
 static int hex_to_bytes(const char *s, unsigned char *out, int max);   /* fwd */
 static int split_fields(const char *s, char f[][64], int max);   /* fwd */
 
+/* An EXTERNAL symbol longer than 8 characters.  MVS object-deck (ESD) names are
+ * limited to 8 bytes; Assembler XF (IFOX00) rejects an over-length symbol --
+ * ERR187 "SYMBOL LONGER THAN 8 CHARACTERS", severity 8 -- rather than silently
+ * truncating it.  as370 used to strncpy the name to 8 on insert while sym_find
+ * compared the full name, so a >8 name never matched an existing entry: two
+ * distinct names sharing their first 8 characters (PREFIXAB1/PREFIXAB2) both
+ * landed under "PREFIXAB" with no diagnostic, silently colliding at link.  We
+ * flag each distinct over-length symbol once (severity 8) at its introduction,
+ * catching the collision at assemble time where it belongs.
+ *
+ * This fires only for names that reach sym_get UNtruncated: external symbols
+ * named in an ENTRY/EXTRN/WXTRN operand or a =V/=A address constant.  An
+ * over-length ordinary symbol in the NAME FIELD (a local label or an EQU name)
+ * is capped to 8 earlier, by parse(), so it never reaches this guard -- that
+ * separate truncation site is not yet diagnosed (see #32). */
+static char ovl_sym[128][64]; static int ovl_ln[128]; static int novl;
+static void note_overlong(const char *n) {
+    int i; for (i = 0; i < novl; i++) if (!strcmp(ovl_sym[i], n)) return;   /* one report per distinct symbol -- an over-length name re-creates on every lookup (never matches sym_find) and again in pass 2 */
+    if (novl < 128) { scopy(ovl_sym[novl], n, 63); ovl_ln[novl] = g_curln; novl++; }
+}
 static struct sym *sym_find(const char *n) {
     int i; for (i = 0; i < nsym; i++) if (!strcmp(syms[i].name, n)) return &syms[i];
     return NULL;
@@ -152,6 +173,7 @@ static struct sym *sym_get(const char *n) {
     struct sym *s = sym_find(n);
     if (s) return s;
     if (nsym >= MAXSYM) { fprintf(stderr, "as370: symbol table full\n"); exit(2); }
+    if (strlen(n) > 8) note_overlong(n);   /* flag (IFOX ERR187) rather than silently truncate to 8 */
     s = &syms[nsym++]; memset(s, 0, sizeof *s); strncpy(s->name, n, 8); s->type = S_REL;
     return s;
 }
@@ -1377,6 +1399,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     txl_on = (pass == 2); if (pass == 2) { ntxl = 0; txl_blen = 0; txl_maxend = 0; txl_revisit = 0; }   /* (re)start the TXT emission log */
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
+        g_curln = i;                          /* line context for diagnostics raised inside sym_get/lit_get */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
         char buf[1024], lbl[32], op[16], opnd[1024];
@@ -2141,6 +2164,16 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ERROR: Addressability error - no active USING covers the operand's section (base and displacement set to 0) in line %d - %s\n", line_org[addr_ln[j]], addr_op[j]);
         }
         errors += naddr;   /* IFOX IFO209: severity 8 (error) */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (novl) {   /* a symbol longer than 8 characters (MVS ESD names are 8 bytes) */
+        int j; for (j = 0; j < novl; j++) {
+            const char *s = lines[ovl_ln[j]]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Symbol longer than 8 characters (MVS external names are limited to 8) in line %d - %s\n", line_org[ovl_ln[j]], ovl_sym[j]);
+        }
+        errors += novl;   /* IFOX ERR187: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
 
