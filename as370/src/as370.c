@@ -355,9 +355,23 @@ static long imm_val(const char *s) {
 /* pick the USING covering address val in section sect; returns base reg and
  * displacement. Prefers a same-section USING in range, else any USING in range
  * (so single-USING modules are unaffected), else base 0 / absolute. */
+static int r_addrok;  /* the last using_for found a SAME-SECTION USING in range (implicit base is addressable);
+                       * 1 by default so an absolute operand -- which never calls using_for -- is never flagged */
 static int using_for(long val, int sect, long *disp) {
     int i, best = -1; long bd = 0;
     for (i = 0; i < nusing; i++) { if (usings[i].sect != sect) continue; long dd = val - usings[i].base; if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd)) { best = i; bd = dd; } }
+    /* r_addrok records whether the operand's OWN section has a covering USING (the
+     * same-section pass above). IFOX resolves a relocatable implicit-base operand
+     * only then; otherwise it is IFO209 (addressability error). The caller emits
+     * IFO209 on !r_addrok. Two things the next person must not trip on:
+     *  - Ordering: a future multi-base-register USING (USING X,r12,r11) must add
+     *    ALL its base entries to the table BEFORE this runs, or a legitimate >4K
+     *    reference (covered by the second register) would wrongly read as IFO209.
+     *  - The USING side's section (usings[].sect) is the leading symbol's, not the
+     *    net-relocatable term's, so a compound USING base (USING A-B+C,r) could
+     *    mis-tag its section here -- a latent symmetric expr_sect gap, adjacent to
+     *    the non-simply-relocatable handling in #26. Out of scope for #21. */
+    r_addrok = (best >= 0);
     if (best < 0) for (i = 0; i < nusing; i++) { long dd = val - usings[i].base; if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd)) { best = i; bd = dd; } }
     if (best >= 0) { *disp = bd; return usings[best].reg; }
     *disp = val; return 0;
@@ -433,7 +447,7 @@ static int r_len;     /* length attribute L' of the symbol resolved by the last 
 static int r_reloc;   /* the displacement prefix of the last resolve() was relocatable (a symbol) */
 static long r_raw;    /* its un-reduced value (before USING subtraction); the displacement IFOX prints in ADDR1 */
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
-    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0;
+    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1;
     if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; r_len = l->size; sub[0] = using_for(l->loc, l->sect, d); return; }
     const char *lp = strchr(f, '(');
     if (lp) {
@@ -1228,6 +1242,15 @@ static char reld_op[128][12]; static int reld_ln[128]; static int nreld;
 static void note_relocdisp(const char *o, int line) {
     if (nreld < 128) { scopy(reld_op[nreld], o, 11); reld_ln[nreld] = line; nreld++; }
 }
+/* A relocatable operand addressed implicitly (base chosen from a USING) whose
+ * OWN section has no USING in range.  IFOX00 rejects this with IFO209
+ * (severity 8), assembles the instruction as zero, and sets ADDR to 0 -- there
+ * is no addressability for the operand.  as370 used to resolve it through a
+ * cross-section USING or emit base 0. */
+static char addr_op[128][12]; static int addr_ln[128]; static int naddr;
+static void note_addrerr(const char *o, int line) {
+    if (naddr < 128) { scopy(addr_op[naddr], o, 11); addr_ln[naddr] = line; naddr++; }
+}
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
@@ -1393,6 +1416,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (!sy && ns >= 2 && r_reloc) {   /* explicit base D(X,B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
+                    if (!r_addrok) {   /* relocatable implicit base, no covering USING -> IFO209 */
+                        note_addrerr(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_RS: { int r1 = (int)eval_reg(F[0]), r3, b;
@@ -1403,22 +1429,31 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
+                    if (!r_addrok) {   /* relocatable implicit base, no covering USING -> IFO209 */
+                        note_addrerr(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_SI: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
                     if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
+                    if (!r_addrok) {   /* relocatable implicit base, no covering USING -> IFO209 */
+                        note_addrerr(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_S: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
                     if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
+                    if (!r_addrok) {   /* relocatable implicit base, no covering USING -> IFO209 */
+                        note_addrerr(op, i); put(lc, 0, 4); lc += 4;
+                        lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
-                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc; long raw1 = r_raw;
-                    resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc; long raw2 = r_raw;
+                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc, ao1 = r_addrok; long raw1 = r_raw;
+                    resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc, ao2 = r_addrok; long raw2 = r_raw;
                     int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
                     int len1 = (ns  >= 1 ? (int)sub[0]  : (l1 ? l1 : 1));
                     int len2 = (ns2 >= 1 ? (int)sub2[0] : (l2 ? l2 : 1));
@@ -1435,6 +1470,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                         note_relocdisp(op, i); put(lc, 0, 6); lc += 6;
                         lrecs[i].a1 = bad1 ? raw1 : ((d  & 0xfffL) + using_base_of(b1)); lrecs[i].hasa1 = 1;
                         lrecs[i].a2 = bad2 ? raw2 : ((d2 & 0xfffL) + using_base_of(b2)); lrecs[i].hasa2 = 1; break; }
+                    if (!ao1 || !ao2) {   /* a relocatable implicit-base operand has no covering USING -> IFO209
+                                           * (IFOX zeroes the whole instruction and sets both ADDR columns to 0) */
+                        note_addrerr(op, i); put(lc, 0, 6); lc += 6;
+                        lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
+                        lrecs[i].a2 = 0; lrecs[i].hasa2 = 1; break; }
                     /* the machine length field is (length-1); an explicitly-coded length of 0
                      * (the `*-*` self-modify idiom) is emitted as field 0, not 0xFF */
                     int lenb = twol ? (((len1 ? (len1 - 1) & 0xf : 0) << 4) | (len2 ? (len2 - 1) & 0xf : 0))
@@ -2091,6 +2131,16 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ERROR: Relocatable displacement in machine instruction (explicit base requires an absolute displacement) in line %d - %s\n", line_org[reld_ln[j]], reld_op[j]);
         }
         errors += nreld;   /* IFOX IFO228: severity 8 (error) */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (naddr) {   /* relocatable implicit-base operand whose section has no covering USING */
+        int j; for (j = 0; j < naddr; j++) {
+            const char *s = lines[addr_ln[j]]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Addressability error - no active USING covers the operand's section (base and displacement set to 0) in line %d - %s\n", line_org[addr_ln[j]], addr_op[j]);
+        }
+        errors += naddr;   /* IFOX IFO209: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
 
