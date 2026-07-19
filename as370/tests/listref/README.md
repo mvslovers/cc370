@@ -16,7 +16,7 @@ through) and **RELOCATION DICTIONARY** sections against this reference,
 byte-for-byte:
 
 ```sh
-as/tests/listref/check.sh        # CRENT=../../crent370 by default
+as/tests/listref/check.sh        # CRENT=../../libc370 by default
 ```
 
 Two differences from the IFOX reference are expected and tolerated:

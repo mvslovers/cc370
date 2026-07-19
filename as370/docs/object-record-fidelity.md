@@ -1,7 +1,7 @@
 # Object-record fidelity — full byte-identity to IFOX00
 
 as370 is byte-identical to IFOX00 across the entire ecosystem corpus —
-**crent370 736/736, rexx370 81/81, ufsd 20/20, httpd 105/105** plus the 9 in-repo
+**libc370 (formerly crent370) 736/736, rexx370 81/81, ufsd 20/20, httpd 105/105** plus the 9 in-repo
 samples (950 modules). The comparison strips only the END card (its IDR
 identifies the producing assembler) and compares every remaining card
 byte-for-byte (see the corpus scripts and `as/tests/run.sh`).
