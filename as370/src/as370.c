@@ -99,6 +99,7 @@ static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
 static int  g_curln;           /* lines[] index of the statement being assembled -- line context for diagnostics raised from helpers (e.g. sym_get) */
+static char g_ovl_name[64];     /* set by parse() to the full over-length ORDINARY name-field token (>8, non-&); the assembly loop abandons it (IFO016). Empty when the name field is <=8 or absent. */
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
 static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
 static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
@@ -508,12 +509,18 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
 static int parse(const char *line, char *lbl, char *op, char *opnd) {
     const char *p = line; int i;
     lbl[0] = op[0] = opnd[0] = 0;
+    g_ovl_name[0] = 0;
     if (*p == '*') return 0;
     if (*p != ' ' && *p != '\t' && *p != '\n' && *p != 0) {
         /* ordinary symbol labels cap at 8; a variable-symbol label may carry a
          * subscript (&ARR(&IDX)) and run longer, so allow the full token there. */
         int cap = (*p == '&') ? 30 : 8;
-        i = 0; while (*p && !isspace((unsigned char)*p)) { if (i < cap) lbl[i++] = *p; p++; } lbl[i < cap ? i : cap] = 0;
+        const char *nb = p; int full = 0;
+        i = 0; while (*p && !isspace((unsigned char)*p)) { if (i < cap) lbl[i++] = *p; p++; full++; } lbl[i < cap ? i : cap] = 0;
+        /* An ordinary name field longer than 8 is illegal (IFOX IFO016); record the
+         * FULL token so the assembly loop can abandon the name.  lbl still holds the
+         * 8-char truncation for macro-time callers, which ignore g_ovl_name. */
+        if (cap == 8 && full > 8) { int m = full < 63 ? full : 63, k; for (k = 0; k < m; k++) g_ovl_name[k] = nb[k]; g_ovl_name[m] = 0; }
     }
     while (*p == ' ' || *p == '\t') p++;
     if (!*p || *p == '\n') return op[0] != 0;
@@ -1273,6 +1280,53 @@ static char addr_op[128][12]; static int addr_ln[128]; static int naddr;
 static void note_addrerr(const char *o, int line) {
     if (naddr < 128) { scopy(addr_op[naddr], o, 11); addr_ln[naddr] = line; naddr++; }
 }
+/* An over-length ordinary symbol in the NAME FIELD (a local label or EQU name,
+ * >8 characters).  IFOX00 rejects the name field (IFO016 ILLEGAL OR INVALID
+ * NAME FIELD, severity 8) and does NOT enter the symbol -- but a storage-
+ * defining statement still reserves its space.  as370 used to truncate the name
+ * to 8 and enter it silently.  Recorded once per statement (pass 1). */
+static char ovldef_sym[128][64]; static int ovldef_ln[128]; static int novldef;
+static void note_ovldef(const char *n, int line) {
+    if (novldef < 128) { scopy(ovldef_sym[novldef], n, 63); ovldef_ln[novldef] = line; novldef++; }
+}
+/* An over-length symbol TERM in an operand expression (>8 characters).  IFOX00
+ * rejects it (IFO236 ILLEGAL CHARACTER IN EXPRESSION, severity 8) and zeroes the
+ * whole instruction -- it does NOT truncate the term to make it resolve.  as370
+ * used to leave the reference unresolved, emitting a valid opcode over a base/
+ * displacement of 0 (a silent load from address 0). */
+static char ovlref_op[128][12]; static int ovlref_ln[128]; static int novlref;
+static void note_ovlref(const char *o, int line) {
+    if (novlref < 128) { scopy(ovlref_op[novlref], o, 11); ovlref_ln[novlref] = line; novlref++; }
+}
+/* True if OPND carries a symbol term longer than 8 characters (outside string
+ * literals).  Purely LEXICAL -- fires on term length alone, before any symbol
+ * lookup, because IFOX rejects an over-length term whether or not its first 8
+ * characters name a defined symbol.  Symbol alphabet matches as370's scanners
+ * (letter/@#$_ start, alnum/@#$_ body).
+ *
+ * An apostrophe toggles a skip region, the SAME way parse() tokenizes an
+ * operand -- parse() treats every ' as a string quote (it has no K'/N'/L'/T'
+ * attribute exception), so a term like =AL2(L'FIELD) leaves the operand's tail
+ * (and the absorbed trailing comment) inside an unmatched quote.  Matching that
+ * here keeps the scan on the same text parse() built and avoids flagging a
+ * comment word; it also skips C'...'/X'...' literal content.  The trade-off is
+ * that any >8 symbol AFTER an unmatched attribute apostrophe in the operand
+ * (L'LONGSYMBOL, or L'FIELD+LONGLABEL9) is not caught -- a rare edge, and
+ * corpus-safe.  The clean fix is making parse() attribute-aware so opnd stops
+ * absorbing the comment; tracked as #35 -- whoever fixes parse() there must
+ * update this scanner in lockstep. */
+static int has_overlong_term(const char *s) {
+    int q = 0;
+    while (*s) {
+        if (*s == '\'') { q = !q; s++; continue; }
+        if (q) { s++; continue; }
+        if (isalpha((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_') {
+            int n = 0; while (*s && (isalnum((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_')) { s++; n++; }
+            if (n > 8) return 1;
+        } else s++;
+    }
+    return 0;
+}
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
@@ -1407,6 +1461,10 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
         if (!parse(buf, lbl, op, opnd)) continue;
         if (!op[0]) continue;
+        if (g_ovl_name[0]) {   /* over-length ordinary name field -> IFOX IFO016: abandon the name */
+            if (pass == 1) note_ovldef(g_ovl_name, i);
+            lbl[0] = 0;        /* treat as unnamed: no symbol/ESD/listing entry, but DS/DC still reserve storage so the LC advances identically in both passes */
+        }
 
         const struct opc *o = op_find(op);
         if (cur_sect_id == 0 && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG")))
@@ -1423,6 +1481,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = ins_len(o->fmt); }
                 int k; for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
                 lc += ins_len(o->fmt);
+            } else if (has_overlong_term(opnd)) {   /* operand symbol term >8 -> IFOX IFO236: zero the whole instruction (as IFO228/IFO209 do) */
+                note_ovlref(op, i); int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
+                lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
             } else {
                 long d, d2, sub[4], sub2[4]; int ns, ns2, sy, sy2;
                 switch (o->fmt) {
@@ -2174,6 +2235,26 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ERROR: Symbol longer than 8 characters (MVS external names are limited to 8) in line %d - %s\n", line_org[ovl_ln[j]], ovl_sym[j]);
         }
         errors += novl;   /* IFOX ERR187: severity 8 (error) */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (novldef) {   /* over-length ordinary symbol in the name field (a local label or EQU name) */
+        int j; for (j = 0; j < novldef; j++) {
+            const char *s = lines[ovldef_ln[j]]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Symbol longer than 8 characters in name field (name rejected; MVS symbols are limited to 8) in line %d - %s\n", line_org[ovldef_ln[j]], ovldef_sym[j]);
+        }
+        errors += novldef;   /* IFOX IFO016: severity 8 (error) */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (novlref) {   /* over-length symbol term in an operand expression */
+        int j; for (j = 0; j < novlref; j++) {
+            const char *s = lines[ovlref_ln[j]]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Symbol longer than 8 characters in operand expression (instruction zeroed; MVS symbols are limited to 8) in line %d - %s\n", line_org[ovlref_ln[j]], ovlref_op[j]);
+        }
+        errors += novlref;   /* IFOX IFO236: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
 
