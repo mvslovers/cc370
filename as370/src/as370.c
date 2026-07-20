@@ -1312,8 +1312,9 @@ static void note_ovlref(const char *o, int line) {
  * comment word; it also skips C'...'/X'...' literal content.  The trade-off is
  * that any >8 symbol AFTER an unmatched attribute apostrophe in the operand
  * (L'LONGSYMBOL, or L'FIELD+LONGLABEL9) is not caught -- a rare edge, and
- * corpus-safe.  The clean fix is making parse() K/N/L/T-aware so opnd stops
- * absorbing the comment; left as a follow-up. */
+ * corpus-safe.  The clean fix is making parse() attribute-aware so opnd stops
+ * absorbing the comment; tracked as #35 -- whoever fixes parse() there must
+ * update this scanner in lockstep. */
 static int has_overlong_term(const char *s) {
     int q = 0;
     while (*s) {
