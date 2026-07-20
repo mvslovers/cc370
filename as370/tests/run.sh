@@ -129,14 +129,17 @@ rm -f /tmp/_ra.obj /tmp/_ra.out
 # (PREFIXAB1/PREFIXAB2 -> PREFIXAB) both landed on one ESD entry with no
 # diagnostic (rc=0) -- a silent mislinkage. IFOX00 rejects an over-length symbol
 # (ERR187, severity 8); as370 must too. overlong_sym.s is the issue reproducer
-# (two ENTRY names colliding on their first 8 chars); expect RC 8 and one
-# diagnostic per distinct over-length symbol (2).
+# (two ENTRY names colliding on their first 8 chars); expect RC 8 and one ERR187
+# per distinct over-length ENTRY operand (2). NB: the two DC labels (PREFIXAB1/
+# PREFIXAB2) are ALSO over-length name fields and are separately flagged by the
+# #32 name-field diagnostic, so match ERR187's own message, not the shared
+# "Symbol longer than 8 characters" prefix.
 if ./as370 tests/overlong_sym.s -o /tmp/_ovl.obj >/tmp/_ovl.out 2>&1; then
     echo "overlong_sym: NOT REJECTED (expected RC 8)"; fail=1
 elif [ $? -ne 8 ]; then
     echo "overlong_sym: rejected but RC != 8"; fail=1
-elif [ "$(grep -c 'Symbol longer than 8 characters' /tmp/_ovl.out)" != 2 ]; then
-    echo "overlong_sym: expected 2 ERR187 diagnostics (PREFIXAB1/PREFIXAB2), got $(grep -c 'Symbol longer than 8 characters' /tmp/_ovl.out)"; fail=1
+elif [ "$(grep -c 'MVS external names are limited to 8' /tmp/_ovl.out)" != 2 ]; then
+    echo "overlong_sym: expected 2 ERR187 (external) diagnostics, got $(grep -c 'MVS external names are limited to 8' /tmp/_ovl.out)"; fail=1
 else
     echo "overlong_sym: OK (over-length ENTRY names flagged ERR187, not silently truncated)"
 fi
@@ -149,6 +152,39 @@ else
     echo "overlong_sym: FAIL (8-char name wrongly rejected)"; fail=1
 fi
 rm -f /tmp/_ok8.s /tmp/_ok8.obj
+
+# --- issue #32: over-length ORDINARY symbol (local label / EQU name) ----------
+# An ordinary symbol >8 chars is REJECTED by IFOX00, not truncated -- and via a
+# different path than the ENTRY/EXTRN external (#20, ERR187): the NAME FIELD is
+# illegal (IFO016, sev 8; symbol NOT entered, but storage still reserved) and an
+# over-length symbol TERM in an operand is illegal (IFO236, sev 8; the whole
+# instruction is zeroed -- IFOX does NOT truncate a reference to resolve it).
+# Pinned against real IFOX00 (JOB00256, RC=8). PRE-FIX as370 assembled this RC=0
+# and emitted a valid opcode over base/displacement 0 (L 1,LONGLABEL9 -> 5810
+# 0000, a silent load from address 0); POST-FIX it must reject (RC 8) with 3
+# name-field + 4 operand diagnostics, zeroing each flagged instruction, while
+# the 8-char control L 2,EIGHTCHR stays 5820 F000.
+if ./as370 tests/overlong_ordinary.s -o /tmp/_o32.obj >/tmp/_o32.out 2>&1; then
+    echo "overlong_ordinary: NOT REJECTED (expected RC 8)"; fail=1
+elif [ $? -ne 8 ]; then
+    echo "overlong_ordinary: rejected but RC != 8"; fail=1
+elif [ "$(grep -c 'in name field' /tmp/_o32.out)" != 3 ]; then
+    echo "overlong_ordinary: expected 3 name-field (IFO016) diagnostics, got $(grep -c 'in name field' /tmp/_o32.out)"; fail=1
+elif [ "$(grep -c 'in operand expression' /tmp/_o32.out)" != 4 ]; then
+    echo "overlong_ordinary: expected 4 operand (IFO236) diagnostics, got $(grep -c 'in operand expression' /tmp/_o32.out)"; fail=1
+else
+    hex=$(od -An -tx1 /tmp/_o32.obj | tr -d ' \n')
+    # the five instructions at offset 0x0C, in order: L 1,LONGLABEL9 (zeroed),
+    # L 2,EIGHTCHR (resolves 5820F000), L 3,NINECHAR9 (zeroed), LA 4,BIGEQUNAME
+    # (zeroed), L 5,EIGHTCHRX (zeroed).
+    want=000000005820f000000000000000000000000000
+    if echo "$hex" | grep -q "$want"; then
+        echo "overlong_ordinary: OK (IFO016 name-field abandoned + IFO236 operand zeroed; 8-char control resolves, byte-pinned to IFOX00)"
+    else
+        echo "overlong_ordinary: FAIL (object bytes not as pinned to IFOX00)"; echo "  want ...$want"; echo "  got  $hex"; fail=1
+    fi
+fi
+rm -f /tmp/_o32.obj /tmp/_o32.out
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
