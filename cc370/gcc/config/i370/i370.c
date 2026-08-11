@@ -1749,6 +1749,29 @@ r_or_s_operand (register rtx op, enum machine_mode mode)
 }
 
 
+/* Return the template for loading the 8-byte memory OPERANDS[1] into
+   the register pair OPERANDS[0] as two single-word loads.  Reload may
+   assign the pair so that it overlaps a base/index register of the
+   address (the pointer is dead after the load), so load the word that
+   the address still needs last; a load whose target is its own base
+   register is safe, the effective address is computed before the
+   register is written.  If the address uses both registers of the
+   pair, no order works — compute the address first.  */
+
+const char *
+i370_output_load_pair (rtx *operands)
+{
+  unsigned int regno = REGNO (operands[0]);
+  rtx addr = XEXP (operands[1], 0);
+
+  if (!refers_to_regno_p (regno, regno + 1, addr, 0))
+    return "L\t%0,%1\n\tL\t%N0,4+%1";
+  if (!refers_to_regno_p (regno + 1, regno + 2, addr, 0))
+    return "L\t%N0,4+%1\n\tL\t%0,%1";
+  return "LA\t%0,%1\n\tLM\t%0,%N0,0(%0)";
+}
+
+
 /* Some remarks about unsigned_jump_follows_p():
    gcc is built around the assumption that branches are signed
    or unsigned, whereas the 370 doesn't care; its the compares that
