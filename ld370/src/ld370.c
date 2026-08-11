@@ -1903,7 +1903,10 @@ int main(int argc, char **argv)
      * except the last, which is 0E (RLD + MODEND + SEGEND).  The SAMERP
      * R/P-continuation must NOT cross a record boundary -- fetch reads each
      * record into a fresh buffer, so every record's first item carries its full
-     * R/P. --- */
+     * R/P.  The input object's own continuation bit is masked off the inherited
+     * flag: its scope is the object card stream, not this record, and a stale
+     * bit on a record's LAST item claims an item that is not there (issue #41);
+     * the |= 0x01 below is the only place that may set it. --- */
     if (have_rld) {
         const long RLDMAX = 236;
         long rec_hdr = -1, rec_data = 0;
@@ -1915,7 +1918,7 @@ int main(int argc, char **argv)
                 int Pg = local_to_g(o, o->rld[j].P);
                 int Pgid = (Pg >= 0) ? G[Pg].gid : 0;
                 long addr = o->object_base + o->rld[j].addr;
-                int flag = o->rld[j].flag, Rgid = 0, resolved = 0, same, isize;
+                int flag = o->rld[j].flag & ~0x01, Rgid = 0, resolved = 0, same, isize;
                 if (Rg >= 0 && G[Rg].is_sect) { Rgid = G[Rg].gid; resolved = 1; }
                 else if (Rg >= 0 && G[Rg].type == 0x03 && G[Rg].owner >= 0 && G[G[Rg].owner].is_sect) {
                     Rgid = G[G[Rg].owner].gid; resolved = 1;     /* LR adcon relocates via its owner section */

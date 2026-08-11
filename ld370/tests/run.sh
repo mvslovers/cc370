@@ -187,6 +187,25 @@ else
     echo "  FAIL: GO unresolved -- rld[]/ld[] overflow regressed"; fails=$((fails + 1))
 fi
 
+# RLD record boundary: the object's SAMERP continuation bit (0x01, "next item
+# on this CARD shares R/P") was inherited verbatim into the load module's RLD
+# records.  When a record fills to RLDMAX (236) exactly, the item now LAST in
+# the record kept the stale bit -- claiming a continuation item the record does
+# not contain (IEWL emits this in 0 of 50 SYS1.LINKLIB records; program fetch
+# is count-bounded and unbothered, but libc370's __loadhi() walked one item
+# past the record data -> S0C4, issue #41).  600 same-R/P A-cons fill ~10
+# records to exactly 236 bytes; every record's last item must have the bit
+# clear (the emitter's own |= 0x01 is the only legitimate setter).
+printf '\n=== RLD records never end on a claimed continuation (issue #41) ===\n'
+{ echo "BIGCONT  CSECT"; echo "GO       BR    14"
+  awk 'BEGIN{for(i=0;i<600;i++)print "         DC    A(GO)"}'; echo "         END"; } > "$TMP/bigcont.s"
+if "$AS" -o "$TMP/bigcont.o" "$TMP/bigcont.s" 2>/dev/null \
+   && "$LD" -o "$TMP/bigcont.lm" --name BIGCONT "$TMP/bigcont.o" 2>/dev/null; then
+    python3 ld370/tests/rld_check.py "$TMP/bigcont.lm" || fails=$((fails + 1))
+else
+    echo "  FAIL: bigcont build/link failed"; fails=$((fails + 1))
+fi
+
 # multi-block PDS directory: >6 members spill into multiple 256-byte directory
 # blocks.  The directory was a single fixed dir[256] that overflowed at the 7th
 # member (>6 entries + the FF terminator) -> SIGABRT; rexx370 packs 12.  Pack 7
