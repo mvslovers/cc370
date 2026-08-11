@@ -106,5 +106,74 @@ else
     echo "werror: FAIL (collision did not fail the build under -Werror)"; fail=1
 fi
 
+# --- issue #40: a 64-bit load through a dying pointer used to clobber its ---
+# own base register: `L 2,0(2)` / `L 3,4+0(2)` -- the second load indexes off
+# the loaded VALUE, a wild address on a 24-bit machine (S0C4 on MVS).  The
+# fix loads the word the address still needs last.
+
+# Scanner for the broken pair: `L d,disp(b)` with d==b immediately followed
+# by `L d+1,4+disp(b)`.  (A lone self-clobbering L is ordinary pointer
+# chasing and correct; only the pair is the defect.)
+scan_pair () {
+    awk '
+    /^\* Function .* code/ { fn=$3 }
+    { if (match($0, /^ +L +[0-9]+,[0-9]+\([0-9]+\)$/)) {
+        split($0,a,/[ ,()]+/); d1=a[3];p1=a[4];b1=a[5]; prev=1; next }
+      if (prev && match($0, /^ +L +[0-9]+,4\+[0-9]+\([0-9]+\)$/)) {
+        split($0,c,/[ ,()+]+/); d2=c[3];p2=c[5];b2=c[6]
+        if (d1==b1 && d2==d1+1 && b2==b1 && p2==p1) print fn }
+      prev=0 }' "$1"
+}
+
+# (1) positive control: the scanner must flag a canned bad sequence --
+# otherwise "no hits" below would also be the output of a broken scanner.
+cat > "$WORK/canned.s" <<'EOF'
+* Function bad code
+         L     2,0(11)
+         L     2,0(2)
+         L     3,4+0(2)
+EOF
+if [ -n "$(scan_pair "$WORK/canned.s")" ]; then
+    echo "pair-scanner: OK (flags the known-bad sequence)"
+else
+    echo "pair-scanner: FAIL (scanner does not detect the defect pattern)"; fail=1
+fi
+
+# (2) the issue's reproducer plus the correct-by-contrast variants: none may
+# contain the broken pair.
+cat > "$WORK/di.c" <<'EOF'
+struct s { char pad[16]; unsigned long long v; int tail; };
+unsigned f(const unsigned long long *p) { return (unsigned)(*p >> 32); }
+unsigned a_dead(const struct s *p) { return (unsigned)(p->v >> 32); }
+unsigned b_live(const struct s *p) { return (unsigned)(p->v >> 32)
+                                          + (unsigned)p->tail; }
+unsigned e_low (const struct s *p) { return (unsigned)p->v; }
+int      d_cmp (const struct s *p, unsigned long long t) { return p->v < t; }
+EOF
+compile di "$WORK/di.c" "-std=gnu99 -O1"
+bad=$(scan_pair "$WORK/di.s")
+if [ -z "$bad" ]; then
+    echo "di-load: OK (no self-clobbering load pair)"
+else
+    echo "di-load: FAIL (base-clobbering pair in: $bad)"; fail=1
+fi
+
+# (3) the fix path must actually have fired: when the pair overlaps the base,
+# the low word is loaded first -- `L x,4+disp(b)` immediately followed by
+# `L b,disp(b)`.  Guards against the allocator merely happening to avoid the
+# overlap (which would leave the emit path untested).
+rev=$(awk '
+    { if (match($0, /^ +L +[0-9]+,4\+[0-9]+\([0-9]+\)$/)) {
+        split($0,a,/[ ,()+]+/); d1=a[3];p1=a[5];b1=a[6]; prev=1; next }
+      if (prev && match($0, /^ +L +[0-9]+,[0-9]+\([0-9]+\)$/)) {
+        split($0,c,/[ ,()]+/); d2=c[3];p2=c[4];b2=c[5]
+        if (d2==b1 && b2==b1 && p2==p1) print "rev" }
+      prev=0 }' "$WORK/di.s")
+if [ -n "$rev" ]; then
+    echo "di-reversed: OK (overlapping pair loads the low word first)"
+else
+    echo "di-reversed: FAIL (no reversed pair found -- fix path never fired)"; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
