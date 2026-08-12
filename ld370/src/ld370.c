@@ -656,8 +656,10 @@ static void emit_lked_idr(void)
     r[20] = (unsigned char)(((mm % 10) << 4) | (ss / 10));
     r[21] = (unsigned char)(((ss % 10) << 4) | 0x0f);
     emit(r, sizeof r);
-    trace("  LKED-IDR:        22 bytes (LD370 V01 M00, %02d%03d %02d:%02d:%02d)",
-          yy, ddd, hh, mm, ss);
+    trace("  LKED-IDR:        22 bytes (%.10s V%02d M%02d, %02d%03d %02d:%02d:%02d)",
+      LD370_IDR_PROD,
+      LD370_IDR_VV, LD370_IDR_MM,
+      yy, ddd, hh, mm, ss);
 }
 
 /* ============================================================================
