@@ -23,10 +23,13 @@ step — no IFOX00, no IEWL, no IEBCOPY, no JCL round-trip.
 | **ld370** | object decks → MVS load module (replaces IEWL) + automatic library call + `-iebcopy`/`-xmit` host→MVS transport | `ld370/src/ld370.c` |
 | **ar370** | object decks → `.a` archive with an ESD symbol index | `ar370/src/ar370.c` |
 | **file370** | read-only inspector — identify + analyze any of the formats above (`file`/`objdump` for the toolchain) | `file370/src/file370.c` |
+| **xmit370** | host directory → TSO TRANSMIT file holding a source PDS (samplib, JCL, macros); also lists + extracts XMIT files | `xmit370/src/xmit370.c` |
 
 `cc370` is the single front-end; `as370`/`ld370`/`ar370` are ordinary binaries it
 drives (and which you can also run standalone); `file370` is a standalone
-inspector that reads the formats the others write. The C library it links against is
+inspector that reads the formats the others write, and `xmit370` packs the
+non-code half of a distribution — sample JCL, parameter members, macros — into
+the same TSO TRANSMIT envelope `ld370` ships load modules in. The C library it links against is
 **[libc370](https://github.com/mvslovers/libc370)**, installed into the cc370
 sysroot — see *Sysroot* below.
 
@@ -95,6 +98,8 @@ as370/   src/ include/ tests/   as370 — host-native MVS assembler  (as370/READ
 ld370/   src/ tests/            ld370 — host-native linker (replaces IEWL)
 ar370/   src/                   ar370 — .a archiver (ld370 autocalls against it)
 file370/ src/                   file370 — format inspector (file/objdump for the formats above)
+xmit370/ src/ tests/            xmit370 — TSO TRANSMIT for source PDSes (samplib, JCL, macros)
+common/  src/ include/          format primitives shared by the tools (CP037, CKD, NETDATA)
 docs/                           object / load-module / unload / xmit formats + roadmap
 Makefile                        make (whole toolchain) / make tools / make compiler
 ```

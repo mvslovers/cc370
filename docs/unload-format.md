@@ -1,6 +1,8 @@
 # IEBCOPY Unloaded-PDS Format (the host→MVS install transport)
 
-**Producer:** `ld370 -iebcopy` (`ld370/src/ld370.c`, the unload emitter).
+**Producer:** `ld370 -iebcopy` (`ld370/src/ld370.c`, the unload emitter) for
+RECFM=U load libraries; `xmit370 create` builds the same structure for RECFM=FB
+source libraries (`docs/xmit-source-pds.md` records the field-by-field delta).
 **Consumer:** IEBCOPY `COPY` with an unloaded sequential `SYSUT1` (the LOAD step),
 which writes the members back into a real load library on MVS.
 

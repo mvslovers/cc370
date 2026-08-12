@@ -1,18 +1,21 @@
 # cc370 -- host-native MVS cross-toolchain build + install.
 #
-# One driver (cc370) plus four standalone tools (as370 / ld370 / ar370 / file370).
-# file370 is the read-only inspector (`file`/objdump for the toolchain formats);
-# it is not invoked by the driver, so it gets a PATH link but no tooldir link.
+# One driver (cc370) plus five standalone tools
+# (as370 / ld370 / ar370 / file370 / xmit370).
+# file370 is the read-only inspector (`file`/objdump for the toolchain formats)
+# and xmit370 packs a host directory into a TSO TRANSMIT file (and reads one
+# back); neither is invoked by the driver, so they get a PATH link but no
+# tooldir link.
 # Clean cc370-branded layout under $(PREFIX): everything for the target lives in
 # one cc370/ tree; only the user-facing binaries sit on PATH.  (The
 # i370-ibm-mvspdp triple is an internal config.sub alias; nothing here carries it.)
 #
 #   bin/cc370                      the driver (the only "driver")
-#   bin/{as370,ld370,ar370,file370} symlinks -> ../cc370/bin/* (PATH access)
+#   bin/{as370,ld370,ar370,file370,xmit370} symlinks -> ../cc370/bin/* (PATH access)
 #   libexec/cc370/1.0.0/cc1        the compiler proper (driver-private)
 #   libexec/cc370/1.0.0/{as,ld,ar} symlinks beside cc1; the driver's tooldir,
 #                                  where it looks up as/ld/ar by short name
-#   cc370/bin/{as370,ld370,ar370,file370}  the real tool binaries
+#   cc370/bin/{as370,ld370,ar370,file370,xmit370}  the real tool binaries
 #   cc370/{include,lib,macros}     the libc370 sysroot (headers, libc.a, crt*.o,
 #                                  + macros; as370 finds them via <exedir>/../macros)
 #   lib/cc370/1.0.0/               EMPTY but REQUIRED -- this is GCC's libsubdir
@@ -22,11 +25,11 @@
 #                                  it; remove it and the link fails ("cannot find
 #                                  -lc"). Created by install-compiler. Leave it be.
 #
-#   make / make all build the whole toolchain (cc370 + as370/ld370/ar370/file370 + man)
-#   make tools      only as370 / ld370 / ar370 / file370   [fast]
+#   make / make all build the whole toolchain (cc370 + the five tools + man)
+#   make tools      only as370 / ld370 / ar370 / file370 / xmit370   [fast]
 #   make compiler   configure + build the driver (cc370) and cc1   [slow]
 #   make install    build (if needed) + install everything into $(PREFIX)
-#   make test       host-side regression suites (as370 + cc370)
+#   make test       host-side regression suites (as370 + cc370 + xmit370)
 #   make clean / uninstall / help
 
 PREFIX  ?= $(HOME)/.local
@@ -42,7 +45,10 @@ TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
 LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(VERSION)
 MANDIR  := $(PREFIX)/share/man/man1
 
-TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370
+TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370 xmit370/xmit370
+# shared format primitives (CP037 tables, CKD count field, NETDATA records)
+COMMON  := common/src/mvs370.c
+COMMONH := common/include/mvs370.h
 # man pages: one .pod per tool -> pod2man -> .1
 MANPODS := $(wildcard man/*.pod)
 MAN1    := $(MANPODS:.pod=.1)
@@ -61,7 +67,7 @@ DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: all tools compiler man install install-tools install-compiler install-man \
-        test test-as370 test-cc370 test-corpus clean uninstall help
+        test test-as370 test-cc370 test-corpus test-xmit370 clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler man
@@ -76,6 +82,8 @@ ar370/ar370: ar370/src/ar370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
 file370/file370: file370/src/file370.c
 	$(HOSTCC) $(CFLAGS) -o $@ $<
+xmit370/xmit370: xmit370/src/xmit370.c $(COMMON) $(COMMONH)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ xmit370/src/xmit370.c $(COMMON)
 
 # --- man pages (one .pod per tool -> pod2man -> .1) -----------------------
 man: $(MAN1)
@@ -112,13 +120,19 @@ compiler: $(BUILD)/config.status
 # needs the driver-private cc1, so it depends on `compiler`.
 # ld370/tests/run.sh is deliberately not wired in: ld370 has no Makefile and
 # its suite needs the IEWL/IEBCOPY oracle fixtures.
-test: test-as370 test-cc370 test-corpus
+# xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
+# and the CBT571 corpus) are optional -- those cases skip themselves and the
+# rest of the suite is self-contained.
+test: test-as370 test-cc370 test-corpus test-xmit370
 
 test-as370:
 	@$(MAKE) -C as370 test
 
 test-cc370: compiler
 	@sh cc370/tests/run.sh
+
+test-xmit370: xmit370/xmit370
+	@sh xmit370/tests/run.sh
 
 # --- install --------------------------------------------------------------
 install: install-tools install-compiler install-man
@@ -131,10 +145,12 @@ install-tools: tools
 	@install -m 755 ld370/ld370 $(TGTBIN)/ld370
 	@install -m 755 ar370/ar370 $(TGTBIN)/ar370
 	@install -m 755 file370/file370 $(TGTBIN)/file370
+	@install -m 755 xmit370/xmit370 $(TGTBIN)/xmit370
 	@ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370
 	@ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
 	@ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
 	@ln -sf ../$(TRIPLE)/bin/file370 $(BINDIR)/file370
+	@ln -sf ../$(TRIPLE)/bin/xmit370 $(BINDIR)/xmit370
 	@ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as
 	@ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld
 	@ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar
@@ -160,9 +176,11 @@ clean:
 
 uninstall:
 	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 $(BINDIR)/file370 \
-	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 $(TGTBIN)/file370 \
+	      $(BINDIR)/xmit370 \
+	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 $(TGTBIN)/file370 $(TGTBIN)/xmit370 \
 	      $(LIBEXEC)/as $(LIBEXEC)/ld $(LIBEXEC)/ar $(LIBEXEC)/cc1 \
-	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1 $(MANDIR)/file370.1
+	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1 \
+	      $(MANDIR)/file370.1 $(MANDIR)/xmit370.1
 
 help:
 	@sed -n '1,30p' $(firstword $(MAKEFILE_LIST))
