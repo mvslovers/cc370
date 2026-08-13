@@ -581,18 +581,7 @@ static void emitb(int b) { out = grow_arr(out, &ocap, olen + 1, 1); out[olen++] 
 /*
  * ld370 linkage-editor identification record.
  *
- * The stock MVS 3.8 F-level linkage editor writes an 18-byte subtype-02 IDR:
- *
- *   80 11 02  product(10)  VV MM  YYDDDF
- *
- * Prycroft Six USERMOD ZP60027 extends that record by four bytes, changes the
- * length byte from X'11' to X'15', and appends the TIME-macro value after
- * shifting it right one nibble and forcing an F sign nibble:
- *
  *   80 15 02  product(10)  VV MM  YYDDDF  0HHMMSSF
- *
- * ld370 currently emits no translator or user-data IDR after this one, so the
- * LASTIDR bit (X'80') belongs in the subtype byte: X'02' | X'80' = X'82'.
  *
  * LDDATE=YYDDD and LDTIME=HHMMSS override the host clock for reproducible
  * tests.  Example: LDDATE=26223 LDTIME=220517.
