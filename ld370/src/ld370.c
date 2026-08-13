@@ -2,10 +2,10 @@
  *
  * Reads one or more OS/360 object decks (as produced by as370 / IFOX00) and
  * emits an MVS load-module member RECORD STREAM, byte-identical to IEWL
- * (F-level) over the deterministic records. The IDR identity records
- * (LKED/translator) are NOT emitted -- ld stamps its own identity, a
+ * (F-level) over the deterministic records. ld emits its own linkage-editor
+ * IDR identity; translator IDRs are not emitted. Identity records are a
  * documented carve-out (see ld/tests/lmdiff.py). Byte-exact target:
- *     CESD + SPZAP-IDR(251B zeros) + control + text + RLD
+ *     CESD + SPZAP-IDR(251B zeros) + LKED-IDR + control + text + RLD
  *
  * Scope: multiple single-CSECT objects (the cc370/as370 case). Builds a
  * composite ESD, resolves ER->SD by name across objects, stacks section
@@ -577,6 +577,87 @@ static unsigned char *out = NULL;
 static long olen = 0, ocap = 0;
 static void emit(const unsigned char *b, long n) { out = grow_arr(out, &ocap, olen + n, 1); memcpy(out + olen, b, n); olen += n; }
 static void emitb(int b) { out = grow_arr(out, &ocap, olen + 1, 1); out[olen++] = (unsigned char)b; }
+
+/*
+ * ld370 linkage-editor identification record.
+ *
+ *   80 15 02  product(10)  VV MM  YYDDDF  0HHMMSSF
+ *
+ * LDDATE=YYDDD and LDTIME=HHMMSS override the host clock for reproducible
+ * tests.  Example: LDDATE=26223 LDTIME=220517.
+ */
+#define LD370_IDR_PROD "LD370"
+#define LD370_IDR_VV   1
+#define LD370_IDR_MM   0
+
+static int decfield(const char *s, int n)
+{
+    int i, v = 0;
+    for (i = 0; i < n; i++) {
+        if (s[i] < '0' || s[i] > '9') return -1;
+        v = v * 10 + (s[i] - '0');
+    }
+    return v;
+}
+
+static void emit_lked_idr(void)
+{
+    unsigned char r[22];
+    const char *ed = getenv("LDDATE"), *et = getenv("LDTIME");
+    time_t now = time(NULL);
+    struct tm *lt = localtime(&now);
+    int yy, ddd, hh, mm, ss, v, i;
+    size_t prodlen = strlen(LD370_IDR_PROD);
+
+    if (!lt) {
+        fprintf(stderr, "ld370: cannot obtain local time for LKED IDR\n");
+        exit(2);
+    }
+    yy = (lt->tm_year + 1900) % 100;
+    ddd = lt->tm_yday + 1;
+    hh = lt->tm_hour; mm = lt->tm_min; ss = lt->tm_sec;
+
+    if (ed && *ed) {
+        if (strlen(ed) != 5 || (v = decfield(ed, 5)) < 0 ||
+            v % 1000 < 1 || v % 1000 > 366) {
+            fprintf(stderr, "ld370: LDDATE must be YYDDD (e.g. 26223)\n");
+            exit(2);
+        }
+        yy = v / 1000; ddd = v % 1000;
+    }
+    if (et && *et) {
+        if (strlen(et) != 6 || (v = decfield(et, 6)) < 0 ||
+            v / 10000 > 23 || (v / 100) % 100 > 59 || v % 100 > 59) {
+            fprintf(stderr, "ld370: LDTIME must be HHMMSS (e.g. 220517)\n");
+            exit(2);
+        }
+        hh = v / 10000; mm = (v / 100) % 100; ss = v % 100;
+    }
+
+    memset(r, 0, sizeof r);
+    r[0] = 0x80;
+    r[1] = 0x15;
+    r[2] = 0x82;   /* IDR, len-1, LKED|LASTIDR */
+    for (i = 0; i < 10; i++) {
+      r[3 + i] = (i < (int)prodlen) ? a2e1(LD370_IDR_PROD[i]) : 0x40;
+    }
+    r[13] = (unsigned char)(((LD370_IDR_VV / 10) << 4)
+                      |  (LD370_IDR_VV % 10));
+    r[14] = (unsigned char)(((LD370_IDR_MM / 10) << 4)
+                      |  (LD370_IDR_MM % 10));
+    r[15] = (unsigned char)(((yy / 10) << 4) | (yy % 10));
+    r[16] = (unsigned char)(((ddd / 100) << 4) | ((ddd / 10) % 10));
+    r[17] = (unsigned char)(((ddd % 10) << 4) | 0x0f);
+    r[18] = (unsigned char)(hh / 10);
+    r[19] = (unsigned char)(((hh % 10) << 4) | (mm / 10));
+    r[20] = (unsigned char)(((mm % 10) << 4) | (ss / 10));
+    r[21] = (unsigned char)(((ss % 10) << 4) | 0x0f);
+    emit(r, sizeof r);
+    trace("  LKED-IDR:        22 bytes (%.10s V%02d M%02d, %02d%03d %02d:%02d:%02d)",
+      LD370_IDR_PROD,
+      LD370_IDR_VV, LD370_IDR_MM,
+      yy, ddd, hh, mm, ss);
+}
 
 /* ============================================================================
  * IEBCOPY unloaded-PDS emitter
@@ -1833,6 +1914,8 @@ int main(int argc, char **argv)
     emitb(0x80); emitb(0xFA); emitb(0x01); emitb(0x00);
     for (i = 0; i < 247; i++) emitb(0);
     trace("  SPZAP-IDR:       251 bytes");
+
+    emit_lked_idr();
 
     int total_rld = 0;
     for (i = 0; i < nO; i++) total_rld += O[i].nrld;
