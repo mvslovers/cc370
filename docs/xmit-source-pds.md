@@ -185,10 +185,30 @@ is correct behaviour; those files want cleaning.
   37 directory blocks, names with `$ @ #`) round-trips **byte-identically**
   through `create` → `extract`, and `create` is byte-reproducible across runs
   with `--stats-date`.
-* **Not yet validated on MVS.** A host byte-check proves the wrapping, not the
-  reload. The outstanding test is `create` → upload → RECV370 with a **DCB-less
-  `SYSUT2`** (so the computed COPYR1/INMR02 attributes are the ones actually
-  used), then `IEHLIST LISTPDS FORMAT`, an ISPF 3.4 look at the statistics, and
-  a browse of a member for column fidelity.
+* **Validated end-to-end on real MVS (2026-08-13).** The `ufsd`, `ftpd` and
+  `httpd` samplibs were built on the host, uploaded as FB80 and received into
+  three new libraries. The target was allocated **without a DCB**, so every
+  attribute came from the transmission:
+
+  ```
+  RECEIVE INDSN('IBMUSER.XMIT.IN') DATASET('IBMUSER.UFSD.SAMPLIB') VOLUME('WORK00')
+    -> NJE38 RECEIVE v2.3.0, RC=0
+       IEB154I  UFSD     HAS BEEN SUCCESSFULLY  LOADED     (x4, x2, x2)
+       IEB147I  END OF JOB -00 WAS HIGHEST SEVERITY CODE
+  ```
+
+  The catalog then shows `DSORG=PO RECFM=FB LRECL=80 BLKSZ=3120` — the
+  `--blocksize` default carried through COPYR1 off 6 and `INMR02#1 INMBLKSZ`
+  into the real allocation. Reading every member back gives content identical to
+  the source, blank lines included (`ufsdprm0`: 20 lines with 6 blank, 20 back).
+  `IEHLIST LISTPDS` confirms the ISPF statistics reached the directory: each
+  entry carries its own line count (`190019` = 25, `100010` = 16, `140014` = 20,
+  `590059` = 89) and the userid. Note that `LISTPDS FORMAT` labels its columns
+  with load-module field names, which do not apply to a source library — read
+  the hex, not the headings.
+
+  This went through **TSO/NJE38 `RECEIVE`, not `RECV370`**, which is the
+  stricter of the two: `RECEIVE` allocates the target from `INMR02` itself,
+  whereas `RECV370` with a DCB in the JCL would never look at those fields.
 * **Not implemented:** sequential (PS) datasets, binary members from a
   directory, and more than one dataset per file (`INMNUMF > 1`).
