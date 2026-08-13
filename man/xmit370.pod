@@ -1,0 +1,168 @@
+=head1 NAME
+
+xmit370 - host-native TSO TRANSMIT / RECEIVE for MVS source libraries
+
+=head1 SYNOPSIS
+
+B<xmit370 create> B<-o> I<out>F<.xmit> B<--dsn> I<name> [I<options>] I<dir>
+
+B<xmit370 list> [B<-v>] I<file>F<.xmit>
+
+B<xmit370 extract> [B<-C> I<dir>] [B<-v>] I<file>F<.xmit>
+
+=head1 DESCRIPTION
+
+B<xmit370> packs a host directory into a TSO TRANSMIT (NETDATA) file holding a
+partitioned dataset with fixed-length records -- the shape a C<samplib>, a JCL
+library or a macro library has -- so a distribution can be built entirely on the
+host and installed on MVS with a single C<RECV370> step.  It also lists and
+extracts XMIT files, including ones produced by real TSO TRANSMIT or by the
+C<XMIT370> batch utility.
+
+Each file in I<dir> becomes one member.  The member name is the file's base
+name with one trailing extension removed, uppercased; it must be 1-8 characters
+of C<A-Z 0-9 @ # $> with a non-digit first character.  A file whose name does
+not qualify is refused with a diagnostic naming B<--member> as the way to map it
+explicitly.  Subdirectories and dot-files are skipped.
+
+Text is converted to EBCDIC CP037 using the same table as B<cc370> and B<as370>,
+so a member reads identically to one uploaded by the rest of the toolchain.  The
+record boundary I<is> the line break: no line-terminator byte is ever written,
+and in particular the ecosystem's C<\n> -E<gt> NEL mapping is deliberately not
+applied here.  Tabs are expanded (column position matters in assembler and JCL),
+trailing blanks are stripped, and each record is padded to LRECL with EBCDIC
+blanks.  Anything that cannot be represented -- a line longer than LRECL, a
+control character, a byte outside ASCII -- is an error naming file, line and
+column, never a silent substitution.
+
+For B<ld370>-linked I<load> libraries use C<ld370 --pack> instead; this tool
+covers the source-library case ld370 does not.
+
+=head1 COMMANDS
+
+=over 4
+
+=item B<create>
+
+Pack I<dir> into I<out>F<.xmit>.
+
+=item B<list>
+
+Show the transmission's control records, the source DCB, and every member with
+its TTR, size and ISPF statistics.
+
+=item B<extract>
+
+Write each member as a file.  Fixed-length text members are deblocked,
+translated to ASCII and given line endings; members of any other record format
+are written as raw bytes -- useful for inspection and archiving, but not a form
+C<ld370 --pack> can re-ingest, since a load module's entry point and attributes
+live only in the directory entry.
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--dsn> I<name>
+
+Target dataset name, recorded as C<INMDSNAM>.  Required for B<create>.
+
+=item B<-o> I<file>
+
+Output file.  Required for B<create>.
+
+=item B<-C> I<dir>
+
+Directory to extract into (default: the current directory).
+
+=item B<--lrecl> I<n>
+
+Logical record length (default 80).
+
+=item B<--blocksize> I<n>
+
+Block size, a multiple of B<--lrecl> (default 3120 = 39 x 80).  When the
+receiving JCL allocates the target without a DCB, C<RECV370> takes the dataset's
+attributes from here, so this is what the library is created with on MVS.  3120
+is to a source library what 15040 is to a LINKLIB: unremarkable everywhere.  The
+maximum is 19069, the largest block that fits one track as a single record.
+
+=item B<--recfm> B<fb>|B<f>
+
+Record format (default C<fb>).
+
+=item B<--stats>, B<--no-stats>
+
+Write ISPF statistics into the directory entries (default on).  With statistics
+an entry is 42 bytes and the C byte is X'0F'; without, 12 bytes and X'00'.
+
+=item B<--userid> I<name>
+
+Userid recorded in the statistics.  Defaults to the first qualifier of
+B<--dsn>, or to C<$USER>.
+
+=item B<--stats-date> I<YYYY-MM-DD>[B<T>I<HH:MM:SS>]
+
+Use one fixed timestamp for every member's statistics instead of each file's
+modification time.  Statistics derived from mtime make the output depend on the
+checkout; pinning the date makes a release artifact byte-reproducible.
+
+=item B<--member> I<name>B<=>I<file>
+
+Add I<file> as member I<name>, bypassing the name derivation.  Repeatable.  A
+name outside the standard character set is accepted with a warning -- real
+libraries do contain them.
+
+=item B<--exclude> I<glob>
+
+Skip matching files.  Repeatable.
+
+=item B<--tabs> I<n>, B<--no-tabs>
+
+Expand tabs to I<n> columns (default 8), or treat a tab as an error.
+
+=item B<--latin1>
+
+Map bytes E<gt>= 0x80 through CP037 instead of refusing them.  Needed when the
+input came from an EBCDIC dataset and legitimately contains characters outside
+ASCII; not what you want for a UTF-8 file, which B<xmit370> detects and reports
+separately.
+
+=item B<-v>
+
+List members as they are packed or extracted.
+
+=back
+
+=head1 INSTALLING ON MVS
+
+Upload the file as a binary sequential dataset (it is RECFM=FB LRECL=80) and
+receive it.  Leave C<SYSUT2> without a DCB so C<RECV370> allocates the library
+from the transmission's own attributes:
+
+  //RECV    EXEC PGM=RECV370
+  //STEPLIB  DD DSN=SYS2.LOCAL.LINKLIB,DISP=SHR
+  //RECVLOG  DD SYSOUT=*
+  //SYSPRINT DD SYSOUT=*
+  //SYSIN    DD DUMMY
+  //XMITIN   DD DSN=uploaded.FB80.XMIT,DISP=SHR
+  //SYSUT1   DD UNIT=VIO,SPACE=(CYL,(5,1)),DISP=(NEW,DELETE)
+  //SYSUT2   DD DSN=your.SAMPLIB,DISP=(,CATLG),UNIT=SYSDA,
+  //            SPACE=(CYL,(1,1,20),RLSE)
+
+=head1 EXIT STATUS
+
+0 on success, 1 if members were rejected or a file could not be read, 2 for a
+usage error.
+
+=head1 SEE ALSO
+
+L<ld370(1)>, L<file370(1)>, L<cc370(1)>
+
+F<docs/xmit-source-pds.md>, F<docs/xmit-format.md>, F<docs/unload-format.md>
+
+=head1 AUTHOR
+
+Part of the cc370 host-native MVS cross-toolchain.

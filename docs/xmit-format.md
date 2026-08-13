@@ -1,6 +1,8 @@
 # XMIT (TSO TRANSMIT / NETDATA) Format — the host→MVS install transport
 
-**Producer:** `ld370 -xmit` (`ld370/src/ld370.c`, the XMIT emitter).
+**Producer:** `ld370 -xmit` (`ld370/src/ld370.c`, the XMIT emitter) for RECFM=U
+*load* libraries. The RECFM=FB *source*-library case (samplib, JCL, macros) is
+`xmit370` -- see `docs/xmit-source-pds.md` for what differs.
 **Consumer on MVS:** `RECV370` (a batch XMIT unpacker, `PGM=RECV370` in
 `SYSC.LINKLIB`) — it parses the NETDATA stream and IEBCOPY-loads the member(s)
 into a load library. (Stock TSO/E `RECEIVE` is **not** present on the target;
@@ -115,12 +117,17 @@ records), then:
 ```
 
 `RECV370` pre-allocates `SYSUT2` from the JCL DCB and **ignores** the XMIT's
-`INMBLKSZ`, so set `BLKSIZE` here to the `--blocksize` the members were built with
+`INMBLKSZ` *when the JCL supplies a DCB, as above*, so set `BLKSIZE` here to the
+`--blocksize` the members were built with
 (default 15040; it must be >= every member block). TSO/NJE38 `RECEIVE
 INDSN(..) DATASET(..)` is the other path — it *self-allocates* the target from the
 XMIT's `INMR02` instead, which is why `INMBLKSZ`/`INMSIZE` must be correct there.
 
 `SYSUT2` is the (PO, RECFM=U) load library RECV370 STOWs the member into.
+
+Give it **no** DCB and RECV370 takes the attributes from the transmission's own
+COPYR1/INMR02 instead -- which is how a source library is received, and what
+makes those computed fields load-bearing there. See `docs/xmit-source-pds.md`.
 
 ## 5. Status & open points
 
