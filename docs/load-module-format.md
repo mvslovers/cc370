@@ -278,6 +278,18 @@ Up to four IDR record kinds, written in this order:
 - Date `LKDATE` (3-byte packed `yyddd`) from the `TIME` macro at link time (`HEWLFOUT.ASM:1140`, `LKDATE EQU IDRBUF+15`, `:1475`).
 - `LKLEN=15` bytes of header+constant template moved (`:241,1132`); record length `LKRECLEN=18` (`:240`). Layout: header(3)+name(10)+relno(2)+date(3) = 18.
 
+**What ld370 emits.** ld370 writes this record after the SPZAP IDR, in an extended **22-byte** form that appends a 4-byte packed link *time* after the date (not in the F-level source above; this is the layout the BIND-date displays read):
+
+```
+80 15 82  d3c4f3f7f0 4040404040  01 00  26 22 3f  02 20 51 7f
+ |  |  |   "LD370     " (CP037)   VV MM   yyddd     0hhmmss
+ |  |  +-- subtype: LKED X'02' | LASTIDR X'80'
+ |  +----- X'15' = 21 = record length 22 − 1
+ +-------- IDR record
+```
+
+It identifies itself as `LD370` V01 M00 rather than claiming to be `5752SC104` at a non-stock length; program FETCH skips IDRs by the length byte, so the longer record is transparent to loading. The date and time come from the host clock unless `LDDATE`/`LDTIME` pin them (see `ld370(1)` ENVIRONMENT). Translator IDRs (10.3) are not emitted at all.
+
 ### 10.3 Translator IDR(s)
 - Subtype `TRNSTYPE X'04'` (`HEWLFOUT.ASM:198,1171`). Holds translator id, name, and date(s) copied **from each input object/load module's END-card IDR** (`HEWLFOUT.ASM:1170-1412`). Variable length up to `TRUDMAX X'FF'` per record (`:203,1270`).
 
@@ -363,14 +375,16 @@ These bytes differ run-to-run or depend on PDS placement; a byte-identity oracle
 
 | item | where | why it varies | source |
 |---|---|---|---|
-| **LKED IDR date** | LK IDR `LKDATE`, 3-byte packed `yyddd` | `TIME` macro at link time | `HEWLFOUT.ASM:1140` |
+| **LKED IDR date/time** | LK IDR `LKDATE`, 3-byte packed `yyddd`; in ld370's 22-byte form also the 4-byte packed `0hhmmssF` | `TIME` macro at link time / the host clock — pin with `LDDATE`/`LDTIME` (see `ld370(1)`) | `HEWLFOUT.ASM:1140` |
 | **LKED version/mod level** | LK IDR `LKRELNO` (2 bytes) | host SYSGEN-assigned OS release (`SGRELNO`) | `HEWLFOUT.ASM:1123-1130,1439` |
 | **Translator IDR dates/ids** | translator IDR records | copied verbatim from each input module's END-card IDR | `HEWLFOUT.ASM:1170-1412` |
 | **HMASPZAP IDR data** | SPZAP IDR | reflects zaps applied to the input modules | `HEWLFOUT.ASM:1021-1085` |
 | **All TTR fields** | `PDS2TTRP`,`PDS2TTRT`,`PDS2TTRN`; control-record CCW text origin (off 9–11) | depend on physical block placement (track/record) in the target PDS | `IHAPDS:62,82,84`; `HEWLFSCD.ASM:99-100` |
 | **Note-list TTRs** (overlay) | note list | placement-dependent | `IEWFETCH.ASM` EXLNL DSECT (~`:4021`) |
 
-**Byte-comparable part** (the analog of as370's IFOX byte-identity): the **record stream** — CESD entries, control-record indicators + ID/length lists + lengths, RLD items (R/P/flag/address as *module-relative* offsets), text bytes, scatter/translation tables, IDR subtypes — and the **directory attributes** (`PDS2ATR1`/`PDS2ATR2`, `PDS2STOR`, `PDS2FTBL`, `PDS2EPA`, scatter sizes). Compare those, not TTRs or the LKED IDR date/version. This mirrors the IFOX END-card translator IDR (`15741SC103`+date) that as370 already excludes.
+**Byte-comparable part** (the analog of as370's IFOX byte-identity): the **record stream** — CESD entries, control-record indicators + ID/length lists + lengths, RLD items (R/P/flag/address as *module-relative* offsets), text bytes, scatter/translation tables, IDR subtypes — and the **directory attributes** (`PDS2ATR1`/`PDS2ATR2`, `PDS2STOR`, `PDS2FTBL`, `PDS2EPA`, scatter sizes). Compare those, not TTRs or the LKED IDR date/time/version. This mirrors the IFOX END-card translator IDR (`15741SC103`+date) that as370 already excludes.
+
+`ld370/tests/lmdiff.py` implements the carve-out by skipping the IDR records whole, so **no** byte of the LKED IDR is covered by the oracle comparisons. Its content is asserted separately, against a pinned `LDDATE`/`LDTIME`, by the `LKED-IDR` case in `ld370/tests/run.sh`.
 
 ---
 

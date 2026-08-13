@@ -118,6 +118,33 @@ Verbose: trace the link / pack phases on stderr.
 
 =back
 
+=head1 ENVIRONMENT
+
+Every linked member carries a linkage-editor B<IDR> identification record
+stamping the product, its version/modification level, and the date and time of
+the link (the B<BIND> date, as displayed by tools that read the IDR). The date
+and time are taken from the host clock, so two otherwise identical links are
+B<not> byte-identical. The following variables override the clock, which is what
+makes a link reproducible --- required whenever the output is byte-compared, as
+F<ld370/tests/run.sh> does:
+
+=over 4
+
+=item B<LDDATE>=I<YYDDD>
+
+The link date as a 5-digit Julian date: 2-digit year plus day-of-year 001..366.
+For example C<26223> is 2026-08-11. Rejected with RC=2 if malformed.
+
+=item B<LDTIME>=I<HHMMSS>
+
+The link time as 6 digits, 24-hour. For example C<220517> is 22:05:17. Rejected
+with RC=2 if malformed.
+
+=back
+
+Both are read independently: setting only one pins that field and leaves the
+other on the host clock.
+
 =head1 SEE ALSO
 
 L<cc370(1)>, L<as370(1)>, L<ar370(1)>, L<file370(1)>
