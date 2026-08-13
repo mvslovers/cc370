@@ -11,15 +11,15 @@
 cd "$(dirname "$0")/../.." || exit 2
 # Macro-library root (maclib + sysmac). These live in libc370 now; the default
 # used to point at crent370, the frozen v1.x libc, which no longer needs to be
-# checked out. Override with CRENT=... .
-CRENT=${CRENT:-../../libc370}
+# checked out. Override with LIBC370=/path .
+LIBC370=${LIBC370:-../../libc370}
 fail=0
 
 # --- case 1: tstlist -- general listing (ESD + SOURCE + RLD) ----------------
 REF=tests/listref/ifox-listing-tstlist.txt
 OUT=/tmp/as370-listref.$$
 ASMDATE=06/18/26 ASMTIME=06.42 ./as370 tests/listref/tstlist.s \
-    -I "$CRENT/maclib" -I "$CRENT/sysmac" -a="$OUT" >/dev/null 2>&1 \
+    -I "$LIBC370/maclib" -I "$LIBC370/sysmac" -a="$OUT" >/dev/null 2>&1 \
     || { echo "listref tstlist: ASSEMBLE FAILED"; fail=1; }
 python3 - "$REF" "$OUT" <<'PY'
 import sys

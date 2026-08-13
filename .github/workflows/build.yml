@@ -45,8 +45,8 @@ jobs:
         with:
           path: cc370
 
-      # as370/tests/run.sh looks for CRENT=../../libc370, i.e. a sibling of the
-      # repo root -- the same layout the ecosystem uses locally.
+      # The suites default to LIBC370=../../libc370, i.e. a sibling of the repo
+      # root -- the same layout the ecosystem uses locally.
       - name: Clone libc370 (macro libraries only)
         working-directory: .
         run: git clone --depth 1 https://github.com/mvslovers/libc370.git libc370
