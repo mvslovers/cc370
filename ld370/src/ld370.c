@@ -1915,7 +1915,6 @@ int main(int argc, char **argv)
     for (i = 0; i < 247; i++) emitb(0);
     trace("  SPZAP-IDR:       251 bytes");
 
-    /* ZP60027-compatible extended linkage-editor IDR, including bind time. */
     emit_lked_idr();
 
     int total_rld = 0;
