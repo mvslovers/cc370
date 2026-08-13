@@ -16,6 +16,14 @@ DIFF="python3 ld370/tests/lmdiff.py"
 FIX=ld370/tests/fixtures
 TMP="${TMPDIR:-/tmp}"
 
+# Pin the LKED-IDR clock. Every link stamps the current date/time into that
+# record, so two separate ld370 runs differ in those 7 bytes whenever they
+# straddle a second boundary -- and the autocall/conflict cases below byte-
+# compare exactly that: two independent links. Pinning makes them deterministic
+# (and lets the IDR content test at the end assert the packed fields).
+LDDATE=26223 LDTIME=220517
+export LDDATE LDTIME
+
 [ -x "$AS" ] || gcc -O2 -Wall -Wextra -Werror -Ias370/include -o "$AS" as370/src/as370.c || exit 2
 gcc -O2 -Wall -Wextra -Werror -o "$LD" ld370/src/ld370.c || exit 2
 gcc -O2 -Wall -Wextra -Werror -o "$AR" ar370/src/ar370.c || exit 2
@@ -524,6 +532,31 @@ if "$LD" --pack $big4specs -o "$TMP/big4pack" -xmit --dsn X.Y.LINKLIB 2>/dev/nul
 else
     echo "  FAIL: ld370 --pack of a >4MB member set failed/crashed"; fails=$((fails + 1))
 fi
+
+# LKED-IDR content.  lmdiff.py carves the IDR identity records out of every
+# byte comparison above, so nothing there would catch a wrong product string,
+# version, or a mis-packed date/time -- only a wrong LENGTH byte (the record
+# walk would then desync).  Assert the 22 bytes directly, against the pinned
+# LDDATE/LDTIME: 80 15 82 | "LD370     " EBCDIC | VV MM | YYDDDF | 0HHMMSSF.
+printf '\n=== LKED-IDR: 22-byte record content (product, version, packed date/time) ===\n'
+"$AS" -o "$TMP/idr.o" "$FIX/klein.s" 2>/dev/null
+"$LD" -o "$TMP/idr.lm" --name IDRT "$TMP/idr.o" 2>/dev/null
+if python3 - "$TMP/idr.lm" <<'EOF'
+import sys
+d = open(sys.argv[1], 'rb').read()
+i = d.find(bytes((0x80, 0x15, 0x82)))
+if i < 0:
+    sys.exit("  FAIL: no LKED IDR (80 15 82) in the record stream")
+r = d[i:i + 22]
+want = bytes((0x80, 0x15, 0x82)) \
+     + "LD370     ".encode('cp037') \
+     + bytes((0x01, 0x00, 0x26, 0x22, 0x3f, 0x02, 0x20, 0x51, 0x7f))
+if r != want:
+    sys.exit("  FAIL: IDR is %s\n         expected %s"
+             % (r.hex(' '), want.hex(' ')))
+print("  OK: 80 15 82 'LD370     ' V01 M00 26223 22:05:17 (LASTIDR set)")
+EOF
+then :; else fails=$((fails + 1)); fi
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then
