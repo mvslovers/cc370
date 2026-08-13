@@ -597,9 +597,9 @@ static void emitb(int b) { out = grow_arr(out, &ocap, olen + 1, 1); out[olen++] 
  * LDDATE=YYDDD and LDTIME=HHMMSS override the host clock for reproducible
  * tests.  Example: LDDATE=26223 LDTIME=220517.
  */
-#define LD370_IDR_PROD "5752SC104"
-#define LD370_IDR_VV   3
-#define LD370_IDR_MM   8
+#define LD370_IDR_PROD "LD370"
+#define LD370_IDR_VV   1
+#define LD370_IDR_MM   0
 
 static int decfield(const char *s, int n)
 {
@@ -618,6 +618,7 @@ static void emit_lked_idr(void)
     time_t now = time(NULL);
     struct tm *lt = localtime(&now);
     int yy, ddd, hh, mm, ss, v, i;
+    size_t prodlen = strlen(LD370_IDR_PROD);
 
     if (!lt) {
         fprintf(stderr, "ld370: cannot obtain local time for LKED IDR\n");
@@ -645,9 +646,16 @@ static void emit_lked_idr(void)
     }
 
     memset(r, 0, sizeof r);
-    r[0] = 0x80; r[1] = 0x15; r[2] = 0x82;   /* IDR, len-1, LKED|LASTIDR */
-    for (i = 0; i < 10; i++) r[3 + i] = a2e1(LD370_IDR_PROD[i]);
-    r[13] = LD370_IDR_VV; r[14] = LD370_IDR_MM;
+    r[0] = 0x80;
+    r[1] = 0x15;
+    r[2] = 0x82;   /* IDR, len-1, LKED|LASTIDR */
+    for (i = 0; i < 10; i++) {
+      r[3 + i] = (i < (int)prodlen) ? a2e1(LD370_IDR_PROD[i]) : 0x40;
+    }
+    r[13] = (unsigned char)(((LD370_IDR_VV / 10) << 4)
+                      |  (LD370_IDR_VV % 10));
+    r[14] = (unsigned char)(((LD370_IDR_MM / 10) << 4)
+                      |  (LD370_IDR_MM % 10));
     r[15] = (unsigned char)(((yy / 10) << 4) | (yy % 10));
     r[16] = (unsigned char)(((ddd / 100) << 4) | ((ddd / 10) % 10));
     r[17] = (unsigned char)(((ddd % 10) << 4) | 0x0f);
