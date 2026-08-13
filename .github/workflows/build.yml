@@ -1,0 +1,74 @@
+# Minimal CI for the cc370 toolchain.
+#
+# Scope is deliberately the five standalone tools and their suites, not the GCC
+# fork: `make compiler` takes many minutes, and every regression this is meant
+# to catch lives in the tools. Downstream projects (mbt's reusable workflow)
+# already build the full toolchain from this repo's main, so a break here goes
+# out to every consumer -- which is exactly what happened when a
+# -Wformat-overflow error in xmit370 reached main and turned mvsmf's CI red.
+#
+# Both gcc and clang build the tools, on purpose. That bug slipped through
+# local testing because Apple clang does not implement -Wformat-overflow at
+# all, so a clang-only check is not enough to defend `-Werror`. Note the two
+# compilers only differ for `make tools`; the test suites drive their own
+# compiler.
+#
+# libc370 is checked out as a sibling because the as370 suite assembles four
+# samples against its macro libraries (maclib/sysmac -- PDPTOP, SAVE, RETURN).
+# Nothing is built from it; only the macro sources are read.
+#
+# Not included, and why:
+#   test-corpus  the committed SHA manifest has drifted from libc370's current
+#                sources, so it is red independently of any change here
+#   test-cc370   needs the GCC fork (`make compiler`)
+
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tools:
+    name: tools + suites (${{ matrix.cc }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    defaults:
+      run:
+        working-directory: cc370
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: cc370
+
+      # The suites default to LIBC370=../../libc370, i.e. a sibling of the repo
+      # root -- the same layout the ecosystem uses locally.
+      - name: Clone libc370 (macro libraries only)
+        working-directory: .
+        run: git clone --depth 1 https://github.com/mvslovers/libc370.git libc370
+
+      - name: Install compilers
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang
+
+      - name: Compiler version
+        run: ${{ matrix.cc }} --version
+
+      # The -Werror build is the point of this job.
+      - name: Build the standalone tools
+        run: make tools HOSTCC=${{ matrix.cc }}
+
+      - name: as370 suite (byte-identity to the IFOX00 reference decks)
+        run: make test-as370
+
+      - name: ld370 suite (byte-identity to the IEWL/IEBCOPY oracles)
+        run: sh ld370/tests/run.sh
+
+      - name: xmit370 suite
+        run: make test-xmit370

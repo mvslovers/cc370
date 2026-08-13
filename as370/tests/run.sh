@@ -5,12 +5,13 @@
 cd "$(dirname "$0")/.." || exit 2
 # Macro libraries: maclib (the PDP macros -- PDPTOP/PDPPRLG/PDPEPIL) and sysmac
 # (host-only mirror of the SYS1.MACLIB members the build needs: SAVE/RETURN/
-# IHBERMAC, SVC macros). These now live in libc370; the default used to point at
+# IHBERMAC, SVC macros). These live in libc370; the default used to point at
 # crent370, the frozen v1.x libc, which no longer needs to be checked out -- so
 # the suite failed with "Undefined operation code ... PDPPRLG" wherever it was
-# absent. Override the repo root with CRENT=... .
-CRENT=${CRENT:-../../libc370}
-MACLIB="-I $CRENT/maclib -I $CRENT/sysmac"
+# absent. Override the checkout with LIBC370=/path (same name the Makefile and
+# tests/corpus/check.sh already use).
+LIBC370=${LIBC370:-../../libc370}
+MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # sample8 (tinitvl, WTO) and sample9 (irxtmpw, XCTL->IHBINNRB) are real rexx370
 # modules that exercise the hardest macro paths — they guard against regressing
 # the byte-exact REXX corpus when changing the assembler for other projects.

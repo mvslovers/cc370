@@ -278,11 +278,18 @@ static long x_add(void) {
     return v;
 }
 static long expr_val(const char *e, int *reloc) {
+    long v = 0;
     xp_ = e; xrl_ = 0;
     while (*xp_ == ' ') xp_++;
-    if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; return 0; }   /* leading '(' = subscript with no displacement prefix */
-    long v = x_add();
-    if (reloc) *reloc = xrl_;
+    if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; }   /* leading '(' = subscript with no displacement prefix */
+    else { v = x_add(); if (reloc) *reloc = xrl_; }
+    /* Drop the cursor before returning.  Callers hand us stack buffers, so
+     * leaving this file-static pointing at one that has just gone out of scope
+     * is a dangling store -- harmless today because nothing outside this
+     * evaluator reads xp_, but gcc rightly rejects it under -Werror
+     * (-Wdangling-pointer, issue #11).  Clearing it costs nothing and makes the
+     * lifetime obvious. */
+    xp_ = NULL;
     return v;
 }
 /* evaluate a register operand, accepting the (r) parenthesised form (common in
@@ -1816,8 +1823,12 @@ static void cseq(unsigned char *c, int seq) {
         int nl = (int)strlen(deck_id); if (nl > 8) nl = 8;
         int nd = 8 - nl;                           /* digits available for the sequence */
         for (i = 0; i < nl; i++) c[72 + i] = a2e((unsigned char)deck_id[i]);
-        if (nd > 0) { char fmt[8], d[16]; long m = 1; int k; for (k = 0; k < nd; k++) m *= 10;
-            sprintf(fmt, "%%0%dld", nd); sprintf(d, fmt, (long)(seq % m));
+        /* Width comes from the argument (%0*ld) rather than a format string
+         * built at run time: identical output, but gcc can bound it, so the
+         * -Werror build holds on GNU gcc (issue #33).  nd is 1..7 here and
+         * seq % m < 10^nd, so d[] is ample. */
+        if (nd > 0) { char d[16]; long m = 1; int k; for (k = 0; k < nd; k++) m *= 10;
+            snprintf(d, sizeof d, "%0*ld", nd, (long)(seq % m));
             for (i = 0; i < nd; i++) c[72 + nl + i] = a2e(d[i]); }
         return;
     }
