@@ -548,18 +548,28 @@ static long emit_unload(unsigned char *o, long *bounds)
     return p;
 }
 
-/* current local time as a 16-EBCDIC-digit INMFTIME */
+/* Current local time as a 16-EBCDIC-digit INMFTIME.
+ *
+ * Every field is clamped to its print width first.  C's % keeps the sign of
+ * the dividend, so a bare `tm_mon % 100` has range [-99, 99] and "%02d" would
+ * emit three characters for a negative one; GCC cannot bound a struct tm and
+ * rejects the sprintf into a[17] (-Wformat-overflow).  The double modulo makes
+ * each field provably [0, 99] (the year [0, 9999]), so the output is exactly
+ * 16 characters plus the terminator.  Same treatment as ld370's xmit_ftime. */
 static void xmit_ftime(unsigned char e[16])
 {
     char a[17];
     struct tm t;
-    int i;
+    int i, yy, mo, dd, hh, mi, ss;
     if (have_stats_date) t = stats_tm;
     else { time_t now = time(NULL); t = *localtime(&now); }
-    sprintf(a, "%04d%02d%02d%02d%02d%02d00",
-            ((t.tm_year + 1900) % 10000 + 10000) % 10000,
-            (t.tm_mon + 1) % 100, t.tm_mday % 100,
-            t.tm_hour % 100, t.tm_min % 100, t.tm_sec % 100);
+    yy = ((t.tm_year + 1900) % 10000 + 10000) % 10000;
+    mo = ((t.tm_mon + 1) % 100 + 100) % 100;
+    dd = (t.tm_mday % 100 + 100) % 100;
+    hh = (t.tm_hour % 100 + 100) % 100;
+    mi = (t.tm_min % 100 + 100) % 100;
+    ss = (t.tm_sec % 100 + 100) % 100;
+    sprintf(a, "%04d%02d%02d%02d%02d%02d00", yy, mo, dd, hh, mi, ss);
     for (i = 0; i < 16; i++) e[i] = mvs_a2e((unsigned char)a[i]);
 }
 
