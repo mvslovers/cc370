@@ -1334,6 +1334,85 @@ static char nyi_what[128][24]; static int nyi_ln[128]; static int nnyi;
 static void note_notimpl(const char *what, int line) {
     if (nnyi < 128) { scopy(nyi_what[nnyi], what, 23); nyi_ln[nnyi] = line; nnyi++; }
 }
+/* A DC/DS nominal value the constant's own rules reject. The reason text is
+ * written at the call site and names the IFOX00 error it corresponds to:
+ * ERR178 SYNTAX ERROR, ERR224 LENGTH ERROR, ERR236 ILLEGAL CHARACTER IN
+ * EXPRESSION -- all severity 8 (jermsgcd.asm SEV178/SEV224/SEV236). */
+static char dcerr_msg[128][96]; static int dcerr_ln[128]; static int ndcerr;
+static void note_dcerr(const char *msg, int line) {
+    if (ndcerr < 128) { scopy(dcerr_msg[ndcerr], msg, 95); dcerr_ln[ndcerr] = line; ndcerr++; }
+}
+
+/* ---- packed (P) and zoned (Z) decimal ------------------------------------
+ * Built to IFOX00's PKON and ZKON (ifnx5d.asm:572-616 and :619-663).
+ *
+ * Nominal value: an optional sign, decimal digits, and AT MOST ONE decimal
+ * point, which is skipped when forming the value (a second one is ERR178, not
+ * something to ignore). The sign is a nibble, X'0C' for plus -- the default --
+ * and X'0D' for minus; zoned carries it in the zone of the last byte, which
+ * ZKON masks with X'CF' or X'DF'.
+ *
+ * Implicit length, in the bits the DCTABLE maxima are expressed in:
+ *   P   (digits + 1) * 4   -- the digits plus the sign nibble
+ *   Z    digits      * 8   -- one byte per digit
+ * so P'123' is 2 bytes (12 3C) and Z'456' is 3 (F4 F5 C6). Neither type is
+ * aligned (DCTABLE alignment mask 0) and neither may exceed 16 bytes.
+ *
+ * The value is right-justified into the target length: P pads with zero
+ * nibbles, Z with X'F0', and both truncate on the LEFT, dropping high-order
+ * digits. That is what makes P'1234' come out 01 23 4C rather than 12 34 C0 --
+ * five nibbles right-justified into three bytes.
+ *
+ * `at` is the location counter position; bytes are written only when emit is
+ * set (pass 2, and DC rather than DS), and diagnostics recorded only when diag
+ * is set (pass 1), since both passes walk the same statements.
+ * Returns the byte length of this one constant, or 0 if it was rejected. */
+static int emit_decimal(const char *txt, int packed, long at, int want, int emit, int diag, int line) {
+    unsigned char dig[64]; int nd = 0, sign = 0x0C, dot = 0, len;
+    const char *q = txt;
+    if (*q == '+') q++; else if (*q == '-') { sign = 0x0D; q++; }
+    /* A blank is NOT skipped, leading or embedded. PKON tests the character
+     * against J9 and lets everything that is not a digit, a period, a comma or
+     * a quote fall through to XBERR1; JBLANK is X'2F' against J9's X'09'
+     * (jcommon.asm), so it fails that test and IFOX raises ERR236. Skipping a
+     * leading blank, or stopping at an embedded one, would silently accept
+     * DC P' 123' and quietly truncate DC P'1 2' to 1C. */
+    for (; *q; q++) {
+        if (*q >= '0' && *q <= '9') { if (nd < 64) dig[nd] = (unsigned char)(*q - '0'); nd++; }
+        else if (*q == '.') { if (dot) { if (diag) note_dcerr("Syntax error - more than one decimal point in a decimal constant (IFOX00 ERR178)", line); return 0; } dot = 1; }
+        else { if (diag) note_dcerr("Illegal character in a decimal constant (IFOX00 ERR236)", line); return 0; }
+    }
+    if (!nd) { if (diag) note_dcerr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", line); return 0; }
+    if (nd > (packed ? 31 : 16)) {   /* PKON/ZKON compare the digit count against the DCTABLE limit and branch to LENER */
+        if (diag) note_dcerr(packed ? "Length error - a packed-decimal constant may have at most 31 digits (IFOX00 ERR224)"
+                                    : "Length error - a zoned-decimal constant may have at most 16 digits (IFOX00 ERR224)", line);
+        return 0; }
+    len = want ? want : (packed ? (nd + 2) / 2 : nd);
+    if (len < 1 || len > 16) {   /* DCTABLE gives P and Z a maximum of 128 bits */
+        if (diag) note_dcerr("Length error - a packed- or zoned-decimal constant may not exceed 16 bytes (IFOX00 ERR224)", line);
+        return 0; }
+    if (!emit) return len;
+    if (packed) {
+        int nnib = nd + 1, tnib = len * 2, k;         /* digits + sign nibble, right-justified */
+        unsigned char b[32]; memset(b, 0, sizeof b);
+        for (k = 0; k < tnib; k++) {                  /* k counts nibbles from the RIGHT */
+            int src = nnib - 1 - k, v;                /* the matching nibble of the value, or none */
+            if (src < 0) break;
+            v = (src == nnib - 1) ? sign : dig[src];
+            { int bi = len - 1 - (k / 2); if (k & 1) b[bi] |= (unsigned char)(v << 4); else b[bi] |= (unsigned char)v; }
+        }
+        for (k = 0; k < len; k++) put(at + k, b[k], 1);
+    } else {
+        int k;
+        for (k = 0; k < len; k++) {
+            int src = nd - len + k;                   /* right-justified, left-padded/truncated */
+            int v = (src >= 0) ? (0xF0 | dig[src]) : 0xF0;
+            if (k == len - 1) v = (v & 0x0F) | (sign << 4);
+            put(at + k, v, 1);
+        }
+    }
+    return len;
+}
 /* A machine instruction whose displacement is a relocatable symbol while the
  * base register is given explicitly (SYM(Rn)).  IFOX00 rejects this with IFO228
  * (severity 8) and assembles the whole instruction as zero -- an explicit
@@ -1802,11 +1881,49 @@ static void do_pass(int pass, char **lines, int nlines) {
                     }
                     int emit = haslen ? blen : (q ? nb : 1), pad = emit - nb;   /* valueless DS nB reserves cnt*1 */
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
+                } else if (ty == 'P' || ty == 'Z') {   /* packed / zoned decimal: no alignment, DCTABLE mask 0 */
+                    int packed = (ty == 'P');
+                    const char *q = strchr(p, '\'');
+                    if (!q) {
+                        /* DS reserves the length with no value; a DC without one
+                         * reaches IFOX's LDELIM3 and is a syntax error. */
+                        int len = haslen ? blen : 1;   /* DCTABLE default length for P and Z is 1 */
+                        if (pass == 1 && !strcmp(op, "DC")) note_dcerr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", i);
+                        if (setlbl) { struct sym *s2 = sym_get(lbl); s2->val = lc; s2->defined = 1; s2->sect = cur_sect_id; s2->len = len; }
+                        for (k = 0; k < cnt; k++) { int j; for (j = 0; j < len; j++) { if (emit_dc) put(lc, 0, 1); lc++; } }
+                    } else {
+                        /* One operand may carry a LIST of nominal values: PKON and
+                         * ZKON end the current constant on a comma and the caller
+                         * starts the next. Each gets the explicit length, or its
+                         * own implicit one when there is no length modifier. */
+                        char body[1024]; int slen = 0; const char *e = q + 1;
+                        while (*e && *e != '\'' && slen < 1023) body[slen++] = *e++;
+                        body[slen] = 0;
+                        /* The bound cannot be reached, for the reason MAXEXTSYM
+                         * carries: split_fields drops everything past its maximum
+                         * without a diagnostic (#50), body holds at most 1023
+                         * characters, and a value costs at least one digit plus
+                         * its comma. A dropped value here would be worse than a
+                         * dropped EXTRN symbol -- its storage would never be
+                         * reserved, so lc would under-advance at RC 0 and every
+                         * later symbol would shift: the very defect #53 closes. */
+                        static char vals[512][64]; int nv = split_fields(body, vals, 512), vi;
+                        if (nv < 1) { nv = 1; vals[0][0] = 0; }
+                        for (k = 0; k < cnt; k++) {
+                            for (vi = 0; vi < nv; vi++) {
+                                int len = emit_decimal(vals[vi], packed, lc, haslen ? blen : 0,
+                                                       emit_dc, pass == 1, i);
+                                if (!len) len = haslen ? blen : 1;   /* rejected: still reserve something so later symbols do not stack */
+                                if (setlbl && k == 0 && vi == 0) { struct sym *s2 = sym_get(lbl); s2->val = lc; s2->defined = 1; s2->sect = cur_sect_id; s2->len = len; }
+                                lc += len;
+                            }
+                        }
+                    }
                 } else {
                     /* No storage produced. Say which of the two it is, once per
                      * operand, in pass 1 -- pass 2 walks the same statements. */
                     if (pass == 1) {
-                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }
+                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* P and Z are handled above; what reaches here is E L S Q */
                         else note_badtype(ty, i);
                     }
                     /* The label is still defined, as before: withholding it would
@@ -2305,6 +2422,16 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ERROR: Undefined operation code in line %d - %s\n", line_org[unkln[j]], unkops[j]);
         }
         errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (ndcerr) {   /* a DC/DS nominal value its own constant type rejects */
+        int j; for (j = 0; j < ndcerr; j++) {
+            const char *s2 = lines[dcerr_ln[j]]; int sl = (int)strlen(s2);
+            while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s2);
+            fprintf(stderr, " ERROR: %s in line %d\n", dcerr_msg[j], line_org[dcerr_ln[j]]);
+        }
+        errors += ndcerr;   /* IFOX ERR178/ERR224/ERR236: all severity 8 */
         if (max_sev < 8) max_sev = 8;
     }
     if (nbadty) {   /* a DC/DS type letter outside Assembler XF's fifteen -- IFOX00 ERR198, severity 8 */

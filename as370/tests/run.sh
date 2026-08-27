@@ -335,8 +335,9 @@ rm -f /tmp/_o52.obj
 # calling those invalid would be as misleading as the silence it replaces.
 q="'"
 dcfail=0
-# (a) valid Assembler XF, unimplemented -> RC 8, "not implemented" wording
-for t in "P${q}123${q}" "Z${q}456${q}" "E${q}1.5${q}" "L${q}1.5${q}" "S(T)" "Q(T)"; do
+# (a) valid Assembler XF, still unimplemented -> RC 8, "not implemented" wording.
+# P and Z left this list when step 2 implemented them; E L S Q remain.
+for t in "E${q}1.5${q}" "L${q}1.5${q}" "S(T)" "Q(T)"; do
     printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
     ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
     if [ $? -ne 8 ]; then echo "dc_types: FAIL (DC $t did not give RC 8)"; dcfail=1
@@ -374,14 +375,63 @@ done
 ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1 || { echo "dc_types: FAIL (continued DC wrongly rejected)"; dcfail=1; }
 
 # (c) control -- the nine implemented types must NOT be over-rejected
-for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q}1${q}" "A(T)" "Y(T)" "V(EXTFOO)"; do
+for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q}1${q}" "A(T)" "Y(T)" "V(EXTFOO)" "P${q}1${q}" "Z${q}1${q}"; do
     printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
     if ! ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1; then
         echo "dc_types: FAIL (implemented type $t wrongly rejected)"; dcfail=1; fi
 done
-[ $dcfail = 0 ] && echo "dc_types: OK (P Z E L S Q + CXD loud as unimplemented; W/G as ERR198; nine implemented types unmoved)"
+[ $dcfail = 0 ] && echo "dc_types: OK (E L S Q + CXD loud as unimplemented; W/G as ERR198; implemented types unmoved)"
 fail=$((fail + dcfail))
 rm -f /tmp/_d53.s /tmp/_d53.obj /tmp/_d53.out
+
+# --- issue #53 (step 2): packed and zoned decimal ----------------------------
+# Bytes pinned to IFOX00's PKON/ZKON (ifnx5d.asm:572-663), not to an oracle deck
+# -- nothing in the ecosystem uses P or Z, so there is no reference object to
+# compare against. See tests/dc_decimal.s for what each case demonstrates.
+dzfail=0
+if ! ./as370 tests/dc_decimal.s -o /tmp/_d53b.obj >/dev/null 2>&1; then
+    echo "dc_decimal: ASSEMBLE FAILED"; dzfail=1
+else
+    hex=$(od -An -tx1 /tmp/_d53b.obj | tr -d ' \n')
+    #     P'123'  P'1234'   P'-123' P'0' PL8'123'          PL2'123456'
+    want=123c01234c123d0c000000000000123c456c
+    #        Z'456' Z'-456' ZL5'456'    ZL2'12345' P'1.25' 2P'7' P'12,34'
+    want=${want}f4f5c6f4f5d6f0f0f4f5c6f4c5125c7c7c012c034c
+    if ! echo "$hex" | grep -q "$want"; then echo "dc_decimal: FAIL (bytes not as pinned to PKON/ZKON)"; dzfail=1; fi
+    # DS PL8 + DS P reserve 9 more bytes with no text: section length 0x30
+    if ! echo "$hex" | grep -q 40000030; then echo "dc_decimal: FAIL (DS PL8 / DS P did not reserve their length)"; dzfail=1; fi
+fi
+rm -f /tmp/_d53b.obj
+# the issue's headline case: PACKED must take 2 bytes and AFTER must land on 8
+printf 'TEST     CSECT\nBEFORE   DC    F%s1%s\nPACKED   DC    P%s123%s\nAFTER    DC    F%s2%s\n         DC    A(BEFORE,PACKED,AFTER)\n         END\n' "$q" "$q" "$q" "$q" "$q" "$q" > /tmp/_d53c.s
+if ! ./as370 /tmp/_d53c.s -o /tmp/_d53c.obj >/dev/null 2>&1; then
+    echo "dc_decimal: FAIL (layout case did not assemble)"; dzfail=1
+elif ! od -An -tx1 /tmp/_d53c.obj | tr -d ' \n' | grep -q 00000001123c000000000002000000000000000400000008; then
+    echo "dc_decimal: FAIL (BEFORE/PACKED/AFTER not at 0/4/8)"; dzfail=1; fi
+rm -f /tmp/_d53c.s /tmp/_d53c.obj
+# 65 nominal values in one operand, over three cards. The value-list cap used to
+# be 64 and the operand splitter drops the overflow without a diagnostic -- the
+# #50 defect, reappearing inside #53's own fix, and worse here: the storage of a
+# dropped value is never reserved, so lc under-advances at RC 0 and every later
+# symbol shifts. 65 one-byte constants must give a 65-byte section.
+if ! ./as370 tests/dc_decimal_list.s -o /tmp/_d53e.obj >/dev/null 2>&1; then
+    echo "dc_decimal: FAIL (65-value list did not assemble)"; dzfail=1
+elif ! od -An -tx1 /tmp/_d53e.obj | tr -d ' \n' | grep -q 40000041; then
+    echo "dc_decimal: FAIL (65-value list: section is not 65 bytes -- a value was dropped)"; dzfail=1; fi
+rm -f /tmp/_d53e.obj
+# nominal values the constant's own rules reject -- each RC 8, none silent.
+# The blanks matter: PKON tests each character against J9 (X'09') and JBLANK is
+# X'2F' (jcommon.asm), so a blank falls through to XBERR1 and IFOX raises ERR236.
+# Skipping a leading one, or stopping at an embedded one, would silently accept
+# P' 123' and quietly truncate P'1 2' to 1C.
+for t in "P${q}1.2.3${q}" "P${q}12X4${q}" "P${q}123456789012345678901234567890123${q}" "Z${q}12345678901234567${q}" "PL20${q}1${q}" "P${q}${q}" "P" "P${q} 123${q}" "P${q}1 2${q}" "Z${q}4 5${q}"; do
+    printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53d.s
+    ./as370 /tmp/_d53d.s -o /tmp/_d53d.obj >/dev/null 2>&1
+    [ $? -eq 8 ] || { echo "dc_decimal: FAIL (DC $t accepted, expected RC 8)"; dzfail=1; }
+done
+rm -f /tmp/_d53d.s /tmp/_d53d.obj
+[ $dzfail = 0 ] && echo "dc_decimal: OK (P/Z bytes pinned to PKON/ZKON; layout fixed; 65-value list intact; 10 value errors rejected)"
+fail=$((fail + dzfail))
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
