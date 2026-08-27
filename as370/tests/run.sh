@@ -320,5 +320,68 @@ else
 fi
 rm -f /tmp/_o52.obj
 
+# --- issue #53 (step 1): nothing may reserve zero storage in silence ---------
+# The DC/DS type chain ended in a label-only arm with no default: an unhandled
+# type defined its label, reserved nothing, did not advance the location counter
+# and returned RC 0 -- so every later symbol in the section moved and the ESD
+# length agreed with the short figure. CXD was the same shape one layer worse,
+# sitting in note_unknown's skip[] and so exempted from diagnosis outright.
+#
+# Two message classes, and they must stay distinct. Assembler XF has exactly
+# fifteen constant types (C X B P Z L D E F H A Y V Q S -- the letters ORGed to
+# a non-zero code in IFOX00's DCTBL, ifnx5d.asm:1164). A letter outside that set
+# is IFOX00's ERR198 "INVALID TYPE DECLARED ON DC/DS/DXD CONSTANT", severity 8
+# (jermsgcd.asm SEV198). P Z E L S Q are VALID types as370 has not implemented;
+# calling those invalid would be as misleading as the silence it replaces.
+q="'"
+dcfail=0
+# (a) valid Assembler XF, unimplemented -> RC 8, "not implemented" wording
+for t in "P${q}123${q}" "Z${q}456${q}" "E${q}1.5${q}" "L${q}1.5${q}" "S(T)" "Q(T)"; do
+    printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
+    ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+    if [ $? -ne 8 ]; then echo "dc_types: FAIL (DC $t did not give RC 8)"; dcfail=1
+    elif ! grep -q "not implemented by as370" /tmp/_d53.out; then
+        echo "dc_types: FAIL (DC $t flagged, but not as unimplemented)"; dcfail=1; fi
+done
+printf 'T        CSECT\nX1       CXD\n         END\n' > /tmp/_d53.s
+./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+if [ $? -ne 8 ] || ! grep -q "CXD is valid Assembler XF but not implemented" /tmp/_d53.out; then
+    echo "dc_types: FAIL (CXD still silent -- it was exempted in skip[])"; dcfail=1; fi
+# (b) letters outside the fifteen -> RC 8, ERR198 wording
+for t in "W${q}99${q}" "G${q}1${q}"; do
+    printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
+    ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+    if [ $? -ne 8 ]; then echo "dc_types: FAIL (DC $t did not give RC 8)"; dcfail=1
+    elif ! grep -q "Invalid type declared on DC/DS/DXD constant" /tmp/_d53.out; then
+        echo "dc_types: FAIL (DC $t not reported as ERR198)"; dcfail=1; fi
+done
+# (b2) no type letter at all -- a bare DS 0, or an empty element in the operand
+# list (a trailing comma that is NOT a column-72 continuation). Both are invalid
+# to IFOX00 and both used to pass silently; they get their own wording rather
+# than "invalid type - ?".
+for src in 'A        DS    0' "B        DC    F${q}1${q},"; do
+    printf 'T        CSECT\n%s\n         END\n' "$src" > /tmp/_d53.s
+    ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+    if [ $? -ne 8 ] || ! grep -q "has no constant type" /tmp/_d53.out; then
+        echo "dc_types: FAIL (typeless operand not flagged: $src)"; dcfail=1; fi
+done
+# a continued DC (column 72) must still assemble -- the folded operand must not
+# look like a trailing-comma list to the check above
+{ echo 'T        CSECT'
+  printf '%-71sX\n' "L1       DC    F${q}1${q},F${q}2${q},"   # continuation marker in column 72
+  echo "               F${q}3${q}"
+  echo '         END'; } > /tmp/_d53.s
+./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1 || { echo "dc_types: FAIL (continued DC wrongly rejected)"; dcfail=1; }
+
+# (c) control -- the nine implemented types must NOT be over-rejected
+for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q}1${q}" "A(T)" "Y(T)" "V(EXTFOO)"; do
+    printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
+    if ! ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1; then
+        echo "dc_types: FAIL (implemented type $t wrongly rejected)"; dcfail=1; fi
+done
+[ $dcfail = 0 ] && echo "dc_types: OK (P Z E L S Q + CXD loud as unimplemented; W/G as ERR198; nine implemented types unmoved)"
+fail=$((fail + dcfail))
+rm -f /tmp/_d53.s /tmp/_d53.obj /tmp/_d53.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

@@ -1293,7 +1293,7 @@ static int macro_pass(char **in, int nin, char **out, int *raw_org) {
 static char unkops[128][12]; static int unkln[128]; static int nunk;   /* each undefined-op occurrence: the op and its lines[] index */
 static void note_unknown(const char *o, int line) {
     static const char *skip[] = { "SETA","SETB","SETC","GBLA","GBLB","GBLC","LCLA","LCLB","LCLC",
-        "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","CXD","COPY","MACRO","MEND","ACTR",
+        "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","COPY","MACRO","MEND","ACTR",
         "EXTRN","WXTRN", NULL };
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
     if (nunk < 128) { scopy(unkops[nunk], o, 11); unkln[nunk] = line; nunk++; }   /* one record per flagged statement */
@@ -1306,6 +1306,33 @@ static void note_unknown(const char *o, int line) {
 static char badfmt_op[128][12]; static int badfmt_ln[128]; static int nbadfmt;
 static void note_badfmt(const char *o, int line) {
     if (nbadfmt < 128) { scopy(badfmt_op[nbadfmt], o, 11); badfmt_ln[nbadfmt] = line; nbadfmt++; }
+}
+
+/* A DC/DS constant, or a directive, that reserves no storage.
+ *
+ * Two cases, and they must NOT share a message. Assembler XF has exactly
+ * fifteen constant types -- C X B P Z L D E F H A Y V Q S, the letters ORGed to
+ * a non-zero code in IFOX00's DCTBL (ifnx5d.asm:1164-1180). A letter outside
+ * that set is what IFOX00 raises ERR198 for, "INVALID TYPE DECLARED ON DC/DS/
+ * DXD CONSTANT" (ifnx5d.asm:202, text in erms.asm:203, severity 8 per
+ * jermsgcd.asm SEV198). P Z E L S Q, by contrast, are perfectly valid types
+ * that as370 has not implemented -- calling those "invalid" would be as
+ * misleading as the silence it replaces.
+ *
+ * Both used to fall through the type chain into its label-only last arm: the
+ * label was defined, no storage was reserved, the location counter did not
+ * advance, and the return code stayed 0. So every symbol after them in the
+ * section silently moved, and the ESD section length agreed with the short
+ * figure -- an object deck internally consistent and wrong (#53). CXD was the
+ * same shape one layer worse: it sat in note_unknown's skip[], deliberately
+ * exempted from diagnosis, while its companion DXD was flagged. */
+static char badty_ch[128]; static int badty_ln[128]; static int nbadty;
+static void note_badtype(int ty, int line) {
+    if (nbadty < 128) { badty_ch[nbadty] = (char)(ty ? ty : '?'); badty_ln[nbadty] = line; nbadty++; }
+}
+static char nyi_what[128][24]; static int nyi_ln[128]; static int nnyi;
+static void note_notimpl(const char *what, int line) {
+    if (nnyi < 128) { scopy(nyi_what[nnyi], what, 23); nyi_ln[nnyi] = line; nnyi++; }
 }
 /* A machine instruction whose displacement is a relocatable symbol while the
  * base register is given explicitly (SYM(Rn)).  IFOX00 rejects this with IFO228
@@ -1775,9 +1802,29 @@ static void do_pass(int pass, char **lines, int nlines) {
                     }
                     int emit = haslen ? blen : (q ? nb : 1), pad = emit - nb;   /* valueless DS nB reserves cnt*1 */
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
-                } else if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
+                } else {
+                    /* No storage produced. Say which of the two it is, once per
+                     * operand, in pass 1 -- pass 2 walks the same statements. */
+                    if (pass == 1) {
+                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }
+                        else note_badtype(ty, i);
+                    }
+                    /* The label is still defined, as before: withholding it would
+                     * turn one diagnostic into a cascade of undefined-symbol
+                     * errors on every later reference. The address is wrong -- but
+                     * the statement is now flagged, which is the whole point. */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
+                }
             }
             if (!in_dsect && lc > modlen) modlen = lc;   /* a DS reserves space that extends the section length even though it writes no TXT */
+        } else if (!strcmp(op, "CXD")) {
+            /* CXD generates one fullword-aligned fullword, the cumulative length
+             * of all pseudo registers. as370 reserves nothing for it, so it is
+             * flagged rather than skipped. Pseudo registers are unimplemented --
+             * they tie into the Q-type constant and, on the other side, ld370's
+             * PR collection rules -- so all three land together or not at all. */
+            if (pass == 1) { note_notimpl("CXD", i);
+                if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 4; } }
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0;
                 char F[4][64]; int nf = split_fields(opnd, F, 4);
@@ -2258,6 +2305,31 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ERROR: Undefined operation code in line %d - %s\n", line_org[unkln[j]], unkops[j]);
         }
         errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (nbadty) {   /* a DC/DS type letter outside Assembler XF's fifteen -- IFOX00 ERR198, severity 8 */
+        int j; for (j = 0; j < nbadty; j++) {
+            const char *s2 = lines[badty_ln[j]]; int sl = (int)strlen(s2);
+            while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s2);                              /* the flagged source statement */
+            /* '?' is the recorder's marker for "no type letter at all" -- a bare
+             * DS 0, or an empty element in the operand list (a trailing comma
+             * that is not a column-72 continuation). Saying "invalid type - ?"
+             * for those would be needlessly cryptic. */
+            if (badty_ch[j] == '?') fprintf(stderr, " ERROR: DC/DS/DXD operand has no constant type in line %d\n", line_org[badty_ln[j]]);
+            else fprintf(stderr, " ERROR: Invalid type declared on DC/DS/DXD constant in line %d - %c\n", line_org[badty_ln[j]], badty_ch[j]);
+        }
+        errors += nbadty;   /* IFOX ERR198: severity 8 (jermsgcd.asm SEV198) */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (nnyi) {   /* a valid Assembler XF construct as370 does not turn into storage yet */
+        int j; for (j = 0; j < nnyi; j++) {
+            const char *s2 = lines[nyi_ln[j]]; int sl = (int)strlen(s2);
+            while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s2);
+            fprintf(stderr, " ERROR: %s is valid Assembler XF but not implemented by as370 - no storage reserved, every later symbol in the section would move, in line %d\n", nyi_what[j], line_org[nyi_ln[j]]);
+        }
+        errors += nnyi;   /* not IFOX's error, but it must not pass silently: RC 8 */
         if (max_sev < 8) max_sev = 8;
     }
     if (nbadfmt) {   /* RS/SI/S storage operand with an illegal index/length subscript (D(,B) / D(X,B)) */
