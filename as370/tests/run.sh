@@ -236,5 +236,45 @@ else
 fi
 rm -f /tmp/_e50d.s /tmp/_e50d.obj /tmp/_e50e.s /tmp/_e50e.obj
 
+# --- issue #51: S/370 instructions missing from the opcode table -------------
+# as370's table was built from what the corpus happened to use; against IFOX00's
+# own machine-op table (ifox-src/all/genop.asm) 30 S/370 opcodes were absent.
+# MP (X'FC') is the one the reporter hit assembling COBOL output. There is no
+# IFOX00 reference deck for these, so the assertion is the encoding itself,
+# byte-pinned: every operand in the fixture carries an explicit base and
+# displacement, and DP -- already in the table and pinned to IFOX00 by the
+# corpus -- sits beside MP as the control, so a divergence between FC... and
+# FD... would be a table error rather than an encoder error.
+# 124 bytes over three TXT cards (56/56/12), so match them card by card.
+if ! ./as370 tests/opcodes_370.s -o /tmp/_o51.obj >/dev/null 2>&1; then
+    echo "opcodes_370: ASSEMBLE FAILED"; fail=1
+else
+    hex=$(od -An -tx1 /tmp/_o51.obj | tr -d ' \n')
+    c1=fc7310002000fd73100020000812093484051000850610008000100082001000930010009c0010009c0110009d0010009d0110009e001000
+    c2=9e0110009f0010009f011000b2001000b2011000b2021000b2031000b2041000b2061000b2071000b2081000b2091000b20d0000b2101000
+    c3=b2111000b2121000b2131000
+    if echo "$hex" | grep -q "$c1" && echo "$hex" | grep -q "$c2" && echo "$hex" | grep -q "$c3"; then
+        echo "opcodes_370: OK (MP == DP shape; RR/SI/S additions byte-pinned)"
+    else
+        echo "opcodes_370: FAIL (encoding not as pinned)"; fail=1
+    fi
+fi
+rm -f /tmp/_o51.obj
+# Deliberate exclusions: TPROT (X'E501', SSE) and IPTE (X'B221', RRE) are in
+# IFOX00's table but as370 has neither format. They must stay a LOUD gap -- a
+# fabricated encoding would turn RC 8 into silently wrong bytes. This asserts
+# the exclusion is deliberate, so a later "completeness" sweep cannot quietly
+# add them without an encoder.
+for m in TPROT IPTE; do
+    printf 'T        CSECT\n         %s 1,2\n         END\n' "$m" > /tmp/_x51.s
+    ./as370 /tmp/_x51.s -o /tmp/_x51.obj >/tmp/_x51.out 2>&1
+    if [ $? -ne 8 ] || ! grep -q "Undefined operation code" /tmp/_x51.out; then
+        echo "opcodes_370: FAIL ($m must stay rejected RC 8 -- as370 has no SSE/RRE format)"; fail=1
+    else
+        echo "opcodes_370: OK ($m still rejected RC 8 -- documented gap, not silent bytes)"
+    fi
+done
+rm -f /tmp/_x51.s /tmp/_x51.obj /tmp/_x51.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
