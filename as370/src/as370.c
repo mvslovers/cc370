@@ -560,10 +560,37 @@ static const struct opc *op_find(const char *n) {
     int i; for (i = 0; optab[i].name; i++) if (!strcmp(optab[i].name, n)) return &optab[i];
     return NULL;
 }
+/* ESDID of the control section a symbol's internal section id belongs to, or 0
+ * when it does not name one (an id never assigned, or a DSECT -- dummy sections
+ * get no ESD entry). Separate from sect_esdid() below, which substitutes the
+ * module's first section: here the caller has to see "unresolved" so it can keep
+ * its own fallback. */
+static int sect_esdid_of(int sect) {
+    int k; if (!sect) return 0;
+    for (k = 0; k < nesdord; k++)
+        if (esdord[k].role == ESD_SECT && esdord[k].s->sect == sect) return esdord[k].s->esdid;
+    return 0;
+}
+static int sect_esdid(int sect) {                   /* ESDID of the control section with this internal id (for an LD's owning section), else the module's first */
+    int e = sect_esdid_of(sect);
+    return e ? e : main_sect_esdid;
+}
 static void add_reloc(long at, const char *target, int isV) {
     if (in_dsect) return;                       /* a dummy section generates no relocations */
     struct sym *s = sym_find(target);
-    int rel = (s && s->esdid) ? s->esdid : cur_sect_esdid;
+    /* R, the relocation ESDID, names the section whose origin the linkage editor
+     * adds to the stored value -- so it must be the section the TARGET lives in,
+     * not the one the adcon sits in. A section (SD/PC) or an external reference
+     * (ER) carries its own ESDID and is used directly. An ordinary label and an
+     * ENTRY (LD) carry none, and used to fall straight through to the current
+     * section: correct in a single-CSECT module, wrong the moment a DC A(...)
+     * names a label in a sibling CSECT (#52). Resolve those through the owning
+     * section, and keep the old fallback for a target whose section does not
+     * resolve to an ESD entry at all -- an unset id, or a DSECT symbol reaching
+     * a call site that does not filter them. */
+    int rel = (s && s->esdid) ? s->esdid : 0;
+    if (!rel && s) rel = sect_esdid_of(s->sect);
+    if (!rel) rel = cur_sect_esdid;
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
     rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; rels[nrel].len = 4; nrel++;
 }
@@ -1761,7 +1788,13 @@ static void do_pass(int pass, char **lines, int nlines) {
             int k;
             if (!strcmp(op, "END") && opnd[0]) {
                 end_has = 1;
-                if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val; end_esdid = s->esdid ? s->esdid : main_sect_esdid; } }
+                /* The END card's ESDID names the section the entry point is IN --
+                 * the loader adds that section's origin to end_addr. Same lookup
+                 * as the ESD's LD entry and the RLD's R (#52): an ENTRY symbol
+                 * carries no ESDID of its own, and taking the module's first
+                 * section for it stamped an offset into CSECT 2 against CSECT 1. */
+                if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val;
+                    end_esdid = s->esdid ? s->esdid : sect_esdid(s->sect); } }
             }
             if (!strcmp(op, "END") && in_dsect) {   /* a trailing DSECT must not capture the pending literal pool: flush it into the control section */
                 in_dsect = 0; lc = main_lc; cur_sect_id = main_sect_id; cur_sect_esdid = main_sect_esdid;
@@ -1882,7 +1915,11 @@ static void emit_obj(FILE *f) {
             int ei = e; struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
             if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, sect_length(ei), 0); if (!cardfirst) cardfirst = s->esdid; }
             else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
-            else { esd_ent(c, slot, s->name, 0x01, s->val, main_sect_esdid, 0); }   /* LD entry */
+            /* LD: the last field is the ESDID of the section the symbol is DEFINED
+             * IN, not the module's first section -- which is what it used to be,
+             * so every entry in a second or later CSECT named the wrong one
+             * (#52). The -a listing already resolved it this way. */
+            else { esd_ent(c, slot, s->name, 0x01, s->val, sect_esdid(s->sect), 0); }   /* LD entry */
             n++;
         }
         cbe(c, 10, n * 16, 2);
@@ -1971,10 +2008,6 @@ static void a_newpage(const char *title, const char *colhdr) {
     { char id[48]; int bl; snprintf(id, sizeof id, "%s %s %s %s", AS370_IDR_PROD, AS370_IDR_VER, g_systime, g_sysdate);
       bl = (int)strlen(id); if (bl > 120) bl = 120; memcpy(ln + 120 - bl, id, (size_t)bl); }   /* level/time/date right-justified at col 120 */
     a_line(ln);
-}
-static int sect_esdid(int sect) {                   /* ESDID of the control section with this internal id (for an LD's owning section) */
-    int k; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT && esdord[k].s->sect == sect) return esdord[k].s->esdid;
-    return main_sect_esdid;
 }
 static void a_esd_section(void) {
     int k; char ln[128], b[16];
