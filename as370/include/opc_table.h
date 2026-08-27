@@ -168,3 +168,57 @@
     { "UNPK", F_SS, 0xF3, 0 },
     { "XC", F_SS, 0xD7, 0 },
     { "ZAP", F_SS, 0xF8, 0 },
+
+    /* ---- S/370 instructions absent from this table until #51 ----------------
+     * The table above was built from what the ecosystem corpus happened to use.
+     * Checked against IFOX00's own machine-op table (ifox-src/all/genop.asm,
+     * 220 machine opcodes against this table's 170), the following were simply
+     * missing -- `MP` is the one the #51 reporter hit, assembling COBOL output.
+     *
+     * Every entry below encodes through a path the corpus already pins to
+     * IFOX00 byte-for-byte: SS via DP/AP/ZAP, RR via the whole RR block, SI via
+     * NI/CLI/MVI, S via IPK/SPKA/STCK (which sit in optab[] in as370.c, beside
+     * the extended branches).
+     *
+     * NOT added, deliberately: TPROT (X'E501', SSE) and IPTE (X'B221', RRE).
+     * as370 has neither format, so an entry for them would have to invent an
+     * encoding -- turning a clean "undefined operation code" RC 8 into silently
+     * wrong bytes, which is the failure mode this table exists to avoid. They
+     * stay documented gaps -- see #51, which lists the full IFOX00 delta. */
+    { "MP", F_SS, 0xFC, 0 },               /* multiply decimal -- same shape as DP X'FD' */
+    { "SSK", F_RR, 0x08, 0 },
+    { "ISK", F_RR, 0x09, 0 },
+    /* Write/Read Direct. X'84'/X'85' are also claimed by the ESA/390 BRXH/BRXLE
+     * entries above -- a genuine architecture reuse of the opcode, not a typo.
+     * op_find() keys on the mnemonic and as370 only ever encodes, never decodes,
+     * so the two coexist without ambiguity. */
+    { "WRD", F_SI, 0x84, 0 },
+    { "RDD", F_SI, 0x85, 0 },
+    /* S format, 4 bytes. A ONE-byte opcode is written here as <op>00: the
+     * encoder emits o->op as a big-endian halfword, so 0x9300 produces the
+     * 93 00 B2 D2D2 that TS wants. The X'B2xx' group is already two bytes. */
+    { "SSM", F_S, 0x8000, 0 },
+    { "LPSW", F_S, 0x8200, 0 },
+    { "TS", F_S, 0x9300, 0 },
+    { "SIO", F_S, 0x9C00, 0 },
+    { "SIOF", F_S, 0x9C01, 0 },
+    { "TIO", F_S, 0x9D00, 0 },
+    { "CLRIO", F_S, 0x9D01, 0 },
+    { "HIO", F_S, 0x9E00, 0 },
+    { "HDV", F_S, 0x9E01, 0 },
+    { "TCH", F_S, 0x9F00, 0 },
+    { "CLRCH", F_S, 0x9F01, 0 },
+    { "CONCS", F_S, 0xB200, 0 },
+    { "DISCS", F_S, 0xB201, 0 },
+    { "STIDP", F_S, 0xB202, 0 },
+    { "STIDC", F_S, 0xB203, 0 },
+    { "SCK", F_S, 0xB204, 0 },
+    { "SCKC", F_S, 0xB206, 0 },
+    { "STCKC", F_S, 0xB207, 0 },
+    { "SPT", F_S, 0xB208, 0 },
+    { "STPT", F_S, 0xB209, 0 },
+    { "PTLB", F_S, 0xB20D, 0 },
+    { "SPX", F_S, 0xB210, 0 },
+    { "STPX", F_S, 0xB211, 0 },
+    { "STAP", F_S, 0xB212, 0 },
+    { "RRB", F_S, 0xB213, 0 },
