@@ -359,6 +359,17 @@ static int split_fields(const char *s, char f[][64], int max) {
     }
     return n;
 }
+
+/* ENTRY/EXTRN/WXTRN operand buffer: a comma-separated external-symbol list.
+ * The bound cannot be reached -- parse() caps the operand field at 1023
+ * characters and every symbol costs at least one character plus its separating
+ * comma, so 512 fields is the arithmetic maximum. EXTRN/WXTRN used to pass a
+ * local f[8][64], and split_fields drops everything past its maximum without a
+ * diagnostic, so the 9th and later symbols of a long EXTRN went missing
+ * silently. Shared (and static) because both call sites want the same size and
+ * do_pass is not recursive. */
+#define MAXEXTSYM 512
+static char extsym[MAXEXTSYM][64];
 /* split a DC/DS operand list at top-level commas, respecting 'quoted' strings
  * ('' is an embedded quote) and (parenthesised) sub-expressions */
 static int dc_split(const char *s, char f[][1024], int max) {
@@ -1603,11 +1614,19 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "TITLE")) {
             if (pass == 1 && lbl[0] && !deck_id[0]) scopy(deck_id, lbl, 8);   /* first named TITLE -> deck id */
         } else if (!strcmp(op, "ENTRY")) {
-            if (pass == 1 && opnd[0]) { struct sym *s = sym_get(opnd); s->is_entry = 1; esd_add(s, ESD_LD); }
+            /* ENTRY takes a comma-separated symbol list, exactly like EXTRN/WXTRN
+             * below -- IFOX00 accepts `ENTRY ALPHA,BETA` and emits one LD per
+             * symbol. as370 used to sym_get() the whole operand as a single name,
+             * so a list tripped the >8-character external-symbol check on
+             * "ALPHA,BETA" instead of assembling (#50). */
+            if (pass == 1 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
+                for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;   /* degenerate empty field (ENTRY A,,B): never sym_get("") -- that name is the unnamed private-code section */
+                    struct sym *s = sym_get(extsym[j]); s->is_entry = 1; esd_add(s, ESD_LD); } }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
             int weak = (op[0] == 'W');
-            if (pass == 1 && opnd[0]) { char f[8][64]; int nf = split_fields(opnd, f, 8), j;
-                for (j = 0; j < nf; j++) { struct sym *s = sym_get(f[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1; esd_add(s, ESD_ER); } }
+            if (pass == 1 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
+                for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;
+                    struct sym *s = sym_get(extsym[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1; esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
             char F[4][64]; split_fields(opnd, F, 4);
             if (pass == 2 && nusing < 32) {

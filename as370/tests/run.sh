@@ -187,5 +187,54 @@ else
 fi
 rm -f /tmp/_o32.obj /tmp/_o32.out
 
+# --- issue #50: ENTRY with a comma-separated symbol list ---------------------
+# IFOX00 accepts `ENTRY ALPHA,BETA` and emits one LD per symbol; as370 took the
+# whole operand as a single name, so the list tripped the >8-character external
+# check and the module did not assemble. There is no IFOX reference deck for the
+# list form, so the assertion is an EQUIVALENCE: the list must produce exactly
+# the deck the one-ENTRY-per-line spelling produces -- and that spelling is
+# pinned to IFOX00 by sample2/3/7 above.
+if ! ./as370 tests/entry_list.s -o /tmp/_e50a.obj >/dev/null 2>&1; then
+    echo "entry_list: ASSEMBLE FAILED (ENTRY list rejected)"; fail=1
+elif ! ./as370 tests/entry_list_1pl.s -o /tmp/_e50b.obj >/dev/null 2>&1; then
+    echo "entry_list: ASSEMBLE FAILED (one-per-line control)"; fail=1
+elif ! cmp -s /tmp/_e50a.obj /tmp/_e50b.obj; then
+    echo "entry_list: MISMATCH (list form != one-ENTRY-per-line form)"; fail=1
+else
+    echo "entry_list: OK (4-symbol ENTRY == one-ENTRY-per-line deck)"
+fi
+rm -f /tmp/_e50a.obj /tmp/_e50b.obj
+# EXTRN/WXTRN split the same way but were capped at 8 fields, and the splitter
+# drops everything past its maximum without a diagnostic -- so the 9th and later
+# symbols of a long EXTRN went missing silently (no ER, no message, RC 0). Ten
+# symbols, no V-cons: a V-con would re-register the name by itself and mask it.
+printf 'T        CSECT\n         EXTRN E1,E2,E3,E4,E5,E6,E7,E8,E9,E10\n         BR    14\n         END\n' > /tmp/_e50c.s
+if ! ./as370 /tmp/_e50c.s -o /tmp/_e50c.obj >/dev/null 2>&1; then
+    echo "entry_list: EXTRN 10-symbol ASSEMBLE FAILED"; fail=1
+else
+    # E9 (C5F9) and E10 (C5F1F0) in EBCDIC -- absent from the deck before the fix
+    hex=$(od -An -tx1 /tmp/_e50c.obj | tr -d ' \n')
+    if echo "$hex" | grep -q c5f9 && echo "$hex" | grep -q c5f1f0; then
+        echo "entry_list: OK (EXTRN 9th/10th symbol reach the ESD -- no silent drop)"
+    else
+        echo "entry_list: FAIL (EXTRN past the 8th symbol still dropped)"; fail=1
+    fi
+fi
+rm -f /tmp/_e50c.s /tmp/_e50c.obj
+# A degenerate empty field (ENTRY A,,B) must not reach sym_get("") -- that name
+# is the unnamed private-code section, so it would fabricate a phantom PC ESD
+# entry. Same equivalence assertion: the deck must equal the one without the
+# stray comma.
+printf 'T        CSECT\n         ENTRY A,,B\nA        BR    14\nB        BR    14\n         END\n' > /tmp/_e50d.s
+printf 'T        CSECT\n         ENTRY A,B\nA        BR    14\nB        BR    14\n         END\n' > /tmp/_e50e.s
+if ! ./as370 /tmp/_e50d.s -o /tmp/_e50d.obj >/dev/null 2>&1 || ! ./as370 /tmp/_e50e.s -o /tmp/_e50e.obj >/dev/null 2>&1; then
+    echo "entry_list: empty-field ASSEMBLE FAILED"; fail=1
+elif ! cmp -s /tmp/_e50d.obj /tmp/_e50e.obj; then
+    echo "entry_list: FAIL (empty ENTRY field changed the deck -- phantom private-code section?)"; fail=1
+else
+    echo "entry_list: OK (empty ENTRY field skipped, no phantom private-code section)"
+fi
+rm -f /tmp/_e50d.s /tmp/_e50d.obj /tmp/_e50e.s /tmp/_e50e.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
