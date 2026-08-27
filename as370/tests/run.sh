@@ -276,5 +276,49 @@ for m in TPROT IPTE; do
 done
 rm -f /tmp/_x51.s /tmp/_x51.obj /tmp/_x51.out
 
+# --- issue #52: a symbol's owning control section, in the ESD and the RLD -----
+# as370 looked up the module's FIRST section instead of the section a symbol is
+# defined in. Two symptoms, one root cause:
+#   ESD -- the LD entry for an ENTRY in a second or later CSECT named ESDID 1.
+#          Cosmetic (IEWL resolves by name), but it is what the reporter saw.
+#   RLD -- an ordinary label carries no ESDID of its own, so a relocation whose
+#          target lived in a sibling CSECT fell back to the CURRENT section.
+#          That is a wrong relocation ESDID, not a naming detail -- and it varied
+#          with where the adcon SAT: PLABEL in FIRST got 1, PENT in THIRD got 3.
+#   END  -- the entry-point card, same pattern. The loader adds the named
+#          section's origin to the address, so this one moves the entry point.
+# multi_csect.s carries both, plus three controls that must NOT move: a
+# same-section target (R = own section), a target that is itself a CSECT name
+# (its own ESDID, always right), and a DSECT target (no RLD entry at all).
+# No IFOX00 reference deck exists for this shape -- the corpus has 14 multi-CSECT
+# modules and not one of them has an ENTRY or a cross-section adcon to an
+# ordinary label -- so the bytes below are pinned from the corrected reading of
+# the OS/360 object format, and the corpus proves only that nothing regressed.
+if ! ./as370 tests/multi_csect.s -o /tmp/_o52.obj >/dev/null 2>&1; then
+    echo "multi_csect: ASSEMBLE FAILED"; fail=1
+else
+    hex=$(od -An -tx1 /tmp/_o52.obj | tr -d ' \n')
+    # ESD card 1: FIRST (SD, len 10) + SECOND (SD, len 4) + ENT2 (LD, addr 12,
+    # owning ESDID 0002 -- was 0001)
+    esd=c6c9d9e2e34040400000000040000010e2c5c3d6d5c440400000001040000004c5d5e3f2404040400100001240000002
+    # RLD: PSELF R=1 P=1 @8 | PCSNAME R=2 P=1 @0 (+1 = next reuses R/P) |
+    #      PLABEL @4 (was R=1) | PENT R=2 P=3 @14 (was R=3). Four items for five
+    #      adcons: the DSECT target generates none.
+    rld=000100010c000008000200010d0000000c000004000200030c000014
+    # END card: entry ENT2 at 000012 in section 0002 (was 0001, an offset into
+    # CSECT 2 charged against CSECT 1). Cols 1-16 of the card.
+    end=02c5d5c4400000124040404040400002
+    if ! echo "$hex" | grep -q "$esd"; then
+        echo "multi_csect: FAIL (ESD LD does not name its own section)"; fail=1
+    elif ! echo "$hex" | grep -q "$rld"; then
+        echo "multi_csect: FAIL (RLD relocation ESDIDs not as pinned)"; fail=1
+    elif ! echo "$hex" | grep -q "$end"; then
+        echo "multi_csect: FAIL (END card entry point does not name its own section)"; fail=1
+    else
+        echo "multi_csect: OK (ESD/RLD/END name the owning section; same-section, CSECT-name and DSECT controls unmoved)"
+    fi
+fi
+rm -f /tmp/_o52.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
