@@ -137,4 +137,58 @@ PY
            || { echo "listref reloc_addr: MISMATCH"; fail=1; }
 rm -f "$OUT3"
 
+
+# --- case 4: multi_csect -- issue #70 (per-section ESD lengths) --------------
+# The ESD section of the -a listing used to take its LENGTH column from modlen
+# for the first section and print a hard zero for every other -- right only
+# while a module has one section, which the three references above all are, so
+# nothing caught it. This is the first multi-section listing reference in the
+# tree; IFOX00 says FIRST 0x10, SECOND 4, THIRD 4, and the object deck has said
+# so since #61.
+#
+# The comparison stops at THIRD, and each of the three reasons is a listing-only
+# defect with its own issue -- the object deck for this module is byte-identical
+# throughout:
+#   THIRD CSECT   LOC printed before the origin is rounded up to a doubleword,
+#                 the same pre-alignment-LOC defect as #28
+#   MYDS DSECT    DSECT body rendered with the control section's counter and its
+#                 object bytes -- #24
+#   END ENT2      IFOX prints the entry point's address in the LOC column
+#
+# IFOX flags one statement, IFO158 for the deliberate DSECT-adcon control (#72),
+# so its listing carries an *** ERROR *** marker; norm() drops those from both
+# sides, as for the other error cases here.
+REF4=tests/listref/ifox-listing-multi-csect.txt
+OUT4=/tmp/as370-listref-mc.$$
+./as370 tests/multi_csect.s -a="$OUT4" >/dev/null 2>&1
+python3 - "$REF4" "$OUT4" <<'PY'
+import sys
+ref  = open(sys.argv[1]).read().split("\n")
+mine = open(sys.argv[2]).read().split("\n")
+HDR = ("SYMBOL   TYPE", "  LOC  OBJECT", "POS.ID")
+def norm(lines):
+    out = []
+    for l in lines:
+        l = l.replace("\f", "").rstrip()
+        if "THIRD    CSECT" in l:          break      # #28 / #24 / END LOC below
+        if l == "":                        continue
+        if l.strip() == "*** ERROR ***":   continue   # IFOX-only diagnostic
+        out.append(l)
+    return out
+R, M = norm(ref), norm(mine)
+ok = True
+for i in range(max(len(R), len(M))):
+    r = R[i] if i < len(R) else "<none>"
+    m = M[i] if i < len(M) else "<none>"
+    hdr = any(r.startswith(p) for p in HDR)
+    rc, mc = (r[:90], m[:90]) if hdr else (r, m)
+    if rc != mc:
+        ok = False
+        print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
+sys.exit(0 if ok else 1)
+PY
+[ $? = 0 ] && echo "listref multi_csect: per-section ESD lengths column-exact to IFOX00" \
+           || { echo "listref multi_csect: MISMATCH"; fail=1; }
+rm -f "$OUT4"
+
 exit $fail

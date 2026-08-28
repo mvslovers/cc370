@@ -2469,7 +2469,12 @@ static void a_esd_section(void) {
             memcpy(ln + 10, s->type == S_PC ? "PC" : "SD", 2);              /* TYPE col 11 */
             snprintf(b, sizeof b, "%04X", s->esdid); memcpy(ln + 14, b, 4); /* ID col 15 */
             snprintf(b, sizeof b, "%06lX", s->val & 0xffffffL); memcpy(ln + 19, b, 6);                         /* ADDR col 20 */
-            snprintf(b, sizeof b, "%06lX", (s->esdid == main_sect_esdid ? modlen : 0) & 0xffffffL); memcpy(ln + 26, b, 6);  /* LENGTH col 27 */
+            /* LENGTH col 27: the section's own extent, the same figure the object
+             * deck's ESD carries. It used to be the whole MODULE's length for the
+             * first section and a hard zero for every other -- right only while a
+             * module has one section, which is why three single-section listing
+             * references never caught it (#70). */
+            snprintf(b, sizeof b, "%06lX", sect_length(k) & 0xffffffL); memcpy(ln + 26, b, 6);
         } else if (role == ESD_LD) {
             memcpy(ln + 10, "LD", 2);
             snprintf(b, sizeof b, "%06lX", s->val & 0xffffffL); memcpy(ln + 19, b, 6);

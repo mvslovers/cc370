@@ -1,0 +1,86 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 04.28 08/28/26
+FIRST     SD  0001 000000 000010
+SECOND    SD  0002 000010 000004
+ENT2      LD       000012        0002
+THIRD     SD  0003 000018 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 04.28 08/28/26
+                                      1 * issue #52 -- a symbol's OWNING control section, in the ESD and
+                                      2 * in the RLD.
+                                      3 *
+                                      4 * Both halves of the same root cause: as370 looked up the module's
+                                      5 * first section instead of the section the symbol is defined in.
+                                      6 *   ESD: the LD entry for an ENTRY in a second or later CSECT
+                                      7 *        named ESDID 1.
+                                      8 *   RLD: an ordinary label carries no ESDID of its own, so a
+                                      9 *        relocation whose target lived in a sibling CSECT fell
+                                     10 *        back to the CURRENT section.
+                                     11 *   END: the entry-point card names the section the entry point
+                                     12 *        is IN, and the loader adds that section's origin -- so a
+                                     13 *        wrong ESDID there moves the entry point, unlike the
+                                     14 *        ESD's cosmetic one.
+                                     15 * PSELF and PCSNAME are the controls -- a same-section target,
+                                     16 * and a target that is itself a CSECT name (which has its own
+                                     17 * ESDID and was always right).
+                                     18 *
+                                     19 * The comment block is kept inside column 71 on purpose. IFOX00
+                                     20 * applies the continuation rule to comment cards too, so a
+                                     21 * comment reaching column 72 is IFO026 on the guest and silence
+                                     22 * on the host -- see #72. This module is a listing reference as
+                                     23 * well as a deck one, and it has to assemble the same way on
+                                     24 * both.
+000000                               25 FIRST    CSECT
+000000 00000010                      26 PCSNAME  DC    A(SECOND)
+000004 00000012                      27 PLABEL   DC    A(LBL2)
+000008 00000010                      28 PSELF    DC    A(LOCAL)
+00000C 00000000                      29 PDSECT   DC    A(DSFLD)
+         *** ERROR ***
+000010                               30 LOCAL    DS    0H
+000010                               31 SECOND   CSECT
+                                     32          ENTRY ENT2
+000010 07FE                          33          BR    14
+000012                               34 LBL2     DS    0H
+000012                               35 ENT2     DS    0H
+000012 07FE                          36          BR    14
+000018                               37 THIRD    CSECT
+000018 00000012                      38 PENT     DC    A(ENT2)
+000000                               39 MYDS     DSECT
+000000                               40 DSFLD    DS    F
+000012                               41          END   ENT2
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 04.28 08/28/26
+ 0001     0001      0C     000008
+ 0001     0002      0C     000000
+ 0001     0002      0C     000004
+ 0003     0002      0C     000018
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 04.28 08/28/26
+DSFLD    00004 00000000 00040  00029
+ENT2     00002 00000012 00035  00032 00038 00041
+FIRST    00001 00000000 00025
+LBL2     00002 00000012 00034  00027
+LOCAL    00002 00000010 00030  00028
+MYDS     00001 00000000 00039
+PCSNAME  00004 00000000 00026
+PDSECT   00004 0000000C 00029
+PENT     00004 00000018 00038
+PLABEL   00004 00000004 00027
+PSELF    00004 00000008 00028
+SECOND   00001 00000010 00031  00026
+THIRD    00001 00000018 00037
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 04.28 08/28/26
+   29  IFO158      NAME OF STATEMENT IN DSECT USED IN RELOCATABLE ADDRESS CONSTANT
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         41
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        86

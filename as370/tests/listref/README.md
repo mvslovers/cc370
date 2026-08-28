@@ -31,6 +31,29 @@ Two differences from the IFOX reference are expected and tolerated:
 Not yet produced (excluded from the comparison): the CROSS-REFERENCE, LITERAL
 CROSS-REFERENCE, DIAGNOSTICS and STATISTICS/OPTIONS pages.
 
+## `ifox-listing-multi-csect.txt` — the multi-section case (#70)
+
+The first reference here for a module with more than one control section, and
+the reason it was needed: the ESD section's LENGTH column took its figure from
+`modlen` for the first section and printed a hard zero for every other. With one
+section `modlen` *is* that section's length, so all three references above agreed
+with the wrong expression.
+
+`check.sh` compares it down to `THIRD CSECT` and stops. Everything below is a
+listing-rendering defect with its own issue — the object deck for this module is
+byte-identical to IFOX00 throughout:
+
+| line | as370 | IFOX00 | |
+|---|---|---|---|
+| `THIRD CSECT` | LOC `000014` | `000018` | pre-alignment LOC, #28 |
+| `MYDS DSECT` | LOC `00001C` | `000000` | DSECT body, #24 |
+| `DSFLD DS F` | object `00000010` | none | DSECT body, #24 |
+| `END ENT2` | LOC blank | `000012` | entry-point address |
+
+IFOX flags one statement in it, `IFO158` for the deliberate DSECT-adcon control
+(#72), so the reference carries an `*** ERROR ***` marker like the other error
+cases.
+
 ## `ifox-listing-fltoracl.txt` — captured, not yet wired in
 
 The SYSPRINT from the same guest run that produced `tests/ref/fltoracl.obj`
