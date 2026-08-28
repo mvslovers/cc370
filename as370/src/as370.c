@@ -53,7 +53,12 @@ static const struct opc optab[] = {
 };
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; };
+/* `opened` counts the CSECT/DSECT statements naming this symbol WITHIN the
+ * current pass, so both passes can tell a section that BEGINS here from one
+ * that is merely resumed. `defined` cannot serve: pass 1 sets it, so by pass 2
+ * every section looks resumed -- and the two passes must round the location
+ * counter identically or they disagree about every address after it. */
 static struct sym syms[MAXSYM];
 static int nsym;
 /* ESD is a list of (symbol, role) events in source order. A name can appear as
@@ -94,6 +99,24 @@ static int  in_dsect; static long main_lc; static int main_sect_id;   /* DSECT: 
 struct uent { int reg; long base; int sect; };   /* active USING ranges */
 static struct uent usings[32]; static int nusing;
 static int  cur_sect_id, g_sectid;            /* section identity for USING resolution */
+/* Per-section content high-water mark.
+ *
+ * A control section's LENGTH is the extent of what it actually contains. as370
+ * used to derive it as "the next section's origin minus this one's", which is
+ * the same number only while sections abut exactly -- and they do not, because
+ * IFOX00 rounds each new section's origin up to a doubleword (see the CSECT
+ * handler) while leaving the length alone. Deriving the length from the next
+ * origin would charge that padding to the section before it: in the reporter's
+ * module COBWS would come out 16 where IFOX00 says 13 (#61).
+ *
+ * So each section tracks its own end, updated wherever modlen is -- put(), ORG,
+ * DS/DC and the literal pool. Keying on cur_sect_id also keeps a DSECT's
+ * contents out of the enclosing control section's total on its own. */
+#define MAXSECT 1024
+static long sect_hwm[MAXSECT];
+static void note_sect_lc(long end) {
+    if (cur_sect_id > 0 && cur_sect_id < MAXSECT && end > sect_hwm[cur_sect_id]) sect_hwm[cur_sect_id] = end;
+}
 static char dsect_sect[256];                  /* dsect_sect[id]=1 if section id is a DSECT (its symbols are absolute) */
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
@@ -319,6 +342,7 @@ static void put(long at, long v, int n) {
         if (at + n > txl_maxend) txl_maxend = at + n;
     }
     if (at + n > modlen) modlen = at + n;
+    note_sect_lc(at + n);
 }
 static long align4(long x) { return (x + 3) & ~3L; }
 static long align8(long x) { return (x + 7) & ~7L; }
@@ -1733,8 +1757,25 @@ static void do_pass(int pass, char **lines, int nlines) {
             }
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
+            /* A control section BEGINS on a doubleword. IFOX00 gives each section
+             * its own location counter from zero (BLDESD, xdict.asm:85, stores a
+             * zero XLCTR) and rounds the origin up when the sections are chained
+             * into the module -- the idiom is spelled out at xfour.asm:313,
+             * "LA R11,D7(,R11)  ROUND TO DOUBLE WORD BOUNDARY". as370 runs one
+             * continuous counter instead and took the origin unrounded, so a
+             * section that followed one ending off a doubleword started early and
+             * its own internal alignment then fell differently: the SAME runtime
+             * source came out with sixteen different lengths across one corpus,
+             * depending only on what preceded it in the file (#61).
+             * A RESUMED section does not begin, so it is not rounded -- hence
+             * `opened`, which counts occurrences within this pass rather than
+             * across both. The padding belongs to no section: nothing writes it,
+             * so it produces no TXT, and it is not charged to the section before
+             * it either, because that one's length comes from its own high-water
+             * mark rather than from this origin. */
+            if (++s->opened == 1 && !in_dsect) lc = align8(lc);
             cur_sect_id = s->sect;
-            if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = lc; s->defined = 1; esd_add(s, ESD_SECT); }   /* first definition: origin = current (continuous) lc; a reopen keeps its origin */
+            if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = lc; s->defined = 1; esd_add(s, ESD_SECT); }   /* first definition: origin = the rounded counter; a reopen keeps its origin */
             if (pass == 2) cur_sect_esdid = s->esdid;
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             if (!in_dsect) { main_lc = lc; main_sect_id = cur_sect_id; }
@@ -1788,7 +1829,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
             if (lc > org_hwm) org_hwm = lc;
             lc = (!opnd[0] || opnd[0] == ',') ? org_hwm : expr_val(opnd, NULL);   /* bare ORG or `ORG ,` resets to the high-water mark */
-            if (!in_dsect && org_hwm > modlen) modlen = org_hwm;
+            if (!in_dsect) { if (org_hwm > modlen) modlen = org_hwm; note_sect_lc(org_hwm); }
         } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
             { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 8; }
@@ -1933,7 +1974,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                 }
             }
-            if (!in_dsect && lc > modlen) modlen = lc;   /* a DS reserves space that extends the section length even though it writes no TXT */
+            if (!in_dsect) { if (lc > modlen) modlen = lc; note_sect_lc(lc); }   /* a DS reserves space that extends the section length even though it writes no TXT */
         } else if (!strcmp(op, "CXD")) {
             /* CXD generates one fullword-aligned fullword, the cumulative length
              * of all pseudo registers. as370 reserves nothing for it, so it is
@@ -1996,7 +2037,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 l->placed = 1;
                 lc += l->size;
             } }
-            if (!in_dsect && lc > modlen) modlen = lc;   /* the pool's doubleword alignment extends the section length (no TXT for the pad) */
+            if (!in_dsect) { if (lc > modlen) modlen = lc; note_sect_lc(lc); }   /* the pool's doubleword alignment extends the section length (no TXT for the pad) */
             litpool++;
         } else if (pass == 1) note_unknown(op, i);
     }
@@ -2061,11 +2102,13 @@ static void esd_ent(unsigned char *c, int slot, const char *name, int type, long
  * module end for the last section. An empty section that shares an origin with
  * the next (e.g. an implicit private-code section ahead of a named CSECT) thus
  * gets length 0. */
+/* A section's length is the extent of its own contents -- NOT the distance to
+ * the next section's origin, which since #61 includes the doubleword padding in
+ * front of that section and would charge it to this one. */
 static long sect_length(int e) {
-    long org = esdord[e].s->val; int k;
-    for (k = e + 1; k < nesdord; k++)
-        if (esdord[k].role == ESD_SECT) return esdord[k].s->val - org;
-    return modlen - org;
+    struct sym *s = esdord[e].s;
+    long hw = (s->sect > 0 && s->sect < MAXSECT) ? sect_hwm[s->sect] : 0;
+    return hw > s->val ? hw - s->val : 0;
 }
 
 static void emit_obj(FILE *f) {
@@ -2412,6 +2455,7 @@ int main(int argc, char **argv) {
       for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT && esdord[k].s->type == S_SD) { main_sect_esdid = esdord[k].s->esdid; break; }
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
+    { int k; for (k = 0; k < nsym; k++) syms[k].opened = 0; }   /* `opened` counts within a pass: pass 2 must see the same sections begin */
     do_pass(2, lines, nl);
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
     if (nunk) {   /* op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
