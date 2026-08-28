@@ -18,7 +18,9 @@
 * a translation where they are X'AD'/X'BD', while as370 maps them per
 * CP037 to X'BA'/X'BB', the table the mvslovers upload path uses.  A
 * code-page difference in how the source travelled, not in what either
-* assembler did with it.  (`arith`, the companion module, is blocked on
+* assembler did with it -- now tracked as #74, where the reporter
+* counts 86 occurrences across 19 of 65 generated modules and
+* nothing else differing anywhere.  (`arith`, the companion module, is blocked on
 * #64 instead -- SRP.)
 *
 * Needs SYS1.MACLIB's SPIE and TIME (mvslovers/libc370#155); the test
