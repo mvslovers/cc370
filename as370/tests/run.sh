@@ -512,5 +512,56 @@ else
 fi
 rm -f /tmp/_lm.obj
 
+# --- issue #64: SRP's length nibble and its rounding digit --------------------
+# SRP is the third shape in the X'Fx' SS group: one length in the HIGH nibble and
+# an IMMEDIATE -- the rounding digit -- in the low one. as370 treated it as a
+# one-length instruction, writing the length across the whole byte and never
+# parsing the third operand, so the length reached the machine as the rounding
+# digit and every SRP that asked for rounding got none. Both at RC 0.
+srpfail=0
+printf 'T        CSECT\n         USING T,12\n         SRP   P1(8),1,0\n         SRP   P1(8),64-2,5\nP1       DS    PL8\n         END\n' > /tmp/_s64.s
+if ! ./as370 /tmp/_s64.s -o /tmp/_s64.obj >/dev/null 2>&1; then
+    echo "srp: ASSEMBLE FAILED"; srpfail=1
+elif ! od -An -tx1 /tmp/_s64.obj | tr -d ' \n' | grep -q f070c00c0001f075c00c003e; then
+    echo "srp: FAIL (encoding not L1 in the high nibble, I3 in the low)"; srpfail=1
+fi
+# the three operands SRP rejects. A missing one is IFOX00's ERR177 at severity
+# 12, not the 8 the others carry -- assert the RC so the distinction cannot be
+# quietly flattened back to a shared floor.
+printf 'T        CSECT\n         USING T,12\n         SRP   P1(8),1\nP1       DS    PL8\n         END\n' > /tmp/_s64.s
+./as370 /tmp/_s64.s -o /tmp/_s64.obj >/tmp/_s64.out 2>&1
+[ $? -eq 12 ] && grep -q "needs a third operand" /tmp/_s64.out || { echo "srp: FAIL (missing I3 not RC 12 / ERR177)"; srpfail=1; }
+for t in "SRP   P1(8),1,10" "SRP   P1(8),1,P1"; do
+    printf 'T        CSECT\n         USING T,12\n         %s\nP1       DS    PL8\n         END\n' "$t" > /tmp/_s64.s
+    ./as370 /tmp/_s64.s -o /tmp/_s64.obj >/dev/null 2>&1
+    [ $? -eq 8 ] || { echo "srp: FAIL ($t accepted, expected RC 8)"; srpfail=1; }
+done
+[ $srpfail = 0 ] && echo "srp: OK (F0 70 / F0 75 pinned; missing I3 = RC 12, out-of-range and relocatable = RC 8)"
+fail=$((fail + srpfail))
+rm -f /tmp/_s64.s /tmp/_s64.obj /tmp/_s64.out
+# tests/ref/arith.obj is IFOX00's own deck for tests/arith.s -- the same
+# contributor, the same extraction path as hello. Five SRP occurrences and the
+# #61 origin rounding in one module, so it is the end-to-end regression for both.
+if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
+    echo "arith: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+elif ! ./as370 tests/arith.s $MACLIB -I "$SYS1MAC" -o /tmp/_ar.obj >/dev/null 2>&1; then
+    echo "arith: ASSEMBLE FAILED"; fail=1
+else
+    aref=tests/ref/arith.obj
+    amy=$(wc -c < /tmp/_ar.obj); arf=$(wc -c < "$aref")
+    if [ "$amy" != "$arf" ]; then echo "arith: MISMATCH (deck $amy vs $arf bytes)"; fail=1
+    else
+        an=$(( (arf / 80 - 1) * 80 ))
+        head -c "$an" /tmp/_ar.obj > /tmp/_ara.$$; head -c "$an" "$aref" > /tmp/_arb.$$
+        if cmp -s /tmp/_ara.$$ /tmp/_arb.$$; then
+            echo "arith: OK (== IFOX00 -- 5 SRP, and COBRT's origin rounded to 0x580)"
+        else
+            echo "arith: MISMATCH"; fail=1
+        fi
+        rm -f /tmp/_ara.$$ /tmp/_arb.$$
+    fi
+fi
+rm -f /tmp/_ar.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

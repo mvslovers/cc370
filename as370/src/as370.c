@@ -1358,13 +1358,15 @@ static char nyi_what[128][24]; static int nyi_ln[128]; static int nnyi;
 static void note_notimpl(const char *what, int line) {
     if (nnyi < 128) { scopy(nyi_what[nnyi], what, 23); nyi_ln[nnyi] = line; nnyi++; }
 }
-/* A DC/DS nominal value the constant's own rules reject. The reason text is
- * written at the call site and names the IFOX00 error it corresponds to:
- * ERR178 SYNTAX ERROR, ERR224 LENGTH ERROR, ERR236 ILLEGAL CHARACTER IN
- * EXPRESSION -- all severity 8 (jermsgcd.asm SEV178/SEV224/SEV236). */
-static char dcerr_msg[128][96]; static int dcerr_ln[128]; static int ndcerr;
-static void note_dcerr(const char *msg, int line) {
-    if (ndcerr < 128) { scopy(dcerr_msg[ndcerr], msg, 95); dcerr_ln[ndcerr] = line; ndcerr++; }
+/* An operand a statement's own rules reject -- a DC/DS nominal value, an SRP
+ * rounding digit. The reason text is written at the call site and names the
+ * IFOX00 error it corresponds to: ERR178 SYNTAX ERROR, ERR224 LENGTH ERROR,
+ * ERR236 ILLEGAL CHARACTER IN EXPRESSION, ERR177 MISSING OPERAND. The severity
+ * is passed with the message because they differ: 178, 224 and 236 are 8 while
+ * 177 is 12 (jermsgcd.asm). */
+static char operr_msg[128][96]; static int operr_ln[128]; static int operr_sev[128]; static int noperr;
+static void note_operr(const char *msg, int sev, int line) {
+    if (noperr < 128) { scopy(operr_msg[noperr], msg, 95); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
 }
 
 /* ---- packed (P) and zoned (Z) decimal ------------------------------------
@@ -1403,17 +1405,17 @@ static int emit_decimal(const char *txt, int packed, long at, int want, int emit
      * DC P' 123' and quietly truncate DC P'1 2' to 1C. */
     for (; *q; q++) {
         if (*q >= '0' && *q <= '9') { if (nd < 64) dig[nd] = (unsigned char)(*q - '0'); nd++; }
-        else if (*q == '.') { if (dot) { if (diag) note_dcerr("Syntax error - more than one decimal point in a decimal constant (IFOX00 ERR178)", line); return 0; } dot = 1; }
-        else { if (diag) note_dcerr("Illegal character in a decimal constant (IFOX00 ERR236)", line); return 0; }
+        else if (*q == '.') { if (dot) { if (diag) note_operr("Syntax error - more than one decimal point in a decimal constant (IFOX00 ERR178)", 8, line); return 0; } dot = 1; }
+        else { if (diag) note_operr("Illegal character in a decimal constant (IFOX00 ERR236)", 8, line); return 0; }
     }
-    if (!nd) { if (diag) note_dcerr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", line); return 0; }
+    if (!nd) { if (diag) note_operr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", 8, line); return 0; }
     if (nd > (packed ? 31 : 16)) {   /* PKON/ZKON compare the digit count against the DCTABLE limit and branch to LENER */
-        if (diag) note_dcerr(packed ? "Length error - a packed-decimal constant may have at most 31 digits (IFOX00 ERR224)"
-                                    : "Length error - a zoned-decimal constant may have at most 16 digits (IFOX00 ERR224)", line);
+        if (diag) note_operr(packed ? "Length error - a packed-decimal constant may have at most 31 digits (IFOX00 ERR224)"
+                                    : "Length error - a zoned-decimal constant may have at most 16 digits (IFOX00 ERR224)", 8, line);
         return 0; }
     len = want ? want : (packed ? (nd + 2) / 2 : nd);
     if (len < 1 || len > 16) {   /* DCTABLE gives P and Z a maximum of 128 bits */
-        if (diag) note_dcerr("Length error - a packed- or zoned-decimal constant may not exceed 16 bytes (IFOX00 ERR224)", line);
+        if (diag) note_operr("Length error - a packed- or zoned-decimal constant may not exceed 16 bytes (IFOX00 ERR224)", 8, line);
         return 0; }
     if (!emit) return len;
     if (packed) {
@@ -1651,7 +1653,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
         if (o) {
             while (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }   /* instructions are halfword-aligned */
-            char F[4][64]; int nf = split_fields(opnd, F, 4); (void)nf;
+            char F[4][64]; int nf = split_fields(opnd, F, 4);   /* nf: SRP needs its third operand */
             if (pass == 1) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = ins_len(o->fmt); }
                 int k; for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
@@ -1714,6 +1716,14 @@ static void do_pass(int pass, char **lines, int nlines) {
                 case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc, ao1 = r_addrok; long raw1 = r_raw;
                     resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc, ao2 = r_addrok; long raw2 = r_raw;
                     int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
+                    /* SRP is the third shape in the X'Fx' group and neither predicate
+                     * covers it: one length in the HIGH nibble, and an IMMEDIATE -- the
+                     * rounding digit I3 -- in the low one, from a third operand. It used
+                     * to fall through to the single-length path, which writes the length
+                     * across the whole byte, so `SRP P1(8),1,0` came out F0 07 where
+                     * IFOX00 emits F0 70: the length reaches the machine as the rounding
+                     * digit and vice versa, and I3 was never parsed at all (#64). */
+                    int srp = (o->op == 0xF0);
                     int len1 = (ns  >= 1 ? (int)sub[0]  : (l1 ? l1 : 1));
                     int len2 = (ns2 >= 1 ? (int)sub2[0] : (l2 ? l2 : 1));
                     int b1 = (ns  >= 2 ? (int)sub[1]  : (ib1 >= 0 ? ib1 : (int)sub[0]));
@@ -1736,8 +1746,24 @@ static void do_pass(int pass, char **lines, int nlines) {
                         lrecs[i].a2 = 0; lrecs[i].hasa2 = 1; break; }
                     /* the machine length field is (length-1); an explicitly-coded length of 0
                      * (the `*-*` self-modify idiom) is emitted as field 0, not 0xFF */
-                    int lenb = twol ? (((len1 ? (len1 - 1) & 0xf : 0) << 4) | (len2 ? (len2 - 1) & 0xf : 0))
-                                    : (len1 ? (len1 - 1) & 0xff : 0);
+                    int lenb;
+                    if (srp) {
+                        long i3 = 0;
+                        /* No pass guard: this switch runs in pass 2 only, like the
+                         * other diagnostics raised from it (note_badfmt, note_addrerr). */
+                        if (nf >= 3 && F[2][0]) {
+                            int rc3 = 0; i3 = expr_val(F[2], &rc3);
+                            if (rc3 != 0) note_operr("SRP rounding digit must be absolute (IFOX00 ERR178)", 8, i);
+                            else if (i3 < 0 || i3 > 9) note_operr("SRP rounding digit is outside 0-9 (IFOX00 ERR224)", 8, i);
+                        } else {
+                            /* Not defaulted: SRP takes three operands, and a silent 0 is a
+                             * rounding decision made on the programmer's behalf. */
+                            note_operr("SRP needs a third operand, the rounding digit (IFOX00 ERR177)", 12, i);
+                        }
+                        lenb = (int)((((len1 ? (len1 - 1) & 0xf : 0) << 4)) | (i3 & 0xf));
+                    } else
+                    lenb = twol ? (((len1 ? (len1 - 1) & 0xf : 0) << 4) | (len2 ? (len2 - 1) & 0xf : 0))
+                                : (len1 ? (len1 - 1) & 0xff : 0);
                     put(lc, o->op, 1); put(lc + 1, lenb, 1);
                     put(lc + 2, ((long)b1 << 12) | (d & 0xfff), 2); put(lc + 4, ((long)b2 << 12) | (d2 & 0xfff), 2); lc += 6;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b1); lrecs[i].hasa1 = 1;
@@ -1929,7 +1955,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         /* DS reserves the length with no value; a DC without one
                          * reaches IFOX's LDELIM3 and is a syntax error. */
                         int len = haslen ? blen : 1;   /* DCTABLE default length for P and Z is 1 */
-                        if (pass == 1 && !strcmp(op, "DC")) note_dcerr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", i);
+                        if (pass == 1 && !strcmp(op, "DC")) note_operr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", 8, i);
                         if (setlbl) { struct sym *s2 = sym_get(lbl); s2->val = lc; s2->defined = 1; s2->sect = cur_sect_id; s2->len = len; }
                         for (k = 0; k < cnt; k++) { int j; for (j = 0; j < len; j++) { if (emit_dc) put(lc, 0, 1); lc++; } }
                     } else {
@@ -2468,15 +2494,18 @@ int main(int argc, char **argv) {
         errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
         if (max_sev < 8) max_sev = 8;
     }
-    if (ndcerr) {   /* a DC/DS nominal value its own constant type rejects */
-        int j; for (j = 0; j < ndcerr; j++) {
-            const char *s2 = lines[dcerr_ln[j]]; int sl = (int)strlen(s2);
+    if (noperr) {   /* an operand its own statement's rules reject */
+        int j; for (j = 0; j < noperr; j++) {
+            const char *s2 = lines[operr_ln[j]]; int sl = (int)strlen(s2);
             while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
             fprintf(stderr, "%.*s\n", sl, s2);
-            fprintf(stderr, " ERROR: %s in line %d\n", dcerr_msg[j], line_org[dcerr_ln[j]]);
+            fprintf(stderr, " ERROR: %s in line %d\n", operr_msg[j], line_org[operr_ln[j]]);
         }
-        errors += ndcerr;   /* IFOX ERR178/ERR224/ERR236: all severity 8 */
-        if (max_sev < 8) max_sev = 8;
+        errors += noperr;
+        /* Per entry, not a shared floor: ERR178, ERR224 and ERR236 are severity 8,
+         * ERR177 is 12 (jermsgcd.asm SEV177). Citing an IFOX error number and then
+         * reporting the wrong severity for it would be its own small lie. */
+        { int j2; for (j2 = 0; j2 < noperr; j2++) if (max_sev < operr_sev[j2]) max_sev = operr_sev[j2]; }
     }
     if (nbadty) {   /* a DC/DS type letter outside Assembler XF's fifteen -- IFOX00 ERR198, severity 8 */
         int j; for (j = 0; j < nbadty; j++) {
