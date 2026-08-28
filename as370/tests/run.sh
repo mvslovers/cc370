@@ -492,6 +492,37 @@ else
     echo "diag_cap: OK (600 diagnostics: the list is capped, the count, the RC and the loss are not)"
 fi
 rm -f /tmp/_cap.s /tmp/_cap.obj /tmp/_cap.out
+# --- issue #82: an undefined symbol assembles as zero, silently --------------
+# A TRIPWIRE, not a passing feature: it pins what as370 does TODAY so that fixing
+# #82 fails here and forces these numbers to be replaced by the oracle's.
+#
+# IFOX00 flags every undefined symbol IFO188 (severity 8, erms.asm:193 /
+# jermsgcd.asm SEV188) AND zeroes the whole instruction.
+# tests/listref/ifox-listing-undefsym.txt is its listing for this fixture
+# (JOB02870): four statements flagged, five messages, RC 8, and
+#
+#     000000 0000 0000            8          BE    NOWHERE
+#     000004 0000 0000            9          LH    3,NOSUCH(,7)
+#     000008 0000 0000 0000      10          MVC   FIELD-BASE(8,2),0(3)
+#
+# as370 keeps the opcode and zeroes only the operands, which is the worse half of
+# the difference: IFOX00's all-zero instruction is an invalid opcode and S0C1s
+# the moment it is reached, while ours RUNS -- a branch to address 0, a load from
+# base+0, an MVC into offset 0 of whatever the base register holds. That is how
+# nsf370's two modules lost a DCBD, two EQUs and a whole instruction to #72's
+# continuation rule without one diagnostic between them.
+./as370 tests/undefsym.s -o /tmp/_u82.obj >/tmp/_u82.out 2>&1; rc82=$?
+hex=$(od -An -tx1 /tmp/_u82.obj | tr -d ' \n')
+if [ $rc82 != 0 ]; then
+    echo "undefsym: #82 looks implemented (RC $rc82) -- replace this tripwire with the oracle:"
+    echo "          4 flagged statements, 5x IFO188, RC 8, and the three instructions zeroed"; fail=1
+elif echo "$hex" | grep -q "47800000" && echo "$hex" | grep -q "48307000" &&
+     echo "$hex" | grep -q "d20720003000" && echo "$hex" | grep -q "00000014"; then
+    echo "undefsym: OK (documented gap #82: undefined symbols assemble as zero, RC 0, no diagnostic)"
+else
+    echo "undefsym: FAIL (the bytes moved without the RC moving -- neither ours nor IFOX00's)"; fail=1
+fi
+rm -f /tmp/_u82.obj /tmp/_u82.out
 
 # --- a LIBRARY macro is read to its MEND and not one card further ------------
 # SYS1.MACLIB members routinely keep their PL/S source as comment cards AFTER

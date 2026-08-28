@@ -54,6 +54,23 @@ IFOX flags one statement in it, `IFO158` for the deliberate DSECT-adcon control
 (#72), so the reference carries an `*** ERROR ***` marker like the other error
 cases.
 
+## `ifox-listing-undefsym.txt` — the undefined-symbol gap (#82)
+
+IFOX00's SYSPRINT for `tests/undefsym.s` (JOB02870). Five `IFO188 … IS AN
+UNDEFINED SYMBOL` over four flagged statements, `HIGHEST SEVERITY 8`, and — the
+half that is easy to miss — **every flagged instruction assembled as all
+zeros**, an invalid opcode:
+
+```
+000000 0000 0000            8          BE    NOWHERE
+000004 0000 0000            9          LH    3,NOSUCH(,7)
+000008 0000 0000 0000      10          MVC   FIELD-BASE(8,2),0(3)
+```
+
+as370 keeps the opcode and zeroes only the operands, at RC 0 and in silence.
+`tests/run.sh` pins that as a tripwire, so implementing #82 breaks the test and
+brings whoever does it here for the numbers.
+
 ## `ifox-listing-cont72.txt` — the continuation-rule measurement (#72)
 
 IFOX00's SYSPRINT for `tests/cont72.s` (JOB02846). It is the evidence that a
