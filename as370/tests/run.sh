@@ -294,8 +294,15 @@ rm -f /tmp/_x51.s /tmp/_x51.obj /tmp/_x51.out
 # modules and not one of them has an ENTRY or a cross-section adcon to an
 # ordinary label -- so the bytes below are pinned from the corrected reading of
 # the OS/360 object format, and the corpus proves only that nothing regressed.
-if ! ./as370 tests/multi_csect.s -o /tmp/_o52.obj >/dev/null 2>&1; then
-    echo "multi_csect: ASSEMBLE FAILED"; fail=1
+# The fixture also carries the #72 case: PDSECT DC A(DSFLD) is IFO158 on IFOX00
+# (severity 8), so the RC is 8 and the deck is produced anyway -- exactly what
+# the captured reference listing says (tests/listref/ifox-listing-multi-csect.txt:
+# "29  IFO158", "NUMBER OF STATEMENTS FLAGGED ... 1", "HIGHEST SEVERITY WAS 8").
+./as370 tests/multi_csect.s -o /tmp/_o52.obj >/tmp/_o52.out 2>&1; rc52=$?
+if [ $rc52 != 8 ]; then
+    echo "multi_csect: expected RC 8 (IFO158 on PDSECT), got $rc52"; fail=1
+elif [ "$(grep -c 'IFOX00 IFO158' /tmp/_o52.out)" != 1 ]; then
+    echo "multi_csect: expected 1 IFO158 diagnostic, got $(grep -c 'IFOX00 IFO158' /tmp/_o52.out)"; fail=1
 else
     hex=$(od -An -tx1 /tmp/_o52.obj | tr -d ' \n')
     # ESD card 1: FIRST (SD, len 10) + SECOND (SD, len 4) + ENT2 (LD, addr 12,
@@ -321,9 +328,65 @@ else
         echo "multi_csect: FAIL (END card entry point does not name its own section)"; fail=1
     else
         echo "multi_csect: OK (ESD/RLD/END name the owning section; THIRD's origin rounded; controls unmoved)"
+        echo "multi_csect: OK (the DSECT adcon is IFO158 at RC 8, as on IFOX00 -- and still generates no RLD)"
     fi
 fi
-rm -f /tmp/_o52.obj
+rm -f /tmp/_o52.obj /tmp/_o52.out
+
+# --- issue #72: a DSECT symbol in a relocatable address constant = IFO158 -----
+# IFOX00 rejects it (severity 8, jermsgcd.asm SEV158) because a dummy section has
+# no ESDID to relocate against; as370 emitted the same zero constant and the same
+# empty RLD, and said nothing. multi_csect.s above is the DC A(...) oracle. These
+# are the cases it does not carry: the same rule reached through a LITERAL, and
+# the shapes that must stay clean.
+#
+# The literal has no IFOX00 oracle of its own -- the rule belongs to the
+# constant, not to the statement, so =A(DSFLD) is the same error -- and it is
+# charged to the statement that WROTE the literal, not to the LTORG/END that
+# assembles the pool (struct lit's defln).
+#
+# Two statements reference the SAME literal here, deliberately: a literal is one
+# pooled constant, assembled once, so it is diagnosed once -- against the first
+# reference (line 3), not once per use and not against the END that flushes the
+# pool. Pinned because it is a choice, not a law: IFOX00 has no oracle for it.
+{ printf 'LITDS    CSECT\n         USING LITDS,15\n'
+  printf '         L     2,=A(DSFLD)\n         L     3,=A(DSFLD)\n         BR    14\n'
+  printf 'MYDS     DSECT\nDSFLD    DS    F\n         END\n'; } > /tmp/_o72a.s
+./as370 /tmp/_o72a.s -o /tmp/_o72a.obj >/tmp/_o72a.out 2>&1; rc72=$?
+if [ $rc72 != 8 ]; then
+    echo "dsect_adcon: literal =A(DSFLD) not flagged (RC $rc72, expected 8)"; fail=1
+elif [ "$(grep -c 'IFOX00 IFO158' /tmp/_o72a.out)" != 1 ]; then
+    echo "dsect_adcon: expected 1 IFO158 for the pooled literal, got $(grep -c 'IFOX00 IFO158' /tmp/_o72a.out)"; fail=1
+elif ! grep -q 'IFO158.*in line 3' /tmp/_o72a.out; then
+    echo "dsect_adcon: literal IFO158 not charged to the first referencing statement (line 3)"; fail=1
+else
+    echo "dsect_adcon: OK (=A(DSFLD) flagged once, against the statement that wrote the literal)"
+fi
+
+# Control 1: two DSECT symbols PAIRED are absolute -- a length, not an address --
+# and IFOX00 does not flag that. Control 2: a DC inside a DSECT generates no
+# constant at all (sysmac/cvt.macro's own CVTMFRTR DC A(CVTBRET) is this shape,
+# and it is why the check tests in_dsect: without that test 23 libc370 modules
+# would be flagged for a constant that is never assembled). Control 3: an
+# ordinary adcon keeps its RLD entry and its RC 0.
+{ printf 'CTLDS    CSECT\n'
+  printf 'PDIFF    DC    A(DSFLD-MYDS)\n'
+  printf 'PREAL    DC    A(TARGET)\nTARGET   DS    F\n'
+  printf 'MYDS     DSECT\nDSFLD    DS    F\n'
+  printf 'PINDS    DC    A(DSFLD)\n         END\n'; } > /tmp/_o72b.s
+if ./as370 /tmp/_o72b.s -o /tmp/_o72b.obj >/tmp/_o72b.out 2>&1; then
+    hex=$(od -An -tx1 /tmp/_o72b.obj | tr -d ' \n')
+    # one RLD item only: PREAL at offset 4 (R=P=1); PDIFF is absolute and PINDS
+    # sits in the DSECT, which is never assembled
+    if echo "$hex" | grep -q "000100010c000004"; then
+        echo "dsect_adcon: OK (paired DSECT terms, and a DC inside a DSECT, stay clean at RC 0)"
+    else
+        echo "dsect_adcon: FAIL (controls assemble clean but the RLD is not the single PREAL item)"; fail=1
+    fi
+else
+    echo "dsect_adcon: FAIL (controls rejected -- over-diagnosis)"; cat /tmp/_o72b.out; fail=1
+fi
+rm -f /tmp/_o72a.s /tmp/_o72a.obj /tmp/_o72a.out /tmp/_o72b.s /tmp/_o72b.obj /tmp/_o72b.out
 
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest

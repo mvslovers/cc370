@@ -68,7 +68,7 @@ enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
 struct esdent { struct sym *s; int role; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
 
-struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[64]; int size; int algn; int sect; };
+struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[64]; int size; int algn; int sect; int defln; };
 static struct lit lits[MAXLIT];
 static int nlit;
 static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
@@ -265,6 +265,8 @@ static struct lit *lit_get(const char *t) {
     memset(&lits[nlit], 0, sizeof lits[0]); strncpy(lits[nlit].text, t, sizeof lits[0].text - 1);
     lits[nlit].ltseq = litpool;          /* literal belongs to the current (not-yet-flushed) pool */
     lits[nlit].sect = cur_sect_id;
+    lits[nlit].defln = g_curln;          /* the FIRST referencing statement: a literal is assembled at the pool, but a
+                                          * diagnostic about its nominal value belongs to the statement that wrote it */
     lit_classify(&lits[nlit]);
     if (lits[nlit].isV) {                /* =V: define the external symbol now; its ESD entry is */
         struct sym *s = sym_get(lits[nlit].ext); if (!s->defined) s->type = S_ER;   /* registered when the pool is flushed (LTORG/END), like IFOX */
@@ -1420,6 +1422,24 @@ static char operr_msg[128][96]; static int operr_ln[128]; static int operr_sev[1
 static void note_operr(const char *msg, int sev, int line) {
     if (noperr < 128) { scopy(operr_msg[noperr], msg, 95); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
 }
+/* IFOX00 IFO158 (severity 8, jermsgcd.asm SEV158): a symbol defined in a DSECT
+ * is an offset into a dummy section, and a dummy section has no ESDID -- there
+ * is nothing for the loader to relocate the constant against. Both assemblers
+ * emit the constant as zero and generate no RLD entry (the tgtreal test beside
+ * each call site has always decided that); what was missing was the diagnosis,
+ * so the guest warned where the host said nothing (#72).
+ *
+ * The call sites test dsect_sect[] EXPLICITLY rather than reusing !tgtreal: an
+ * undefined symbol fails that test too and is a different error entirely. */
+static void note_dsect_adcon(const char *sym, int line) {
+    char m[96];
+    /* The symbol is bounded so the whole message provably fits: the call sites
+     * pass a char[64], and note_operr keeps 95 characters, so an unbounded %s
+     * could cut the error number off the end -- and gcc's -Wformat-truncation
+     * refuses the build over it. An over-length symbol is its own diagnostic. */
+    snprintf(m, sizeof m, "DSECT symbol %.20s used in a relocatable address constant (IFOX00 IFO158)", sym);
+    note_operr(m, 8, line);
+}
 
 /* ---- packed (P) and zoned (Z) decimal ------------------------------------
  * Built to IFOX00's PKON and ZKON (ifnx5d.asm:572-616 and :619-663).
@@ -1677,6 +1697,7 @@ static void emit_lit(struct lit *l) {
                 char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
                 struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
                 int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+                if (rc != 0 && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
                 if (rc != 0 && tgtreal) { add_reloc(loc, sym, 0); rels[nrel - 1].len = per; } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         /* Every nominal value goes through the converter. It used to be reached
@@ -2130,6 +2151,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                                 else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0; long v = vals[vj][0] ? expr_val(vals[vj], &rc) : 0;
                                     struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
                                     int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+                                    /* in_dsect: a DC inside a DSECT reserves storage and generates no constant at all
+                                     * (sysmac/cvt.macro's own `CVTMFRTR DC A(CVTBRET)` is one), so it is not IFO158. */
+                                    if ((rc != 0) && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(rsym, i);
                                     put(lc, v, blen); if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0); rels[nrel - 1].len = blen; } }   /* AL3 address -> 3-byte relocation, etc. */
                             }
                             lc += blen;
