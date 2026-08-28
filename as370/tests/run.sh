@@ -389,8 +389,9 @@ rm -f /tmp/_o68.obj
 q="'"
 dcfail=0
 # (a) valid Assembler XF, still unimplemented -> RC 8, "not implemented" wording.
-# P and Z left this list when step 2 implemented them; E L S Q remain.
-for t in "E${q}1.5${q}" "L${q}1.5${q}" "S(T)" "Q(T)"; do
+# P and Z left this list when step 2 implemented them, E and L when step 3 did;
+# S and Q remain, and stay until the pseudo-register feature lands with them.
+for t in "S(T)" "Q(T)"; do
     printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
     ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
     if [ $? -ne 8 ]; then echo "dc_types: FAIL (DC $t did not give RC 8)"; dcfail=1
@@ -428,12 +429,12 @@ done
 ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1 || { echo "dc_types: FAIL (continued DC wrongly rejected)"; dcfail=1; }
 
 # (c) control -- the nine implemented types must NOT be over-rejected
-for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q}1${q}" "A(T)" "Y(T)" "V(EXTFOO)" "P${q}1${q}" "Z${q}1${q}"; do
+for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q}1${q}" "A(T)" "Y(T)" "V(EXTFOO)" "P${q}1${q}" "Z${q}1${q}" "E${q}1.5${q}" "L${q}1.5${q}"; do
     printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
     if ! ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1; then
         echo "dc_types: FAIL (implemented type $t wrongly rejected)"; dcfail=1; fi
 done
-[ $dcfail = 0 ] && echo "dc_types: OK (E L S Q + CXD loud as unimplemented; W/G as ERR198; implemented types unmoved)"
+[ $dcfail = 0 ] && echo "dc_types: OK (S Q + CXD loud as unimplemented; W/G as ERR198; implemented types unmoved)"
 fail=$((fail + dcfail))
 rm -f /tmp/_d53.s /tmp/_d53.obj /tmp/_d53.out
 
@@ -485,6 +486,45 @@ done
 rm -f /tmp/_d53d.s /tmp/_d53d.obj
 [ $dzfail = 0 ] && echo "dc_decimal: OK (P/Z bytes pinned to PKON/ZKON; layout fixed; 65-value list intact; 10 value errors rejected)"
 fail=$((fail + dzfail))
+
+# --- issue #53 (step 3): floating point, against IFOX00's own deck ------------
+# tests/ref/fltoracl.obj is IFOX00's deck for tests/fltoracl.s, assembled on an
+# MVS 3.8j guest and fetched back byte-for-byte. Unlike hello/arith/litmove this
+# oracle is ours rather than the reporter's -- it had to be, and that is the
+# point: the mvslovers corpus contains no floating-point constant and no D/E/L
+# literal at all, and the reporter's COBOL-74 compiler cannot emit one (see #53),
+# so nothing in reach could have validated these encodings.
+#
+# The deck rather than the listing, because IFOX prints at most eight object
+# bytes per statement line: the LOW halves of the 16-byte L constants and the
+# second element of D'1.5,2.5' exist only here.
+#
+# What used to happen, all at RC 0: D sat in the integer arm, so D'1.5' assembled
+# as 0000000000000001 where IFOX says 4118000000000000 and D'-1.5' as all ones;
+# E and L reserved nothing; on the literal path the converter was reached only
+# when the text contained a '.', 'e' or 'E', so =D'2' and =E'1' took the integer
+# route; and =L had no arm at all, so it reserved four bytes instead of sixteen
+# and sorted into the pool's fullword segment instead of its doubleword one.
+#
+# No macros, so it runs from a plain checkout -- no SYS1MAC, no skip.
+if ! ./as370 tests/fltoracl.s -o /tmp/_f53.obj >/dev/null 2>&1; then
+    echo "fltoracl: ASSEMBLE FAILED"; fail=1
+else
+    fref=tests/ref/fltoracl.obj
+    fmy=$(wc -c < /tmp/_f53.obj); frf=$(wc -c < "$fref")
+    if [ "$fmy" != "$frf" ]; then echo "fltoracl: MISMATCH (deck $fmy vs $frf bytes)"; fail=1
+    else
+        fn=$(( (frf / 80 - 1) * 80 ))
+        head -c "$fn" /tmp/_f53.obj > /tmp/_fa.$$; head -c "$fn" "$fref" > /tmp/_fb.$$
+        if cmp -s /tmp/_fa.$$ /tmp/_fb.$$; then
+            echo "fltoracl: OK (== IFOX00 -- D/E/L values, extended low halves, rounding, and the =D/=E/=L pool)"
+        else
+            echo "fltoracl: MISMATCH"; fail=1
+        fi
+        rm -f /tmp/_fa.$$ /tmp/_fb.$$
+    fi
+fi
+rm -f /tmp/_f53.obj
 
 # --- issue #52: a REAL IFOX00 deck as the oracle for the multi-CSECT shape ----
 # tests/ref/hello.obj is IFOX00's own object deck for tests/hello.s, contributed

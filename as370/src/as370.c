@@ -244,7 +244,14 @@ static void lit_classify(struct lit *l) {
         l->size = per * nv; l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
     } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
     } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
-    } else if (ty == 'D') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 8; l->algn = 8;
+    /* Floating point carries no integer value: emit_lit converts the nominal
+     * value itself. DCTABLE's default lengths are E 4 / D 8 / L 16, L doubleword
+     * like D -- as370 used to have no arm for E or L at all, so both fell into
+     * the default below and =L reserved four bytes instead of sixteen, twelve
+     * short and in the wrong pool segment (#53). */
+    } else if (ty == 'E' || ty == 'D' || ty == 'L') {
+        int base = (ty == 'E') ? 4 : (ty == 'D') ? 8 : 16;
+        l->size = haslen ? len : base; l->algn = haslen ? 1 : (base == 16 ? 8 : base);
     } else if (ty == 'X') { const char *q = strchr(p, '\''); unsigned char tmp[260]; int nb = q ? hex_to_bytes(q + 1, tmp, 260) : 0; l->size = haslen ? len : nb; l->algn = 1;
     } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; } sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
     } else { l->size = 4; l->algn = 4; }
@@ -1608,8 +1615,18 @@ static void emit_float(long at, const char *vstr, int bytes) {
     }
     int eexp = 0;
     if (*p == 'e' || *p == 'E') { p++; int es = 1; if (*p == '+') p++; else if (*p == '-') { es = -1; p++; } while (*p >= '0' && *p <= '9') { eexp = eexp * 10 + (*p++ - '0'); } eexp *= es; }
-    if (M.n == 0) { int j; for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero */
-    int fracbits = bytes * 8 - 8; if (fracbits > 56) fracbits = 56;
+    if (M.n == 0) { int j; for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero -- and a signed zero is still all zeros (measured: D'-0') */
+    /* Extended precision (L, 16 bytes) is two long floats: the high half is an
+     * ordinary one, the low half repeats the sign with an exponent 14 LESS -- the
+     * fourteen hex digits the high fraction holds -- and continues the same
+     * fraction. So the 112-bit fraction is developed in one piece and rounded
+     * once, at its end, not half by half. Measured against IFOX00:
+     *   L'1.5'   4118000000000000 3300000000000000
+     *   L'-1.5'  C118000000000000 B300000000000000   sign in both halves
+     *   L'0.1'   4019999999999999 329999999999999A   rounded at bit 112 */
+    int ext = (bytes > 8), hb = ext ? 8 : bytes, lb = ext ? bytes - 8 : 0;
+    int fracbits = (hb - 1) * 8; if (fracbits > 56) fracbits = 56;
+    int lofrac = ext ? (lb - 1) * 8 : 0; if (lofrac > 56) lofrac = 56;
     int P = eexp - nfrac, k;                 /* value = M * 10^P */
     struct bn num = M, den; bn_set(&den, 1);
     if (P >= 0) for (k = 0; k < P; k++) bn_mul_small(&num, 10);
@@ -1619,10 +1636,31 @@ static void emit_float(long at, const char *vstr, int bytes) {
     for (;;) { struct bn t = num; bn_mul_small(&t, 16); if (bn_cmp(&t, &den) < 0) { num = t; exp--; } else break; }
     struct bn N = num; bn_shl(&N, fracbits);  /* F = round(num * 2^fracbits / den) */
     struct bn R; unsigned long long F = bn_divmod(&N, &den, &R);
-    bn_mul_small(&R, 2); if (bn_cmp(&R, &den) >= 0) F++;        /* round half up */
-    if (F >> fracbits) { F >>= 4; exp++; }                     /* rounded up to 1.0 -> renormalise */
+    unsigned long long G = 0;
+    if (ext) {                                /* the low half continues the fraction: G = round(R * 2^lofrac / den) */
+        struct bn N2 = R; bn_shl(&N2, lofrac);
+        struct bn R2; G = bn_divmod(&N2, &den, &R2);   /* R < den, so the quotient stays below 2^lofrac <= 2^56 */
+        bn_mul_small(&R2, 2); if (bn_cmp(&R2, &den) >= 0) G++;   /* round half up, once, at bit 112 */
+        if (lofrac < 64 && (G >> lofrac)) { G = 0; F++; }        /* the low half rounded up into the high one */
+    } else {
+        bn_mul_small(&R, 2); if (bn_cmp(&R, &den) >= 0) F++;    /* round half up */
+    }
+    if (fracbits < 64 && (F >> fracbits)) {                     /* rounded up to 1.0 -> renormalise */
+        unsigned long long carry = F & 0xf;
+        F >>= 4;
+        if (ext && lofrac >= 4) G = (G >> 4) | (carry << (lofrac - 4));
+        exp++;
+    }
+    /* The exponent is excess-64 in seven bits and is NOT range-checked: a value
+     * needing an exponent outside 0..127 wraps silently, as it did before. IFOX00
+     * flags it; as370 does not (see #53). */
+    int i;
     put(at, (long)((sign ? 0x80 : 0) | (exp & 0x7f)), 1);
-    int i; for (i = 1; i < bytes; i++) put(at + i, (long)((F >> (8 * (bytes - 1 - i))) & 0xff), 1);   /* ascending byte order: same values, but the TXT emission log stays address-monotonic */
+    for (i = 1; i < hb; i++) put(at + i, (long)((F >> (8 * (hb - 1 - i))) & 0xff), 1);   /* ascending byte order: same values, but the TXT emission log stays address-monotonic */
+    if (ext) {
+        put(at + hb, (long)((sign ? 0x80 : 0) | ((exp - 14) & 0x7f)), 1);   /* exp AFTER any renormalisation */
+        for (i = 1; i < lb; i++) put(at + hb + i, (long)((G >> (8 * (lb - 1 - i))) & 0xff), 1);
+    }
 }
 static void emit_lit(struct lit *l) {
     const char *p = l->text + 1;
@@ -1641,9 +1679,13 @@ static void emit_lit(struct lit *l) {
                 int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
                 if (rc != 0 && tgtreal) { add_reloc(loc, sym, 0); rels[nrel - 1].len = per; } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
+        /* Every nominal value goes through the converter. It used to be reached
+         * only when the text contained a `.`, `e` or `E`, so =D'2' and =E'1' took
+         * the integer route and assembled as 0000000000000002 and 00000000 where
+         * IFOX00 says 4120000000000000 and 41100000 (#53). */
         const char *q = strchr(p, '\'');
-        if (q && strpbrk(q + 1, ".eE")) emit_float(l->loc, q + 1, l->size);
-        else put(l->loc, l->val, l->size);
+        if (q) emit_float(l->loc, q + 1, l->size);
+        else { int j; for (j = 0; j < l->size; j++) put(l->loc + j, 0, 1); }
     } else if (ty == 'F' || ty == 'H') {
         put(l->loc, l->val, l->size);
     } else if (ty == 'X') {
@@ -2027,8 +2069,39 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (*p == '(') { const char *rp = strchr(p, ')'); char ex[64]; int en = rp ? (int)(rp - p - 1) : 0; if (en > 63) en = 63; memcpy(ex, p + 1, en); ex[en] = 0; blen = (int)expr_val(ex, NULL); p = rp ? rp + 1 : p + strlen(p); }
                     else while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
-                if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'D' || ty == 'Y' || ty == 'V') {
-                    int base = (ty == 'D') ? 8 : (ty == 'H' || ty == 'Y') ? 2 : 4;
+                if (ty == 'E' || ty == 'D' || ty == 'L') {
+                    /* Floating point. DCTABLE (ifnx5d.asm:1164): E 4 bytes on a
+                     * fullword, D 8 and L 16 on a doubleword; a length modifier
+                     * suppresses the alignment, as for the fixed types above.
+                     * D used to sit in the integer arm below -- right space,
+                     * wrong bytes, silently: D'1.5' came out 0000000000000001
+                     * where IFOX00 says 4118000000000000 (#53). E and L reserved
+                     * nothing at all and were flagged as unimplemented. */
+                    int base = (ty == 'E') ? 4 : (ty == 'D') ? 8 : 16;
+                    int flen = haslen ? blen : base; if (flen < 1) flen = 1;
+                    if (!haslen) { long oldlc = lc; lc = (base == 4) ? align4(lc) : align8(lc);
+                        if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }
+                    /* The label is set ONCE, before the loop, exactly as the
+                     * fixed-point arm does: a zero duplication factor (DS 0D, the
+                     * alignment idiom) must still define it. */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = flen; }
+                    const char *q = strchr(p, '\'');
+                    if (!q) {                          /* DS reserves the space; a valueless DC still emits zeros, as before */
+                        for (k = 0; k < cnt; k++) { int j; for (j = 0; j < flen; j++) { if (emit_dc) put(lc, 0, 1); lc++; } }
+                    } else {
+                        /* one operand may carry a list of nominal values */
+                        char body[1024]; int slen = 0; const char *e = q + 1;
+                        while (*e && *e != '\'' && slen < 1023) body[slen++] = *e++;
+                        body[slen] = 0;
+                        static char fvals[512][64]; int nv = split_fields(body, fvals, 512), vi;
+                        if (nv < 1) { nv = 1; fvals[0][0] = 0; }
+                        for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
+                            if (emit_dc) emit_float(lc, fvals[vi], flen);
+                            lc += flen;
+                        }
+                    }
+                } else if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'Y' || ty == 'V') {
+                    int base = (ty == 'H' || ty == 'Y') ? 2 : 4;
                     if (!haslen) { blen = base; long oldlc = lc; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc);
                         if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }   /* DC alignment padding is emitted as zero TXT (IFOX-compatible) */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
@@ -2137,7 +2210,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     /* No storage produced. Say which of the two it is, once per
                      * operand, in pass 1 -- pass 2 walks the same statements. */
                     if (pass == 1) {
-                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* P and Z are handled above; what reaches here is E L S Q */
+                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* the fifteen valid Assembler XF types; all but S and Q are handled above */
                         else note_badtype(ty, i);
                     }
                     /* The label is still defined, as before: withholding it would
