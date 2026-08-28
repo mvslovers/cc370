@@ -1058,11 +1058,22 @@ static int rawlen(const char *l) { int n = (int)strlen(l); while (n > 0 && (l[n-
  * IFO026 CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS and IFO069
  * TOO MANY CONTINUATION CARDS are both severity 4 (jermsgcd.asm SEV26/SEV69) --
  * as370's first warnings, where every diagnostic before them was an error. */
-static struct { char src[24]; char card[80]; int line; int err; int stmt; int lost; } contd[128];
-static int ncontd;
+/* The printed list is bounded; the COUNTS are not. A module whose comment block
+ * is full of over-long cards can produce hundreds of these -- nsf370's
+ * nsfvsvc.asm produces 130 -- and the two that mattered there were the LAST two.
+ * At a silent cap of 128 they fell off the end, so a module that discarded four
+ * statements reported two, which is the exact failure mode this diagnostic
+ * exists to prevent. Overflow is now counted and said out loud, and the severity
+ * comes from the counters rather than from what happened to fit. */
+#define MAXCONTD 512
+static struct { char src[24]; char card[80]; int line; int err; int stmt; int lost; } contd[MAXCONTD];
+static int ncontd;          /* entries kept for printing */
+static int ncontd_seen;     /* every one raised */
+static int ncontd_lost;     /* of those, how many discarded a statement */
 static const char *g_joinsrc;         /* library member being joined; NULL = the primary source */
 static void note_cont(int err, int card, const char *text, int len, int stmt, int lost) {
-    if (ncontd >= 128) return;
+    ncontd_seen++; if (lost) ncontd_lost++;
+    if (ncontd >= MAXCONTD) return;
     contd[ncontd].stmt = stmt; contd[ncontd].lost = lost;
     scopy(contd[ncontd].src, g_joinsrc ? g_joinsrc : "", sizeof contd[0].src - 1);
     if (len > 79) len = 79;
@@ -2871,10 +2882,9 @@ int main(int argc, char **argv) {
     do_pass(2, lines, nl);
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
     if (ncontd) {   /* continuation cards: IFO026 / IFO069, both severity 4 -- warnings, and the RC says 4 */
-        int j, lost = 0; for (j = 0; j < ncontd; j++) {
+        int j; for (j = 0; j < ncontd; j++) {
             fprintf(stderr, "%s\n", contd[j].card);                         /* the flagged card */
             if (contd[j].lost) {
-                lost = 1;
                 fprintf(stderr, " ERROR: This card was consumed as a continuation and the statement on it discarded%s",
                         contd[j].err == 26 ? " (IFOX00 IFO026, severity 4 -- as370 raises it: a build must not pass silently)"
                                            : " (IFOX00 does not even warn here; the card's columns 1-15 are blank)");
@@ -2885,9 +2895,12 @@ int main(int argc, char **argv) {
             if (contd[j].src[0]) fprintf(stderr, " in line %d of library member %s\n", contd[j].line, contd[j].src);
             else                 fprintf(stderr, " in line %d\n", contd[j].line);
         }
+        if (ncontd_seen > ncontd)
+            fprintf(stderr, " ... and %d further continuation diagnostic%s, %d of them a discarded statement\n",
+                    ncontd_seen - ncontd, ncontd_seen - ncontd == 1 ? "" : "s", ncontd_lost);
         errors += cont_stmts();
-        if (max_sev < 4) max_sev = 4;          /* IFOX jermsgcd.asm SEV26 / SEV69 */
-        if (lost && max_sev < 8) max_sev = 8;  /* a discarded statement is as370's own error, not IFOX00's */
+        if (max_sev < 4) max_sev = 4;                 /* IFOX jermsgcd.asm SEV26 / SEV69 */
+        if (ncontd_lost && max_sev < 8) max_sev = 8;  /* a discarded statement is as370's own error, not IFOX00's */
     }
     if (nunk) {   /* op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
         int j; for (j = 0; j < nunk; j++) {
