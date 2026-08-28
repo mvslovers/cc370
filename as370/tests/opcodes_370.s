@@ -1,8 +1,13 @@
-* issue #51 -- S/370 machine instructions missing from as370's opcode table.
-* Every operand is written with an explicit base and displacement so the
-* expected bytes are unambiguous and no USING is involved. DP sits beside MP as
-* the control: it was already in the table and is pinned to IFOX00 by the
-* corpus, so an MP that does not match its shape is a table error, not an
+* issue #51 -- S/370 machine instructions missing from as370's opcode
+* table.
+* Every operand is written with an explicit base and displacement so
+* the
+* expected bytes are unambiguous and no USING is involved. DP sits
+* beside MP as
+* the control: it was already in the table and is pinned to IFOX00 by
+* the
+* corpus, so an MP that does not match its shape is a table error, not
+* an
 * encoder error.
 OPC370   CSECT
          MP    0(8,1),0(4,2)

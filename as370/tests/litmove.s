@@ -2,7 +2,8 @@
 * cc370 issue #61 -- CSECT origin alignment, on real generated code.
 *
 * Contributed by the #61 reporter with IFOX00's own object deck:
-*   https://gist.github.com/brazilofmux/65f1534c15187295e81b2271fa9f83d7
+*
+* https://gist.github.com/brazilofmux/65f1534c15187295e81b2271fa9f83d7
 *
 * The case this module makes better than any synthetic one: COBWS is
 * 13 bytes at 0x398, so it ENDS at 0x3A5, off a doubleword.  IFOX00
@@ -20,7 +21,8 @@
 * code-page difference in how the source travelled, not in what either
 * assembler did with it -- now tracked as #74, where the reporter
 * counts 86 occurrences across 19 of 65 generated modules and
-* nothing else differing anywhere.  (`arith`, the companion module, is blocked on
+* nothing else differing anywhere.  (`arith`, the companion module, is
+* blocked on
 * #64 instead -- SRP.)
 *
 * Needs SYS1.MACLIB's SPIE and TIME (mvslovers/libc370#155); the test

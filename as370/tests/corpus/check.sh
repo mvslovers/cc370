@@ -81,14 +81,23 @@ for rel in $(modules); do
     "$TMP/as370.base" "$LIBC370/$rel" $MAC -o "$TMP/base.obj" >/dev/null 2>&1; brc=$?
     ./as370             "$LIBC370/$rel" $MAC -o "$TMP/head.obj" >/dev/null 2>&1; hrc=$?
     # a module that assembles on one side and not the other is the loudest
-    # possible result: report it as its own category rather than as a byte diff
-    if [ $brc != 0 ] && [ $hrc = 0 ]; then
+    # possible result: report it as its own category rather than as a byte diff.
+    #
+    # "Assembles" is RC < 8, which is what JCL's COND=(8,LT) meant: severity 4 is
+    # a warning, the deck is punched, and the linkage editor ran. as370 had no
+    # severity-4 diagnostic at all until #72 (comment cards take part in the
+    # column-72 continuation rule), and 21 corpus modules now warn -- every one
+    # of them through libc370's vendored sysmac/getmain.macro, whose UTF-8
+    # transcription of `||` runs a card past column 72. Their decks are
+    # unchanged, which is exactly what this gate is here to say.
+    asm_ok() { [ "$1" -lt 8 ]; }
+    if ! asm_ok $brc && asm_ok $hrc; then
         echo "corpus: $rel NOW ASSEMBLES (did not under $BASE)"; head_only=$((head_only + 1)); continue
     fi
-    if [ $brc = 0 ] && [ $hrc != 0 ]; then
+    if asm_ok $brc && ! asm_ok $hrc; then
         echo "corpus: $rel NO LONGER ASSEMBLES (rc $hrc)"; base_only=$((base_only + 1)); moved=$((moved + 1)); continue
     fi
-    [ $brc = 0 ] || continue                          # does not assemble on either side: pre-existing
+    asm_ok $brc || continue                           # does not assemble on either side: pre-existing
     cmp -s "$TMP/base.obj" "$TMP/head.obj" || { echo "corpus: $rel MOVED"; moved=$((moved + 1)); }
 done
 

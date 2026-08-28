@@ -3,7 +3,8 @@
 *
 * Contributed by the #61 reporter with IFOX00's own object deck, kept
 * as tests/ref/arith.obj:
-*   https://gist.github.com/brazilofmux/65f1534c15187295e81b2271fa9f83d7
+*
+* https://gist.github.com/brazilofmux/65f1534c15187295e81b2271fa9f83d7
 *
 * Generated output from a COBOL-74 compiler: three CSECTs, and the
 * decimal-arithmetic idiom ZAP / SRP / AP throughout.  Five SRP

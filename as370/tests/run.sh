@@ -20,7 +20,14 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # section's TXT card carries its own ESDID.
 fail=0
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10; do
-    ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1 || { echo "$s: ASSEMBLE FAILED"; fail=1; continue; }
+    ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
+    # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
+    # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
+    # and libc370's vendored sysmac/getmain.macro carries a card whose UTF-8
+    # transcription of `||` (two bytes per character) pushes it past column 72,
+    # so the continuation rule warns at severity 4 on a card that is 80 bytes --
+    # and blank in column 72 -- in the EBCDIC member it was copied from.
+    [ $? -lt 8 ] || { echo "$s: ASSEMBLE FAILED"; fail=1; continue; }
     ref="tests/ref/$s.obj"
     mysz=$(wc -c < "/tmp/$s.obj"); refsz=$(wc -c < "$ref")
     # both decks end in a single END card (differs only in the optional IDR);
@@ -202,6 +209,22 @@ elif ! cmp -s /tmp/_e50a.obj /tmp/_e50b.obj; then
     echo "entry_list: MISMATCH (list form != one-ENTRY-per-line form)"; fail=1
 else
     echo "entry_list: OK (4-symbol ENTRY == one-ENTRY-per-line deck)"
+fi
+# The one-per-line control is no longer pinned only through sample2/3/7: once the
+# fixture's comment block was trimmed off column 72 (#72 -- IFOX00 read the
+# over-long comment as continued and ate the CSECT card behind it), it assembles
+# on the guest, and tests/ref/entry_list_1pl.obj is IFOX00's own deck for it.
+eref=tests/ref/entry_list_1pl.obj
+mysz=$(wc -c < /tmp/_e50b.obj); refsz=$(wc -c < "$eref")
+if [ "$mysz" != "$refsz" ]; then
+    echo "entry_list: MISMATCH against IFOX00 (deck $mysz vs $refsz bytes)"; fail=1
+else
+    nbe=$(( (refsz / 80 - 1) * 80 ))
+    head -c "$nbe" /tmp/_e50b.obj > /tmp/_ea.$$; head -c "$nbe" "$eref" > /tmp/_eb.$$
+    cmp -s /tmp/_ea.$$ /tmp/_eb.$$ \
+        && echo "entry_list: OK (one-ENTRY-per-line deck == IFOX00)" \
+        || { echo "entry_list: MISMATCH against IFOX00"; fail=1; }
+    rm -f /tmp/_ea.$$ /tmp/_eb.$$
 fi
 rm -f /tmp/_e50a.obj /tmp/_e50b.obj
 # EXTRN/WXTRN split the same way but were capped at 8 fields, and the splitter
@@ -388,6 +411,48 @@ else
 fi
 rm -f /tmp/_o72a.s /tmp/_o72a.obj /tmp/_o72a.out /tmp/_o72b.s /tmp/_o72b.obj /tmp/_o72b.out
 
+# --- issue #72: comment cards take part in the column-72 continuation rule ----
+# IFOX00 reads a comment statement with RALLCNT (ifnx1a.asm:606), so a comment
+# card reaching column 72 continues -- and the card it consumes is GONE, whether
+# it is another comment or a statement. as370 exempted comments outright and
+# quietly assembled what the guest had eaten, which made this a byte difference
+# and not only a missing diagnostic.
+#
+# tests/cont72.s is the measurement, tests/listref/ifox-listing-cont72.txt is
+# what IFOX00 did with it (JOB02846): RC 4, three statements flagged, five
+# IFO026 and one IFO069 -- and CONT72 is EIGHT bytes, because SWALLOW (case A,
+# eaten by the comment above it) and CTLC (case C, eaten by the bypass after
+# IFO069) never assemble. as370 emitted sixteen.
+./as370 tests/cont72.s -o /tmp/_c72.obj >/tmp/_c72.out 2>&1; rc72=$?
+n26=$(grep -c 'IFO026' /tmp/_c72.out); n69=$(grep -c 'IFO069' /tmp/_c72.out)
+hex=$(od -An -tx1 /tmp/_c72.obj | tr -d ' \n')
+if [ $rc72 != 4 ]; then
+    echo "cont72: expected RC 4 (severity-4 warnings only), got $rc72"; fail=1
+elif [ "$n26" != 5 ] || [ "$n69" != 1 ]; then
+    echo "cont72: expected 5 IFO026 + 1 IFO069 as IFOX00 emits, got $n26 + $n69"; fail=1
+elif ! grep -q '3 Statements Flagged' /tmp/_c72.out; then
+    echo "cont72: IFOX00 counts STATEMENTS flagged (3), not messages"; fail=1
+elif ! echo "$hex" | grep -q "c3d6d5e3f7f240400000000040000008"; then
+    echo "cont72: CONT72 is not 8 bytes -- a swallowed statement was assembled"; fail=1
+elif ! echo "$hex" | grep -q "0000000200000003"; then
+    echo "cont72: the surviving constants are not CTLA=2 and CTLB=3"; fail=1
+else
+    echo "cont72: OK (comment continuation eats the next card, 8 bytes, 5x IFO026 + IFO069 at RC 4 == IFOX00)"
+fi
+rm -f /tmp/_c72.obj /tmp/_c72.out
+# Control: a comment card that stops before column 72 continues nothing, and a
+# continuation card blank in columns 1-15 is not IFO026 -- the rule must not
+# fire on the ordinary shape, or every macro operand in the corpus would warn.
+{ printf 'CLEAN    CSECT\n* a comment that ends well before column 72\n'
+  printf 'KEEP     DC    F%s7%s\n         END\n' "'" "'"; } > /tmp/_c72c.s
+if ./as370 /tmp/_c72c.s -o /tmp/_c72c.obj >/tmp/_c72c.out 2>&1 &&
+   od -An -tx1 /tmp/_c72c.obj | tr -d ' \n' | grep -q "00000007"; then
+    echo "cont72: OK (a comment stopping before column 72 keeps the card after it)"
+else
+    echo "cont72: FAIL (over-broad -- an ordinary comment ate the next statement)"; cat /tmp/_c72c.out; fail=1
+fi
+rm -f /tmp/_c72c.s /tmp/_c72c.obj /tmp/_c72c.out
+
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
 # address when END is reached with a non-empty pool, assembles the pool there and
@@ -534,7 +599,23 @@ rm -f /tmp/_d53c.s /tmp/_d53c.obj
 if ! ./as370 tests/dc_decimal_list.s -o /tmp/_d53e.obj >/dev/null 2>&1; then
     echo "dc_decimal: FAIL (65-value list did not assemble)"; dzfail=1
 elif ! od -An -tx1 /tmp/_d53e.obj | tr -d ' \n' | grep -q 40000041; then
-    echo "dc_decimal: FAIL (65-value list: section is not 65 bytes -- a value was dropped)"; dzfail=1; fi
+    echo "dc_decimal: FAIL (65-value list: section is not 65 bytes -- a value was dropped)"; dzfail=1
+else
+    # Once the fixture's comment block was trimmed off column 72 (#72 -- the
+    # over-long comment continued and IFOX00 ate the `T CSECT` behind it), this
+    # one assembles on the guest too, so it is pinned to a real deck rather than
+    # to a section length: tests/ref/dc_decimal_list.obj is IFOX00's own.
+    dref=tests/ref/dc_decimal_list.obj
+    mysz=$(wc -c < /tmp/_d53e.obj); refsz=$(wc -c < "$dref")
+    if [ "$mysz" != "$refsz" ]; then
+        echo "dc_decimal: FAIL (65-value deck $mysz vs IFOX00 $refsz bytes)"; dzfail=1
+    else
+        nbe=$(( (refsz / 80 - 1) * 80 ))
+        head -c "$nbe" /tmp/_d53e.obj > /tmp/_da.$$; head -c "$nbe" "$dref" > /tmp/_db.$$
+        cmp -s /tmp/_da.$$ /tmp/_db.$$ || { echo "dc_decimal: FAIL (65-value list != IFOX00 deck)"; dzfail=1; }
+        rm -f /tmp/_da.$$ /tmp/_db.$$
+    fi
+fi
 rm -f /tmp/_d53e.obj
 # nominal values the constant's own rules reject -- each RC 8, none silent.
 # The blanks matter: PKON tests each character against J9 (X'09') and JBLANK is

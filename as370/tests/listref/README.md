@@ -54,6 +54,21 @@ IFOX flags one statement in it, `IFO158` for the deliberate DSECT-adcon control
 (#72), so the reference carries an `*** ERROR ***` marker like the other error
 cases.
 
+## `ifox-listing-cont72.txt` — the continuation-rule measurement (#72)
+
+IFOX00's SYSPRINT for `tests/cont72.s` (JOB02846). It is the evidence that a
+comment card reaching column 72 **consumes the next card**, statement or not:
+`SWALLOW DC F'1'` is printed with no statement number, is absent from the
+cross-reference, and `CONT72` comes out **eight** bytes rather than sixteen.
+Three statements flagged, five `IFO026` and one `IFO069`, `HIGHEST SEVERITY 4`
+-- code lost at warning level.
+
+`check.sh` does not compare it column by column: as370's listing does not render
+a statement's continuation cards, nor the diagnostics page. `tests/run.sh`
+asserts what the deck and the diagnostics say instead (RC 4, the message counts,
+the flagged-statement count, and the eight-byte section). Wire the columns in
+when the listing renders continuation cards.
+
 ## `ifox-listing-fltoracl.txt` — captured, not yet wired in
 
 The SYSPRINT from the same guest run that produced `tests/ref/fltoracl.obj`

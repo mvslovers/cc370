@@ -1048,10 +1048,53 @@ static int lib_path(const char *name, char *path) {
     }
     return 0;
 }
-/* join assembler continuation lines: a non-blank in column 72 continues the
- * statement on the next line starting at column 16. Comment lines (* / .*) are
- * never continued. Operates on raw[] and on every macro/COPY library read. */
 static int rawlen(const char *l) { int n = (int)strlen(l); while (n > 0 && (l[n-1] == '\n' || l[n-1] == '\r')) n--; return n; }
+
+/* ---- continuation-card diagnostics (IFO026 / IFO069) ---------------------
+ * Raised by the joiner, which runs before the statement list exists and is
+ * re-entered for every macro/COPY member read, so these carry their own card
+ * number and the member they came from rather than a lines[] index.
+ *
+ * IFO026 CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS and IFO069
+ * TOO MANY CONTINUATION CARDS are both severity 4 (jermsgcd.asm SEV26/SEV69) --
+ * as370's first warnings, where every diagnostic before them was an error. */
+static struct { char src[24]; char card[80]; int line; int err; int stmt; } contd[128];
+static int ncontd;
+static const char *g_joinsrc;         /* library member being joined; NULL = the primary source */
+static void note_cont(int err, int card, const char *text, int len, int stmt) {
+    if (ncontd >= 128) return;
+    contd[ncontd].stmt = stmt;
+    scopy(contd[ncontd].src, g_joinsrc ? g_joinsrc : "", sizeof contd[0].src - 1);
+    if (len > 79) len = 79;
+    memcpy(contd[ncontd].card, text, (size_t)len); contd[ncontd].card[len] = 0;
+    contd[ncontd].line = card; contd[ncontd].err = err; ncontd++;
+}
+/* IFOX00 counts STATEMENTS flagged, not messages (ERRORTN, ifnx6b.asm:443, skips
+ * the count when the statement number repeats): one statement with three
+ * continuation diagnostics is one flagged statement. */
+static int cont_stmts(void) {
+    int j, k, n = 0;
+    for (j = 0; j < ncontd; j++) { for (k = 0; k < j; k++) if (contd[k].stmt == contd[j].stmt) break; if (k == j) n++; }
+    return n;
+}
+/* One continuation card, already read: check columns 1-15 (IFOX00's RFCCHK
+ * checks BEGREG..CBGREG-1) and report the card's own line. as370 takes the
+ * continuation text from column 16 either way -- IFOX00 does NOT, it pulls the
+ * pre-continue-column characters into the operand (measured: `DC C'AB',` +
+ * `BADCONT   C'CD'` gives IFO198 near operand column 7, so the operand it
+ * scanned was `C'AB',BADCONT...`). No corpus statement continues that way --
+ * 1030 continuation cards in libc370, the only three with text before column 16
+ * are comment cards, whose text is discarded anyway -- so the recovery is left
+ * alone and only the diagnosis is added. */
+static void check_cont_card(const char *c, int cl, int card, int stmt) {
+    int k, nb = 0;
+    for (k = 0; k < 15 && k < cl; k++) if (c[k] != ' ' && c[k] != '\t') { nb = 1; break; }
+    if (nb) note_cont(26, card, c, cl, stmt);
+}
+
+/* join assembler continuation lines: a non-blank in column 72 continues the
+ * statement on the next line starting at column 16. Operates on raw[] and on
+ * every macro/COPY library read. */
 /* seqout (optional) receives cols 73-80 of each output line's primary card --
  * the library sequence number the listing's SOURCE column carries through. */
 static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12], int *org) {
@@ -1060,7 +1103,35 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
         const char *l = in[i];
         if (org) org[no] = i + 1;   /* 1-based input line of this statement's first card */
         if (seqout) { int k, sl = rawlen(l); for (k = 0; k < 8; k++) seqout[no][k] = (72 + k < sl) ? l[72 + k] : ' '; seqout[no][8] = 0; }
-        if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) { out[no++] = strdup(l); i++; continue; }
+        if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) {
+            /* A comment statement is continued exactly like any other: IFOX00
+             * reads it with RALLCNT (ifnx1a.asm:606, PNXT13 "READ ALL VALID
+             * CONTINUATIONS"), so a comment reaching column 72 CONSUMES the next
+             * card -- and if that card is a statement, the statement is gone.
+             * Measured on the guest (#72): the card is listed without a number,
+             * absent from the cross-reference, and the section is short by its
+             * bytes, all at severity 4. as370 exempted comments and quietly
+             * assembled the statement the guest had eaten.
+             *
+             * IFO069 is raised here and not for ordinary statements because a
+             * comment IS decidable at this point: the two-card limit lives under
+             * RALLCNT (REXCS, ifnx1a.asm:3778), which machine and assembler ops
+             * and comments use, while macro calls read one continuation at a
+             * time through RONECNT and are not bounded -- measured, a DCB call
+             * with three continuation cards is not flagged. The joiner cannot
+             * tell a macro call from a machine op, so that half is #78. */
+            int len = rawlen(l), cont = (len > 71 && l[71] != ' '), ncont = 0, stmt = i + 1;
+            out[no++] = strdup(l); i++;
+            while (cont && i < n) {
+                const char *c = in[i]; int cl = rawlen(c), nxt;
+                check_cont_card(c, cl, i + 1, stmt);
+                nxt = (cl > 71 && c[71] != ' ');
+                if (++ncont == 2 && nxt) note_cont(69, i + 1, c, cl, stmt);   /* card 3 of 3 still continues */
+                cont = nxt; i++;
+            }
+            continue;
+        }
+        int stmt_card = i + 1;                       /* this statement's first card, for the flagged-statement count */
         char acc[8192]; int a = 0, len = rawlen(l), copy = len > 71 ? 71 : len;
         if (copy < 0) copy = 0;   /* rawlen() is always >= 0; make it provable (glibc _FORTIFY_SOURCE) */
         acc[0] = 0; memcpy(acc, l, (size_t)copy); a = copy;
@@ -1084,6 +1155,7 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
                 else if (!q && d == 0 && (ch == ' ' || ch == '\t')) { a = j; break; }
             }
             const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
+            check_cont_card(c, cl, i + 1, stmt_card);   /* IFO026: RFCCHK checks every continuation card, not just a comment's */
             for (; s < e && a < 8190; s++) acc[a++] = c[s];
             cont = (cl > 71 && c[71] != ' ');
             i++;
@@ -1099,7 +1171,8 @@ static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[
     static char *tmp[16384]; char lb[256]; int n = 0;
     while (fgets(lb, sizeof lb, f) && n < 16384) tmp[n++] = strdup(lb);
     fclose(f);
-    return join_cont(tmp, n, buf, max, seqbuf, NULL);
+    { int r; const char *sv = g_joinsrc;    /* a continuation diagnostic in here names the member, not a source line */
+      g_joinsrc = name; r = join_cont(tmp, n, buf, max, seqbuf, NULL); g_joinsrc = sv; return r; }
 }
 static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12]) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
@@ -2730,6 +2803,19 @@ int main(int argc, char **argv) {
     { int k; for (k = 0; k < nsym; k++) syms[k].opened = 0; }   /* `opened` counts within a pass: pass 2 must see the same sections begin */
     do_pass(2, lines, nl);
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
+    if (ncontd) {   /* continuation cards: IFO026 / IFO069, both severity 4 -- warnings, and the RC says 4 */
+        int j; for (j = 0; j < ncontd; j++) {
+            fprintf(stderr, "%s\n", contd[j].card);                         /* the flagged card */
+            if (contd[j].err == 26)
+                fprintf(stderr, " WARNING: Characters appear between the begin and continue columns on a continuation card (IFOX00 IFO026)");
+            else
+                fprintf(stderr, " WARNING: Too many continuation cards, two allowed (IFOX00 IFO069)");
+            if (contd[j].src[0]) fprintf(stderr, " in line %d of library member %s\n", contd[j].line, contd[j].src);
+            else                 fprintf(stderr, " in line %d\n", contd[j].line);
+        }
+        errors += cont_stmts();
+        if (max_sev < 4) max_sev = 4;   /* IFOX jermsgcd.asm SEV26 / SEV69 */
+    }
     if (nunk) {   /* op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
         int j; for (j = 0; j < nunk; j++) {
             const char *s = lines[unkln[j]]; int sl = (int)strlen(s);
@@ -2745,7 +2831,7 @@ int main(int argc, char **argv) {
             const char *s2 = lines[operr_ln[j]]; int sl = (int)strlen(s2);
             while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
             fprintf(stderr, "%.*s\n", sl, s2);
-            fprintf(stderr, " ERROR: %s in line %d\n", operr_msg[j], line_org[operr_ln[j]]);
+            fprintf(stderr, " %s: %s in line %d\n", operr_sev[j] >= 8 ? "ERROR" : "WARNING", operr_msg[j], line_org[operr_ln[j]]);
         }
         errors += noperr;
         /* Per entry, not a shared floor: ERR178, ERR224 and ERR236 are severity 8,

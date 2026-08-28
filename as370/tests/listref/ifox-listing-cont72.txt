@@ -1,0 +1,48 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.18 08/28/26
+CONT72    SD  0001 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.18 08/28/26
+000000                                1 CONT72   CSECT
+                                      2 * CASE A -- this comment card carries a non-blank in column 72 and the
+                                      3 * next card is a STATEMENT. Does IFOX00 eat it as a continuation?      X
+                                        SWALLOW  DC    F'1'
+         *** ERROR ***
+000000 00000002                       4 CTLA     DC    F'2'
+                                      5 * CASE B -- same, but the next card is another COMMENT card, which has
+                                      6 * text between the begin and continue columns: IFO026 is expected here.X
+                                        * CASE B continuation card -- a comment starting in column 1.
+         *** ERROR ***
+000004 00000003                       7 CTLB     DC    F'3'
+                                      8 * CASE C -- three over-long comment cards in a row: two continuations
+                                      9 * are allowed, so the third should draw IFO069 as well as IFO026.      X
+                                        * CASE C second card, itself reaching column 72.                       X
+                                        * CASE C third card, itself reaching column 72.                        X
+         *** ERROR ***
+                                        CTLC     DC    F'4'
+         *** ERROR ***
+                                     10          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.18 08/28/26
+CONT72   00001 00000000 00001
+CTLA     00004 00000000 00004
+CTLB     00004 00000004 00007
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 10.18 08/28/26
+    3  IFO026      CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS ON CONTINUATION CARD
+    6  IFO026      CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS ON CONTINUATION CARD
+    9  IFO026      CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS ON CONTINUATION CARD
+    9  IFO026      CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS ON CONTINUATION CARD
+    9  IFO069      TOO MANY CONTINUATION CARDS, TWO ALLOWED
+    9  IFO026      CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS ON CONTINUATION CARD
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     3
+HIGHEST SEVERITY WAS    4
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         15
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        48

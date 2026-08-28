@@ -3,7 +3,8 @@
 *
 * Contributed by the #52 reporter together with IFOX00's own object
 * deck for it, kept as tests/ref/hello.obj:
-*   https://gist.github.com/brazilofmux/e7df231d980a3b7d92fae4775d784e4f
+*
+* https://gist.github.com/brazilofmux/e7df231d980a3b7d92fae4775d784e4f
 *
 * This is REAL generated output, not a constructed case: cobc370 (a
 * COBOL-74 compiler for MVS 3.8j) emitting a small program that opens
