@@ -91,10 +91,12 @@ man/%.1: man/%.pod
 	pod2man --section=1 --center="cc370 toolchain" --release="cc370 $(VERSION)" $< > $@
 
 # --- corpus regression gate (#23-lite) ------------------------------------
-# Assemble every non-wip libc370 module with as370 and check each object deck
-# against the committed SHA256 manifest. Needs the libc370 checkout next to
-# this repo (override with LIBC370=/path). A regression guard, not an oracle
-# guard -- see as370/tests/corpus/README.md.
+# Assemble every non-wip libc370 module twice -- with this tree's as370 and with
+# one built from a baseline revision (BASE=, default origin/main) -- and report
+# which decks moved. Needs the libc370 checkout next to this repo (override with
+# LIBC370=/path). A regression guard, not an oracle guard: both sides are as370,
+# so it says whether output CHANGED, never whether it is RIGHT. The committed
+# IFOX00 decks in tests/ref/ answer that. See as370/tests/corpus/README.md.
 test-corpus: as370/as370
 	@sh as370/tests/corpus/check.sh
 

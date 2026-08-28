@@ -18,8 +18,13 @@
 # Nothing is built from it; only the macro sources are read.
 #
 # Not included, and why:
-#   test-corpus  the committed SHA manifest has drifted from libc370's current
-#                sources, so it is red independently of any change here
+#   test-corpus  a fresh libc370 clone carries only the 27 hand-written
+#                asm/*.asm modules. The other 716 the local gate sweeps are
+#                sdk/mklibc.py output and are in no commit, so CI would have to
+#                build cc370 and regenerate them to cover them (#48). The gate
+#                itself is no longer the obstacle -- since #48 it is differential
+#                and green; wiring it in for the 27 would also need fetch-depth 0
+#                so the baseline revision is present.
 #   test-cc370   needs the GCC fork (`make compiler`)
 
 name: Build
