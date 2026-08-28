@@ -115,6 +115,21 @@ Unlike v1.x (3.2.3), v2.0 does **not** shadow `toplev.c`/`varasm.c`/`final.c` in
 - `\x`/`\NNN` escapes are pre-imaged in `cppcharset.c` (via `MAP_INCHAR`) so the output pass round-trips them to the literal byte — binary string data (e.g. crent dataset-I/O flags) is preserved.
 - A char has one runtime value whether it is a constant or sits in a string (`'\n' == "\n"[0]` at runtime). Note: a *directly indexed* const-array read (`"\n"[0]`) constant-folds to the **host** byte — inherent to the host-STRING_CST design, identical to v1.4. Real code reads strings at runtime via pointers (`src[i] == '\n'`), which is correct.
 
+**Which table applies is decided by the ingress path, and that decision stands:
+everything arriving over UFS is IBM-1047 (as USS on z/OS is), everything arriving
+over MVS is CP037.** cc370 and as370 are on the MVS side — their output reaches
+the system as datasets through the mvsMF upload path — so both use CP037, and
+they agree byte for byte: `i370_ascii_to_ebcdic` (`i370.c:63`) and as370's `a2e`
+both map `[` to `X'BA'` and `]` to `X'BB'`.
+
+Source that reaches a guest some other way can therefore differ in exactly those
+variant code points without either assembler being wrong. Submitting ASCII
+through Hercules' card reader produces `X'AD'`/`X'BD'` — the 1047 assignment —
+and that is a property of the transport, not of the translator. Measured across
+65 generated modules: 86 occurrences in 19 of them, and no other byte difference
+anywhere (mvslovers/cc370#74). Do not "fix" one side to match the other; check
+which path the source travelled first.
+
 ### Key preprocessor defines
 
 `TARGET_PDPMAC`, `TARGET_EBCDIC`, `TARGET_HLASM`, `TARGET_MVS`, `I370_IFOX_COLUMNS`, `IN_GCC`, `HAVE_CONFIG_H`.

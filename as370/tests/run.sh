@@ -579,8 +579,8 @@ rm -f /tmp/_hel.obj
 # The ESD cards only, deliberately. Three text bytes still differ and neither is
 # an as370 defect: the source's [ and ] reached the guest as X'AD'/X'BD' while
 # as370 maps them per CP037 to X'BA'/X'BB', the table the mvslovers upload path
-# uses. Its companion arith is byte-identical apart from #64 (SRP), and becomes
-# a full-deck fixture when that lands.
+# uses -- tracked as #74. Its companion arith became a full-deck fixture when
+# #64 (SRP) landed, and ksdsnatr is the third.
 if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
     echo "litmove: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
 elif ! ./as370 tests/litmove.s $MACLIB -I "$SYS1MAC" -o /tmp/_lm.obj >/dev/null 2>&1; then
@@ -650,6 +650,42 @@ else
     fi
 fi
 rm -f /tmp/_ar.obj
+
+# --- #68 / #61 / #63: the third full deck, and the one that found all three ---
+# tests/ref/ksdsnatr.obj is IFOX00's own deck for tests/ksdsnatr.s, contributed
+# by the #52/#61 reporter with permission to carry it here (#68). It is the most
+# informative of the three: arith carries SRP and hello the multi-CSECT ENTRY
+# shape, but this module has three control sections, VSAM macro expansions and a
+# literal pool at once, so one comparison regresses three rules together --
+# #61's origin rounding and section lengths, #63's DCB expansion, and #68's END
+# pool going to the FIRST control section.
+#
+# 1336 differing bytes when it arrived; byte-identical now. Nothing constructed
+# would have found those three, and nothing in the corpus contains them: it has
+# no genuinely multi-section module at all, and no literal referenced before a
+# later section.
+#
+# Same SPIE + TIME dependency as hello and arith, so it skips the same way.
+if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
+    echo "ksdsnatr: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+elif ! ./as370 tests/ksdsnatr.s $MACLIB -I "$SYS1MAC" -o /tmp/_ks.obj >/dev/null 2>&1; then
+    echo "ksdsnatr: ASSEMBLE FAILED"; fail=1
+else
+    kref=tests/ref/ksdsnatr.obj
+    kmy=$(wc -c < /tmp/_ks.obj); krf=$(wc -c < "$kref")
+    if [ "$kmy" != "$krf" ]; then echo "ksdsnatr: MISMATCH (deck $kmy vs $krf bytes)"; fail=1
+    else
+        kn=$(( (krf / 80 - 1) * 80 ))
+        head -c "$kn" /tmp/_ks.obj > /tmp/_ka.$$; head -c "$kn" "$kref" > /tmp/_kb.$$
+        if cmp -s /tmp/_ka.$$ /tmp/_kb.$$; then
+            echo "ksdsnatr: OK (== IFOX00 -- 3 CSECTs, VSAM expansions, and the END pool in the first section)"
+        else
+            echo "ksdsnatr: MISMATCH"; fail=1
+        fi
+        rm -f /tmp/_ka.$$ /tmp/_kb.$$
+    fi
+fi
+rm -f /tmp/_ks.obj
 
 # --- issue #63: two silent truncations that made a DCB twelve bytes short ------
 # Both had the same shape -- a bound exceeded without a word said -- and both
