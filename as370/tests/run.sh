@@ -301,21 +301,26 @@ else
     # ESD card 1: FIRST (SD, len 10) + SECOND (SD, len 4) + ENT2 (LD, addr 12,
     # owning ESDID 0002 -- was 0001)
     esd=c6c9d9e2e34040400000000040000010e2c5c3d6d5c440400000001040000004c5d5e3f2404040400100001240000002
+    # ESD card 2: THIRD. SECOND's contents end at 20, so THIRD's origin is
+    # rounded up to 24 (#61) -- this fixture guards that rule too.
+    esd2=e3c8c9d9c44040400000001840000004
     # RLD: PSELF R=1 P=1 @8 | PCSNAME R=2 P=1 @0 (+1 = next reuses R/P) |
     #      PLABEL @4 (was R=1) | PENT R=2 P=3 @14 (was R=3). Four items for five
     #      adcons: the DSECT target generates none.
-    rld=000100010c000008000200010d0000000c000004000200030c000014
+    rld=000100010c000008000200010d0000000c000004000200030c000018
     # END card: entry ENT2 at 000012 in section 0002 (was 0001, an offset into
     # CSECT 2 charged against CSECT 1). Cols 1-16 of the card.
     end=02c5d5c4400000124040404040400002
     if ! echo "$hex" | grep -q "$esd"; then
         echo "multi_csect: FAIL (ESD LD does not name its own section)"; fail=1
+    elif ! echo "$hex" | grep -q "$esd2"; then
+        echo "multi_csect: FAIL (THIRD's origin is not rounded up to a doubleword)"; fail=1
     elif ! echo "$hex" | grep -q "$rld"; then
         echo "multi_csect: FAIL (RLD relocation ESDIDs not as pinned)"; fail=1
     elif ! echo "$hex" | grep -q "$end"; then
         echo "multi_csect: FAIL (END card entry point does not name its own section)"; fail=1
     else
-        echo "multi_csect: OK (ESD/RLD/END name the owning section; same-section, CSECT-name and DSECT controls unmoved)"
+        echo "multi_csect: OK (ESD/RLD/END name the owning section; THIRD's origin rounded; controls unmoved)"
     fi
 fi
 rm -f /tmp/_o52.obj
@@ -474,6 +479,38 @@ else
     fi
 fi
 rm -f /tmp/_hel.obj
+
+# --- issue #61: CSECT origins on real generated code -------------------------
+# tests/litmove.s is contributed generated output; the three ESD cards below are
+# IFOX00's own, byte for byte, from the deck the reporter assembled on an MVS
+# 3.8j guest. COBWS is 13 bytes at 0x398 and so ends at 0x3A5, off a doubleword:
+# IFOX00 rounds COBRT's origin up to 0x3A8 and leaves COBWS's length at 13. That
+# pair -- rounded origin, unrounded length -- is the whole of #61, and it cannot
+# be got from a single pinned number.
+#
+# The ESD cards only, deliberately. Three text bytes still differ and neither is
+# an as370 defect: the source's [ and ] reached the guest as X'AD'/X'BD' while
+# as370 maps them per CP037 to X'BA'/X'BB', the table the mvslovers upload path
+# uses. Its companion arith is byte-identical apart from #64 (SRP), and becomes
+# a full-deck fixture when that lands.
+if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
+    echo "litmove: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+elif ! ./as370 tests/litmove.s $MACLIB -I "$SYS1MAC" -o /tmp/_lm.obj >/dev/null 2>&1; then
+    echo "litmove: ASSEMBLE FAILED"; fail=1
+else
+    lmhex=$(od -An -tx1 /tmp/_lm.obj | tr -d ' \n')
+    lm1=02c5e2c4404040404040003040400001d3c9e3d4d6e5c5400000000040000398c3d6c2c4c9e2d7400200000040404040c3d6c2e3c5d9d4400200000040404040
+    lm2=02c5e2c4404040404040003040400004c3d6c2e6e2404040000003984000000dc3d6c2d9e3404040000003a840000474c3d6c2c4c9e2d740010003a840000005
+    lm3=02c5e2c4404040404040003040404040c3d6c2e3c5d9d4400100042040000005c3d6c2e6d9d340400100057840000005c3d6c2c4c1e3c5400100045640000005
+    lmbad=0
+    for w in "$lm1" "$lm2" "$lm3"; do echo "$lmhex" | grep -q "$w" || lmbad=1; done
+    if [ $lmbad = 0 ]; then
+        echo "litmove: OK (ESD == IFOX00 -- COBRT origin rounded to 0x3A8, COBWS length still 13)"
+    else
+        echo "litmove: FAIL (ESD does not match IFOX00's)"; fail=1
+    fi
+fi
+rm -f /tmp/_lm.obj
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
