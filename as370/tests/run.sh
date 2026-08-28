@@ -423,13 +423,23 @@ rm -f /tmp/_o72a.s /tmp/_o72a.obj /tmp/_o72a.out /tmp/_o72b.s /tmp/_o72b.obj /tm
 # IFO026 and one IFO069 -- and CONT72 is EIGHT bytes, because SWALLOW (case A,
 # eaten by the comment above it) and CTLC (case C, eaten by the bypass after
 # IFO069) never assemble. as370 emitted sixteen.
+# The BYTES are IFOX00's; the RETURN CODE deliberately is not. IFOX00 puts a
+# discarded statement and a harmless comment-eats-comment at the same severity 4,
+# which on MVS passed COND=(8,LT) -- survivable in JCL, not in a host build,
+# where a tolerated RC 4 lets silent corruption through CI (mvslovers/nsf370: a
+# comment card ate a DCBD, two EQUs and an instruction, and the modules kept
+# building). as370 keeps IFO026 at 4 for the harmless case and raises the two
+# eaten statements to 8. Section length, TXT and message texts stay the oracle's.
 ./as370 tests/cont72.s -o /tmp/_c72.obj >/tmp/_c72.out 2>&1; rc72=$?
 n26=$(grep -c 'IFO026' /tmp/_c72.out); n69=$(grep -c 'IFO069' /tmp/_c72.out)
+nlost=$(grep -c '^ ERROR: This card was consumed' /tmp/_c72.out)
 hex=$(od -An -tx1 /tmp/_c72.obj | tr -d ' \n')
-if [ $rc72 != 4 ]; then
-    echo "cont72: expected RC 4 (severity-4 warnings only), got $rc72"; fail=1
+if [ $rc72 != 8 ]; then
+    echo "cont72: expected RC 8 (two statements discarded), got $rc72"; fail=1
+elif [ "$nlost" != 2 ]; then
+    echo "cont72: expected 2 discarded statements (SWALLOW, CTLC), got $nlost"; fail=1
 elif [ "$n26" != 5 ] || [ "$n69" != 1 ]; then
-    echo "cont72: expected 5 IFO026 + 1 IFO069 as IFOX00 emits, got $n26 + $n69"; fail=1
+    echo "cont72: IFOX00's five IFO026 and one IFO069 must all still be cited, got $n26 + $n69"; fail=1
 elif ! grep -q '3 Statements Flagged' /tmp/_c72.out; then
     echo "cont72: IFOX00 counts STATEMENTS flagged (3), not messages"; fail=1
 elif ! echo "$hex" | grep -q "c3d6d5e3f7f240400000000040000008"; then
@@ -437,7 +447,7 @@ elif ! echo "$hex" | grep -q "c3d6d5e3f7f240400000000040000008"; then
 elif ! echo "$hex" | grep -q "0000000200000003"; then
     echo "cont72: the surviving constants are not CTLA=2 and CTLB=3"; fail=1
 else
-    echo "cont72: OK (comment continuation eats the next card, 8 bytes, 5x IFO026 + IFO069 at RC 4 == IFOX00)"
+    echo "cont72: OK (8 bytes and IFOX00's messages; the two eaten statements are RC 8, not 4)"
 fi
 rm -f /tmp/_c72.obj /tmp/_c72.out
 # Control: a comment card that stops before column 72 continues nothing, and a
@@ -485,8 +495,8 @@ if [ $rcA != 0 ]; then
     echo "libmac_mend: text after MEND was read (rc $rcA, expected 0)"; cat "$mlib/a.out"; fail=1
 elif ! od -An -tx1 "$mlib/a.obj" | tr -d ' \n' | grep -q 00000005; then
     echo "libmac_mend: the macro's own DC F'5' did not survive"; fail=1
-elif [ $rcB != 4 ]; then
-    echo "libmac_mend: a column-72 comment INSIDE the definition not flagged (rc $rcB, expected 4)"; fail=1
+elif [ $rcB != 8 ]; then
+    echo "libmac_mend: a column-72 comment INSIDE the definition not flagged (rc $rcB, expected 8 -- it eats the model statement)"; fail=1
 elif ! grep -q 'IFO026' "$mlib/b.out"; then
     echo "libmac_mend: expected IFO026 for the card inside the definition"; fail=1
 elif od -An -tx1 "$mlib/b.obj" | tr -d ' \n' | grep -q 00000006; then
