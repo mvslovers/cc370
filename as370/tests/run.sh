@@ -433,5 +433,47 @@ rm -f /tmp/_d53d.s /tmp/_d53d.obj
 [ $dzfail = 0 ] && echo "dc_decimal: OK (P/Z bytes pinned to PKON/ZKON; layout fixed; 65-value list intact; 10 value errors rejected)"
 fail=$((fail + dzfail))
 
+# --- issue #52: a REAL IFOX00 deck as the oracle for the multi-CSECT shape ----
+# tests/ref/hello.obj is IFOX00's own object deck for tests/hello.s, contributed
+# by the #52 reporter along with the source. It is generated output from a
+# COBOL-74 compiler, not a constructed case: three CSECTs -- the program, COBWS
+# for WORKING-STORAGE, COBRT for the runtime -- with all four ENTRY points
+# defined in the THIRD control section and V-type adcons between them.
+#
+# That matters because it is the one thing the corpus cannot give us. libc370
+# has 14 multi-CSECT modules and not one of them has an ENTRY or a cross-section
+# adcon to an ordinary label, so #52's ESD/RLD/END fix was pinned to a reading of
+# the object format rather than to an oracle. This deck IS the oracle: 31 cards
+# byte-identical, the END card differing only in the translator identification
+# (15741SC103 against ASM370) and its Julian date, which is why -- as everywhere
+# else in this file -- the comparison stops before the END card.
+#
+# It needs SYS1.MACLIB's SPIE and TIME, which libc370's sysmac mirror does not
+# carry (mvslovers/libc370#155). Point SYS1MAC=<dir> at a SYS1.MACLIB extract to
+# run it; without them the fixture SKIPS rather than failing, so a plain checkout
+# stays green and the gap stays visible.
+SYS1MAC=${SYS1MAC:-$LIBC370/sysmac}
+if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
+    echo "hello: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+elif ! ./as370 tests/hello.s $MACLIB -I "$SYS1MAC" -o /tmp/_hel.obj >/dev/null 2>&1; then
+    echo "hello: ASSEMBLE FAILED"; fail=1
+else
+    href=tests/ref/hello.obj
+    hmy=$(wc -c < /tmp/_hel.obj); hrf=$(wc -c < "$href")
+    if [ "$hmy" != "$hrf" ]; then
+        echo "hello: MISMATCH (deck $hmy vs $hrf bytes)"; fail=1
+    else
+        hn=$(( (hrf / 80 - 1) * 80 ))
+        head -c "$hn" /tmp/_hel.obj > /tmp/_ha.$$; head -c "$hn" "$href" > /tmp/_hb.$$
+        if cmp -s /tmp/_ha.$$ /tmp/_hb.$$; then
+            echo "hello: OK (== IFOX00 -- 3 CSECTs, 4 ENTRYs in the third, V-adcons between)"
+        else
+            echo "hello: MISMATCH"; fail=1
+        fi
+        rm -f /tmp/_ha.$$ /tmp/_hb.$$
+    fi
+fi
+rm -f /tmp/_hel.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
