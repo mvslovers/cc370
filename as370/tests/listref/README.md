@@ -54,7 +54,7 @@ IFOX flags one statement in it, `IFO158` for the deliberate DSECT-adcon control
 (#72), so the reference carries an `*** ERROR ***` marker like the other error
 cases.
 
-## `ifox-listing-undefsym.txt` — the undefined-symbol gap (#82)
+## `ifox-listing-undefsym.txt` — the undefined symbol (#82, closed)
 
 IFOX00's SYSPRINT for `tests/undefsym.s` (JOB02870). Five `IFO188 … IS AN
 UNDEFINED SYMBOL` over four flagged statements, `HIGHEST SEVERITY 8`, and — the
@@ -67,9 +67,25 @@ zeros**, an invalid opcode:
 000008 0000 0000 0000      10          MVC   FIELD-BASE(8,2),0(3)
 ```
 
-as370 keeps the opcode and zeroes only the operands, at RC 0 and in silence.
-`tests/run.sh` pins that as a tripwire, so implementing #82 breaks the test and
-brings whoever does it here for the numbers.
+as370 reproduces both halves since #82: the same three instructions come out
+zero, the literal reference `L 4,=A(NOVAL)` stays `5840 F018` as IFOX assembles
+it, and the five messages name NOWHERE / NOSUCH / FIELD / BASE / NOVAL at RC 8.
+`tests/run.sh` asserts the object bytes, the message set and the RLD against this
+listing, and carries a second case for the operand shapes that must NOT be read
+as symbols (`X'40'`, `C'A'`, `B'1111'`, `L'FIELD`, `=A(…)`).
+
+`check.sh` does not compare this listing column by column — as370's listing page
+has no `*** ERROR ***` markers and no diagnostics page. Two differences from the
+reference are by design, and are recorded in the run.sh case:
+
+| | IFOX00 | as370 |
+|---|---|---|
+| `NOVAL` is flagged at | stmt 14, the generated pool statement | stmt 11, the statement that wrote the literal |
+| `NUMBER OF STATEMENTS FLAGGED` | 4 (stmt 10 raises two messages) | 5 — as370's counter counts messages |
+
+The first follows `defln`, the way IFO158 already attributes a literal
+diagnostic; as370's listing renders the pool line but has no `lines[]` entry to
+hang a diagnostic on. The second is every recorder in `as370.c`, not this one.
 
 ## `ifox-listing-cont72.txt` — the continuation-rule measurement (#72)
 

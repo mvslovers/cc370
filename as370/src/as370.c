@@ -142,6 +142,8 @@ static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
 static int  g_curln;           /* lines[] index of the statement being assembled -- line context for diagnostics raised from helpers (e.g. sym_get) */
+static int  g_pass;            /* the pass do_pass is running, 0 outside it -- x_factor's undefined-symbol diagnostic
+                                * must stay silent in pass 1, where a forward reference is not yet defined and legal */
 static char g_ovl_name[64];     /* set by parse() to the full over-length ORDINARY name-field token (>8, non-&); the assembly loop abandons it (IFO016). Empty when the name field is <=8 or absent. */
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
 static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
@@ -208,6 +210,45 @@ static char ovl_sym[128][64]; static int ovl_ln[128]; static int novl;
 static void note_overlong(const char *n) {
     int i; for (i = 0; i < novl; i++) if (!strcmp(ovl_sym[i], n)) return;   /* one report per distinct symbol -- an over-length name re-creates on every lookup (never matches sym_find) and again in pass 2 */
     if (novl < 128) { scopy(ovl_sym[novl], n, 63); ovl_ln[novl] = g_curln; novl++; }
+}
+/* A symbol term that names nothing: not defined in this module and not declared
+ * external.  IFOX00 rejects it with IFO188 <symbol> IS AN UNDEFINED SYMBOL
+ * (severity 8, erms.asm:193 / jermsgcd.asm SEV188) and assembles the whole
+ * machine instruction as ZERO -- an invalid opcode, which S0C1s the moment it is
+ * reached.  as370 used to substitute 0 for the term and KEEP the opcode, so the
+ * instruction ran: a branch to address 0, a load from base+0, an MVC into offset
+ * 0 of whatever the base register happened to hold.  Silent corruption where the
+ * guest gives a program check.
+ *
+ * That silence is how nsf370's two modules lost a DCBD, two EQUs and a whole
+ * instruction to the #72 continuation rule without one diagnostic between them:
+ * the swallowed cards DEFINED symbols, and every reference to them went quiet
+ * (#82).
+ *
+ * "Undefined" is neither `!sym_find` nor `!defined`.  sym_get enters symbols that
+ * are only REFERENCED -- EXTRN/WXTRN, a V-con, a =V literal -- and those keep
+ * defined == 0 for the whole assembly, so `!defined` alone would flag every
+ * external in the corpus.  They carry S_ER; nothing else undefined does.
+ *
+ * The pass-2 gate costs one case, in the quiet direction: IFOX resolves EQU in
+ * pass 1, so `A EQU B` with B defined further down is IFO188 there and silent
+ * here (as370 gives A the pass-1 value 0 and says nothing -- its own defect,
+ * adjacent to this one and not fixed by it).
+ *
+ * The printed list is bounded, the counts are not (the lesson of #72's contd[]:
+ * a silent cap let the two diagnostics that mattered fall off the end and took
+ * the severity with them).  Dedupe is per (statement, symbol) over the KEPT
+ * entries, so past the cap a repeat can be counted twice -- 512 distinct reports
+ * in one module is a source file nobody is still reading. */
+#define MAXUNDEF 512
+static struct { char sym[64]; int line; } undefs[MAXUNDEF];
+static int nundef;          /* entries kept for printing */
+static int nundef_seen;     /* every one raised */
+static void note_undefsym(const char *n, int line) {
+    int i; for (i = 0; i < nundef; i++) if (undefs[i].line == line && !strcmp(undefs[i].sym, n)) return;
+    nundef_seen++;
+    if (nundef >= MAXUNDEF) return;
+    scopy(undefs[nundef].sym, n, sizeof undefs[0].sym - 1); undefs[nundef].line = line; nundef++;
 }
 static struct sym *sym_find(const char *n) {
     int i; for (i = 0; i < nsym; i++) if (!strcmp(syms[i].name, n)) return &syms[i];
@@ -312,6 +353,13 @@ static long x_factor(int sign) {
     while (*xp_ && !strchr("+-*/(), ", *xp_) && n < 63) nm[n++] = *xp_++;
     nm[n] = 0;
     struct sym *s = sym_find(nm);
+    /* IFO188.  Diagnostic only -- the value and the relocation count below are
+     * deliberately left as they were, so no deck moves over this: an undefined
+     * term still contributes 0, and a table entry that is undefined but present
+     * still counts as relocatable exactly as it used to.  The empty name guard
+     * matters: the implicit private-code section is entered under "" (sym_get("")
+     * in do_pass), and a factor position holding no symbol at all yields "". */
+    if (g_pass == 2 && nm[0] && (!s || (!s->defined && s->type != S_ER))) note_undefsym(nm, g_curln);
     if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) xrl_ += sign; return s->val; }
     return 0;
 }
@@ -1727,6 +1775,63 @@ static int has_overlong_term(const char *s) {
     }
     return 0;
 }
+/* Record every ordinary-symbol term in a machine instruction's operand that
+ * names nothing, in source order, and return how many there were -- so the
+ * caller can zero the instruction the way IFOX00 does.  This is the machine-
+ * instruction half of IFO188; x_factor raises the same diagnostic for every
+ * other statement (DC/DS/EQU/ORG/USING/END), where IFOX zeroes the VALUE but
+ * leaves the statement alone.
+ *
+ * Scanning the operand text rather than recording from inside the evaluator is
+ * what keeps the two halves from reporting the same symbol twice: this runs in
+ * the `else if` before the format switch, so a statement it flags never reaches
+ * resolve()/expr_val() and never reaches x_factor at all.
+ *
+ * LEXICAL, like has_overlong_term above, and it skips the same regions for the
+ * same reasons -- an apostrophe toggles a skip region, matching the text parse()
+ * actually built, so an absorbed trailing comment behind an unmatched attribute
+ * quote is not read as a list of symbols.  Two further skips this one needs:
+ *
+ *  - A token immediately followed by an apostrophe is a self-defining term or an
+ *    attribute prefix (X'FF', C'A', B'1111', L'FIELD), not a symbol.  Without
+ *    this, `MVI FLAG,X'40'` would report an undefined symbol X.  The symbol
+ *    INSIDE an attribute (L'NOSUCH) is inside the skip region and is not
+ *    reported -- x_factor's L' branch does not report it either, so the two
+ *    agree; it is the same #35 edge has_overlong_term documents.
+ *  - A LITERAL operand (=A(SYM)) is skipped entire.  IFOX00 assembles the
+ *    REFERENCING instruction normally -- the literal resolves to its pool
+ *    address, which is defined -- and flags the undefined symbol against the
+ *    pool statement instead.  emit_lit raises that one. */
+static int scan_undef_terms(const char *s, int line) {
+    int q = 0, found = 0;
+    while (*s) {
+        if (*s == '\'') { q = !q; s++; continue; }
+        if (q) { s++; continue; }
+        if (*s == '=') {                                  /* a literal: skip to the next top-level comma */
+            int d = 0; s++;
+            while (*s) {
+                if (*s == '\'') q = !q;
+                else if (!q && *s == '(') d++;
+                else if (!q && *s == ')') { if (d) d--; }
+                else if (!q && !d && *s == ',') break;
+                s++;
+            }
+            continue;
+        }
+        if (isalpha((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_') {
+            char nm[64]; int n = 0;
+            while (*s && (isalnum((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_')) {
+                if (n < 63) nm[n] = *s;
+                n++; s++;
+            }
+            nm[n < 63 ? n : 63] = 0;
+            if (*s == '\'') continue;                     /* X'..'/C'..'/B'..'/L'..' prefix, not a symbol */
+            struct sym *sy = sym_find(nm);
+            if (!sy || (!sy->defined && sy->type != S_ER)) { note_undefsym(nm, line); found++; }
+        } else s++;
+    }
+    return found;
+}
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
@@ -1834,6 +1939,13 @@ static void emit_float(long at, const char *vstr, int bytes) {
     }
 }
 static void emit_lit(struct lit *l) {
+    /* A literal is assembled at the pool, so g_curln here is the LTORG or the
+     * END -- neither of which mentions the symbol.  IFOX00 flags the pool's own
+     * generated statement; as370's listing renders that line but has no lines[]
+     * entry for it, so the diagnostic goes to the statement that WROTE the
+     * literal, which is the line a reader needs anyway.  Same choice defln
+     * already makes for IFO158 below. */
+    int svln = g_curln; g_curln = l->defln;
     const char *p = l->text + 1;
     while (isdigit((unsigned char)*p)) p++;
     char ty = toupper((unsigned char)*p++);
@@ -1868,6 +1980,7 @@ static void emit_lit(struct lit *l) {
         if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; } body[slen++] = *e++; } }
         int j; for (j = 0; j < l->size; j++) put(l->loc + j, j < slen ? a2e((unsigned char)body[j]) : 0x40, 1);
     } else put(l->loc, l->val, l->size);
+    g_curln = svln;
 }
 static int listing = 0;                 /* -L: print a LOC/object/source listing in pass 2 */
 static void emit_listing(long a, long b, const char *src) {
@@ -1972,7 +2085,7 @@ static void prescan_literals(char **lines, int nlines) {
 }
 
 static void do_pass(int pass, char **lines, int nlines) {
-    int i; litpool = 0;
+    int i; litpool = 0; g_pass = pass;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
     /* Section extents are re-derived by each pass, not accumulated across them:
@@ -2017,6 +2130,13 @@ static void do_pass(int pass, char **lines, int nlines) {
             } else if (has_overlong_term(opnd)) {   /* operand symbol term >8 -> IFOX IFO236: zero the whole instruction (as IFO228/IFO209 do) */
                 note_ovlref(op, i); int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
                 lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
+            } else if (scan_undef_terms(opnd, i)) {   /* undefined symbol term -> IFOX IFO188: zero the whole instruction */
+                int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
+                /* Both ADDR columns, not just the first: the oracle renders an SS
+                 * instruction's two operand addresses as 00000 00000 (the IFO209 SS
+                 * path does the same). The 2/4-byte formats carry one. */
+                lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
+                if (L == 6) { lrecs[i].a2 = 0; lrecs[i].hasa2 = 1; }
             } else {
                 long d, d2, sub[4], sub2[4]; int ns, ns2, sy, sy2;
                 switch (o->fmt) {
@@ -2880,6 +3000,7 @@ int main(int argc, char **argv) {
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     { int k; for (k = 0; k < nsym; k++) syms[k].opened = 0; }   /* `opened` counts within a pass: pass 2 must see the same sections begin */
     do_pass(2, lines, nl);
+    g_pass = 0;   /* everything below (emit_obj, emit_listing_a) is past the point where a diagnostic could still be printed */
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
     if (ncontd) {   /* continuation cards: IFO026 / IFO069, both severity 4 -- warnings, and the RC says 4 */
         int j; for (j = 0; j < ncontd; j++) {
@@ -3008,6 +3129,18 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ERROR: Symbol longer than 8 characters in operand expression (instruction zeroed; MVS symbols are limited to 8) in line %d - %s\n", line_org[ovlref_ln[j]], ovlref_op[j]);
         }
         errors += novlref;   /* IFOX IFO236: severity 8 (error) */
+        if (max_sev < 8) max_sev = 8;
+    }
+    if (nundef_seen) {   /* a symbol term that names nothing (IFO188) */
+        int j; for (j = 0; j < nundef; j++) {
+            const char *s = lines[undefs[j].line]; int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            fprintf(stderr, " ERROR: Undefined symbol in line %d - %s\n", line_org[undefs[j].line], undefs[j].sym);
+        }
+        if (nundef_seen > nundef)
+            fprintf(stderr, " ... and %d further undefined-symbol diagnostics\n", nundef_seen - nundef);
+        errors += nundef_seen;   /* IFOX IFO188: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
 
