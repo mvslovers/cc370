@@ -563,5 +563,57 @@ else
 fi
 rm -f /tmp/_ar.obj
 
+# --- issue #63: two silent truncations that made a DCB twelve bytes short ------
+# Both had the same shape -- a bound exceeded without a word said -- and both
+# showed up only as wrong object bytes at RC 0.
+#
+#  (a) parse() writes up to 1023 characters of operand, and two callers gave it
+#      a 128-byte buffer. Continuations are folded before a macro library is
+#      read, so a macro body carrying a multi-card statement overflowed the
+#      stack; SYS1.MACLIB's DCB has seven such statements, the longest 1376
+#      characters. Confirmed with AddressSanitizer, which named parse() called
+#      from capture_macro().
+#  (b) the list of names known to be global capped at 64 and dropped the rest.
+#      In a module that also expands the VSAM macros, 138 names were dropped --
+#      among them IHB01's &COMSW, so `&COMSW SETB 1` went to IHB01's own local
+#      table and DCB read back an unset, and therefore false, switch. The macro
+#      then took the wrong branch and skipped the common-interface block.
+#
+# tests/vsam_dcb.s is the end-to-end regression, and it needs the VSAM macros in
+# front of the DCB -- an isolated DCB expands correctly even with the bug, which
+# is why this needed a real module to surface. The QSAM DCB must carry BUFNO,
+# BUFCB, BUFL, DSORG and IOBAD ahead of its DDNAME, X'4000' being DSORG=PS.
+dcbfail=0
+if ! ./as370 tests/vsam_dcb.s $MACLIB -o /tmp/_d63.obj >/dev/null 2>&1; then
+    echo "dcb: ASSEMBLE FAILED"; dcbfail=1
+elif ! od -An -tx1 /tmp/_d63.obj | tr -d ' \n' | grep -q 0000000100004000000000010000000100000000c3c1d9c4c9d54040; then
+    echo "dcb: FAIL (common-interface block missing -- DCB is 12 bytes short)"; dcbfail=1
+fi
+rm -f /tmp/_d63.obj
+# and the global-name cap on its own: 80 declared globals, the last one SET by an
+# inner macro and read by the outer. Past 64 the name was no longer known to be
+# global, so the assignment went to the inner macro's local table and vanished.
+{ echo '         MACRO'; echo '         SETLAST'; echo '         GBLB  &GLAST'
+  echo '&GLAST   SETB  1'; echo '         MEND'
+  echo '         MACRO'; echo '         BIGGBL'
+  i=1; while [ $i -le 80 ]; do
+      l='         GBLB  '; j=0
+      while [ $j -lt 8 ] && [ $i -le 80 ]; do
+          n=$(printf 'G%03d' $i); [ $j -gt 0 ] && l="$l,"; l="$l&$n"; i=$((i+1)); j=$((j+1))
+      done; echo "$l"
+  done
+  echo '         GBLB  &GLAST'; echo '         SETLAST'
+  echo '         AIF   (NOT &GLAST).NO'; echo "YES      DC    C'YES'"; echo '         AGO   .E'
+  echo '.NO      ANOP'; echo "NO       DC    C'NO'"; echo '.E       ANOP'; echo '         MEND'
+  echo 'T        CSECT'; echo '         BIGGBL'; echo '         END'; } > /tmp/_g63.s
+if ! ./as370 /tmp/_g63.s -o /tmp/_g63.obj >/dev/null 2>&1; then
+    echo "dcb: global-cap ASSEMBLE FAILED"; dcbfail=1
+elif ! od -An -tx1 /tmp/_g63.obj | tr -d ' \n' | grep -q e8c5e2; then
+    echo "dcb: FAIL (a global past the 64th is silently dropped)"; dcbfail=1
+fi
+rm -f /tmp/_g63.s /tmp/_g63.obj
+[ $dcbfail = 0 ] && echo "dcb: OK (QSAM DCB carries its common-interface block; the 65th global survives)"
+fail=$((fail + dcbfail))
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

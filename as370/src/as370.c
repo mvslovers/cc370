@@ -547,7 +547,17 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
 
 /* parse a statement into label / opcode / operand. The operand field ends at
  * the first blank that is NOT inside a quoted string (so DC C'A B' works); the
- * trailing comment is dropped. */
+ * trailing comment is dropped.
+ *
+ * BUFFER CONTRACT -- the caller must provide lbl[32], op[16], opnd[1024].
+ * parse writes up to 30 characters of label (a variable symbol with a subscript
+ * runs past the ordinary 8), 8 of opcode, and 1023 of operand. Two callers used
+ * to pass opnd[128], which is fine for one 80-column card and NOT fine for a
+ * continued statement: continuations are folded before a macro library is read,
+ * so a macro body carrying a multi-card statement overflowed the stack.
+ * SYS1.MACLIB's DCB has seven such statements, the longest 1376 characters, and
+ * the corruption showed up as that macro silently taking the wrong conditional
+ * branch and generating a DCB twelve bytes short (#63). */
 static int parse(const char *line, char *lbl, char *op, char *opnd) {
     const char *p = line; int i;
     lbl[0] = op[0] = opnd[0] = 0;
@@ -668,11 +678,22 @@ struct ctx {
 /* Global SET symbols (GBLA/GBLB/GBLC) are shared between open code and every
  * macro expansion. A name declared global anywhere routes through the global
  * store; everything else is local to the macro (or open-code) context. */
-static char g_gbl[64][20]; static int g_ngbl;
-static char g_sn[512][20], g_sv[512][96]; static int g_nset;
+/* Table sizes. These used to be 64 and 512 and to overflow SILENTLY, which is
+ * how a 12-byte-short DCB got assembled at RC 0 (#63): SYS1.MACLIB's VSAM
+ * macros exhausted the 64-name global list, so IHB01's `&COMSW SETB 1` was no
+ * longer recognised as global, went to IHB01's own local table, and DCB read
+ * back an unset -- and therefore false -- switch. 138 names were dropped in one
+ * module. The bound is now far out of reach AND fatal if it is ever reached: a
+ * silently dropped variable symbol cannot be debugged from the object deck. */
+#define MAXGBL  1024                   /* distinct names declared GBLA/GBLB/GBLC */
+#define MAXGSET 4096                   /* global SET symbols actually assigned */
+static char g_gbl[MAXGBL][20]; static int g_ngbl;
+static char g_sn[MAXGSET][20], g_sv[MAXGSET][96]; static int g_nset;
 static void base_of(const char *n, char *b) { int i = 0; while (n[i] && n[i] != '(' && i < 19) { b[i] = n[i]; i++; } b[i] = 0; }
 static int is_global(const char *n) { char b[20]; base_of(n, b); int i; for (i = 0; i < g_ngbl; i++) if (!strcmp(g_gbl[i], b)) return 1; return 0; }
-static void mark_global(const char *n) { char b[20]; base_of(n, b); if (is_global(b)) return; if (g_ngbl < 64) { scopy(g_gbl[g_ngbl], b, 19); g_ngbl++; } }
+static void mark_global(const char *n) { char b[20]; base_of(n, b); if (is_global(b)) return;
+    if (g_ngbl >= MAXGBL) { fprintf(stderr, "as370: global variable-symbol table full (%d)\n", MAXGBL); exit(2); }
+    scopy(g_gbl[g_ngbl], b, 19); g_ngbl++; }
 static char *set_find(struct ctx *c, const char *n) {
     if (is_global(n)) { int i; for (i = 0; i < g_nset; i++) if (!strcmp(g_sn[i], n)) return g_sv[i]; return NULL; }
     int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
@@ -681,13 +702,15 @@ static char *set_find(struct ctx *c, const char *n) {
 static void set_put(struct ctx *c, const char *n, const char *v) {
     if (is_global(n)) {
         int i; for (i = 0; i < g_nset; i++) if (!strcmp(g_sn[i], n)) { strncpy(g_sv[i], v, 95); g_sv[i][95] = 0; return; }
-        if (g_nset < 512) { strncpy(g_sn[g_nset], n, 19); g_sn[g_nset][19] = 0; strncpy(g_sv[g_nset], v, 95); g_sv[g_nset][95] = 0; g_nset++; }
+        if (g_nset >= MAXGSET) { fprintf(stderr, "as370: global SET-symbol table full (%d)\n", MAXGSET); exit(2); }
+        strncpy(g_sn[g_nset], n, 19); g_sn[g_nset][19] = 0; strncpy(g_sv[g_nset], v, 95); g_sv[g_nset][95] = 0; g_nset++;
         return;
     }
     char *e = set_find(c, n);
     if (e) { strncpy(e, v, 95); e[95] = 0; return; }
-    if (c->nset < 256) { strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
-                        strncpy(c->sv[c->nset], v, 95); c->sv[c->nset][95] = 0; c->nset++; }
+    if (c->nset >= 256) { fprintf(stderr, "as370: local SET-symbol table full (256)\n"); exit(2); }
+    strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
+    strncpy(c->sv[c->nset], v, 95); c->sv[c->nset][95] = 0; c->nset++;
 }
 /* sublist value "(a,b,c)" -> element count / 1-based element. Commas and the
  * closing paren are recognised only at top level, outside 'quotes' (so a
@@ -1067,7 +1090,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
             if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
             else scopy(m->pname[k], flds[k], 19);
             m->nparm++; } }
-    while (++i < nin) { char bb[256], bl[32], bo[16], bd[128]; strncpy(bb, in[i], 255); bb[255] = 0; parse(bb, bl, bo, bd);
+    while (++i < nin) { char bb[1024], bl[32], bo[16], bd[1024]; strncpy(bb, in[i], 1023); bb[1023] = 0; parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') scopy(m->endlbl, bl, sizeof m->endlbl - 1); break; }
         if (m->nbody < 4096) { m->bodyseq[m->nbody] = (inseq ? strdup(inseq[i]) : NULL); m->body[m->nbody++] = strdup(in[i]); } }
     *ip = i; return m;
@@ -1076,7 +1099,7 @@ static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
     static char *buf[4096]; static char seqbuf[4096][12];
     int n = lib_readlines(name, buf, 4096, seqbuf); if (n < 0) return NULL;
-    int i = 0; for (; i < n; i++) { char b[256], l[16], o[16], od[128]; strncpy(b, buf[i], 255); b[255] = 0;
+    int i = 0; for (; i < n; i++) { char b[1024], l[32], o[16], od[1024]; strncpy(b, buf[i], 1023); b[1023] = 0;
         if (!parse(b, l, o, od) || !o[0]) continue;
         if (strcmp(o, "MACRO")) return NULL;
         break; }
