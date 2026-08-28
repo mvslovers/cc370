@@ -1058,12 +1058,12 @@ static int rawlen(const char *l) { int n = (int)strlen(l); while (n > 0 && (l[n-
  * IFO026 CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS and IFO069
  * TOO MANY CONTINUATION CARDS are both severity 4 (jermsgcd.asm SEV26/SEV69) --
  * as370's first warnings, where every diagnostic before them was an error. */
-static struct { char src[24]; char card[80]; int line; int err; int stmt; } contd[128];
+static struct { char src[24]; char card[80]; int line; int err; int stmt; int lost; } contd[128];
 static int ncontd;
 static const char *g_joinsrc;         /* library member being joined; NULL = the primary source */
-static void note_cont(int err, int card, const char *text, int len, int stmt) {
+static void note_cont(int err, int card, const char *text, int len, int stmt, int lost) {
     if (ncontd >= 128) return;
-    contd[ncontd].stmt = stmt;
+    contd[ncontd].stmt = stmt; contd[ncontd].lost = lost;
     scopy(contd[ncontd].src, g_joinsrc ? g_joinsrc : "", sizeof contd[0].src - 1);
     if (len > 79) len = 79;
     memcpy(contd[ncontd].card, text, (size_t)len); contd[ncontd].card[len] = 0;
@@ -1086,10 +1086,38 @@ static int cont_stmts(void) {
  * 1030 continuation cards in libc370, the only three with text before column 16
  * are comment cards, whose text is discarded anyway -- so the recovery is left
  * alone and only the diagnosis is added. */
-static void check_cont_card(const char *c, int cl, int card, int stmt) {
-    int k, nb = 0;
+/* One continuation card, already read. Two questions about it, and they are not
+ * the same question:
+ *
+ *   IFO026 -- do columns 1-15 (BEGREG..CBGREG-1, RFCCHK) hold anything? That is
+ *   IFOX00's warning, severity 4, and as370 reports it as one.
+ *
+ *   Was a STATEMENT lost? A card consumed by a continued COMMENT is discarded
+ *   whole; a card consumed by a continued STATEMENT keeps only columns 16-71, so
+ *   a label or operation in 1-15 is thrown away. Either way the module is short
+ *   of something its author wrote, and the deck is punched regardless.
+ *
+ * IFOX00 does not separate them: both are severity 4, which on MVS passed
+ * COND=(8,LT) and let the linkage editor run. That blind spot is survivable in
+ * JCL and is not survivable in a host build, where a tolerated RC 4 means silent
+ * corruption sails through CI -- measured on mvslovers/nsf370, where a comment
+ * card ate a DCBD, two EQUs and an instruction, and the modules kept building.
+ * So as370 keeps IFOX00's number and severity for the harmless case and raises
+ * the one that loses a statement to severity 8. The bytes are IFOX00's either
+ * way; only the return code says "a build must not pass this".
+ *
+ * by_comment: the continued statement is a comment, so the card goes entirely. */
+static void check_cont_card(const char *c, int cl, int card, int stmt, int by_comment) {
+    int k, nb = 0, iscmt = (c[0] == '*' || (c[0] == '.' && c[1] == '*'));
     for (k = 0; k < 15 && k < cl; k++) if (c[k] != ' ' && c[k] != '\t') { nb = 1; break; }
-    if (nb) note_cont(26, card, c, cl, stmt);
+    /* A COMMENT card carries nothing to lose, whichever kind of statement ate it:
+     * as a comment it generates no storage, and merged into an operand it only
+     * spoils a TITLE string or the like. rexx370's tlnkterm.asm and trxldc.asm
+     * are that shape -- a TITLE whose quoted text runs past column 71 eats the
+     * comment card under it -- and they must stay warnings. */
+    if (iscmt) { if (nb) note_cont(26, card, c, cl, stmt, 0); return; }
+    if (by_comment) { note_cont(nb ? 26 : 0, card, c, cl, stmt, 1); return; }   /* err 0: IFOX00 does not even warn here */
+    if (nb) note_cont(26, card, c, cl, stmt, 1);   /* its label and operation are discarded */
 }
 
 /* join assembler continuation lines: a non-blank in column 72 continues the
@@ -1124,9 +1152,9 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
             out[no++] = strdup(l); i++;
             while (cont && i < n) {
                 const char *c = in[i]; int cl = rawlen(c), nxt;
-                check_cont_card(c, cl, i + 1, stmt);
+                check_cont_card(c, cl, i + 1, stmt, 1);
                 nxt = (cl > 71 && c[71] != ' ');
-                if (++ncont == 2 && nxt) note_cont(69, i + 1, c, cl, stmt);   /* card 3 of 3 still continues */
+                if (++ncont == 2 && nxt) note_cont(69, i + 1, c, cl, stmt, 0);   /* card 3 of 3 still continues */
                 cont = nxt; i++;
             }
             continue;
@@ -1155,7 +1183,7 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
                 else if (!q && d == 0 && (ch == ' ' || ch == '\t')) { a = j; break; }
             }
             const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
-            check_cont_card(c, cl, i + 1, stmt_card);   /* IFO026: RFCCHK checks every continuation card, not just a comment's */
+            check_cont_card(c, cl, i + 1, stmt_card, 0);   /* IFO026: RFCCHK checks every continuation card, not just a comment's */
             for (; s < e && a < 8190; s++) acc[a++] = c[s];
             cont = (cl > 71 && c[71] != ' ');
             i++;
@@ -2843,9 +2871,14 @@ int main(int argc, char **argv) {
     do_pass(2, lines, nl);
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
     if (ncontd) {   /* continuation cards: IFO026 / IFO069, both severity 4 -- warnings, and the RC says 4 */
-        int j; for (j = 0; j < ncontd; j++) {
+        int j, lost = 0; for (j = 0; j < ncontd; j++) {
             fprintf(stderr, "%s\n", contd[j].card);                         /* the flagged card */
-            if (contd[j].err == 26)
+            if (contd[j].lost) {
+                lost = 1;
+                fprintf(stderr, " ERROR: This card was consumed as a continuation and the statement on it discarded%s",
+                        contd[j].err == 26 ? " (IFOX00 IFO026, severity 4 -- as370 raises it: a build must not pass silently)"
+                                           : " (IFOX00 does not even warn here; the card's columns 1-15 are blank)");
+            } else if (contd[j].err == 26)
                 fprintf(stderr, " WARNING: Characters appear between the begin and continue columns on a continuation card (IFOX00 IFO026)");
             else
                 fprintf(stderr, " WARNING: Too many continuation cards, two allowed (IFOX00 IFO069)");
@@ -2853,7 +2886,8 @@ int main(int argc, char **argv) {
             else                 fprintf(stderr, " in line %d\n", contd[j].line);
         }
         errors += cont_stmts();
-        if (max_sev < 4) max_sev = 4;   /* IFOX jermsgcd.asm SEV26 / SEV69 */
+        if (max_sev < 4) max_sev = 4;          /* IFOX jermsgcd.asm SEV26 / SEV69 */
+        if (lost && max_sev < 8) max_sev = 8;  /* a discarded statement is as370's own error, not IFOX00's */
     }
     if (nunk) {   /* op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
         int j; for (j = 0; j < nunk; j++) {
