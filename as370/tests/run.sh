@@ -463,6 +463,36 @@ else
 fi
 rm -f /tmp/_c72c.s /tmp/_c72c.obj /tmp/_c72c.out
 
+# --- the diagnostic list is bounded; the counts are not ----------------------
+# nsf370's nsfvsvc.asm found this the hard way: 130 continuation diagnostics, and
+# the two that mattered were the LAST two. At a silent cap of 128 they fell off
+# the end, so a module that discarded FOUR statements reported two -- the exact
+# failure this diagnostic exists to prevent, reintroduced by its own bookkeeping.
+#
+# 600 over-long comment cards in one chain, then the statement it eats. The
+# printed list stops at MAXCONTD; the count, the overflow line and the return
+# code must not.
+{ printf 'CAPPED   CSECT\n'
+  i=0; while [ $i -lt 600 ]; do printf '%-71sX\n' "* filler card $i reaching column 72"; i=$((i + 1)); done
+  printf 'EATEN    DC    F\0477\047\n'
+  printf 'KEPT     DC    F\0478\047\n         END\n'; } > /tmp/_cap.s
+./as370 /tmp/_cap.s -o /tmp/_cap.obj >/tmp/_cap.out 2>&1; rccap=$?
+hexcap=$(od -An -tx1 /tmp/_cap.obj | tr -d ' \n')
+if [ $rccap != 8 ]; then
+    echo "diag_cap: expected RC 8 -- the discarded statement is past the print limit (got $rccap)"; fail=1
+elif ! grep -q 'further continuation diagnostic' /tmp/_cap.out; then
+    echo "diag_cap: the overflow is silent again -- no 'further continuation diagnostics' line"; fail=1
+elif ! grep -q '1 of them a discarded statement' /tmp/_cap.out; then
+    echo "diag_cap: the overflow line does not say a statement was discarded"; fail=1
+elif ! echo "$hexcap" | grep -q "00000008"; then
+    echo "diag_cap: KEPT did not assemble"; fail=1
+elif echo "$hexcap" | grep -q "00000007"; then
+    echo "diag_cap: EATEN assembled -- the chain should have consumed it"; fail=1
+else
+    echo "diag_cap: OK (600 diagnostics: the list is capped, the count, the RC and the loss are not)"
+fi
+rm -f /tmp/_cap.s /tmp/_cap.obj /tmp/_cap.out
+
 # --- a LIBRARY macro is read to its MEND and not one card further ------------
 # SYS1.MACLIB members routinely keep their PL/S source as comment cards AFTER
 # the MEND, and some of those cards reach column 72: IEFJESCT's MEND is at
