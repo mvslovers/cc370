@@ -325,6 +325,54 @@ else
 fi
 rm -f /tmp/_o52.obj
 
+# --- issue #68: the END literal pool belongs to the FIRST control section -----
+# IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
+# address when END is reached with a non-empty pool, assembles the pool there and
+# restores the counter -- so the pool's bytes are punched LAST but carry the
+# first section's ESDID and an address inside it, and every section behind the
+# first moves up by what the pool took. as370 used to place the pool wherever the
+# location counter had reached at END, which lands it in the LAST section: the
+# same place only while the module has one section, which is the whole corpus.
+#
+# The rule itself is validated against IFOX00's own deck on the reporter's
+# three-section ksdsnatr (issue #68, now byte-identical apart from the END-card
+# IDR). litpool_csect.s is the mechanism test and covers what ksdsnatr does not:
+# an LTORG *after* the first section closes (so the pool END flushes is not the
+# one open at the boundary, and the LTORG's own pool must stay put), a literal
+# first referenced from a LATER section, and an =A literal in the moved pool.
+# There is no oracle deck for this shape, so the bytes below are derived from the
+# rule; ksdsnatr is what proves the rule.
+if ! ./as370 tests/litpool_csect.s -o /tmp/_o68.obj >/dev/null 2>&1; then
+    echo "litpool_csect: ASSEMBLE FAILED"; fail=1
+else
+    hex=$(od -An -tx1 -v /tmp/_o68.obj | tr -d ' \n')   # -v: the card is taken by offset, so no run may collapse
+    # ESD: POOLA len 0x20 -- its own 0x12 of content plus the pool at 0x18.
+    # POOLB and POOLC are pushed up by it (0x20 and 0x30, not 0x18 and 0x28),
+    # and POOLC's length is its own content only: it keeps the LTORG's pool but
+    # no longer the END one.
+    esd68=d7d6d6d3c14040400000000040000020d7d6d6d3c2404040000000204000000dd7d6d6d3c3404040000000304000000e
+    # the pool's TXT card, taken by POSITION: card 4 of 6 (ESD, POOLA's text,
+    # POOLC's text, the pool, RLD, END) -- so it is the LAST text card, punched
+    # after every other, addressed 0x18 under ESDID 1 (POOLA) and holding =F'2'
+    # then =A(ATAB), segment order with first-reference order inside a segment.
+    ncards=$(( $(wc -c < /tmp/_o68.obj) / 80 ))
+    poolcard=$(echo "$hex" | cut -c481-528)
+    # the moved =A's RLD: R=1 P=1 (POOLA, not the section that referenced it)
+    rld68=000100010c00001c
+    if ! echo "$hex" | grep -q "$esd68"; then
+        echo "litpool_csect: FAIL (END pool not charged to the first control section)"; fail=1
+    elif [ "$ncards" != 6 ] || [ "$poolcard" != 02e3e7e3400000184040000840400001000000020000000c ]; then
+        echo "litpool_csect: FAIL (pool TXT card not last / not addressed in the first section)"; fail=1
+    elif ! echo "$hex" | grep -q "$rld68"; then
+        echo "litpool_csect: FAIL (moved =A literal does not relocate against the first section)"; fail=1
+    elif ! echo "$hex" | grep -q "00000001c1c25820c0165830c01a"; then
+        echo "litpool_csect: FAIL (LTORG's own pool moved, or the later references lost their base)"; fail=1
+    else
+        echo "litpool_csect: OK (END pool in POOLA at 0x18, punched last; LTORG's pool stays in POOLC)"
+    fi
+fi
+rm -f /tmp/_o68.obj
+
 # --- issue #53 (step 1): nothing may reserve zero storage in silence ---------
 # The DC/DS type chain ended in a label-only arm with no default: an unhandled
 # type defined its label, reserved nothing, did not advance the location counter

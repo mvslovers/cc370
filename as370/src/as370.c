@@ -114,9 +114,29 @@ static int  cur_sect_id, g_sectid;            /* section identity for USING reso
  * contents out of the enclosing control section's total on its own. */
 #define MAXSECT 1024
 static long sect_hwm[MAXSECT];
-static void note_sect_lc(long end) {
-    if (cur_sect_id > 0 && cur_sect_id < MAXSECT && end > sect_hwm[cur_sect_id]) sect_hwm[cur_sect_id] = end;
+static void sect_lc_of(int sect, long end) {
+    if (sect > 0 && sect < MAXSECT && end > sect_hwm[sect]) sect_hwm[sect] = end;
 }
+static void note_sect_lc(long end) { sect_lc_of(cur_sect_id, end); }
+/* The END literal pool belongs to the FIRST control section (#68).
+ *
+ * IFOX00 (xfour.asm, ENDING): "THE FIRST CONTROL SECTION, IF ANY, IS RESUMED AT
+ * ITS HIGHEST ADDRESS WHEN END OF FILE IS DETECTED IN PASS 1 ASSIGNMENT MODE AND
+ * THE LITERAL POOL IS NOT EMPTY." It saves the location counter and ESDID
+ * (LCSAVE), assembles the pool there, and restores them (LCRESTOR) -- so the
+ * pool's bytes are PUNCHED last, after every other TXT card, but carry the first
+ * section's ESDID and an address inside it, and every section behind the first
+ * moves up by what the pool took. "First control section" is FSTCSECT
+ * (xdict.asm:113): the first section that is neither DSECT nor COM, private code
+ * included; a section RESUMED later does not change it.
+ *
+ * as370 used to place the pool at whatever `lc` had reached when END was seen,
+ * which lands it in the LAST section -- the same place only while the module has
+ * one section, which is the whole of the ecosystem corpus. */
+static int  first_ctl_sect;   /* internal id of the first control section, 0 = none opened yet */
+static int  end_pool_seq;     /* pool index END flushes (= the LTORG count), from the literal pre-scan */
+static int  pool_defer;       /* this pass reserved the END pool inside the first control section */
+static long pool_org;         /* address the reserved pool starts at */
 static char dsect_sect[256];                  /* dsect_sect[id]=1 if section id is a DSECT (its symbols are absolute) */
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
@@ -231,7 +251,9 @@ static void lit_classify(struct lit *l) {
     if (l->size < 1) l->size = 1;
 }
 static struct lit *lit_get(const char *t) {
-    int i; for (i = 0; i < nlit; i++) if (lits[i].ltseq == litpool && !strcmp(lits[i].text, t)) return &lits[i];
+    int i; for (i = 0; i < nlit; i++) if (lits[i].ltseq == litpool && !strcmp(lits[i].text, t)) {
+        if (!lits[i].sect) lits[i].sect = cur_sect_id;   /* the pre-scan creates entries with no section; the first real reference stamps it */
+        return &lits[i]; }
     if (nlit >= MAXLIT) { fprintf(stderr, "as370: literal table full\n"); exit(2); }
     memset(&lits[nlit], 0, sizeof lits[0]); strncpy(lits[nlit].text, t, sizeof lits[0].text - 1);
     lits[nlit].ltseq = litpool;          /* literal belongs to the current (not-yet-flushed) pool */
@@ -1643,10 +1665,106 @@ static void emit_listing(long a, long b, const char *src) {
     ln[j] = 0;
     fprintf(stderr, "%06lX %-16s %s\n", a, hex, ln);
 }
+/* ---- literal pool placement (#68) ----------------------------------------- */
+/* Collect the not-yet-placed literals of pool `seq` into mem[], in IFOX's pool
+ * order: doubleword/fullword/halfword/byte segments, each in order of first
+ * reference. A literal's segment is the alignment implied by its LENGTH (len
+ * divisible by 8/4/2, else byte), not its type: =CL8 sits with the doublewords
+ * but =CL11 (odd) goes in the byte segment, after the fullwords. */
+static int pool_gather(int seq, int *mem, int max) {
+    int k, n = 0;
+    for (k = 0; k < nlit; k++) {
+        if (lits[k].placed || lits[k].ltseq != seq) continue;
+        if (n < max) mem[n++] = k;
+    }
+    { int a, b;
+      for (a = 1; a < n; a++) { int t = mem[a]; b = a - 1;
+        while (b >= 0 && lenalgn(lits[mem[b]].size) < lenalgn(lits[t].size)) { mem[b + 1] = mem[b]; b--; }
+        mem[b + 1] = t; } }
+    return n;
+}
+/* the address just past a gathered pool laid out from `base` */
+static long pool_extent(const int *mem, int n, long base) {
+    long p = align8(base); int i;
+    for (i = 0; i < n; i++) { const struct lit *l = &lits[mem[i]];
+        p = (p + l->algn - 1) & ~(long)(l->algn - 1); p += l->size; }
+    return p;
+}
+/* Reserve the END pool's space at the end of the first control section, at the
+ * point a LATER control section begins: from here on that section's extent is
+ * fixed, and every section behind it has to sit above the pool. The literals
+ * themselves are assigned and punched at END (see the LTORG/END handler), which
+ * is where IFOX00 emits them too -- this only takes the room.
+ *
+ * The first control section is resumed at its HIGHEST address, so the base is
+ * the section's high-water mark where a backward ORG left the counter below it.
+ * A first section that is RESUMED after a later one (A, B, A) reserves at its
+ * first close; as370's continuous location counter already mislays such a
+ * resumption entirely, so the pool is not what is wrong with that module. */
+static void pool_reserve(void) {
+    static int mem[4096];
+    if (pool_defer || first_ctl_sect <= 0) return;
+    int n = pool_gather(end_pool_seq, mem, 4096);
+    if (n <= 0) return;                                  /* nothing outstanding: END has no pool to place */
+    long base = lc;
+    if (first_ctl_sect < MAXSECT && sect_hwm[first_ctl_sect] > base) base = sect_hwm[first_ctl_sect];
+    pool_org = align8(base);
+    lc = pool_extent(mem, n, pool_org);
+    sect_lc_of(first_ctl_sect, lc);                      /* the pool is part of THAT section, whatever is current here */
+    if (lc > modlen) modlen = lc;
+    pool_defer = 1;
+}
+/* register every literal operand of a machine instruction (pass 1 and the pre-scan) */
+static void lit_scan_operands(const char *opnd) {
+    char F[4][64]; int nf = split_fields(opnd, F, 4), k;
+    for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
+}
+/* Walk the statement list for literals alone, before pass 1 (#68).
+ *
+ * Reserving the END pool's space inside the first control section means knowing
+ * the pool while that section is still open -- before the statements that
+ * reference the literals have been read. So the literal registration pass 1 does
+ * (lit_get on every `=` operand field of a machine instruction) runs once up
+ * front, plus the LTORG count, which says which pool number END will flush.
+ *
+ * Running pass 1 twice would look cheaper and is not: pass 1 has one-shot work.
+ * EQU evaluates against the symbol table AS IT STANDS, so a forward-referencing
+ * equate would resolve differently the second time round and could flip between
+ * absolute and relocatable -- changing what gets an RLD entry.
+ *
+ * lit_get stamps a literal's section from cur_sect_id, which the pre-scan has no
+ * business setting: it leaves it 0 and the first real reference in pass 1 fills
+ * it in. */
+static void prescan_literals(char **lines, int nlines) {
+    int i, end_seen = 0; litpool = 0; cur_sect_id = 0;
+    for (i = 0; i < nlines; i++) {
+        if (lflags[i] & LF_NOASM) continue;
+        g_curln = i;                        /* line context for a diagnostic raised inside sym_get (=V externals) */
+        char buf[1024], lbl[32], op[16], opnd[1024];
+        strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
+        if (!parse(buf, lbl, op, opnd)) continue;
+        if (!op[0]) continue;
+        if (op_find(op)) lit_scan_operands(opnd);
+        else if (!strcmp(op, "LTORG")) litpool++;        /* every LTORG closes a pool, exactly as the assembly loop counts them */
+        else if (!strcmp(op, "END")) { end_seen = 1; break; }
+    }
+    /* No END statement: nothing flushes a pool, so there is no pool to make room
+     * for either. -1 matches no ltseq, which turns the reservation off without a
+     * flag of its own. (IFOX forces an LTORG at end-of-file; as370 does not, and
+     * that gap is its own defect -- reserving space it then never fills would
+     * only add a second one.) */
+    end_pool_seq = end_seen ? litpool : -1;
+    litpool = 0;
+}
+
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
+    /* Section extents are re-derived by each pass, not accumulated across them:
+     * the END pool moves between sections between pass 1's placement and pass 2's,
+     * so a carried-over high-water mark would place it twice (#68). */
+    first_ctl_sect = 0; pool_defer = 0; pool_org = 0; modlen = 0; memset(sect_hwm, 0, sizeof sect_hwm);
     int pre_csect = 0;                  /* a content statement appeared before the first CSECT */
     int prev_li = -1;                   /* previous statement captured for the -a listing (byte count is deferred) */
     if (pass == 2) nrel = 0;
@@ -1673,13 +1791,14 @@ static void do_pass(int pass, char **lines, int nlines) {
             struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1;   /* code (or a leading EQU) with no CSECT: open the implicit private-code section so its ESD precedes a later ENTRY's LD */
             if (!pc->sect) { pc->sect = ++g_sectid; } esd_add(pc, ESD_SECT);
             cur_sect_id = pc->sect; if (pass == 2) cur_sect_esdid = pc->esdid;
+            if (!first_ctl_sect) first_ctl_sect = cur_sect_id;   /* private code counts as a control section (IFOX FSTCSECT) */
         }
         if (o) {
             while (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }   /* instructions are halfword-aligned */
             char F[4][64]; int nf = split_fields(opnd, F, 4);   /* nf: SRP needs its third operand */
             if (pass == 1) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = ins_len(o->fmt); }
-                int k; for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
+                lit_scan_operands(opnd);   /* same registration the pre-scan ran, so the two cannot drift */
                 lc += ins_len(o->fmt);
             } else if (has_overlong_term(opnd)) {   /* operand symbol term >8 -> IFOX IFO236: zero the whole instruction (as IFO228/IFO209 do) */
                 note_ovlref(op, i); int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
@@ -1806,6 +1925,10 @@ static void do_pass(int pass, char **lines, int nlines) {
             }
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
+            /* Opening a control section other than the first closes the first
+             * one: the END literal pool goes at its end (#68), so take the room
+             * before this section's origin is fixed. */
+            if (first_ctl_sect && s->sect != first_ctl_sect) pool_reserve();
             /* A control section BEGINS on a doubleword. IFOX00 gives each section
              * its own location counter from zero (BLDESD, xdict.asm:85, stores a
              * zero XLCTR) and rounds the origin up when the sections are chained
@@ -1824,6 +1947,7 @@ static void do_pass(int pass, char **lines, int nlines) {
              * mark rather than from this origin. */
             if (++s->opened == 1 && !in_dsect) lc = align8(lc);
             cur_sect_id = s->sect;
+            if (!first_ctl_sect && !in_dsect) first_ctl_sect = cur_sect_id;   /* IFOX FSTCSECT: the first section that is not a DSECT (nor COM) */
             if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = lc; s->defined = 1; esd_add(s, ESD_SECT); }   /* first definition: origin = the rounded counter; a reopen keeps its origin */
             if (pass == 2) cur_sect_esdid = s->esdid;
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
@@ -2053,40 +2177,36 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (!strcmp(op, "END") && in_dsect) {   /* a trailing DSECT must not capture the pending literal pool: flush it into the control section */
                 in_dsect = 0; lc = main_lc; cur_sect_id = main_sect_id; cur_sect_esdid = main_sect_esdid;
             }
-            /* gather this pool's literals (ltseq is assigned at creation = the pool
-             * that was open when the literal was first referenced) */
-            static int mem[4096]; int nmem = 0;
-            for (k = 0; k < nlit; k++) {
-                if (lits[k].placed) continue;
-                if (lits[k].ltseq != litpool) continue;
-                if (nmem < 4096) mem[nmem++] = k;
-            }
             /* Register each =V literal's external reference in the ESD now, when the
              * pool is FLUSHED (not at first use), in first-reference order -- this is
              * IFOX's ESD timing, so an ENTRY (LD) declared between the reference and
-             * the flush sorts ahead of these ERs (e.g. @@crtm's @@EXITA). */
-            if (pass == 1) { int mi; for (mi = 0; mi < nmem; mi++) { struct lit *l = &lits[mem[mi]];
-                if (l->isV) { struct sym *s = sym_get(l->ext); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } } }
-            /* IFOX groups a pool into doubleword/fullword/halfword/byte segments to
-             * minimise padding, each segment in order of first reference. A literal's
-             * segment is the alignment implied by its LENGTH (len div by 8/4/2 else
-             * byte), not its type: so =CL8 sits with the doublewords but =CL11 (odd)
-             * goes in the byte segment, after the fullwords. Sort by that key,
-             * descending, stable (preserving appearance order within a segment). */
-            { int a, b;
-              for (a = 1; a < nmem; a++) { int t = mem[a]; b = a - 1;
-                while (b >= 0 && lenalgn(lits[mem[b]].size) < lenalgn(lits[t].size)) { mem[b + 1] = mem[b]; b--; }
-                mem[b + 1] = t; } }
+             * the flush sorts ahead of these ERs (e.g. @@crtm's @@EXITA). Ahead of
+             * the gather, whose segment sort is a placement order, not this one. */
+            if (pass == 1) { for (k = 0; k < nlit; k++) { struct lit *l = &lits[k];
+                if (l->placed || l->ltseq != litpool || !l->isV) continue;
+                struct sym *s = sym_get(l->ext); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } }
+            /* gather this pool's literals, segment-sorted (ltseq is assigned at
+             * creation = the pool that was open when the literal was first used) */
+            static int mem[4096]; int nmem = pool_gather(litpool, mem, 4096);
+            /* An END pool goes into the FIRST control section, whose room
+             * pool_reserve() already took: assemble it there and put the counter
+             * back, so its bytes are punched last but carry that section's ESDID
+             * and an address inside it -- IFOX00's LCSAVE/LCRESTOR (#68). */
+            int defer = (pool_defer && !strcmp(op, "END") && nmem > 0);
+            long sv_lc = lc; int sv_sid = cur_sect_id, sv_eid = cur_sect_esdid;
+            if (defer) { lc = pool_org; cur_sect_id = first_ctl_sect; cur_sect_esdid = sect_esdid_of(first_ctl_sect); }
             if (!strcmp(op, "LTORG") || nmem > 0) lc = align8(lc);  /* pool starts on a doubleword */
             { int mi; for (mi = 0; mi < nmem; mi++) {
                 struct lit *l = &lits[mem[mi]];
                 lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
-                if (pass == 1) l->loc = lc;   /* =V external refs are registered at first use in lit_get */
+                if (pass == 1) { l->loc = lc;   /* =V external refs are registered at first use in lit_get */
+                    if (defer) l->sect = cur_sect_id; }   /* the pool moved sections: references resolve through the USING covering THIS one */
                 else emit_lit(l);
                 l->placed = 1;
                 lc += l->size;
             } }
             if (!in_dsect) { if (lc > modlen) modlen = lc; note_sect_lc(lc); }   /* the pool's doubleword alignment extends the section length (no TXT for the pad) */
+            if (defer) { lc = sv_lc; cur_sect_id = sv_sid; cur_sect_esdid = sv_eid; }
             litpool++;
         } else if (pass == 1) note_unknown(op, i);
     }
@@ -2497,6 +2617,7 @@ int main(int argc, char **argv) {
     int nl = macro_pass(raw, n, lines, raw_org);
     if (eonly) { int j; for (j = 0; j < nl; j++) { fputs(lines[j], stdout); if (lines[j][0] && lines[j][strlen(lines[j]) - 1] != '\n') putchar('\n'); } return 0; }
 
+    prescan_literals(lines, nl);   /* the END pool has to be known before pass 1 lays the first control section out (#68) */
     do_pass(1, lines, nl);
     { int k, id = 0; for (k = 0; k < nesdord; k++)            /* SD/PC sections and ER refs get an ESDID; LD entries do not */
         if (esdord[k].role == ESD_SECT || esdord[k].role == ESD_ER) esdord[k].s->esdid = ++id; }
