@@ -1,0 +1,59 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 11.28 08/28/26
+UNDEFSYM  SD  0001 000000 00001C
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 11.28 08/28/26
+                                      1 * Undefined symbols, in the four shapes the nsf370 modules hit them
+                                      2 * (mvslovers/nsf370): a branch target, a displacement symbol, a
+                                      3 * difference of two, and a literal adcon. IFOX00 flags each one
+                                      4 * IFO188 (severity 8, jermsgcd.asm SEV188); as370 assembles zero and
+                                      5 * says nothing.
+000000                                6 UNDEFSYM CSECT
+                            00000     7          USING UNDEFSYM,15
+000000 0000 0000      00000           8          BE    NOWHERE            undefined branch target
+         *** ERROR ***
+000004 0000 0000      00000           9          LH    3,NOSUCH(,7)       undefined displacement symbol
+         *** ERROR ***
+000008 0000 0000 0000 00000 00000    10          MVC   FIELD-BASE(8,2),0(3)  undefined difference
+         *** ERROR ***
+00000E 5840 F018      00018          11          L     4,=A(NOVAL)        undefined inside a literal adcon
+000012 0000
+000014 00000014                      12 DEFHERE  DC    A(DEFHERE)         control: a defined symbol resolves
+                                     13          END
+000018 00000000                      14                =A(NOVAL)
+         *** ERROR ***
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 11.28 08/28/26
+ 0001     0001      0C     000014
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.28 08/28/26
+BASE     ****UNDEFINED****     00010
+DEFHERE  00004 00000014 00012  00012
+FIELD    ****UNDEFINED****     00010
+NOSUCH   ****UNDEFINED****     00009
+NOVAL    ****UNDEFINED****     00014
+NOWHERE  ****UNDEFINED****     00008
+UNDEFSYM 00001 00000000 00006  00007
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.28 08/28/26
+=A(NOVAL)
+         00004 00000018 00014  00011
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 11.28 08/28/26
+    8  IFO188      NOWHERE IS AN UNDEFINED SYMBOL
+    9  IFO188      NOSUCH IS AN UNDEFINED SYMBOL
+   10  IFO188      FIELD IS AN UNDEFINED SYMBOL
+   10  IFO188      BASE IS AN UNDEFINED SYMBOL
+   14  IFO188      NOVAL IS AN UNDEFINED SYMBOL
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     4
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         13
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        59
