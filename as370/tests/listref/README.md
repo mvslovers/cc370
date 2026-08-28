@@ -30,3 +30,26 @@ Two differences from the IFOX reference are expected and tolerated:
 
 Not yet produced (excluded from the comparison): the CROSS-REFERENCE, LITERAL
 CROSS-REFERENCE, DIAGNOSTICS and STATISTICS/OPTIONS pages.
+
+## `ifox-listing-fltoracl.txt` — captured, not yet wired in
+
+The SYSPRINT from the same guest run that produced `tests/ref/fltoracl.obj`
+(issue #53 step 3, floating point). It is committed because it is the expensive
+half of that capture — a job on a real MVS 3.8j — and because it is the only
+IFOX00 listing we hold for a module full of `DC` constants.
+
+`check.sh` does **not** compare it yet, and it would fail today for one reason,
+36 times: **IFOX prints a DC's alignment padding as its own object line and then
+the constant at its aligned LOC; as370 prints the constant at the location
+counter as it stood BEFORE the alignment**, with the pad bytes folded into its
+object column.
+
+```
+IFOX00:  00001E 0000
+         000020 4110000000000000     47 DPLAIN   DC    D'1'
+as370:   00001E 0000411000000000     47 DPLAIN   DC    D'1'
+```
+
+The object decks are byte-identical — this is the rendering, not the assembly,
+and it is the same pre-alignment-LOC defect as issue #28 (which records it for
+`LTORG`). Wire this case in when that is fixed; the reference is already here.
