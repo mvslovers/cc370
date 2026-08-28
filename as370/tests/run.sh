@@ -453,6 +453,49 @@ else
 fi
 rm -f /tmp/_c72c.s /tmp/_c72c.obj /tmp/_c72c.out
 
+# --- a LIBRARY macro is read to its MEND and not one card further ------------
+# SYS1.MACLIB members routinely keep their PL/S source as comment cards AFTER
+# the MEND, and some of those cards reach column 72: IEFJESCT's MEND is at
+# record 57 with continued cards at 81 and 112, GETMAIN's at 416 with one at 419.
+# IFOX00 never reads them -- `IEFJESCT ,` assembles RC 0 on the guest, with
+# LIBMAC as well, so they are not merely unlisted -- while the identical card
+# INSIDE a definition draws IFO026 and eats the model statement behind it
+# (JOB02869). Applying the continuation rule to the whole member gave 21 libc370
+# and 12 rexx370 modules a warning on cards the guest does not read.
+#
+# COPY is the other half of that measurement and is deliberately NOT this case:
+# `COPY IEFJESCT` reads the member entire and flags both cards (JOB02866).
+mlib=/tmp/_mlib.$$
+mkdir -p "$mlib"
+{ printf '         MACRO\n&L       TRAILM\n&L       DC    F\0475\047\n         MEND\n'
+  printf '%-71sX\n' '* PL/S text kept after MEND, reaching column 72'
+  printf '* the card a continued comment would eat\n'; } > "$mlib/trailm.macro"
+{ printf '         MACRO\n&L       INSIDM\n'
+  printf '%-71sX\n' '* a comment INSIDE the definition, reaching column 72'
+  printf '&L       DC    F\0476\047\n         MEND\n'; } > "$mlib/insidm.macro"
+# the fixture is only a fixture while that card really is 72 columns
+if [ "$(awk 'NR==5{print length($0)}' "$mlib/trailm.macro")" != 72 ]; then
+    echo "libmac_mend: BROKEN FIXTURE (the trailing card is not 72 columns)"; fail=1
+fi
+printf 'LIBM     CSECT\nLBL      TRAILM\n         END\n' > "$mlib/a.s"
+printf 'LIBM     CSECT\nLBL      INSIDM\n         END\n' > "$mlib/b.s"
+./as370 "$mlib/a.s" -I "$mlib" -o "$mlib/a.obj" >"$mlib/a.out" 2>&1; rcA=$?
+./as370 "$mlib/b.s" -I "$mlib" -o "$mlib/b.obj" >"$mlib/b.out" 2>&1; rcB=$?
+if [ $rcA != 0 ]; then
+    echo "libmac_mend: text after MEND was read (rc $rcA, expected 0)"; cat "$mlib/a.out"; fail=1
+elif ! od -An -tx1 "$mlib/a.obj" | tr -d ' \n' | grep -q 00000005; then
+    echo "libmac_mend: the macro's own DC F'5' did not survive"; fail=1
+elif [ $rcB != 4 ]; then
+    echo "libmac_mend: a column-72 comment INSIDE the definition not flagged (rc $rcB, expected 4)"; fail=1
+elif ! grep -q 'IFO026' "$mlib/b.out"; then
+    echo "libmac_mend: expected IFO026 for the card inside the definition"; fail=1
+elif od -An -tx1 "$mlib/b.obj" | tr -d ' \n' | grep -q 00000006; then
+    echo "libmac_mend: the model statement behind that comment should have been eaten"; fail=1
+else
+    echo "libmac_mend: OK (a library macro stops at MEND; a continued comment inside it still eats the next card)"
+fi
+rm -rf "$mlib"
+
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
 # address when END is reached with a non-empty pool, assembles the pool there and

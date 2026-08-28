@@ -1165,12 +1165,51 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
     }
     return no;
 }
-static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12]) {
+/* the operation field of a raw card, compared case-insensitively (the joiner
+ * runs before parse() has ever seen the statement) */
+static int card_op_is(const char *l, const char *op) {
+    int i = 0, len = rawlen(l), s, k, nt, ol = (int)strlen(op);
+    if (len > 71) len = 71;
+    if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) return 0;      /* a comment card has no operation field */
+    if (i < len && l[i] != ' ' && l[i] != '\t') while (i < len && l[i] != ' ' && l[i] != '\t') i++;   /* name field */
+    while (i < len && (l[i] == ' ' || l[i] == '\t')) i++;
+    s = i; while (i < len && l[i] != ' ' && l[i] != '\t') i++;
+    nt = i - s;
+    if (nt != ol) return 0;
+    for (k = 0; k < nt; k++) if (toupper((unsigned char)l[s + k]) != op[k]) return 0;
+    return 1;
+}
+/* IFOX00 reads a LIBRARY macro definition to its MEND and not one card further.
+ * That matters because SYS1.MACLIB members routinely carry their PL/S source as
+ * comment cards AFTER the MEND, and some of those cards reach column 72:
+ * IEFJESCT's MEND is at record 57 and its two continued cards are at 81 and 112,
+ * GETMAIN's MEND is at 416 and its card is at 419.
+ *
+ * Measured on the guest: `IEFJESCT ,` assembles RC 0 -- with LIBMAC too, so the
+ * cards are not merely unlisted -- while the same shape INSIDE a definition
+ * draws IFO026 and swallows the model statement behind it (JOB02869). The
+ * trailing text is simply never read. as370 read the whole member into the
+ * joiner and warned on cards IFOX never sees, which is where every one of the
+ * 33 warnings the ecosystem suddenly had came from.
+ *
+ * COPY is the other half of the same measurement and is NOT this case: `COPY
+ * IEFJESCT` reads the member entire and DOES flag both cards (JOB02866), so
+ * only a macro read stops at MEND. */
+static int macro_extent(char **in, int n) {
+    int i, depth = 0;
+    for (i = 0; i < n; i++) {
+        if (card_op_is(in[i], "MACRO")) depth++;
+        else if (card_op_is(in[i], "MEND") && depth && --depth == 0) return i + 1;
+    }
+    return n;
+}
+static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12], int as_macro) {
     char path[256]; if (!lib_path(name, path)) return -1;
     FILE *f = fopen(path, "r"); if (!f) return -1;
     static char *tmp[16384]; char lb[256]; int n = 0;
     while (fgets(lb, sizeof lb, f) && n < 16384) tmp[n++] = strdup(lb);
     fclose(f);
+    if (as_macro) n = macro_extent(tmp, n);   /* a macro definition ends at MEND; what follows is not read */
     { int r; const char *sv = g_joinsrc;    /* a continuation diagnostic in here names the member, not a source line */
       g_joinsrc = name; r = join_cont(tmp, n, buf, max, seqbuf, NULL); g_joinsrc = sv; return r; }
 }
@@ -1202,7 +1241,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
 static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
     static char *buf[4096]; static char seqbuf[4096][12];
-    int n = lib_readlines(name, buf, 4096, seqbuf); if (n < 0) return NULL;
+    int n = lib_readlines(name, buf, 4096, seqbuf, 1); if (n < 0) return NULL;   /* a macro: stops at MEND */
     int i = 0; for (; i < n; i++) { char b[1024], l[32], o[16], od[1024]; strncpy(b, buf[i], 1023); b[1023] = 0;
         if (!parse(b, l, o, od) || !o[0]) continue;
         if (strcmp(o, "MACRO")) return NULL;
@@ -1379,7 +1418,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`. */
     if (op[0] && (set_stmt(opc, lbl, op, opnd))) return;
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
-        char *cb[2048]; int n = lib_readlines(opnd, cb, 2048, NULL);
+        char *cb[2048]; int n = lib_readlines(opnd, cb, 2048, NULL, 0);   /* COPY takes the member entire */
         if (n >= 0) { mexp_block(cb, n, out, nout, depth + 1, NULL); return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
     }
     struct macro *m = NULL;
