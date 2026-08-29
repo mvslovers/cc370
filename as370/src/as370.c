@@ -448,6 +448,19 @@ static long expr_val(const char *e, int *reloc) {
     xp_ = NULL;
     return v;
 }
+/* expr_val for text that IS an expression, leading parenthesis and all.
+ * expr_val's guard reads a leading '(' as a subscript -- correct for a machine
+ * operand like (R1), and wrong for a DC duplication factor such as (A-B)/8,
+ * which it would silently value at 0.  Same evaluator, without that guard. */
+static long expr_val_full(const char *e, int *reloc) {
+    long v = 0;
+    xp_ = e; xrl_ = 0;
+    while (*xp_ == ' ') xp_++;
+    if (*xp_) { v = x_add(); if (reloc) *reloc = xrl_; }
+    else if (reloc) *reloc = 0;
+    xp_ = NULL;   /* see expr_val: never leave this pointing at a caller's stack buffer */
+    return v;
+}
 /* evaluate a register operand, accepting the (r) parenthesised form (common in
  * macro-expanded model statements, e.g. `LR 0,(3)`); expr_val itself treats a
  * leading '(' as a subscript and returns 0, so strip a fully-enclosing pair. */
@@ -1887,6 +1900,51 @@ static int scan_undef_terms(const char *s, int line) {
     }
     return found;
 }
+/* The first symbol term of E that is not defined YET -- i.e. at this point in
+ * pass 1, which is what "previously defined" means.  Returns 1 and copies the
+ * name into OUT.  Same lexical skips as scan_undef_terms above, for the same
+ * reasons: an apostrophe toggles a skip region, and a token followed by one is a
+ * self-defining term or an attribute prefix (X'40', L'FIELD), not a symbol.
+ * S_ER is not "defined" either -- an external reference is not absolute, so it
+ * cannot be a duplication factor. */
+static int undefined_term(const char *s, char *out) {
+    int q = 0;
+    while (*s) {
+        if (*s == '\'') { q = !q; s++; continue; }
+        if (q) { s++; continue; }
+        if (isalpha((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_') {
+            char nm[64]; int n = 0;
+            while (*s && (isalnum((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_')) {
+                if (n < 63) nm[n] = *s;
+                n++; s++;
+            }
+            nm[n < 63 ? n : 63] = 0;
+            if (*s == '\'') continue;                  /* X'..'/C'..'/B'..'/L'..' prefix */
+            struct sym *sy = sym_find(nm);
+            if (!sy || !sy->defined) { scopy(out, nm, 63); return 1; }
+        } else s++;
+    }
+    return 0;
+}
+/* A DC/DS operand whose parenthesised duplication factor pass 1 REJECTED.
+ *
+ * The reject has to be remembered rather than re-derived, and that is the whole
+ * difficulty of this construct.  IFOX00 requires every symbol in a duplication
+ * factor to be previously defined (IFO231) precisely because the location
+ * counter depends on it; the offending statement then reserves nothing.  By pass
+ * 2 a forward symbol IS defined, so a pass-2 re-evaluation would allocate where
+ * pass 1 allocated nothing -- the location counter would move between the passes
+ * and every symbol after it would silently shift.  Measured on the guest
+ * (JOB02900, tests/listref/ifox-listing-dupfac.txt): a forward reference draws
+ * IFO231 + IFO217 + IFO206 and leaves LOC where it was. */
+static int dupbad_ln[256], dupbad_op[256]; static int ndupbad;
+static void note_dupbad(int line, int opidx) {
+    if (ndupbad < 256) { dupbad_ln[ndupbad] = line; dupbad_op[ndupbad] = opidx; ndupbad++; }
+}
+static int dup_rejected(int line, int opidx) {
+    int i; for (i = 0; i < ndupbad; i++) if (dupbad_ln[i] == line && dupbad_op[i] == opidx) return 1;
+    return 0;
+}
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
@@ -2409,6 +2467,60 @@ static void do_pass(int pass, char **lines, int nlines) {
             for (oi = 0; oi < nops; oi++) {
                 const char *p = ops[oi]; int cnt = 0, hascnt = 0, k;
                 while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
+                /* A duplication factor may also be an absolute expression in
+                 * parentheses (xdcds.asm:110 -- CLI CHAR1,JLPARN / SEE IF
+                 * EXPRESSION).  The character is the constant's TYPE only when it
+                 * is neither a digit nor '('; as370 used to go straight to the
+                 * type test, so every such operand came out "invalid type" and
+                 * reserved nothing -- and every symbol after it in the section
+                 * moved (#93).
+                 *
+                 * Balanced scan, not strchr(')'): the common shape has an inner
+                 * parenthesis, ((A-B)/8), and the first ')' is in the wrong place.
+                 * The length modifier L(expr) below still has that defect; it is
+                 * adjacent and not this change. */
+                if (!hascnt && *p == '(') {
+                    const char *st = p + 1, *q = st; int d = 1, qt = 0;
+                    for (; *q; q++) {
+                        if (*q == '\'') { qt = !qt; continue; }
+                        if (qt) continue;
+                        if (*q == '(') d++;
+                        else if (*q == ')' && --d == 0) break;
+                    }
+                    char ex[256]; int exl = (int)(q - st); if (exl > 255) exl = 255;
+                    memcpy(ex, st, (size_t)exl); ex[exl] = 0;
+                    p = *q ? q + 1 : q;
+                    hascnt = 1;
+                    if (pass == 1) {
+                        char ubad[64]; int rl = 0; long dv;
+                        if (undefined_term(ex, ubad)) {
+                            /* Three messages, in the oracle's order. IFOX raises
+                             * the relocatability error as well because a term it
+                             * cannot resolve is a term it cannot prove absolute,
+                             * and IFO217 is severity 12 -- so one forward
+                             * reference here takes the whole assembly to RC 12. */
+                            char m[96];
+                            snprintf(m, sizeof m, "Duplication factor uses a symbol not previously defined (IFOX00 IFO231) - %.20s", ubad);
+                            note_operr(m, 8, i);
+                            note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
+                            note_operr("Duplication factor error - no storage reserved (IFOX00 IFO206)", 8, i);
+                            note_dupbad(i, oi); cnt = 0;
+                        } else if ((dv = expr_val_full(ex, &rl)), rl != 0) {   /* IFO217, severity 12 */
+                            note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
+                            note_operr("Duplication factor error - no storage reserved (IFOX00 IFO206)", 8, i);
+                            note_dupbad(i, oi); cnt = 0;
+                        } else if (dv < 0) {                      /* IFO206, severity 8 */
+                            note_operr("Negative duplication factor (IFOX00 IFO206)", 8, i);
+                            note_dupbad(i, oi); cnt = 0;
+                        } else cnt = (int)dv;                     /* zero is LEGAL and silent: it reserves nothing */
+                    } else {
+                        /* Pass 2 looks the verdict up; it must not re-derive it,
+                         * or a forward reference (defined by now) would allocate
+                         * here and nowhere in pass 1. */
+                        cnt = dup_rejected(i, oi) ? 0 : (int)expr_val_full(ex, NULL);
+                        if (cnt < 0) cnt = 0;
+                    }
+                }
                 if (!hascnt) cnt = 1;
                 int ty = *p ? toupper((unsigned char)*p++) : 0;
                 int blen = 0, haslen = 0;            /* explicit length modifier Ln or L(expr) */
