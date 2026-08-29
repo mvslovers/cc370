@@ -492,37 +492,93 @@ else
     echo "diag_cap: OK (600 diagnostics: the list is capped, the count, the RC and the loss are not)"
 fi
 rm -f /tmp/_cap.s /tmp/_cap.obj /tmp/_cap.out
-# --- issue #82: an undefined symbol assembles as zero, silently --------------
-# A TRIPWIRE, not a passing feature: it pins what as370 does TODAY so that fixing
-# #82 fails here and forces these numbers to be replaced by the oracle's.
-#
-# IFOX00 flags every undefined symbol IFO188 (severity 8, erms.asm:193 /
-# jermsgcd.asm SEV188) AND zeroes the whole instruction.
-# tests/listref/ifox-listing-undefsym.txt is its listing for this fixture
-# (JOB02870): four statements flagged, five messages, RC 8, and
+# --- issue #82: an undefined symbol is IFO188, and the instruction is zeroed --
+# Checked against tests/listref/ifox-listing-undefsym.txt, IFOX00's listing for
+# this fixture (JOB02870). Both halves matter:
 #
 #     000000 0000 0000            8          BE    NOWHERE
 #     000004 0000 0000            9          LH    3,NOSUCH(,7)
 #     000008 0000 0000 0000      10          MVC   FIELD-BASE(8,2),0(3)
 #
-# as370 keeps the opcode and zeroes only the operands, which is the worse half of
-# the difference: IFOX00's all-zero instruction is an invalid opcode and S0C1s
-# the moment it is reached, while ours RUNS -- a branch to address 0, a load from
-# base+0, an MVC into offset 0 of whatever the base register holds. That is how
-# nsf370's two modules lost a DCBD, two EQUs and a whole instruction to #72's
-# continuation rule without one diagnostic between them.
+# The MESSAGE (IFO188, severity 8, erms.asm:193 / jermsgcd.asm SEV188) and the
+# BYTES. as370 used to keep the opcode and zero only the operands, which is the
+# worse half: IFOX00's all-zero instruction is an invalid opcode and S0C1s the
+# moment it is reached, while ours RAN -- a branch to address 0, a load from
+# base+0, an MVC into offset 0 of whatever the base register held. That silence
+# is how nsf370's two modules lost a DCBD, two EQUs and a whole instruction to
+# #72's continuation rule without one diagnostic between them.
+#
+# The literal is the case that must NOT be zeroed: IFOX assembles `L 4,=A(NOVAL)`
+# as 5840 F018 -- the literal resolves to its pool address, which is defined --
+# and flags NOVAL against the pool statement instead. So the deck's 14 zero bytes
+# are followed immediately by an intact L, which is what the first grep asserts.
+#
+# tests/undefsym.s is FROZEN: IFOX00's listing prints its five comment cards
+# verbatim and numbers every statement from them, so editing the header (even to
+# say the gap is closed -- it still reads "as370 assembles zero and says
+# nothing") shifts every statement number away from the reference. A sixth card
+# was tried while writing this and reached column 72, which under #72's
+# continuation rule ate `UNDEFSYM CSECT` outright. Leave the fixture alone.
+#
+# Two deliberate divergences from the oracle, both benign:
+#  - IFOX flags NOVAL at stmt 14 (the generated pool statement); as370 flags it
+#    at stmt 11, the statement that WROTE the literal, the way IFO158 already
+#    does (dsect_adcon above). as370's listing renders the pool line but has no
+#    lines[] entry for it to hang a diagnostic on.
+#  - IFOX says NUMBER OF STATEMENTS FLAGGED = 4 (stmt 10 raises two messages);
+#    as370's counter counts MESSAGES, so it says 5. That is every recorder in
+#    as370.c, not this one, and it is not fixed here -- hence 5 below, not 4.
 ./as370 tests/undefsym.s -o /tmp/_u82.obj >/tmp/_u82.out 2>&1; rc82=$?
 hex=$(od -An -tx1 /tmp/_u82.obj | tr -d ' \n')
-if [ $rc82 != 0 ]; then
-    echo "undefsym: #82 looks implemented (RC $rc82) -- replace this tripwire with the oracle:"
-    echo "          4 flagged statements, 5x IFO188, RC 8, and the three instructions zeroed"; fail=1
-elif echo "$hex" | grep -q "47800000" && echo "$hex" | grep -q "48307000" &&
-     echo "$hex" | grep -q "d20720003000" && echo "$hex" | grep -q "00000014"; then
-    echo "undefsym: OK (documented gap #82: undefined symbols assemble as zero, RC 0, no diagnostic)"
+n188=$(grep -c 'Undefined symbol in line' /tmp/_u82.out)
+if [ $rc82 != 8 ]; then
+    echo "undefsym: expected RC 8 (IFO188 is severity 8), got $rc82"; fail=1
+elif [ "$n188" != 5 ]; then
+    echo "undefsym: expected 5 IFO188 messages, got $n188"; fail=1
+elif ! grep -q 'line 8 - NOWHERE'  /tmp/_u82.out ||
+     ! grep -q 'line 9 - NOSUCH'   /tmp/_u82.out ||
+     ! grep -q 'line 10 - FIELD'   /tmp/_u82.out ||
+     ! grep -q 'line 10 - BASE'    /tmp/_u82.out ||
+     ! grep -q 'line 11 - NOVAL'   /tmp/_u82.out; then
+    echo "undefsym: the five messages do not name NOWHERE/NOSUCH/FIELD/BASE/NOVAL at their statements"; fail=1
+elif ! grep -q '5 Statements Flagged' /tmp/_u82.out; then
+    echo "undefsym: the summary line lost its count"; fail=1
+elif ! echo "$hex" | grep -q "00000000000000000000000000005840f018"; then
+    echo "undefsym: BE/LH/MVC are not all-zero, or the literal reference was zeroed with them"; fail=1
+elif echo "$hex" | grep -q "47800000" || echo "$hex" | grep -q "48307000" ||
+     echo "$hex" | grep -q "d20720003000"; then
+    echo "undefsym: an opcode survived -- the instruction runs instead of program-checking"; fail=1
+elif ! echo "$hex" | grep -q "000100010c000014"; then
+    echo "undefsym: the RLD is not the single DEFHERE entry -- an undefined term invented a relocation"; fail=1
 else
-    echo "undefsym: FAIL (the bytes moved without the RC moving -- neither ours nor IFOX00's)"; fail=1
+    echo "undefsym: OK (IFO188 x5 at RC 8; BE/LH/MVC zeroed, the literal reference intact, one RLD entry)"
 fi
 rm -f /tmp/_u82.obj /tmp/_u82.out
+# The other side of #82: everything an operand may hold that LOOKS like a symbol
+# and is not. The scanner that decides "zero this instruction" is lexical, so a
+# self-defining term or an attribute prefix left unhandled would read as an
+# undefined symbol named X, C, B or L and zero a perfectly good instruction --
+# `MVI FLAG,X'40'` is the shape that would break first. The literal skip is here
+# too, and every symbol is a FORWARD reference, which is what proves the
+# diagnostic stays silent in pass 1 where a not-yet-defined symbol is legal.
+{ printf 'UNDEFOK  CSECT\n         USING UNDEFOK,15\n'
+  printf '         MVI   FLAG,X\04740\047\n'
+  printf '         CLI   FLAG,C\047A\047\n'
+  printf '         BC    B\0471111\047,SKIP\n'
+  printf '         MVC   FIELD(L\047FIELD),FIELD\n'
+  printf '         L     1,=A(FIELD)\n'
+  printf 'SKIP     BR    14\nFLAG     DS    X\nFIELD    DS    CL8\n         END\n'; } > /tmp/_uok.s
+./as370 /tmp/_uok.s -o /tmp/_uok.obj >/tmp/_uok.out 2>&1; rcok=$?
+hexok=$(od -An -tx1 /tmp/_uok.obj | tr -d ' \n')
+if [ $rcok != 0 ]; then
+    echo "undefsym: the self-defining-term control does not assemble clean (RC $rcok)"
+    sed 's/^/          /' /tmp/_uok.out; fail=1
+elif ! echo "$hexok" | grep -q "9240f01895c1f01847f0f016d207f019f0195810f02807fe"; then
+    echo "undefsym: the control's bytes moved -- X'40'/C'A'/B'1111'/L'FIELD'/=A() no longer assemble as they did"; fail=1
+else
+    echo "undefsym: OK (X'..'/C'..'/B'..'/L'..'/=A() and forward references stay clean at RC 0)"
+fi
+rm -f /tmp/_uok.s /tmp/_uok.obj /tmp/_uok.out
 
 # --- a LIBRARY macro is read to its MEND and not one card further ------------
 # SYS1.MACLIB members routinely keep their PL/S source as comment cards AFTER
