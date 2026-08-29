@@ -513,12 +513,14 @@ rm -f /tmp/_cap.s /tmp/_cap.obj /tmp/_cap.out
 # and flags NOVAL against the pool statement instead. So the deck's 14 zero bytes
 # are followed immediately by an intact L, which is what the first grep asserts.
 #
-# tests/undefsym.s is FROZEN: IFOX00's listing prints its five comment cards
-# verbatim and numbers every statement from them, so editing the header (even to
-# say the gap is closed -- it still reads "as370 assembles zero and says
-# nothing") shifts every statement number away from the reference. A sixth card
-# was tried while writing this and reached column 72, which under #72's
-# continuation rule ate `UNDEFSYM CSECT` outright. Leave the fixture alone.
+# tests/undefsym.s is an ORACLE INPUT: IFOX00's listing prints its five comment
+# cards verbatim and numbers every statement from them, so the fixture and the
+# listing move together or not at all -- editing one alone shifts every statement
+# number asserted below. Re-capture with tests/oracle/capture.py, never edit in
+# place. And keep every card inside column 71: a sixth card was tried while
+# writing this, reached column 72, and under #72's continuation rule ate
+# `UNDEFSYM CSECT` outright -- in the fixture for the diagnostic about symbols
+# lost to exactly that rule.
 #
 # Two deliberate divergences from the oracle, both benign:
 #  - IFOX flags NOVAL at stmt 14 (the generated pool statement); as370 flags it
