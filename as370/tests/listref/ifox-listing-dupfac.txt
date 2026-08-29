@@ -1,0 +1,53 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 13.02 08/29/26
+DUPFAC    SD  0001 000000 00003A
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 13.02 08/29/26
+                                      1 * Parenthesised duplication factor on DC/DS (issue #93). Assembler XF
+                                      2 * takes an absolute expression in parentheses wherever a decimal
+                                      3 * self-defining term may stand (xdcds.asm:110).
+000000                                4 DUPFAC   CSECT
+000000                                5 AREASTA  DS    0H
+000000                                6          DS    CL40
+000028                                7 AREAEND  DS    0H
+000028 0000000000                     8 CALCDC   DC    ((AREAEND-AREASTA)/8)X'00'
+00002D 00000000                       9 SIMPLEDC DC    (4)X'00'
+000031                               10 CALCDS   DS    ((AREAEND-AREASTA)/8)X
+000036                               11 ZERODC   DC    (0)X'00'
+000036 00000000                      12 PLAINDC  DC    4X'00'
+00003A                               13 FWDDC    DC    ((FWDEND-AREASTA)/8)X'00'
+         *** ERROR ***
+00003A                               14 FWDEND   DS    0H
+00003A                               15 NEGDC    DC    ((AREASTA-AREAEND)/8)X'00'
+         *** ERROR ***
+                                     16          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.02 08/29/26
+AREAEND  00002 00000028 00007  00008 00010 00015
+AREASTA  00002 00000000 00005  00008 00010 00013 00015
+CALCDC   00001 00000028 00008
+CALCDS   00001 00000031 00010
+DUPFAC   00001 00000000 00004
+FWDDC    00001 0000003A 00013
+FWDEND   00002 0000003A 00014  00013
+NEGDC    00001 0000003A 00015
+PLAINDC  00001 00000036 00012
+SIMPLEDC 00001 0000002D 00009
+ZERODC   00001 00000036 00011
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 13.02 08/29/26
+   13  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - FWDEND
+   13  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 20
+   13  IFO206      DUPLICATION FACTOR ERROR
+   15  IFO206      DUPLICATION FACTOR ERROR
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     2
+HIGHEST SEVERITY WAS   12
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         16
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        53

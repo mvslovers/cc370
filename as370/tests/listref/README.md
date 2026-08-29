@@ -118,6 +118,37 @@ The first follows `defln`, the way IFO158 already attributes a literal
 diagnostic; as370's listing renders the pool line but has no `lines[]` entry to
 hang a diagnostic on. The second is every recorder in `as370.c`, not this one.
 
+## `ifox-listing-dupfac.txt` — the parenthesised duplication factor (#93)
+
+IFOX00's SYSPRINT for `tests/dupfac.s` (JOB02900), captured to settle what
+Assembler XF does with `DC ((A-B)/8)X'00'` — a construct as370 rejected outright,
+reading the `(` as the constant's type. Seven cases, and three of them decided
+the implementation:
+
+| statement | IFOX00 |
+|---|---|
+| `(0)X'00'` | **legal and silent** — reserves nothing, no diagnostic |
+| forward reference in the factor | `IFO231` + `IFO217` + `IFO206`, reserves nothing |
+| negative factor | `IFO206`, reserves nothing |
+
+The forward-reference rule is the one that made the construct implementable in
+two passes at all. By pass 2 the symbol is defined, so a pass-2 re-evaluation
+would allocate where pass 1 allocated nothing, and the location counter would
+move between the passes — every symbol after it shifting silently. Because IFOX
+rejects it outright, pass 1's verdict can simply be remembered.
+
+`IFO217` is severity **12** (`jermsgcd.asm` SEV217) where the other two are 8, so
+one forward reference takes the whole assembly to RC 12. Reproduced, not
+flattened.
+
+**No deck beside this one:** IFOX00 does not punch at severity 12, so `capture.py`
+came back with the listing alone. That is sufficient here — the LOC and OBJECT
+CODE columns are exactly what a duplication factor decides, and `tests/run.sh`
+asserts the resulting section length and both TXT cards against them.
+
+`check.sh` does not compare it column by column (no diagnostics page in as370's
+listing yet); `run.sh` carries the assertions.
+
 ## `ifox-listing-cont72.txt` — the continuation-rule measurement (#72)
 
 IFOX00's SYSPRINT for `tests/cont72.s` (JOB02846). It is the evidence that a

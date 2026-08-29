@@ -581,6 +581,74 @@ else
     echo "undefsym: OK (X'..'/C'..'/B'..'/L'..'/=A() and forward references stay clean at RC 0)"
 fi
 rm -f /tmp/_uok.s /tmp/_uok.obj /tmp/_uok.out
+# --- issue #93: a parenthesised duplication factor on DC/DS ------------------
+# Assembler XF takes an absolute expression in parentheses wherever a decimal
+# self-defining term may stand as a duplication factor (xdcds.asm:110 --
+# CLI CHAR1,JLPARN / SEE IF EXPRESSION). as370 read the '(' as the constant's
+# TYPE, rejected the statement, and reserved nothing -- so every symbol after it
+# in the section moved. 126 modules of a real IBM MVS source tree use it; the
+# shape is a compiler-generated patch area sized over the distance between two
+# labels.
+#
+# tests/listref/ifox-listing-dupfac.txt is IFOX00's listing for this fixture
+# (JOB02900) and settles every case, including the two that decide the design:
+#
+#   (0)X'00'      LEGAL and silent -- reserves nothing, no diagnostic
+#   forward ref   IFO231 + IFO217 + IFO206, and reserves nothing
+#
+# The forward-reference rule is what makes the construct implementable at all in
+# two passes: by pass 2 the symbol IS defined, so a pass-2 re-evaluation would
+# allocate where pass 1 allocated nothing and the location counter would move
+# between the passes. Because IFOX rejects it outright, pass 1's verdict can
+# simply be remembered (dup_rejected()).
+#
+# IFO217 is severity 12 (jermsgcd.asm SEV217) where IFO231 and IFO206 are 8, so
+# ONE forward reference takes the assembly to RC 12. That is the oracle's RC and
+# it is reproduced rather than flattened to 8.
+#
+# No deck oracle: IFOX00 does not punch at severity 12, so the listing is the
+# reference here. It carries the LOC and OBJECT CODE columns, which is precisely
+# what a duplication factor decides.
+./as370 tests/dupfac.s -o /tmp/_d93.obj >/tmp/_d93.out 2>&1; rc93=$?
+hex93=$(od -An -tx1 /tmp/_d93.obj | tr -d ' \n')
+if [ $rc93 != 12 ]; then
+    echo "dupfac: expected RC 12 (IFO217 is severity 12), got $rc93"; fail=1
+elif ! echo "$hex93" | grep -q "4000003a"; then
+    echo "dupfac: section length is not 0x3A -- the duplication factors did not size as IFOX00's"; fail=1
+elif ! echo "$hex93" | grep -q "4000002840400009"; then
+    echo "dupfac: no 9-byte TXT at 000028 -- CALCDC's 5 and SIMPLEDC's 4 did not both land"; fail=1
+elif ! echo "$hex93" | grep -q "4000003640400004"; then
+    echo "dupfac: no 4-byte TXT at 000036 -- the plain decimal control moved"; fail=1
+elif ! grep -q 'IFO231) - FWDEND in line 13' /tmp/_d93.out ||
+     ! grep -q 'IFO217) in line 13'          /tmp/_d93.out ||
+     ! grep -q 'IFO206) in line 13'          /tmp/_d93.out ||
+     ! grep -q 'IFO206) in line 15'          /tmp/_d93.out; then
+    echo "dupfac: the four messages are not IFO231+IFO217+IFO206 on stmt 13 and IFO206 on stmt 15"; fail=1
+elif grep -q 'in line 11' /tmp/_d93.out; then
+    echo "dupfac: (0) was flagged -- a zero duplication factor is legal and reserves nothing"; fail=1
+elif ! grep -q '2 Statements Flagged' /tmp/_d93.out; then
+    echo "dupfac: expected the oracle's 2 flagged statements over 4 messages"; fail=1
+else
+    echo "dupfac: OK (expression/(0)/decimal size as IFOX00; forward ref and negative rejected at RC 12)"
+fi
+rm -f /tmp/_d93.obj /tmp/_d93.out
+# The balanced scan, on its own. The common shape carries an inner parenthesis,
+# so a strchr(')') would cut the expression at the WRONG bracket and value it at
+# whatever the truncated text yields -- silently, since the result is still a
+# number. A flat factor and a nested one must size the same here.
+{ printf 'BAL93    CSECT\nWSTART   DS    0H\n         DS    CL32\nWEND     DS    0H\n'
+  printf 'NESTED   DC    ((WEND-WSTART)/8)X\04700\047\n'
+  printf 'FLAT     DC    (4)X\04700\047\n         END\n'; } > /tmp/_d93b.s
+./as370 /tmp/_d93b.s -o /tmp/_d93b.obj >/tmp/_d93b.out 2>&1; rcb=$?
+hexb=$(od -An -tx1 /tmp/_d93b.obj | tr -d ' \n')
+if [ $rcb != 0 ]; then
+    echo "dupfac_nested: expected RC 0, got $rcb"; sed 's/^/          /' /tmp/_d93b.out; fail=1
+elif ! echo "$hexb" | grep -q "40000028"; then
+    echo "dupfac_nested: section is not 0x28 -- 4 nested + 4 flat bytes did not both land"; fail=1
+else
+    echo "dupfac_nested: OK (an inner parenthesis does not truncate the expression)"
+fi
+rm -f /tmp/_d93b.s /tmp/_d93b.obj /tmp/_d93b.out
 # --- issue #88: the summary counts STATEMENTS flagged, not messages ----------
 # IFOX00's ERRORTN (ifnx6b.asm:443) holds LSTMTNO, a single fullword initialised
 # to -1, and increments ERRQTY only when the statement number differs from the
