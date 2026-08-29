@@ -875,7 +875,11 @@ static int sub_count(const char *v) {
 }
 static void sub_elem(const char *v, int idx, char *out) {
     out[0] = 0;
-    if (v[0] != '(') { if (idx == 1) { strncpy(out, v, 95); out[95] = 0; } return; }
+    /* scopy, not strncpy: OUT holds 96 bytes and V can be the whole &SYSLIST
+     * buffer, so gcc rightly reads the pair as a truncating copy under -Werror.
+     * The truncation is intended -- a variable symbol's value is bounded at 95
+     * here as everywhere in this evaluator -- and scopy says so and terminates. */
+    if (v[0] != '(') { if (idx == 1) scopy(out, v, 95); return; }
     const char *s = v + 1, *p = s; int n = 1, d = 0, q = 0;
     for (;; p++) {
         if (*p == '\'') { q = !q; continue; }
@@ -910,10 +914,61 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     else if (c->m && c->m->namep[0] && !strcmp(amp, c->m->namep)) { base = c->namepval ? c->namepval : ""; is_param = 1; }
     else if (c->m) for (k = 0; k < c->m->nparm; k++) if (!strcmp(amp, c->m->pname[k])) { base = c->pv[k]; is_param = 1; break; }   /* open code: c->m is NULL -> resolve via the SET/global store below */
     if (*p == '(') {
-        char idxs[64]; const char *rp = strchr(p, ')'); int L = rp ? (int)(rp - p - 1) : (int)strlen(p + 1); if (L > 63) L = 63; memcpy(idxs, p + 1, L); idxs[L] = 0;
-        const char *sep = ep_; struct ctx *sec = ec_; long idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec;   /* save/restore parser state */
-        if (is_param) sub_elem(base ? base : "", (int)idx, out);
-        else { char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn);
+        /* Balanced scan, not strchr(')'): a subscript may be an expression that
+         * carries its own parentheses -- &SYSLIST((&I+1),1) -- and the first ')'
+         * is then in the wrong place. */
+        const char *st = p + 1, *q = st; int d = 1, qt = 0;
+        for (; *q; q++) {
+            if (*q == '\'') { qt = !qt; continue; }
+            if (qt) continue;
+            if (*q == '(') d++;
+            else if (*q == ')' && --d == 0) break;
+        }
+        char idxs[128]; int L = (int)(q - st); if (L > 127) L = 127; memcpy(idxs, st, (size_t)L); idxs[L] = 0;
+        if (is_param) {
+            /* ONE SUBSCRIPT PER LEVEL.  &SYSLIST(n) is the n'th positional
+             * operand; &SYSLIST(n,m) is the m'th element of that operand's
+             * sublist.  as370 used to evaluate the whole subscript text as a
+             * single expression -- eval_seta("1,1") stops at the comma and
+             * yields 1 -- so the second subscript was dropped and the reference
+             * returned the operand entire, parentheses and all (#94).  Where the
+             * result was used as a name, the generated statement carried
+             * `(ALPHA,8)` and the module died of an over-long name field, a
+             * diagnostic correct about what it saw and pointing nowhere near the
+             * cause.
+             *
+             * Measured on the guest (JOB02901, tests/listref/ifox-listing-syslist.txt):
+             * on a NON-sublist operand, element 1 is the operand itself and
+             * element 2 is null -- which is exactly what sub_elem already does
+             * for a value with no leading '(' , so applying it per level needs no
+             * special case.
+             *
+             * XF defines two levels for &SYSLIST and one for a named parameter;
+             * the loop simply follows however many subscripts are written, which
+             * degrades to the previous behaviour for a single one. */
+            char cur[1024]; scopy(cur, base ? base : "", sizeof cur - 1);
+            const char *t = idxs;
+            for (;;) {
+                const char *e2 = t; int dd = 0, qq = 0;
+                for (; *e2; e2++) {
+                    if (*e2 == '\'') { qq = !qq; continue; }
+                    if (qq) continue;
+                    if (*e2 == '(') dd++;
+                    else if (*e2 == ')') dd--;
+                    else if (*e2 == ',' && dd == 0) break;
+                }
+                char one[128]; int L2 = (int)(e2 - t); if (L2 > 127) L2 = 127;
+                memcpy(one, t, (size_t)L2); one[L2] = 0;
+                const char *sep = ep_; struct ctx *sec = ec_;
+                long idx = eval_seta(c, one); ep_ = sep; ec_ = sec;   /* save/restore parser state */
+                char nxt[96]; sub_elem(cur, (int)idx, nxt);
+                scopy(cur, nxt, sizeof cur - 1);
+                if (!*e2) break;
+                t = e2 + 1;
+            }
+            scopy(out, cur, 95);
+        }
+        else { long idx; { const char *sep = ep_; struct ctx *sec = ec_; idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec; } char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn);
             if (v) { strncpy(out, v, 95); out[95] = 0; }
             else { int a; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; break; } strncpy(out, def, 95); out[95] = 0; } }   /* unset array element -> default */
     } else {
