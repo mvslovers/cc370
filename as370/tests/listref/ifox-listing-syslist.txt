@@ -1,0 +1,55 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.05 08/29/26
+SYSLTEST  SD  0001 000000 000015
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.05 08/29/26
+                                      1 * &SYSLIST(n,m): the second subscript reaches an element INSIDE a
+                                      2 * sublist operand (issue #94). Operand 1 is a three-element sublist,
+                                      3 * operand 2 is not a sublist at all -- so the m=1 and m>1 cases on a
+                                      4 * plain operand are probed too, as is the named-parameter form &P(m)
+                                      5 * that already worked.
+                                      6          MACRO
+                                      7 &NAME    SUBL  &P1,&P2
+                                      8          LCLA  &E12
+                                      9          LCLC  &E11,&E13,&F21,&F22,&NP
+                                     10 &E11     SETC  '&SYSLIST(1,1)'
+                                     11 &E12     SETA  &SYSLIST(1,2)
+                                     12 &E13     SETC  '&SYSLIST(1,3)'
+                                     13 &F21     SETC  '&SYSLIST(2,1)'
+                                     14 &F22     SETC  '&SYSLIST(2,2)'
+                                     15 &NP      SETC  '&P2(1)'
+                                     16 &E11     EQU   &E12
+                                     17 E13      DC    C'/&E13/'
+                                     18 F21      DC    C'/&F21/'
+                                     19 F22      DC    C'/&F22/'
+                                     20 NAMED    DC    C'/&NP/'
+                                     21          MEND
+000000                               22 SYSLTEST CSECT
+                                     23          SUBL  (ALPHA,8,GAMMA),BETA
+                            00008    24+ALPHA    EQU   8
+000000 61C7C1D4D4C161                25+E13      DC    C'/GAMMA/'
+000007 61C2C5E3C161                  26+F21      DC    C'/BETA/'
+00000D 6161                          27+F22      DC    C'//'
+00000F 61C2C5E3C161                  28+NAMED    DC    C'/BETA/'
+                                     29          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.05 08/29/26
+ALPHA    00001 00000008 00024
+E13      00007 00000000 00025
+F21      00006 00000007 00026
+F22      00002 0000000D 00027
+NAMED    00006 0000000F 00028
+SYSLTEST 00001 00000000 00022
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 14.05 08/29/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         24
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        55

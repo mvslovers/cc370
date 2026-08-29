@@ -581,6 +581,71 @@ else
     echo "undefsym: OK (X'..'/C'..'/B'..'/L'..'/=A() and forward references stay clean at RC 0)"
 fi
 rm -f /tmp/_uok.s /tmp/_uok.obj /tmp/_uok.out
+# --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
+# &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
+# of that operand's sublist. as370 evaluated the whole subscript text as one
+# expression -- eval_seta("1,1") stops at the comma and yields 1 -- so the second
+# subscript was dropped and the reference returned the operand ENTIRE, parentheses
+# included. Used as a name, the generated statement carried `(ALPHA,8,GAMMA)` and
+# the module died of an over-long name field: a diagnostic correct about what it
+# saw and pointing nowhere near the cause.
+#
+# tests/ref/syslist.obj and tests/listref/ifox-listing-syslist.txt are IFOX00's
+# deck and listing for this fixture (JOB02901, RC 0). The fixture probes both
+# operand shapes on purpose, because the non-sublist one decides whether the
+# per-level substitution needs a special case:
+#
+#   operand 1 = (ALPHA,8,GAMMA)   (1,1)=ALPHA  (1,2)=8  (1,3)=GAMMA
+#   operand 2 = BETA              (2,1)=BETA   (2,2)=NULL
+#
+# It does not: sub_elem already returns a value with no leading '(' for index 1
+# and nothing for index 2, which is exactly what the guest does.
+#
+# The fixture also needs LCLA/LCLC. IFOX rejects an undeclared SET symbol with
+# IFO006 (22 statements flagged on the first capture attempt) where as370 accepts
+# it -- a separate leniency, not this issue.
+./as370 tests/syslist.s -o /tmp/_s94.obj >/tmp/_s94.out 2>&1; rc94=$?
+./as370 tests/syslist.s -a -o /dev/null >/tmp/_s94.lst 2>/dev/null
+s94sz=$(wc -c < /tmp/_s94.obj); r94sz=$(wc -c < tests/ref/syslist.obj)
+if [ $rc94 != 0 ]; then
+    echo "syslist: expected RC 0, got $rc94"; sed 's/^/          /' /tmp/_s94.out; fail=1
+elif grep -q '(ALPHA,8,GAMMA) EQU' /tmp/_s94.lst || grep -q "C'/(ALPHA" /tmp/_s94.lst; then
+    # the bug's own signature, not the source line: the CALL statement legitimately
+    # reads `SUBL (ALPHA,8,GAMMA),BETA`, so only the GENERATED lines can say this
+    echo "syslist: a sublist operand was substituted whole -- the second subscript is being dropped"; fail=1
+elif ! grep -q 'ALPHA    EQU   8' /tmp/_s94.lst; then
+    echo "syslist: &SYSLIST(1,1)/(1,2) did not yield ALPHA and 8"; fail=1
+elif [ "$s94sz" != "$r94sz" ]; then
+    echo "syslist: deck $s94sz bytes against IFOX00's $r94sz"; fail=1
+else
+    n94=$(( (r94sz / 80 - 1) * 80 ))
+    head -c "$n94" /tmp/_s94.obj > /tmp/_s94a.$$; head -c "$n94" tests/ref/syslist.obj > /tmp/_s94b.$$
+    if cmp -s /tmp/_s94a.$$ /tmp/_s94b.$$; then
+        echo "syslist: OK (== IFOX00: GAMMA, BETA, the null element, and ALPHA EQU 8)"
+    else
+        echo "syslist: deck differs from IFOX00 before the END card"; fail=1
+    fi
+    rm -f /tmp/_s94a.$$ /tmp/_s94b.$$
+fi
+rm -f /tmp/_s94.obj /tmp/_s94.out /tmp/_s94.lst
+# The balanced scan, on its own: a subscript may carry its own parentheses, and
+# strchr(')') would then cut at the wrong bracket. &SYSLIST((&I+1),1) with &I=1
+# must reach operand 2's first element.
+{ printf '         MACRO\n&NAME    SUBI  &P1,&P2\n         LCLA  &I\n         LCLC  &V\n'
+  printf '&I       SETA  1\n'
+  printf '&V       SETC  \047&SYSLIST((&I+1),1)\047\n'
+  printf 'NESTED   DC    C\047/&V/\047\n         MEND\n'
+  printf 'T        CSECT\n         SUBI  (A,1),(DELTA,2)\n         END\n'; } > /tmp/_s94n.s
+./as370 /tmp/_s94n.s -o /tmp/_s94n.obj >/tmp/_s94n.out 2>&1; rcn=$?
+hexn=$(od -An -tx1 /tmp/_s94n.obj | tr -d ' \n')
+if [ $rcn != 0 ]; then
+    echo "syslist_nested: expected RC 0, got $rcn"; fail=1
+elif ! echo "$hexn" | grep -q "61c4c5d3e3c161"; then
+    echo "syslist_nested: a parenthesised subscript truncated the expression -- expected C'/DELTA/'"; fail=1
+else
+    echo "syslist_nested: OK (a parenthesised subscript is scanned to its own closing bracket)"
+fi
+rm -f /tmp/_s94n.s /tmp/_s94n.obj /tmp/_s94n.out
 # --- issue #93: a parenthesised duplication factor on DC/DS ------------------
 # Assembler XF takes an absolute expression in parentheses wherever a decimal
 # self-defining term may stand as a duplication factor (xdcds.asm:110 --

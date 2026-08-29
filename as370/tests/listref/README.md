@@ -118,6 +118,31 @@ The first follows `defln`, the way IFO158 already attributes a literal
 diagnostic; as370's listing renders the pool line but has no `lines[]` entry to
 hang a diagnostic on. The second is every recorder in `as370.c`, not this one.
 
+## `ifox-listing-syslist.txt` — `&SYSLIST(n,m)` (#94)
+
+IFOX00's SYSPRINT for `tests/syslist.s` (JOB02901, RC 0), captured with a deck —
+`tests/ref/syslist.obj` — because the answers are values, and values reach the
+deck as constants.
+
+`&SYSLIST(n)` is the n'th positional operand; `&SYSLIST(n,m)` is the m'th element
+of that operand's sublist. The fixture probes both operand shapes on purpose,
+because the non-sublist one is what decides whether per-level substitution needs
+a special case:
+
+| | `(n,1)` | `(n,2)` | `(n,3)` |
+|---|---|---|---|
+| operand 1 = `(ALPHA,8,GAMMA)` | `ALPHA` | `8` | `GAMMA` |
+| operand 2 = `BETA` | `BETA` | **null** | |
+
+It does not need one: `sub_elem` already returns a value with no leading `(` for
+index 1 and nothing beyond, which is what the guest does.
+
+**The first capture attempt was rejected**, 22 statements flagged with `IFO006
+UNDEFINED VARIABLE SYMBOL`: Assembler XF requires `LCLA`/`LCLC` for a macro's
+local SET symbols, and as370 accepts them undeclared. A separate leniency, not
+#94 — but a reminder that a fixture written against as370 is not automatically a
+fixture the guest will take.
+
 ## `ifox-listing-dupfac.txt` — the parenthesised duplication factor (#93)
 
 IFOX00's SYSPRINT for `tests/dupfac.s` (JOB02900), captured to settle what
