@@ -1,13 +1,13 @@
                                                EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
-SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 11.28 08/28/26
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 01.19 08/29/26
 UNDEFSYM  SD  0001 000000 00001C
                                                                                                                PAGE    2
-  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 11.28 08/28/26
-                                      1 * Undefined symbols, in the four shapes the nsf370 modules hit them
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 01.19 08/29/26
+                                      1 * Undefined symbols in the four shapes nsf370's modules hit them
                                       2 * (mvslovers/nsf370): a branch target, a displacement symbol, a
-                                      3 * difference of two, and a literal adcon. IFOX00 flags each one
-                                      4 * IFO188 (severity 8, jermsgcd.asm SEV188); as370 assembles zero and
-                                      5 * says nothing.
+                                      3 * difference of two, and a literal adcon.  IFOX00 flags each one
+                                      4 * IFO188 (severity 8, jermsgcd.asm SEV188) and zeroes the whole
+                                      5 * instruction -- but assembles the literal's reference normally.
 000000                                6 UNDEFSYM CSECT
                             00000     7          USING UNDEFSYM,15
 000000 0000 0000      00000           8          BE    NOWHERE            undefined branch target
@@ -23,11 +23,11 @@ UNDEFSYM  SD  0001 000000 00001C
 000018 00000000                      14                =A(NOVAL)
          *** ERROR ***
                                                   RELOCATION DICTIONARY                                        PAGE    3
-POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 11.28 08/28/26
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 01.19 08/29/26
  0001     0001      0C     000014
  
                                                   CROSS-REFERENCE                                              PAGE    4
-SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.28 08/28/26
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.19 08/29/26
 BASE     ****UNDEFINED****     00010
 DEFHERE  00004 00000014 00012  00012
 FIELD    ****UNDEFINED****     00010
@@ -36,11 +36,11 @@ NOVAL    ****UNDEFINED****     00014
 NOWHERE  ****UNDEFINED****     00008
 UNDEFSYM 00001 00000000 00006  00007
                                                   LITERAL CROSS-REFERENCE                                      PAGE    5
-SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.28 08/28/26
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.19 08/29/26
 =A(NOVAL)
          00004 00000018 00014  00011
                                                   ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
-STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 11.28 08/28/26
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 01.19 08/29/26
     8  IFO188      NOWHERE IS AN UNDEFINED SYMBOL
     9  IFO188      NOSUCH IS AN UNDEFINED SYMBOL
    10  IFO188      FIELD IS AN UNDEFINED SYMBOL

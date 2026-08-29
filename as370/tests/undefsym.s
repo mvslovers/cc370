@@ -1,8 +1,8 @@
-* Undefined symbols, in the four shapes the nsf370 modules hit them
+* Undefined symbols in the four shapes nsf370's modules hit them
 * (mvslovers/nsf370): a branch target, a displacement symbol, a
-* difference of two, and a literal adcon. IFOX00 flags each one
-* IFO188 (severity 8, jermsgcd.asm SEV188); as370 assembles zero and
-* says nothing.
+* difference of two, and a literal adcon.  IFOX00 flags each one
+* IFO188 (severity 8, jermsgcd.asm SEV188) and zeroes the whole
+* instruction -- but assembles the literal's reference normally.
 UNDEFSYM CSECT
          USING UNDEFSYM,15
          BE    NOWHERE            undefined branch target
