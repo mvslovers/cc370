@@ -527,9 +527,9 @@ rm -f /tmp/_cap.s /tmp/_cap.obj /tmp/_cap.out
 #    at stmt 11, the statement that WROTE the literal, the way IFO158 already
 #    does (dsect_adcon above). as370's listing renders the pool line but has no
 #    lines[] entry for it to hang a diagnostic on.
-#  - IFOX says NUMBER OF STATEMENTS FLAGGED = 4 (stmt 10 raises two messages);
-#    as370's counter counts MESSAGES, so it says 5. That is every recorder in
-#    as370.c, not this one, and it is not fixed here -- hence 5 below, not 4.
+#  - (was: IFOX says NUMBER OF STATEMENTS FLAGGED = 4 where as370 said 5, because
+#    stmt 10 raises two messages and as370's counter counted messages. Fixed in
+#    #88 -- both say 4 now, which is what the assertion below pins.)
 ./as370 tests/undefsym.s -o /tmp/_u82.obj >/tmp/_u82.out 2>&1; rc82=$?
 hex=$(od -An -tx1 /tmp/_u82.obj | tr -d ' \n')
 n188=$(grep -c 'Undefined symbol in line' /tmp/_u82.out)
@@ -543,8 +543,8 @@ elif ! grep -q 'line 8 - NOWHERE'  /tmp/_u82.out ||
      ! grep -q 'line 10 - BASE'    /tmp/_u82.out ||
      ! grep -q 'line 11 - NOVAL'   /tmp/_u82.out; then
     echo "undefsym: the five messages do not name NOWHERE/NOSUCH/FIELD/BASE/NOVAL at their statements"; fail=1
-elif ! grep -q '5 Statements Flagged' /tmp/_u82.out; then
-    echo "undefsym: the summary line lost its count"; fail=1
+elif ! grep -q '4 Statements Flagged' /tmp/_u82.out; then
+    echo "undefsym: expected the oracle's 4 flagged statements (stmt 10 raises two of the five messages)"; fail=1
 elif ! echo "$hex" | grep -q "00000000000000000000000000005840f018"; then
     echo "undefsym: BE/LH/MVC are not all-zero, or the literal reference was zeroed with them"; fail=1
 elif echo "$hex" | grep -q "47800000" || echo "$hex" | grep -q "48307000" ||
@@ -581,6 +581,98 @@ else
     echo "undefsym: OK (X'..'/C'..'/B'..'/L'..'/=A() and forward references stay clean at RC 0)"
 fi
 rm -f /tmp/_uok.s /tmp/_uok.obj /tmp/_uok.out
+# --- issue #88: the summary counts STATEMENTS flagged, not messages ----------
+# IFOX00's ERRORTN (ifnx6b.asm:443) holds LSTMTNO, a single fullword initialised
+# to -1, and increments ERRQTY only when the statement number differs from the
+# immediately preceding one -- so one statement with three diagnostics is one
+# flagged statement. as370 used to sum the per-recorder message totals.
+#
+# Four things have to hold at once, and each has its own trap.
+#
+# (a) THE PRINT CAP MUST NOT REACH THE COUNT. Every one of the ten recorders
+#     still stops its printed list at 128 entries. 200 over-length operand terms
+#     are 200 flagged statements; before #88 the summary said 128, silently --
+#     the same defect bce38d8 fixed for the continuation recorder, in the ten
+#     that were left.
+{ printf 'CAPPED   CSECT\n         USING CAPPED,15\n'
+  i=0; while [ $i -lt 200 ]; do printf '         L     1,LONGSYMBOL%03d\n' $i; i=$((i + 1)); done
+  printf '         BR    14\n         END\n'; } > /tmp/_f88a.s
+./as370 /tmp/_f88a.s -o /dev/null >/tmp/_f88a.out 2>&1; rcA=$?
+if [ $rcA != 8 ]; then
+    echo "flagged_cap: expected RC 8 (IFO236), got $rcA"; fail=1
+elif ! grep -q '200 Statements Flagged' /tmp/_f88a.out; then
+    echo "flagged_cap: the count did not survive the 128-entry print cap: $(grep 'Assembler Done' /tmp/_f88a.out)"; fail=1
+else
+    echo "flagged_cap: OK (200 flagged statements counted, 128 printed)"
+fi
+# (b) TWO RECORDERS, ONE STATEMENT, ONE COUNT. A statement continued onto a card
+#     with non-blanks in columns 1-15 (IFO026) that ALSO references an undefined
+#     symbol (IFO188) is ONE flagged statement -- the two diagnostics reach the
+#     summary through different key spaces (the continuation one is raised while
+#     cards are joined, before lines[] exists) and used to be added up.
+{ printf 'T        CSECT\n         USING T,15\n'
+  printf '%-71sX\n' '         MVC   FIELD(8),'
+  printf 'JUNK             0(3)\n'
+  printf '         BR    14\n         END\n'; } > /tmp/_f88b.s
+./as370 /tmp/_f88b.s -o /dev/null >/tmp/_f88b.out 2>&1
+if ! grep -q '1 Statement Flagged' /tmp/_f88b.out; then
+    echo "flagged_overlap: one statement in both diagnostic spaces counted more than once: $(grep 'Assembler Done' /tmp/_f88b.out)"; fail=1
+else
+    echo "flagged_overlap: OK (continuation + undefined symbol on one statement = 1)"
+fi
+# (c) AND THE RECONCILIATION MUST NOT OVER-REACH. The card number is the only key
+#     the two spaces share, and a LIBRARY MEMBER's card numbers are member-
+#     relative: member card 4 and primary-source card 4 are different statements.
+#     Subtracting on the number alone turns this two-statement module into one --
+#     an UNDER-count, which hides a diagnostic, so it is the worse direction.
+mlib88=/tmp/_ml88.$$
+mkdir -p "$mlib88"
+{ printf '         MACRO\n&L       BADM\n'
+  printf '%-71sX\n' '&L       MVC   0(8,1),'
+  printf 'JUNK             0(2)\n'
+  printf '         MEND\n'; } > "$mlib88/badm.macro"
+{ printf 'T        CSECT\n         USING T,15\n'
+  printf 'LBL      BADM\n'
+  printf '         L     1,NOSUCH\n'
+  printf '         BR    14\n         END\n'; } > "$mlib88/a.s"
+./as370 "$mlib88/a.s" -I "$mlib88" -o /dev/null >"$mlib88/a.out" 2>&1
+if ! grep -q '2 Statements Flagged' "$mlib88/a.out"; then
+    echo "flagged_libcard: a member-relative card number was merged with a primary-source one: $(grep 'Assembler Done' "$mlib88/a.out")"; fail=1
+else
+    echo "flagged_libcard: OK (member card 4 and source card 4 stay two statements)"
+fi
+# (d) THE KNOWN RESIDUAL, PINNED AS A TRIPWIRE -- NOT A PASSING FEATURE.
+#     One GENERATED statement that is both badly continued and references an
+#     undefined symbol. IFOX00 counts 1; as370 counts 2, because the continuation
+#     diagnostic carries a member-relative card number that names no statement in
+#     this numbering, so it cannot be reconciled with the lines[] one.
+#
+#     Closing it needs the origin (member, card) of every generated line threaded
+#     through the macro expander -- issue #91. When that lands, this case becomes
+#     1 and the assertion below fails, which is the point: it brings whoever does
+#     it here instead of leaving the number to be discovered.
+#
+#     Measured: 0 of 835 ecosystem modules produce a library-member continuation
+#     diagnostic at all -- #81 (a library macro is read to its MEND, and no card
+#     further) removed the last of them.
+mlib89=/tmp/_ml89.$$
+mkdir -p "$mlib89"
+{ printf '         MACRO\n&L       BOTHM\n'
+  printf '%-71sX\n' '&L       MVC   FIELD(8),'
+  printf 'JUNK             0(2)\n'
+  printf '         MEND\n'; } > "$mlib89/bothm.macro"
+{ printf 'T        CSECT\n         USING T,15\n'
+  printf 'LBL      BOTHM\n'
+  printf '         BR    14\n         END\n'; } > "$mlib89/a.s"
+./as370 "$mlib89/a.s" -I "$mlib89" -o /dev/null >"$mlib89/a.out" 2>&1
+if grep -q '1 Statement Flagged' "$mlib89/a.out"; then
+    echo "flagged_libmac: #91 looks implemented -- this tripwire should now assert 1, not 2"; fail=1
+elif grep -q '2 Statements Flagged' "$mlib89/a.out"; then
+    echo "flagged_libmac: OK (documented residual #91: a library-member continuation counts on its own, 2 for IFOX00's 1)"
+else
+    echo "flagged_libmac: neither the documented 2 nor the correct 1: $(grep 'Assembler Done' "$mlib89/a.out")"; fail=1
+fi
+rm -rf /tmp/_f88a.s /tmp/_f88a.out /tmp/_f88b.s /tmp/_f88b.out "$mlib88" "$mlib89"
 
 # --- a LIBRARY macro is read to its MEND and not one card further ------------
 # SYS1.MACLIB members routinely keep their PL/S source as comment cards AFTER
