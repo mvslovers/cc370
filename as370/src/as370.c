@@ -31,6 +31,10 @@ static void scopy(char *d, const char *s, size_t n) { size_t i = 0; while (i < n
 #define MAXLIT 8192
 #define MAXREL 131072
 #define TEXTMAX (1024 * 1024)
+/* Sizes the expanded-statement arrays of the macro preprocessor below, and the
+ * flagged-statement bitmaps right after this -- which the recorders start
+ * marking at note_overlong, long before the preprocessor is declared. */
+#define MAXLINES 131072
 
 enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC, F_S };
 
@@ -207,7 +211,56 @@ static int split_fields(const char *s, char f[][64], int max);   /* fwd */
  * is capped to 8 earlier, by parse(), so it never reaches this guard -- that
  * separate truncation site is not yet diagnosed (see #32). */
 static char ovl_sym[128][64]; static int ovl_ln[128]; static int novl;
+/* IFOX00 counts STATEMENTS flagged, not messages.  ERRORTN (ifnx6b.asm:443)
+ * holds LSTMTNO, a SINGLE fullword initialised to -1, and increments ERRQTY only
+ * when the statement number differs from the immediately preceding one:
+ *
+ *      C     COUNT,LSTMTNO            IF SAME STATEMENT NUMBER
+ *      BE    NOCOUNT                     DON'T COUNT IT AGAIN
+ *
+ * So the count is adjacent-dedup over the emission order, and because IFOX emits
+ * in statement order that comes to "distinct statements".  as370 prints per
+ * RECORDER, which is not statement order, so a SET is the faithful reading: it
+ * gives the number IFOX would give for the same set of flagged statements.
+ *
+ * as370 used to sum the per-recorder totals, which counted messages -- five
+ * IFO188 over four statements read as "5 Statements Flagged" against the
+ * oracle's 4 (#88) -- and counted a statement twice when two different recorders
+ * flagged it.
+ *
+ * Marked in the recorders BEFORE their print caps, so the count survives them.
+ * That matters: every one of the ten lists still stops at 128 entries, and a
+ * count taken over what was KEPT would be wrong exactly in the modules with the
+ * most diagnostics.  cont_stmts(), which counted distinct statements correctly
+ * but only over contd[]'s kept entries, had that defect for real.
+ *
+ * Two key spaces, because continuation diagnostics are raised while cards are
+ * being JOINED, before lines[] exists:
+ *   stmt_flagged  lines[] index -- as370's own statement identity, so a macro
+ *                 expansion's statements count individually, the way IFOX
+ *                 numbers them.  (line_org would fold all of them onto the call.)
+ *   cont_mark     the raw card number, bit 1 primary source, bit 2 a library
+ *                 member.
+ * The two are reconciled at report time; see count_flagged_stmts(). */
+static unsigned char stmt_flagged[MAXLINES];   /* lines[] index of a flagged statement */
+static int nstmt_flagged;
+static void mark_flagged(int line) {
+    if (line < 0 || line >= MAXLINES || stmt_flagged[line]) return;
+    stmt_flagged[line] = 1; nstmt_flagged++;
+}
+#define CM_PRI 1
+#define CM_LIB 2
+static unsigned char cont_mark[MAXLINES];      /* card number of a statement with a continuation diagnostic */
+static int ncont_pri, ncont_lib;
+static void mark_cont_stmt(int card, int inlib) {
+    if (card < 0 || card >= MAXLINES) return;
+    int bit = inlib ? CM_LIB : CM_PRI;
+    if (cont_mark[card] & bit) return;
+    cont_mark[card] |= (unsigned char)bit;
+    if (inlib) ncont_lib++; else ncont_pri++;
+}
 static void note_overlong(const char *n) {
+    mark_flagged(g_curln);
     int i; for (i = 0; i < novl; i++) if (!strcmp(ovl_sym[i], n)) return;   /* one report per distinct symbol -- an over-length name re-creates on every lookup (never matches sym_find) and again in pass 2 */
     if (novl < 128) { scopy(ovl_sym[novl], n, 63); ovl_ln[novl] = g_curln; novl++; }
 }
@@ -245,6 +298,7 @@ static struct { char sym[64]; int line; } undefs[MAXUNDEF];
 static int nundef;          /* entries kept for printing */
 static int nundef_seen;     /* every one raised */
 static void note_undefsym(const char *n, int line) {
+    mark_flagged(line);
     int i; for (i = 0; i < nundef; i++) if (undefs[i].line == line && !strcmp(undefs[i].sym, n)) return;
     nundef_seen++;
     if (nundef >= MAXUNDEF) return;
@@ -710,7 +764,6 @@ static void add_reloc(long at, const char *target, int isV) {
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
 /* ---- WP-4 macro preprocessor --------------------------------------------- */
-#define MAXLINES 131072
 /* per-expanded-line listing flags, parallel to the flattened lines[] array */
 #define LF_GEN   1     /* macro-generated statement (listed with '+') */
 #define LF_NOASM 2     /* listing-only (e.g. the macro call line): shown, not assembled */
@@ -1121,20 +1174,13 @@ static int ncontd_lost;     /* of those, how many discarded a statement */
 static const char *g_joinsrc;         /* library member being joined; NULL = the primary source */
 static void note_cont(int err, int card, const char *text, int len, int stmt, int lost) {
     ncontd_seen++; if (lost) ncontd_lost++;
+    mark_cont_stmt(stmt, g_joinsrc != NULL);   /* the STATEMENT's first card, not this continuation card */
     if (ncontd >= MAXCONTD) return;
     contd[ncontd].stmt = stmt; contd[ncontd].lost = lost;
     scopy(contd[ncontd].src, g_joinsrc ? g_joinsrc : "", sizeof contd[0].src - 1);
     if (len > 79) len = 79;
     memcpy(contd[ncontd].card, text, (size_t)len); contd[ncontd].card[len] = 0;
     contd[ncontd].line = card; contd[ncontd].err = err; ncontd++;
-}
-/* IFOX00 counts STATEMENTS flagged, not messages (ERRORTN, ifnx6b.asm:443, skips
- * the count when the statement number repeats): one statement with three
- * continuation diagnostics is one flagged statement. */
-static int cont_stmts(void) {
-    int j, k, n = 0;
-    for (j = 0; j < ncontd; j++) { for (k = 0; k < j; k++) if (contd[k].stmt == contd[j].stmt) break; if (k == j) n++; }
-    return n;
 }
 /* One continuation card, already read: check columns 1-15 (IFOX00's RFCCHK
  * checks BEGREG..CBGREG-1) and report the card's own line. as370 takes the
@@ -1573,6 +1619,7 @@ static void note_unknown(const char *o, int line) {
         "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","COPY","MACRO","MEND","ACTR",
         "EXTRN","WXTRN", NULL };
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
+    mark_flagged(line);
     if (nunk < 128) { scopy(unkops[nunk], o, 11); unkln[nunk] = line; nunk++; }   /* one record per flagged statement */
 }
 /* an RS/SI/S storage operand carrying an index/length subscript -- D2(,B2) or
@@ -1582,6 +1629,7 @@ static void note_unknown(const char *o, int line) {
  * absolute low-core reference). */
 static char badfmt_op[128][12]; static int badfmt_ln[128]; static int nbadfmt;
 static void note_badfmt(const char *o, int line) {
+    mark_flagged(line);
     if (nbadfmt < 128) { scopy(badfmt_op[nbadfmt], o, 11); badfmt_ln[nbadfmt] = line; nbadfmt++; }
 }
 
@@ -1605,10 +1653,12 @@ static void note_badfmt(const char *o, int line) {
  * exempted from diagnosis, while its companion DXD was flagged. */
 static char badty_ch[128]; static int badty_ln[128]; static int nbadty;
 static void note_badtype(int ty, int line) {
+    mark_flagged(line);
     if (nbadty < 128) { badty_ch[nbadty] = (char)(ty ? ty : '?'); badty_ln[nbadty] = line; nbadty++; }
 }
 static char nyi_what[128][24]; static int nyi_ln[128]; static int nnyi;
 static void note_notimpl(const char *what, int line) {
+    mark_flagged(line);
     if (nnyi < 128) { scopy(nyi_what[nnyi], what, 23); nyi_ln[nnyi] = line; nnyi++; }
 }
 /* An operand a statement's own rules reject -- a DC/DS nominal value, an SRP
@@ -1619,6 +1669,7 @@ static void note_notimpl(const char *what, int line) {
  * 177 is 12 (jermsgcd.asm). */
 static char operr_msg[128][96]; static int operr_ln[128]; static int operr_sev[128]; static int noperr;
 static void note_operr(const char *msg, int sev, int line) {
+    mark_flagged(line);
     if (noperr < 128) { scopy(operr_msg[noperr], msg, 95); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
 }
 /* IFOX00 IFO158 (severity 8, jermsgcd.asm SEV158): a symbol defined in a DSECT
@@ -1717,6 +1768,7 @@ static int emit_decimal(const char *txt, int packed, long at, int want, int emit
  * which lets the assembler choose the base from a USING, may be relocatable. */
 static char reld_op[128][12]; static int reld_ln[128]; static int nreld;
 static void note_relocdisp(const char *o, int line) {
+    mark_flagged(line);
     if (nreld < 128) { scopy(reld_op[nreld], o, 11); reld_ln[nreld] = line; nreld++; }
 }
 /* A relocatable operand addressed implicitly (base chosen from a USING) whose
@@ -1726,6 +1778,7 @@ static void note_relocdisp(const char *o, int line) {
  * cross-section USING or emit base 0. */
 static char addr_op[128][12]; static int addr_ln[128]; static int naddr;
 static void note_addrerr(const char *o, int line) {
+    mark_flagged(line);
     if (naddr < 128) { scopy(addr_op[naddr], o, 11); addr_ln[naddr] = line; naddr++; }
 }
 /* An over-length ordinary symbol in the NAME FIELD (a local label or EQU name,
@@ -1735,6 +1788,7 @@ static void note_addrerr(const char *o, int line) {
  * to 8 and enter it silently.  Recorded once per statement (pass 1). */
 static char ovldef_sym[128][64]; static int ovldef_ln[128]; static int novldef;
 static void note_ovldef(const char *n, int line) {
+    mark_flagged(line);
     if (novldef < 128) { scopy(ovldef_sym[novldef], n, 63); ovldef_ln[novldef] = line; novldef++; }
 }
 /* An over-length symbol TERM in an operand expression (>8 characters).  IFOX00
@@ -1744,6 +1798,7 @@ static void note_ovldef(const char *n, int line) {
  * displacement of 0 (a silent load from address 0). */
 static char ovlref_op[128][12]; static int ovlref_ln[128]; static int novlref;
 static void note_ovlref(const char *o, int line) {
+    mark_flagged(line);
     if (novlref < 128) { scopy(ovlref_op[novlref], o, 11); ovlref_ln[novlref] = line; novlref++; }
 }
 /* True if OPND carries a symbol term longer than 8 characters (outside string
@@ -2922,6 +2977,43 @@ static void usage(FILE *o) {
 "  (<prefix>/<triple>/bin/as370) assembles with no -I and no environment.\n"
 "  AS370_MACLIB is a colon-separated override (the assembler C_INCLUDE_PATH).\n", o);
 }
+/* The flagged-statement count IFOX00 prints: the two key spaces, minus the
+ * statements counted in both.
+ *
+ * The raw card number is the only key the spaces share, so an overlap is
+ * credited only when EXACTLY ONE non-generated flagged statement carries that
+ * origin card. Several sharing it means a COPY'd block -- whose lines keep the
+ * COPY statement's origin (see mexp_block) -- or a macro expansion, and there
+ * the card no longer identifies one statement. Over-counting is the safe
+ * direction: a count one too high is visible beside the messages, an
+ * under-count hides a diagnostic.
+ *
+ * ONE residual, and it is a library-member one. A continuation diagnostic
+ * raised inside a macro library carries a MEMBER-RELATIVE card number, which
+ * names no statement in this numbering -- so it is counted on its own even when
+ * the statement it belongs to is also flagged by one of the ten recorders, and
+ * the count comes out one too high. Reproduced deliberately in tests/run.sh
+ * ("flagged_libmac"), where it is pinned as a tripwire rather than left to be
+ * discovered. Closing it needs the origin (member, card) of every generated line
+ * threaded through the macro expander -- issue #91, deliberately not done here:
+ * that is the joiner and mexp, the code #63, #78 and #81 came out of, and this
+ * is a cosmetic counter.
+ *
+ * Measured over 835 ecosystem modules: 13 raise a diagnostic at all, none has a
+ * library-member continuation diagnostic (#81 removed the last of them), and the
+ * count changes in two -- irxprobe.asm 208 -> 205 and, at 9012263^, nsf370's
+ * nsfctcio.asm 15 -> 12. */
+static int count_flagged_stmts(int nlines) {
+    static unsigned char hits[MAXLINES];   /* flagged non-generated statements per origin card, saturating at 2 */
+    int i, overlap = 0;
+    for (i = 0; i < nlines && i < MAXLINES; i++) {
+        if (!stmt_flagged[i] || (lflags[i] & LF_GEN)) continue;
+        int c = line_org[i];
+        if (c >= 0 && c < MAXLINES && hits[c] < 2) hits[c]++;
+    }
+    for (i = 0; i < MAXLINES; i++) if (hits[i] == 1 && (cont_mark[i] & CM_PRI)) overlap++;
+    return nstmt_flagged + ncont_pri + ncont_lib - overlap;
+}
 int main(int argc, char **argv) {
     const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
     if (argc == 1) { usage(stdout); return 0; }            /* bare invocation: show usage, RC 0 */
@@ -3019,7 +3111,6 @@ int main(int argc, char **argv) {
         if (ncontd_seen > ncontd)
             fprintf(stderr, " ... and %d further continuation diagnostic%s, %d of them a discarded statement\n",
                     ncontd_seen - ncontd, ncontd_seen - ncontd == 1 ? "" : "s", ncontd_lost);
-        errors += cont_stmts();
         if (max_sev < 4) max_sev = 4;                 /* IFOX jermsgcd.asm SEV26 / SEV69 */
         if (ncontd_lost && max_sev < 8) max_sev = 8;  /* a discarded statement is as370's own error, not IFOX00's */
     }
@@ -3030,7 +3121,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
             fprintf(stderr, " ERROR: Undefined operation code in line %d - %s\n", line_org[unkln[j]], unkops[j]);
         }
-        errors += nunk;   /* RC 8: the build pipeline must catch a missing macro */
         if (max_sev < 8) max_sev = 8;
     }
     if (noperr) {   /* an operand its own statement's rules reject */
@@ -3040,7 +3130,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s2);
             fprintf(stderr, " %s: %s in line %d\n", operr_sev[j] >= 8 ? "ERROR" : "WARNING", operr_msg[j], line_org[operr_ln[j]]);
         }
-        errors += noperr;
         /* Per entry, not a shared floor: ERR178, ERR224 and ERR236 are severity 8,
          * ERR177 is 12 (jermsgcd.asm SEV177). Citing an IFOX error number and then
          * reporting the wrong severity for it would be its own small lie. */
@@ -3058,7 +3147,6 @@ int main(int argc, char **argv) {
             if (badty_ch[j] == '?') fprintf(stderr, " ERROR: DC/DS/DXD operand has no constant type in line %d\n", line_org[badty_ln[j]]);
             else fprintf(stderr, " ERROR: Invalid type declared on DC/DS/DXD constant in line %d - %c\n", line_org[badty_ln[j]], badty_ch[j]);
         }
-        errors += nbadty;   /* IFOX ERR198: severity 8 (jermsgcd.asm SEV198) */
         if (max_sev < 8) max_sev = 8;
     }
     if (nnyi) {   /* a valid Assembler XF construct as370 does not turn into storage yet */
@@ -3068,7 +3156,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s2);
             fprintf(stderr, " ERROR: %s is valid Assembler XF but not implemented by as370 - no storage reserved, every later symbol in the section would move, in line %d\n", nyi_what[j], line_org[nyi_ln[j]]);
         }
-        errors += nnyi;   /* not IFOX's error, but it must not pass silently: RC 8 */
         if (max_sev < 8) max_sev = 8;
     }
     if (nbadfmt) {   /* RS/SI/S storage operand with an illegal index/length subscript (D(,B) / D(X,B)) */
@@ -3078,7 +3165,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
             fprintf(stderr, " ERROR: Illegal operand format (index/length not allowed on RS/SI/S operand) in line %d - %s\n", line_org[badfmt_ln[j]], badfmt_op[j]);
         }
-        errors += nbadfmt;   /* IFOX ERR216: severity 12 (severe) */
         if (max_sev < 12) max_sev = 12;
     }
     if (nreld) {   /* relocatable displacement with an explicit base register (SYM(Rn)) */
@@ -3088,7 +3174,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
             fprintf(stderr, " ERROR: Relocatable displacement in machine instruction (explicit base requires an absolute displacement) in line %d - %s\n", line_org[reld_ln[j]], reld_op[j]);
         }
-        errors += nreld;   /* IFOX IFO228: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
     if (naddr) {   /* relocatable implicit-base operand whose section has no covering USING */
@@ -3098,7 +3183,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
             fprintf(stderr, " ERROR: Addressability error - no active USING covers the operand's section (base and displacement set to 0) in line %d - %s\n", line_org[addr_ln[j]], addr_op[j]);
         }
-        errors += naddr;   /* IFOX IFO209: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
     if (novl) {   /* a symbol longer than 8 characters (MVS ESD names are 8 bytes) */
@@ -3108,7 +3192,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
             fprintf(stderr, " ERROR: Symbol longer than 8 characters (MVS external names are limited to 8) in line %d - %s\n", line_org[ovl_ln[j]], ovl_sym[j]);
         }
-        errors += novl;   /* IFOX ERR187: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
     if (novldef) {   /* over-length ordinary symbol in the name field (a local label or EQU name) */
@@ -3118,7 +3201,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
             fprintf(stderr, " ERROR: Symbol longer than 8 characters in name field (name rejected; MVS symbols are limited to 8) in line %d - %s\n", line_org[ovldef_ln[j]], ovldef_sym[j]);
         }
-        errors += novldef;   /* IFOX IFO016: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
     if (novlref) {   /* over-length symbol term in an operand expression */
@@ -3128,7 +3210,6 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
             fprintf(stderr, " ERROR: Symbol longer than 8 characters in operand expression (instruction zeroed; MVS symbols are limited to 8) in line %d - %s\n", line_org[ovlref_ln[j]], ovlref_op[j]);
         }
-        errors += novlref;   /* IFOX IFO236: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
     if (nundef_seen) {   /* a symbol term that names nothing (IFO188) */
@@ -3140,7 +3221,6 @@ int main(int argc, char **argv) {
         }
         if (nundef_seen > nundef)
             fprintf(stderr, " ... and %d further undefined-symbol diagnostics\n", nundef_seen - nundef);
-        errors += nundef_seen;   /* IFOX IFO188: severity 8 (error) */
         if (max_sev < 8) max_sev = 8;
     }
 
@@ -3149,6 +3229,11 @@ int main(int argc, char **argv) {
         emit_obj(of); fclose(of);
     }
     emit_listing_a(lines, nl);
+    errors = count_flagged_stmts(nl);
+    /* A severity without a statement cannot happen -- every recorder marks before
+     * it prints -- but if a line index ever went out of range the RC would drop to
+     * 0 and a real error would ship silently. Floor it rather than trust that. */
+    if (!errors && max_sev) errors = 1;
     if (errors)
         fprintf(stderr, " Assembler Done   %d Statement%s Flagged / %3d was Highest Severity\n", errors, errors == 1 ? "" : "s", max_sev);
     return errors ? max_sev : 0;   /* RC: 0 = clean (silent), else the highest IFOX severity seen (8 = error, 12 = severe). */
