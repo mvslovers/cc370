@@ -1,132 +1,94 @@
-# Projektstatus & Integrations-Roadmap
+# Project status and integration overview
 
-*Einfache Übersicht (wenig Fachjargon) über die host-native MVS-Toolchain und
-was noch fehlt, um sie in die MVS-Projekte (crent370, httpd, mvsmf, …) zu
-integrieren. Stand: 2026-06.*
+*A plain-language overview of the host-native MVS toolchain: what it does, what
+it replaced, and what still touches the mainframe. Little jargon on purpose —
+for the detail, follow the references at the end. Status: 2026-08.*
 
-## Worum es geht (ein Satz)
+## In one sentence
 
-Mainframe-Programme **komplett auf dem PC** (Mac/Linux) bauen und nur das fertige
-Programm zum MVS schicken — statt wie früher Quellcode hochzuladen und auf dem
-Mainframe zu übersetzen + binden (langsam, viele Jobs).
+Build mainframe programs **entirely on a PC** (macOS or Linux) and send only the
+finished program to MVS — instead of uploading source and translating and binding
+it there, which meant a queue of batch jobs for every change.
 
-## Die vier Werkzeuge
+## The tools
 
-| Werkzeug | macht |
-|----------|-------|
-| **cc370** | C-Code → Mainframe-Assembler |
-| **as370** | Assembler → Objektdatei |
-| **ld370** | Objektdateien → fertiges Programm + Transport-Paket (XMIT) |
-| **ar370** | Objektdateien → Bibliothek (`.a`), aus der ld370 automatisch nur das Benötigte zieht |
+| Tool | What it does |
+|------|--------------|
+| **cc370** | C source → mainframe assembler |
+| **as370** | assembler → object file |
+| **ld370** | object files → finished program, plus a transport package |
+| **ar370** | object files → library (`.a`), from which ld370 pulls only what is needed |
+| **file370** | looks inside any of the above and says what it is |
 
-## Was funktioniert (auf echtem MVS bewiesen)
+`cc370` is also the **driver**: `cc370 prog.c -o prog` runs the whole chain, and
+it knows where the C library lives, so no include or library paths have to be
+given by hand.
 
-- **Kompletter Weg für ein einfaches Programm:** übersetzen → assemblieren →
-  binden → verpacken → hochladen → installieren → **läuft** (Testprogramm,
-  Rückgabewert 7 wie erwartet). Kein IFOX / IEWL / IEBCOPY mehr im Spiel.
-- **Bibliotheken:** Die C-Laufzeit (crent370) wird archiviert; ld370 zieht beim
-  Binden automatisch genau die gebrauchten Teile (wie ein echter Linker).
-- **Transport-Format (XMIT):** byte-genau gegen die echten Mainframe-Werkzeuge
-  und eine unabhängige Referenz-Implementierung geprüft.
+## What works today
 
-## Was fast fertig ist
+**The complete path, proven on a real system.** Compile, assemble, link, package,
+upload, install, run — with no IFOX00, no IEWL and no IEBCOPY involved anywhere.
+This was first shown with a small test program in June 2026 and has been the
+normal way of working since.
 
-Ein **echtes** C-Programm (das die C-Laufzeit nutzt) lässt sich jetzt
-**vollständig auf dem PC binden** (alle Teile aufgelöst, korrekt verdrahtet). Es
-**läuft nur noch nicht** — beim Verpacken großer Programme fehlt ein Detail
-(„Multi-Track", siehe A1). Das ist der letzte Schritt zum ersten echten
-host-gebauten C-Programm.
+**Real programs, not just test cases.** The ecosystem projects — ufsd, ftpd,
+httpd, mvsmf, httplua, httprexx, lua370, lstring370, rexx370 — are built this
+way. Their C library (libc370) is archived once, and ld370 pulls exactly the
+parts each program uses, the way any linker does.
 
----
+**The build system uses it end to end.** Since 2026-08-13 mbt compiles,
+assembles *and* links on the host: `make deploy` packs the finished programs into
+a single transport file, uploads that, and has MVS unpack it. No assemble or link
+job is submitted any more. Programs that do not use the standard C startup are
+handled too — the build names their entry point explicitly.
 
-## Offene Punkte (für die Integration in die MVS-Projekte)
+**The output is checked against the originals, not just against itself.** as370's
+object files are compared byte for byte against those the IBM assembler produces,
+over the whole ecosystem; ld370's programs and transport files are compared
+against the ones the IBM linkage editor and IEBCOPY produce. Where we differ, it
+is deliberate and written down.
 
-### A. Toolchain fertig (Pflicht — damit echte Programme laufen)
+## What still needs MVS
 
-1. **Multi-Text-Modul läuft beim FETCH durch** — ✅ **BEHOBEN (2026-06-21).** Es war
-   weder FETCH noch Geometrie noch Emission-vs-IEWL: `ld370`s Per-Objekt-Textpuffer
-   war ein fixes 16384-Byte-Array (`struct obj.text[1<<14]`), und der TXT-Reader
-   verwarf jede Card jenseits 16 K **still** → Modul ab ~16 KB genullt → S0C1 beim
-   Lauf. Fix: dynamisch wachsender Puffer. NOPT 17000/2056 + 12288/12288 laufen
-   RC=0, Fixtures byte-identisch zu IEWL. (Details: `docs/multitext-fetch-truncation.md`.)
-   **U0200 ebenfalls behoben** (2026-06-21): eine einzelne CSECT > MAXTEXT wird jetzt
-   intra-section in ≤MAXTEXT-Records gesplittet (IEWL-Layout, Orakel
-   `run_iewl_bigsect.py`); 60-KB-Modul installiert + läuft RC=0.
-   **t1 (echtes C-Programm) Stand:** Transport läuft jetzt (RECV RC=0, ~69 KB/11 Tracks);
-   **RUN bricht mit S106** (Program-FETCH) — neue Frontier (t1 hat echte RLDs/141 Sektionen/
-   entry=8). Das ist der nächste Schritt für „ein C-Programm läuft".
-2. **Globale Variablen (CM)** — noch nicht getestet; evtl. braucht ld370 dafür
-   eine Kleinigkeit.
-3. **Module ohne Standard-Start (no-crt0)** — httpd/mvsmf haben Programme, die
-   *nicht* die normale C-Startroutine nutzen. Dafür braucht cc370/ld370 eine
-   Schalter-Option (`-nostartfiles`-Stil).
-4. **Einstellbarer Einstiegspunkt (`-e`)** — die `project.toml` legt den
-   Einstiegspunkt pro Modul fest (`entry = "@@CRT0"`); ld370 muss das übernehmen.
+**The install.** The finished program has to end up in a library on the
+mainframe, so the last step is still an upload and an unpack job there. Reading
+the result — did it install, does it run — happens on MVS as well.
 
-### B. Komfort
+**Nothing else.** Building, linking and packaging are host-side; the mainframe
+sees one file.
 
-5. **cc370 als Ein-Befehl-Driver** — `cc370 prog.c -o prog -lmylib`, statt die
-   vier Werkzeuge einzeln aufzurufen.
-6. **crent als „eingebaute Standardbibliothek"** — Header/Libs nicht jedes Mal
-   angeben müssen (cc370 kennt sie im Suchpfad).
-7. **Build-Skript für `libcrent.a`** — aktuell wird die C-Laufzeit-Bibliothek
-   noch von Hand gebaut.
+## What is not done
 
-### C. Build-System (mbt)
+Two kinds of open work, and they are tracked in different places.
 
-8. **mbt auf Host-Bau umstellen** — lokal bauen + binden, nur das XMIT
-   hochladen (spart sehr viele JES-Jobs, deutlich schneller).
-9. **Pro Projekt** Einstiegspunkte und Bibliotheks-Archive definieren.
+**Defects and gaps in the tools** — every one of them is a GitHub issue, and
+[`../TODO.md`](../TODO.md) ranks them and says why in that order. The short
+version: as370 has a series of places where it accepts something the IBM
+assembler rejects, quietly; ld370 has a few of the same shape. None of them
+blocks day-to-day building, which is exactly why they need writing down.
 
-### D. Feinschliff / Verallgemeinerung
+**Tools that do not exist yet** — a symbol lister, an object dumper, host-side
+library exchange — are sketched in [`tool-roadmap.md`](tool-roadmap.md). That is
+a proposal, not a plan.
 
-10. Verzeichnis-Daten + Größen für beliebige Programme berechnen (aktuell teils
-    Schablone).
-11. Bibliotheken mit mehreren Membern (falls gebraucht).
-12. **Lange Symbolnamen** (mittelfristig weg von 8-Zeichen-Namen; ar370s
-    Symbolindex ist schon darauf vorbereitet).
-13. as370/ld370-Optionen + Listings abrunden.
+Two smaller limits worth knowing: symbol names are still limited to eight
+characters (the archive format is already prepared for more), and the compiler is
+used at `-O1` only, because higher optimisation levels are unsafe on this
+backend.
 
----
+## References
 
-## Roadmap (Reihenfolge)
-
-**Phase 1 — Toolchain rund** → *Ziel: erstes echtes C-Programm läuft auf MVS*
-→ A1 Multi-Track · A2 globale Variablen · A3 no-crt0-Option · A4 einstellbarer Einstiegspunkt
-
-**Phase 2 — Bequem** → *Ziel: Ein-Befehl-Bau ohne Handarbeit*
-→ B5 cc370-Driver · B6 crent als Standardbibliothek · B7 libcrent.a-Skript
-
-**Phase 3 — mbt-Integration** → *Ziel: ein Projekt komplett host-gebaut*
-→ C8 mbt-Host-Backend · ein kleines Projekt als Pilot umstellen · dann httpd/mvsmf/… ausrollen
-
-**Phase 4 — Feinschliff** → nach Bedarf (D10–D13)
-
----
-
-## Wobei Infos helfen
-
-1. **RECV370-Quellcode/Doku** — das Mainframe-Programm, das das XMIT entpackt.
-   Dafür gibt es hier keine Quelle. Mit der Quelle wäre der Blocker **A1
-   (Multi-Track)** deutlich schneller; sonst Reverse-Engineering per
-   MVS-Experiment (geht auch, dauert länger).
-2. **Ziel-System(e):** immer `mvsdev.lan`, oder auch TK4-/TK5/MVSCE? Platten-
-   Geometrie und RECV370-Version können sich unterscheiden — relevant für A1.
-3. **no-crt0-Module (A3):** welche genau in httpd/mvsmf, und wie gedacht
-   (eigener Einstiegspunkt, keine C-Startroutine)? Ein, zwei Beispiele reichen.
-4. **Ziel-Load-Libraries:** Blocksize/Gerät der echten LINKLIBs (z.B.
-   `HTTPD.LINKLIB`) — fürs korrekte Verpacken. Größtenteils selbst von MVS
-   abfragbar.
-
----
-
-## Technische Referenzen (für Details)
-
-- `CLAUDE.md` — Tooltabelle, ausführliche Roadmap (Punkte A–E), Build-Anleitung.
-- `docs/object-module-format.md`, `docs/load-module-format.md` — die
-  Objekt-/Load-Module-Formate (Grundlage für as370/ld370).
-- `docs/unload-format.md`, `docs/xmit-format.md` — die Transport-Formate
-  (Grundlage für `ld370 -iebcopy`/`-xmit`).
-- `docs/multitext-fetch-truncation.md` — gelöster Blocker A1 (Multi-Text-Modul
-  wurde bei 16 KB abgeschnitten — `ld370`-Textpuffer; 2026-06-21 behoben).
-- `as370/` — as370 (host-nativer Assembler) inkl. eigener Doku.
+- [`../CLAUDE.md`](../CLAUDE.md) — the tool table, the detailed history and the
+  build instructions.
+- [`object-module-format.md`](object-module-format.md),
+  [`load-module-format.md`](load-module-format.md) — the file formats as370 and
+  ld370 produce.
+- [`unload-format.md`](unload-format.md), [`xmit-format.md`](xmit-format.md),
+  [`xmit-source-pds.md`](xmit-source-pds.md) — the transport formats.
+- [`entry-point-resolution.md`](entry-point-resolution.md) — how a program gets
+  its entry point, and how a multi-program project can get the wrong one.
+- [`ld370-iewl-divergences.md`](ld370-iewl-divergences.md),
+  [`../as370/docs/ifox-option-parity.md`](../as370/docs/ifox-option-parity.md) —
+  where our tools differ from the IBM originals, and why.
+- [`multitext-fetch-truncation.md`](multitext-fetch-truncation.md) — a solved
+  blocker, kept because the lesson generalises.

@@ -370,14 +370,6 @@ Small things with no issue, recorded here so they are not lost twice.
 - **as370 has no `YFLAG` equivalent** — it emits Y-cons with no range check, the
   same silent-truncation shape as the rest of that class. Noted in
   `as370/docs/ifox-option-parity.md`.
-- **`docs/roadmap-integration.md` should be retired.** It dates from 2026-06-22
-  and reads as current while listing multi-track transport, the mbt host backend,
-  the one-command driver and the libc sysroot as open — all four landed. It is
-  also German, which the project's own rule excludes from the repository. Its
-  still-useful content is the plain-language overview; if that is wanted, it wants
-  rewriting in English against today's state, and otherwise deleting. A status
-  document that lags behind `main` is read as current, which is the same reason
-  this file carries a reconciliation date.
 - **[`docs/tool-roadmap.md`](docs/tool-roadmap.md)** is the roadmap for *new*
   tools (`objdump370`, `nm370`, `iebcopy370`, …) and the proposal to extract
   `libobj370` / `libmvs370` from the format logic duplicated across as370, ld370
