@@ -10,10 +10,11 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-08-30. 25 open, six of them filed that
-day (#99–#104) plus #106 out of closing #13, which went the same day out of two working notes — `TODO-LD370.md` and `TODO-ASM370.md` —
-which this file replaces. What was reference material rather than open work moved
-to [`docs/ld370-iewl-divergences.md`](docs/ld370-iewl-divergences.md) and
+*Last reconciled against the tracker: 2026-08-30. 25 open, seven of them filed
+that day: #99–#104 out of two working notes — `TODO-LD370.md` and
+`TODO-ASM370.md`, which this file replaces — and #106 out of closing #13, which
+went the same day. What was reference material rather than open work moved to
+[`docs/ld370-iewl-divergences.md`](docs/ld370-iewl-divergences.md) and
 [`as370/docs/ifox-option-parity.md`](as370/docs/ifox-option-parity.md); what was
 already fixed was dropped.*
 
