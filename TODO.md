@@ -10,8 +10,8 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-08-30. 24 open, six of them filed that
-day (#99–#104), and #13 closed the same day out of two working notes — `TODO-LD370.md` and `TODO-ASM370.md` —
+*Last reconciled against the tracker: 2026-08-30. 25 open, six of them filed that
+day (#99–#104) plus #106 out of closing #13, which went the same day out of two working notes — `TODO-LD370.md` and `TODO-ASM370.md` —
 which this file replaces. What was reference material rather than open work moved
 to [`docs/ld370-iewl-divergences.md`](docs/ld370-iewl-divergences.md) and
 [`as370/docs/ifox-option-parity.md`](as370/docs/ifox-option-parity.md); what was
@@ -270,6 +270,11 @@ Ranked below the whole list above for that reason alone, not by size.
   did they come from" turned into guesswork against a CESD full of string
   literals. It is the thing you reach for *after* the link succeeded but the
   module misbehaves.
+- **#106** — the translator IDR is dropped on the floor. Split out of #13:
+  a genuine IEWL member carries three IDR records and ours carries two, so
+  `AMBLIST LISTIDR` cannot say which assembler produced the code. as370 already
+  writes its identity into every END card; ld370 does not read it. One field, one
+  21-byte record, one flag byte — and the fixture oracle settles the layout.
 - **#8** — warn when autocall resolves a strong symbol that several library
   members define. Beyond IEWL parity (IEWL is first-wins too), so it is a
   deliberate opt-in diagnostic, and it is the cheap half of #10.
@@ -357,14 +362,6 @@ and mbt v2 has compiled, assembled *and* linked entirely on the host since
 
 Small things with no issue, recorded here so they are not lost twice.
 
-- **The translator IDR is not propagated into the load module.** Closing #13
-  measured what a genuine IEWL member carries and ours does not: three IDR
-  records against our two. The missing one is the 21-byte *translator* record
-  (`5741SC103` in an IFOX00/IEWL module) — and the data for ours already exists,
-  because as370 writes `ASM370`, its version and the assembly date into every
-  END card. `ld370.c:6` says plainly that translator IDRs are not emitted. One
-  read of the END card and one 21-byte record. Worth an issue if `AMBLIST
-  LISTIDR` parity is wanted; the mechanism is the whole of it.
 - **`ld370 --help` does not exist** — it is parsed as a filename. as370 has one.
   Noted in `docs/ld370-iewl-divergences.md`.
 - **as370 has no `YFLAG` equivalent** — it emits Y-cons with no range check, the
