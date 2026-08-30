@@ -10,18 +10,22 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-08-30. 25 open, seven of them filed
+*Last reconciled against the tracker: 2026-08-30. 26 open, eight of them filed
 that day: #99–#104 out of two working notes — `TODO-LD370.md` and
-`TODO-ASM370.md`, which this file replaces — and #106 out of closing #13, which
-went the same day. What was reference material rather than open work moved to
+`TODO-ASM370.md`, which this file replaces — #106 out of closing #13, which went
+the same day, and #107 out of the entry-point decision below. What was reference material rather than open work moved to
 [`docs/ld370-iewl-divergences.md`](docs/ld370-iewl-divergences.md) and
 [`as370/docs/ifox-option-parity.md`](as370/docs/ifox-option-parity.md); what was
 already fixed was dropped.*
 
 **The ranking rule, and it is the project's own:** *silent wrong output* beats
 *silent under-reporting* beats *a loud gap* beats *cosmetics* — and inside the
-top class, "has already shipped broken code" breaks the tie. That is why #39
-leads a queue that has otherwise been running in issue order for a fortnight.
+top class, "has already shipped broken code" breaks the tie. It ranks *defects*,
+which is why #39 — the one with a shipped instance — sat first until the
+entry-point direction was decided. **#99 now leads instead**, and for a reason
+the rule does not cover: the whole direction rests on weak externals, and #99 is
+the one place ld370 gets them wrong. #39 follows immediately; it is small and
+must not be allowed to slip behind a design thread.
 
 ---
 
@@ -29,8 +33,8 @@ leads a queue that has otherwise been running in issue order for a fortnight.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #39 | as370 | silent — **and it has already shipped** | nothing |
-| 2 | #99 | ld370 | silent — measured, order-dependent | nothing |
+| 1 | #99 | ld370 | silent — measured; and the mechanism the entry-point work uses | nothing |
+| 2 | #39 | as370 | silent — **and it has already shipped** | nothing |
 | 3 | #37 | driver + ld370 | silent — the driver drops the AC | nothing |
 | 4 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
 | 5 | #26 | as370 | silent — garbage bytes IFOX00 rejects | nothing |
@@ -43,13 +47,44 @@ leads a queue that has otherwise been running in issue order for a fortnight.
 
 Eleven, not twelve: **#13 was closed on 2026-08-30** — see *Recently landed*.
 
-Below the line, in bands rather than ranks: **loud gaps** (#56, #76, #78, #101,
-#102, #103), **observability** (#9, #8), **listing fidelity** (#24, #28, #91),
-**deferred** (#36, #10).
+Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
+#10 and `libc370#159` — decided, sequenced, and spanning two repos), **loud
+gaps** (#56, #76, #78, #101, #102, #103), **observability** (#9, #106),
+**listing fidelity** (#24, #28, #91), **deferred** (#36).
 
 ---
 
-### 1 · #39 — MNOTE severity is swallowed
+### 1 · #99 — a WX parsed before an ER goes unreported
+
+*derived from the linkage editor, then measured on the host*
+
+`g_intern` sets a composite entry's type only when it creates it, so a weak
+external seen first keeps type `0x0A` for the rest of the link even after a hard
+ER for the same name arrives — and the unresolved check compares against `T_ER`
+exactly. Measured 2026-08-30 with two four-line objects:
+
+```
+b.o        (hard ER, nothing defines X)   unresolved external X, rc 1   ✅
+b.o a.o    (ER first, then WX)            unresolved external X, rc 1   ✅
+a.o b.o    (WX first, then ER)            rc 0, no diagnostic           ❌
+```
+
+The third module carries `X` in its CESD as type `0A` and both adcons at zero. It
+is the failure `--allow-unresolved` exists to prevent, arrived at by accident of
+parse order. `as370` emits WX today, so this is reachable through our own
+toolchain.
+
+**It leads the list because of what was decided on top of it.** The entry-point
+work — the `__premain()` hook, the CRT merge, `@@STKLEN` as it already stands —
+all rests on one mechanism: a weak external that resolves to zero when nothing
+defines it, plus a runtime test that skips the feature. This is the one known
+defect in that mechanism. It is **not** a blocker for any of them, and saying so
+would be overstating it: the failure needs a hard `ER` on the same name as the
+`WX`, and neither a weak `__premain` nor a weak `CTHREAD` produces one — which is
+why `@@STKLEN` has worked for years. But it is small, measured, and worth having
+right before more of the runtime leans on it.
+
+### 2 · #39 — MNOTE severity is swallowed
 
 *the only open issue with a confirmed shipped instance*
 
@@ -69,26 +104,6 @@ caller.
 The fix is three small steps and the issue spells them out. Note the last one:
 `mklibc.py` already deletes the object and stops on a non-zero rc, so libc370
 inherits the protection with no change on its side.
-
-### 2 · #99 — a WX parsed before an ER goes unreported
-
-*derived from the linkage editor, then measured on the host*
-
-`g_intern` sets a composite entry's type only when it creates it, so a weak
-external seen first keeps type `0x0A` for the rest of the link even after a hard
-ER for the same name arrives — and the unresolved check compares against `T_ER`
-exactly. Measured 2026-08-30 with two four-line objects:
-
-```
-b.o        (hard ER, nothing defines X)   unresolved external X, rc 1   ✅
-b.o a.o    (ER first, then WX)            unresolved external X, rc 1   ✅
-a.o b.o    (WX first, then ER)            rc 0, no diagnostic           ❌
-```
-
-The third module carries `X` in its CESD as type `0A` and both adcons at zero. It
-is the failure `--allow-unresolved` exists to prevent, arrived at by accident of
-parse order. `as370` emits WX today, so this is reachable through our own
-toolchain — which is what puts it above everything else in the ld370 group.
 
 ### 3 · #37 — the AC is dropped, and an unauthorized module looks authorized
 
@@ -233,6 +248,60 @@ already does the capture for a single module.
 
 ---
 
+## The entry-point work — decided, and it spans two repositories
+
+*The one thread here that is a design change rather than a defect. The decision
+was taken on 2026-08-30 and is recorded in #10; what is left is sequencing.*
+
+**What is wrong.** Startup is customized by redefining `@@START` under the same
+name and letting it shadow libc370's default. For one program that is clean. With
+two custom startups in one autocall pool — httpd's server and its CGI launcher —
+they are indistinguishable by name, so the linker picks one and produces a module
+that links RC 0 with the wrong entry and faults at runtime. httpd works around it
+by keeping the launcher out of the shared archive. The full analysis, with the
+measured 52-versus-35-CESD evidence, is in
+[`docs/entry-point-resolution.md`](docs/entry-point-resolution.md).
+
+**The same shape one level down.** The startup *objects* are forked the way the
+startup *symbol* is: `@@crt0.asm` and `@@crt1.asm` are 319 and 322 lines that
+differ in three — the `IDENTIFY` for `CTHREAD` — and the two copies have already
+drifted apart in a fourth place. The ecosystem uses `crt1` **132 times**, `crt0`
+once, and `crtm` not at all.
+
+**Decided:** the collision diagnostic now, the pre-`main` hook as the
+destination. A distinct symbol per startup was considered and rejected — it makes
+the choice explicit but leaves a decision in every project, where the hook removes
+the decision.
+
+| step | where | what |
+|---|---|---|
+| 1 | #8 | warn when autocall resolves a symbol several members define — the cheap half, and it catches the exact httpd failure at link time |
+| 2 | #99 | have weak externals right first; the whole direction rests on them (rank 1 above) |
+| 3 | `libc370#159` | collapse `@@crt0`/`@@crt1` with a weak `CTHREAD` reference — the pattern the same file already uses for `@@STKLEN` |
+| 4 | #107 | `--entry` seeds autocall, so the CRT moves inside `libc.a` and mbt's four near-identical link recipes collapse |
+| 5 | #10 | the weak `__premain()` hook in libc370; then this issue closes |
+
+Steps 3 and 4 are independent of each other and of 5. Only 5 really wants 2 done
+first.
+
+**Two questions `libc370#159` must answer before anything is merged**, and they
+are not rhetorical: what the `CTHREAD` `IDENTIFY` is actually for — several
+`project.toml` files call `crt1` *"the threading runtime"* while its own header
+says it is `@@CRT0` **without** the threading `IDENTIFY` — and what `crtm` is for.
+`crtm` reads as the startup for a program entering a task whose C runtime already
+exists: it only takes a stack and requires `@@CRTGET` to *find* a `CLIBCRT`
+(`@@crtget.c` looks one up in the PPA, it never creates one), where `crt0`/`crt1`
+create the environment. That is exactly an httpd CGI or display module — and
+those are linked with `crt1`. So either `crtm` is obsolete, or the CGI path builds
+the environment twice. Settle that before deleting anything.
+
+**What the hook also removes.** `mbt/mk/mbt.mk` names `-lc` twice on every link,
+with a paragraph explaining that crt0/crt1/crtm declare `@@START` as an ER and
+autocall would otherwise take a dependency's launcher. That trick exists only
+because two startups share one name.
+
+---
+
 ## Loud gaps — nothing silent about them
 
 Ranked below the whole list above for that reason alone, not by size.
@@ -276,10 +345,6 @@ Ranked below the whole list above for that reason alone, not by size.
   `AMBLIST LISTIDR` cannot say which assembler produced the code. as370 already
   writes its identity into every END card; ld370 does not read it. One field, one
   21-byte record, one flag byte — and the fixture oracle settles the layout.
-- **#8** — warn when autocall resolves a strong symbol that several library
-  members define. Beyond IEWL parity (IEWL is first-wins too), so it is a
-  deliberate opt-in diagnostic, and it is the cheap half of #10.
-
 ## Listing fidelity
 
 All three are cosmetic, all three are pinned rather than hidden — each was found
@@ -315,21 +380,6 @@ What would move it forward is the survey the issue asks for: who compares agains
 `'\n'` across the mvslovers projects, and what breaks in each direction. A
 `-fnewline=lf|nel` flag is the option that lets the ecosystem move deliberately,
 at the cost of one more dimension in which two objects can disagree.
-
-### #10 — startup customization via a same-named `@@START`
-
-*a workaround is in place; the issue wants a design decision, not a fix*
-
-Two custom `@@START`s are indistinguishable by name, so autocall picks one and
-produces a module that links clean (RC 0, no unresolved references) with the wrong
-entry. httpd works around it by keeping the launcher out of the shared archive,
-which leaves a single `@@START` in the pool.
-
-Three directions are on the table — a distinct exported symbol per startup, a
-weak `__premain()` hook nobody has to override, or diagnosing the collision only
-(#8). The analysis is in
-[`docs/entry-point-resolution.md`](docs/entry-point-resolution.md); the decision
-between them is what this is waiting on.
 
 ---
 
@@ -373,3 +423,10 @@ Small things with no issue, recorded here so they are not lost twice.
   `libobj370` / `libmvs370` from the format logic duplicated across as370, ld370
   and file370. It is not open work and is deliberately not ranked here; it is the
   next-project conversation, and it needs a decision before it becomes one.
+
+## Cross-repo
+
+This file is cc370-only, and the entry-point work is not. Its libc370 half is
+`mvslovers/libc370#159` (the CRT variants) and, once #99 is in, the `__premain()`
+hook that closes #10. Do not rank those here; the sequence table above is the
+place that keeps them in step.
