@@ -10,22 +10,23 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-08-30. 26 open, eight of them filed
+*Last reconciled against the tracker: 2026-09-04 (#99 closed; the reconciliation
+before it was 2026-08-30, 26 open, eight of them filed
 that day: #99–#104 out of two working notes — `TODO-LD370.md` and
 `TODO-ASM370.md`, which this file replaces — #106 out of closing #13, which went
 the same day, and #107 out of the entry-point decision below. What was reference material rather than open work moved to
 [`docs/ld370-iewl-divergences.md`](docs/ld370-iewl-divergences.md) and
 [`as370/docs/ifox-option-parity.md`](as370/docs/ifox-option-parity.md); what was
-already fixed was dropped.*
+already fixed was dropped).*
 
 **The ranking rule, and it is the project's own:** *silent wrong output* beats
 *silent under-reporting* beats *a loud gap* beats *cosmetics* — and inside the
 top class, "has already shipped broken code" breaks the tie. It ranks *defects*,
-which is why #39 — the one with a shipped instance — sat first until the
-entry-point direction was decided. **#99 now leads instead**, and for a reason
-the rule does not cover: the whole direction rests on weak externals, and #99 is
-the one place ld370 gets them wrong. #39 follows immediately; it is small and
-must not be allowed to slip behind a design thread.
+which is why **#39 — the one with a shipped instance — leads.** It held that
+place until the entry-point direction was decided and #99 was moved ahead of it
+for a reason the rule does not cover: the whole direction rests on weak
+externals, and #99 was the one place ld370 got them wrong. #99 landed on
+2026-09-04, so the rule applies unmodified again.
 
 ---
 
@@ -33,19 +34,19 @@ must not be allowed to slip behind a design thread.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #99 | ld370 | silent — measured; and the mechanism the entry-point work uses | nothing |
-| 2 | #39 | as370 | silent — **and it has already shipped** | nothing |
-| 3 | #37 | driver + ld370 | silent — the driver drops the AC | nothing |
-| 4 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
-| 5 | #26 | as370 | silent — garbage bytes IFOX00 rejects | nothing |
-| 6 | #97 | as370 | silent — a different object module | nothing |
-| 7 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 8 | #104 | as370 | silent — a swallowed build option | nothing |
-| 9 | #86 | as370 | silent under-reporting, ×9 recorders | nothing |
-| 10 | #35 | as370 | one root cause under two known symptoms | nothing |
-| 11 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 1 | #39 | as370 | silent — **and it has already shipped** | nothing |
+| 2 | #37 | driver + ld370 | silent — the driver drops the AC | nothing |
+| 3 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
+| 4 | #26 | as370 | silent — garbage bytes IFOX00 rejects | nothing |
+| 5 | #97 | as370 | silent — a different object module | nothing |
+| 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 7 | #104 | as370 | silent — a swallowed build option | nothing |
+| 8 | #86 | as370 | silent under-reporting, ×9 recorders | nothing |
+| 9 | #35 | as370 | one root cause under two known symptoms | nothing |
+| 10 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 
-Eleven, not twelve: **#13 was closed on 2026-08-30** — see *Recently landed*.
+Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
+*Recently landed*.
 
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **loud
@@ -54,37 +55,7 @@ gaps** (#56, #76, #78, #101, #102, #103), **observability** (#9, #106),
 
 ---
 
-### 1 · #99 — a WX parsed before an ER goes unreported
-
-*derived from the linkage editor, then measured on the host*
-
-`g_intern` sets a composite entry's type only when it creates it, so a weak
-external seen first keeps type `0x0A` for the rest of the link even after a hard
-ER for the same name arrives — and the unresolved check compares against `T_ER`
-exactly. Measured 2026-08-30 with two four-line objects:
-
-```
-b.o        (hard ER, nothing defines X)   unresolved external X, rc 1   ✅
-b.o a.o    (ER first, then WX)            unresolved external X, rc 1   ✅
-a.o b.o    (WX first, then ER)            rc 0, no diagnostic           ❌
-```
-
-The third module carries `X` in its CESD as type `0A` and both adcons at zero. It
-is the failure `--allow-unresolved` exists to prevent, arrived at by accident of
-parse order. `as370` emits WX today, so this is reachable through our own
-toolchain.
-
-**It leads the list because of what was decided on top of it.** The entry-point
-work — the `__premain()` hook, the CRT merge, `@@STKLEN` as it already stands —
-all rests on one mechanism: a weak external that resolves to zero when nothing
-defines it, plus a runtime test that skips the feature. This is the one known
-defect in that mechanism. It is **not** a blocker for any of them, and saying so
-would be overstating it: the failure needs a hard `ER` on the same name as the
-`WX`, and neither a weak `__premain` nor a weak `CTHREAD` produces one — which is
-why `@@STKLEN` has worked for years. But it is small, measured, and worth having
-right before more of the runtime leans on it.
-
-### 2 · #39 — MNOTE severity is swallowed
+### 1 · #39 — MNOTE severity is swallowed
 
 *the only open issue with a confirmed shipped instance*
 
@@ -105,7 +76,7 @@ The fix is three small steps and the issue spells them out. Note the last one:
 `mklibc.py` already deletes the object and stops on a non-zero rc, so libc370
 inherits the protection with no change on its side.
 
-### 3 · #37 — the AC is dropped, and an unauthorized module looks authorized
+### 2 · #37 — the AC is dropped, and an unauthorized module looks authorized
 
 *one of the two drops is real; the other has a narrower cause than the issue says*
 
@@ -137,7 +108,7 @@ of an `-iebcopy`/`-xmit`/`--pack` output. A bare `-o OUT` member carries none at
 all and is byte-identical with and without the flag by construction. Confirm on
 the `-iebcopy` output before closing that half.
 
-### 4 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *adjacent to #3, not the same change; the decision is which default*
 
@@ -162,7 +133,7 @@ mbt v2 links every ecosystem module through ld370, so how many of them actually
 want RENT decides whether inverting is a one-line change or a sweep across every
 `project.toml`. Do the survey before the decision.
 
-### 5 · #26 — operands IFOX00 rejects, assembled to garbage
+### 4 · #26 — operands IFOX00 rejects, assembled to garbage
 
 as370 has no "simply relocatable" check, so `L 1,FLDX*2-FLDX` assembles as an
 absolute base-0 reference and a paren subterm spanning two sections yields a
@@ -175,7 +146,7 @@ It is complementary to #21, not overlapping: #21's fix relies on
 "IFOX-accepted ⇒ `expr_sect`-correct", which holds *because* these forms are
 IFOX-rejected.
 
-### 6 · #97 — an undeclared SET symbol produces a different object module
+### 5 · #97 — an undeclared SET symbol produces a different object module
 
 The risk of enforcing it was measured before the issue was filed and it is nil:
 an instrumented build found **0 modules** with an undeclared SET symbol across
@@ -187,7 +158,7 @@ the reference unsubstituted and the statement generates nothing — is the large
 half, because the substitution path has to distinguish "undeclared" from
 "declared but null", which today it does not.
 
-### 7 · #89 — a forward reference in EQU resolves to 0
+### 6 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -198,7 +169,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 8 · #104 — an unrecognised option becomes the source filename
+### 7 · #104 — an unrecognised option becomes the source filename
 
 The argument loop ends in `else src = argv[ai];` with no validation, so a typo,
 an option from a build script, or an IFOX00 option as370 does not implement is
@@ -210,7 +181,7 @@ debug build.
 Cheapest fix in either tool, and it must not wait for `SYSPARM` — adding that
 later does not help anyone who mistyped it in the meantime.
 
-### 9 · #86 — nine diagnostic recorders drop everything past 128 entries
+### 8 · #86 — nine diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -219,7 +190,7 @@ derive the severity from the counters, bound only the printed list, and say what
 was dropped. Nine recorders to go, worth one pass with a shared helper rather than
 nine copies. In one of them (`note_operr`) the cap can also mis-state the severity.
 
-### 10 · #35 — the attribute apostrophe, and the lockstep it imposes
+### 9 · #35 — the attribute apostrophe, and the lockstep it imposes
 
 `parse()`'s operand tokenizer toggles string state on every apostrophe with no
 attribute-operator exception, so `L'SYM` opens a string that never closes and the
@@ -232,7 +203,7 @@ buys. Whoever fixes `parse()` must update `has_overlong_term` in the same change
 or it either resumes false-positiving on comments or stays blind to attribute-ref
 over-length symbols.
 
-### 11 · #23 — the corpus gate has an oracle-shaped hole
+### 10 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -275,14 +246,14 @@ the decision.
 
 | step | where | what |
 |---|---|---|
+| — | #99 | **done, 2026-09-04** — have weak externals right first; the whole direction rests on them |
 | 1 | #8 | warn when autocall resolves a symbol several members define — the cheap half, and it catches the exact httpd failure at link time |
-| 2 | #99 | have weak externals right first; the whole direction rests on them (rank 1 above) |
-| 3 | `libc370#159` | collapse `@@crt0`/`@@crt1` with a weak `CTHREAD` reference — the pattern the same file already uses for `@@STKLEN` |
-| 4 | #107 | `--entry` seeds autocall, so the CRT moves inside `libc.a` and mbt's four near-identical link recipes collapse |
-| 5 | #10 | the weak `__premain()` hook in libc370; then this issue closes |
+| 2 | `libc370#159` | collapse `@@crt0`/`@@crt1` with a weak `CTHREAD` reference — the pattern the same file already uses for `@@STKLEN` |
+| 3 | #107 | `--entry` seeds autocall, so the CRT moves inside `libc.a` and mbt's four near-identical link recipes collapse |
+| 4 | #10 | the weak `__premain()` hook in libc370; then this issue closes |
 
-Steps 3 and 4 are independent of each other and of 5. Only 5 really wants 2 done
-first.
+Steps 2 and 3 are independent of each other and of 4. The prerequisite 4 really
+wanted — weak externals behaving regardless of link order — is in.
 
 **Two questions `libc370#159` must answer before anything is merged**, and they
 are not rhetorical: what the `CTHREAD` `IDENTIFY` is actually for — several
@@ -399,6 +370,14 @@ Pointers only. The reasoning lives in the issues and their PRs.
   the bytes a current link actually produces (`80 15 82`, product, V/M, packed
   `YYDDDF` and `0HHMMSSF`). The last change to `ld370.c` — the tool has been
   untouched since 2026-08-13.
+- **#99** — a `WXTRN` parsed before an `EXTRN` of the same name left the composite
+  entry at ESD type `0x0A`, so the unresolved check (which compares against `T_ER`
+  exactly) never fired: a hard reference nothing defines linked rc 0 with a zero
+  adcon. Reverse the two objects and it was reported correctly — the order *was*
+  the bug. `g_intern` now promotes a `WX` matched by anything but another `WX`,
+  the way `HEWLFESD` does. An unmatched weak external is untouched and stays type
+  `0x0A`; the regression test asserts that in both object orders, because that is
+  the half the entry-point work depends on. Closed 2026-09-04.
 - **#41** — an inherited RLD continuation bit survived onto a record's last item.
 - **#40** — `-O1` 64-bit load through a dying pointer clobbered its own base
   register.
@@ -427,6 +406,6 @@ Small things with no issue, recorded here so they are not lost twice.
 ## Cross-repo
 
 This file is cc370-only, and the entry-point work is not. Its libc370 half is
-`mvslovers/libc370#159` (the CRT variants) and, once #99 is in, the `__premain()`
-hook that closes #10. Do not rank those here; the sequence table above is the
+`mvslovers/libc370#159` (the CRT variants) and — now that #99 is in — the
+`__premain()` hook that closes #10. Do not rank those here; the sequence table above is the
 place that keeps them in step.
