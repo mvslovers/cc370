@@ -153,7 +153,7 @@ static long pick_maxtext(long blksize)
         if (iewl_txtsize[k] <= blksize) return iewl_txtsize[k];
     return 1024;                      /* BLKSIZE < 1K (rejected at parse) -- clamp */
 }
-enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05 };
+enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05, T_WX = 0x0A };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
 
 static void *grow_arr(void *arr, long *cap, long need, size_t elsz);   /* defined below */
@@ -185,7 +185,20 @@ static int g_new(const unsigned char *name)
 static int g_intern(const unsigned char *name, int type)
 {
     int i = g_find(name);
-    if (i >= 0) return i;
+    if (i >= 0) {
+        /* WX (weak external) matched by anything but another WX becomes a hard
+         * ER -- HEWLFESD does this in both directions so the ER's "must resolve"
+         * semantics win regardless of the order the objects were parsed in.
+         * Without it the composite entry kept the 0x0A the FIRST object set, the
+         * unresolved-externals check below (which compares == T_ER exactly) never
+         * saw it, and a hard reference nothing defines linked rc 0 with a zero
+         * adcon -> S0C4 on first use.  A section/label def overwrites the type
+         * again at the call site; only the ER case actually needs this.  The
+         * other direction is free: an incoming WX never updates an existing
+         * entry, so an ER already interned stays an ER.  WX + WX stays weak. */
+        if (G[i].type == T_WX && type != T_WX) G[i].type = T_ER;
+        return i;
+    }
     i = g_new(name);
     G[i].type = type;
     return i;
@@ -277,7 +290,8 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                 o->loc[id].len = be24(e + 13);
                 if (is_sect_type(ty) && o->sect_local < 0) o->sect_local = id;
                 trace("  ESD id=%d  %-8s  %s  len=%06lX", id, nm(o->loc[id].name),
-                      is_sect_type(ty) ? "SD(section)" : ty == T_ER ? "ER(extern ref)" : "?",
+                      is_sect_type(ty) ? "SD(section)" : ty == T_ER ? "ER(extern ref)" :
+                      ty == T_WX ? "WX(weak extern)" : "?",
                       o->loc[id].len);
             }
         } else if (c[1] == 0xE3 && c[2] == 0xE7 && c[3] == 0xE3) {     /* TXT */

@@ -195,6 +195,56 @@ else
     echo "  FAIL: GO unresolved -- rld[]/ld[] overflow regressed"; fails=$((fails + 1))
 fi
 
+# WX (weak external) promotion, issue #99.  g_intern set a composite entry's type
+# only when it CREATED the entry, so a WXTRN parsed before a hard EXTRN of the
+# same name left the entry at 0x0A for the rest of the link; the unresolved
+# check compares == T_ER exactly, so it never fired -- the link came back rc 0
+# with a zero adcon and S0C4'd on first use.  Order was the whole bug, so both
+# orders are asserted, not just the failing one.
+#
+# The other half matters more than the bug: an UNMATCHED weak external must stay
+# weak (rc 0, CESD type 0A) -- that is the mechanism @@crt0's WXTRN @@STKLEN and
+# the entry-point work (#10, #107) rest on.  A promotion that fired
+# unconditionally would pass the first three checks and destroy it.
+printf '\n=== WX/ER promotion + weak externals stay weak (issue #99) ===\n'
+printf 'WXA      CSECT\n         WXTRN WXUNDEF\n         DC    A(WXUNDEF)\n         BR    14\n         END\n' > "$TMP/wxa.s"
+printf 'WXB      CSECT\n         EXTRN WXUNDEF\n         DC    A(WXUNDEF)\n         BR    14\n         END\n' > "$TMP/wxb.s"
+printf 'WXC      CSECT\n         WXTRN WXUNDEF\n         DC    A(WXUNDEF)\n         BR    14\n         END\n' > "$TMP/wxc.s"
+wx_fails=0
+for m in wxa wxb wxc; do
+    "$AS" -o "$TMP/$m.o" "$TMP/$m.s" 2>/dev/null || { echo "  FAIL: as370 $m"; wx_fails=1; }
+done
+# WX+ER, BOTH orders: nothing defines WXUNDEF, so the hard ER must be reported.
+for pair in "wxa wxb" "wxb wxa"; do
+    # shellcheck disable=SC2086
+    set -- $pair
+    if "$LD" -o "$TMP/wx_$1$2.lm" --name WXM "$TMP/$1.o" "$TMP/$2.o" 2>/dev/null; then
+        echo "  FAIL: $1+$2 linked rc 0 -- hard ER unreported (WX promotion regressed)"; wx_fails=1
+    else
+        echo "  OK: $1+$2 -> unresolved external reported"
+    fi
+done
+# ...and the promoted composite entry is a hard ER (02) in the CESD, as HEWLFESD
+# rewrites it in place -- not merely reported and left 0A.
+if "$LD" -o "$TMP/wx_prom.lm" --name WXM --allow-unresolved "$TMP/wxa.o" "$TMP/wxb.o" 2>/dev/null; then
+    python3 ld370/tests/wx_check.py "$TMP/wx_prom.lm" WXUNDEF=02 || wx_fails=1
+else
+    echo "  FAIL: --allow-unresolved link failed"; wx_fails=1
+fi
+# lone WX, and WX+WX in both orders: still weak -- link clean, CESD type stays 0A.
+for spec in "lone $TMP/wxa.o" "wxa+wxc $TMP/wxa.o $TMP/wxc.o" "wxc+wxa $TMP/wxc.o $TMP/wxa.o"; do
+    # shellcheck disable=SC2086
+    set -- $spec
+    lbl=$1; shift
+    if "$LD" -o "$TMP/wx_$lbl.lm" --name WXW "$@" 2>/dev/null; then
+        printf '  %s: ' "$lbl"
+        python3 ld370/tests/wx_check.py "$TMP/wx_$lbl.lm" WXUNDEF=0a || wx_fails=1
+    else
+        echo "  FAIL: $lbl -- an unmatched weak external must NOT fail the link"; wx_fails=1
+    fi
+done
+[ "$wx_fails" -eq 0 ] || fails=$((fails + 1))
+
 # RLD record boundary: the object's SAMERP continuation bit (0x01, "next item
 # on this CARD shares R/P") was inherited verbatim into the load module's RLD
 # records.  When a record fills to RLDMAX (236) exactly, the item now LAST in
