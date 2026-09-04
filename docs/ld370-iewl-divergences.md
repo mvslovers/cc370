@@ -11,14 +11,38 @@ reproducer and the code citation:
 
 | | finding | state |
 |---|---|---|
-| [#99](https://github.com/mvslovers/cc370/issues/99) | a WX parsed before an ER leaves a hard unresolved reference unreported | **measured on the host** |
+| [#99](https://github.com/mvslovers/cc370/issues/99) | a WX parsed before an ER leaves a hard unresolved reference unreported | **fixed**, `62e4f1a` |
 | [#100](https://github.com/mvslovers/cc370/issues/100) | every linked module is marked RENT+REUS; IEWL defaults to neither | read from both sources |
 | [#101](https://github.com/mvslovers/cc370/issues/101) | the module image buffer is a fixed 1 MB static with no bounds check | latent, not active |
 | [#102](https://github.com/mvslovers/cc370/issues/102) | a duplicate CSECT keeps the last definition; IEWL keeps the first | derived, needs a fixture |
 | [#103](https://github.com/mvslovers/cc370/issues/103) | a second COMMON takes the last length; IEWL takes the maximum | derived, needs a fixture |
 
-Only #99 has been reproduced. #102 and #103 name the input that would trigger
-them and nothing more — that is what their fixtures are for.
+#99 is the only one that was ever reproduced, and it is now fixed — `g_intern`
+promotes a `WX` matched by anything but another `WX` to `ER`, the way `HEWLFESD`
+does. #102 and #103 name the input that would trigger them and nothing more —
+that is what their fixtures are for.
+
+It is worth recording what shape #99 turned out to be, because it is **not** the
+buffer shape below. Nothing overflowed and nothing was truncated: two tests
+decided one symbol's fate off two different tables, and the merge function that
+fed them updated a type only when it *created* an entry. Order of the input
+objects then decided whether a hard reference was diagnosed. The general lesson
+is narrower than "check your bounds" — **a merge rule that only ever writes on
+first sight is an order dependency**, and an order dependency in a linker is
+invisible until someone reorders the link.
+
+The fix turns a silent `rc 0` into a hard link failure for one input shape, so
+"no current build acquires a new failure" was measured, not argued:
+`ld370/tests/esd_scan.py` reads the ESD of a whole corpus of decks and reports
+any weak external that is also referenced by a hard `ER`. Over the ecosystem as
+it stood on 2026-09-04 — 2563 decks in 1419 `.o`/`.a` files — `@@STKLEN` and
+`@@CTCLUP` are the only weak externals present and neither is paired with one.
+Re-run it before touching the promotion rule, or when a project starts using
+`WXTRN`:
+
+```sh
+python3 ld370/tests/esd_scan.py ~/repos/mvs -x mike-orig -x ifox-src -x mvsbld
+```
 
 ---
 
