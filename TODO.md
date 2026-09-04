@@ -10,8 +10,18 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-04 (#99 closed; the reconciliation
-before it was 2026-08-30, 26 open, eight of them filed
+*Last reconciled against the tracker: 2026-09-04 — 31 open. #99 closed, and
+**seven new issues filed the same day — #108, #109, #110, #111, #112, #113,
+#115** — of which **#115 was closed again within hours, because the report was
+wrong and as370 was right** (see *Recently landed*; it is the most useful thing
+that happened that day). Six of
+the seven come from one place: a project moving MVS 3.8j source recovery onto
+the host (`mvs38src`, a local repository — unpublished while its licensing
+question is open, so there is no link to give), which assembles recovered source
+with as370 and compares the deck against what the system ships. It is the first consumer this
+toolchain has had that is neither the C ecosystem nor ourselves, and it changes
+what is worth building — see the two new sections below. The reconciliation
+before this one was 2026-08-30, 26 open, eight of them filed
 that day: #99–#104 out of two working notes — `TODO-LD370.md` and
 `TODO-ASM370.md`, which this file replaces — #106 out of closing #13, which went
 the same day, and #107 out of the entry-point decision below. What was reference material rather than open work moved to
@@ -49,9 +59,11 @@ Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 *Recently landed*.
 
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
-#10 and `libc370#159` — decided, sequenced, and spanning two repos), **loud
-gaps** (#56, #76, #78, #101, #102, #103), **observability** (#9, #106),
-**listing fidelity** (#24, #28, #91), **deferred** (#36).
+#10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
+library and the tools on it** (#109 → #110, #111, #112, #113 — new, and the only
+band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
+#103), **observability** (#9, #106), **listing fidelity** (#24, #28, #91),
+**deferred** (#36).
 
 ---
 
@@ -273,10 +285,62 @@ because two startups share one name.
 
 ---
 
+## The format library and the tools on it — new, and with a consumer
+
+Five issues filed 2026-09-04, and the first band here that exists because
+somebody outside this repository needs it. `mvs38src` assembles
+recovered MVS 3.8j source with as370 and compares the deck against the object the
+system ships; the comparison **is** its success criterion, and an agent works the
+loop unattended. That is a harder contract than the C ecosystem ever placed on
+these tools — it needs machine-readable output and exit codes that mean one thing.
+
+**#109 is the gate, and it was already argued.** It makes
+[`docs/tool-roadmap.md`](docs/tool-roadmap.md) Phase 0 actionable: extract the
+format logic duplicated across as370, ld370 and file370 into `libobj370` /
+`libmvs370`. What changed is that three new tools and one new capability all want
+the same decoders, so the choice is no longer "refactor or not" but "one
+implementation or six". The validation is mechanical and already exists —
+byte-identity corpus plus the IEWL oracles.
+
+| | depends on | what it is |
+|---|---|---|
+| #109 | — | `libobj370` / `libmvs370`, extracted from the three tools that already work |
+| #110 | #109 | `cmplmd370` — object deck vs. CSECT with tolerated differences (`--difin`/`--difout`, `--clearrld`). Exit 0 **only** on identity |
+| #111 | #109 | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
+| #112 | #109 | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
+| #113 | *ownership only* | read a **foreign** IEBCOPY unload — an FB source library unloaded by MVS parses to zero members today |
+
+**Why #113 sits here and not in the loud gaps below:** it is a capability, not a
+regression. file370 recognises the container and then finds nothing, because an
+unload produced by IEBCOPY from an FB source library is a shape our own emitters
+never produce — the `RECFM=U` it reports is the visible symptom of the same
+mismatch. Nothing that works today stops working.
+
+**And #113 is not actually behind the gate.** The issue says it *belongs with*
+#109 because libmvs370 would own the unload decoder — that is ownership, not a
+blocker. It is a decoder file370 lacks today and could gain before the
+extraction, and it is the one item here the caller needs *now*: the macros it is
+missing (`PVTMAC`/`APVTMAC`, over 100 of its remaining assembly failures) are on
+a tape it cannot read. Do not let the table's tidy dependency column park it.
+
+**Read #112's licensing note before starting it, not after.** The route matters
+to the result and not only to the paperwork; the roadmap carries the argument.
+
+**The sequencing lives with the consumer, not here.** `mvs38src/TODO.md` ranks
+these by what unblocks its measurements (#109 and #110 first; #112 waits on how
+large its case D turns out to be). Do not restate that ranking in this file — it
+will be wrong the first time that project learns something.
+
 ## Loud gaps — nothing silent about them
 
 Ranked below the whole list above for that reason alone, not by size.
 
+- **#108** — `DC S(…)` / `DS S` are diagnosed and not implemented, so no storage
+  is reserved and every later symbol in the section would move. #53 turned the
+  corruption into that diagnostic; it did not close the gap. Two bytes,
+  base+displacement through the active `USING` — small, and the only as370
+  limitation reported *by name* in the same 150-module sample (4 failures).
+  **Not #76:** that covers `Q` as part of pseudo registers; `S` is unrelated.
 - **#56** — the last four IFOX00 opcodes. Two are table rows with masks already in
   the table; two need formats as370 does not have (SSE, RRE). They were left out
   of #55 deliberately: a fabricated encoding turns a clean RC 8 into silently
@@ -290,9 +354,21 @@ Ranked below the whole list above for that reason alone, not by size.
   change, and the distinction #53 already established for DC/DS types.
 - **#78** — IFO069 needs a statement type `join_cont` does not have, because the
   limit is two continuations for machine/assembler operations and comments but
-  *not* for macro calls. It also carries the open severity-4 return-code question:
-  as370 has no severity-4 path, and any non-zero RC is fatal to `make`, where
-  IFOX00's RC 4 was tolerated by `COND=(8,LT)`.
+  *not* for macro calls.
+  **The severity-4 return-code question this entry used to carry is settled, and
+  the entry was wrong about both halves of it.** It said as370 has no severity-4
+  path and that any non-zero RC is fatal to `make`. as370 *does* return 4
+  (`as370/src/as370.c:3281` raises SEV26/SEV69 to 4, `:3406` returns it), and
+  mbt *does* honour `COND=(8,LT)` — `mbt/mk/mbt.mk:151` is
+  `|| { rc=$$?; [ $$rc -lt 8 ] || exit $$rc; }`. Verified 2026-09-04; whichever
+  of the two changed after the entry was written, the entry outlived it.
+  What is left is the narrower design question, and #115 is the evidence to read
+  before reopening it: IFOX00 gives a harmless continued comment and a
+  statement-losing continuation the same severity 4, and as370 deliberately
+  splits them — the second is its own error (`:3282`). #115 was filed to undo
+  exactly that split and was closed when the input turned out to be corrupt. Had
+  as370 warned and continued, 150 modules would have been assembled against
+  mangled macros and compared in good faith.
 - **#101** — ld370's module image buffer is a fixed 1 MB static with no bounds
   check. Latent (the largest module in the corpus is ~241 KB) but it is literally
   the pattern that has produced four production failures in that one file. One
@@ -370,6 +446,25 @@ Pointers only. The reasoning lives in the issues and their PRs.
   the bytes a current link actually produces (`80 15 82`, product, V/M, packed
   `YYDDDF` and `0HHMMSSF`). The last change to `ld370.c` — the tool has been
   untouched since 2026-08-13.
+- **#115** — filed against as370 for treating IFOX00's IFO026 (severity 4) as
+  fatal, so that IBM's shipped `WTO` macro "could not be assembled": the `AIF`
+  comment on line 654 reached column 72 and the card said "continued". Closed the
+  same day, **because the report was wrong and as370 was right.** Column 72 of the
+  real `SYS1.MACLIB` member is a blank; the continuation was introduced by the
+  reporter's own EBCDIC→ASCII conversion, which wrote UTF-8 — the `¬` (`X'5F'`)
+  became two bytes and shifted the rest of the line one column right. Re-converting
+  to a single-byte encoding fixed it, and the sample's clean-assembly rate went
+  from 65/150 to 73/150 with the whole error class gone.
+  **Worth keeping, because it is evidence for a stance and not just a closed
+  ticket:** `270b22d` ("a discarded statement is an error, not a severity-4
+  warning") and `c31c806` ("comment cards take part in the continuation rule")
+  were argued on the grounds that IFOX00 gives a harmless continued comment and a
+  statement-losing continuation the same severity 4, and only the second silently
+  corrupts a host build. Here the strict stance caught a data-corruption bug in
+  the *caller's* toolchain that a warning would have passed through — 150 modules
+  would have been assembled against mangled macros and compared in good faith.
+  It is the counter-evidence to reach for when the severity-4 question in #78 is
+  reopened.
 - **#99** — a `WXTRN` parsed before an `EXTRN` of the same name left the composite
   entry at ESD type `0x0A`, so the unresolved check (which compares against `T_ER`
   exactly) never fired: a hard reference nothing defines linked rc 0 with a zero
@@ -398,14 +493,29 @@ Small things with no issue, recorded here so they are not lost twice.
   same silent-truncation shape as the rest of that class. Noted in
   `as370/docs/ifox-option-parity.md`.
 - **[`docs/tool-roadmap.md`](docs/tool-roadmap.md)** is the roadmap for *new*
-  tools (`objdump370`, `nm370`, `iebcopy370`, …) and the proposal to extract
-  `libobj370` / `libmvs370` from the format logic duplicated across as370, ld370
-  and file370. It is not open work and is deliberately not ranked here; it is the
-  next-project conversation, and it needs a decision before it becomes one.
+  tools (`objdump370`, `nm370`, `iebcopy370`, …). It used to say here that the
+  roadmap was not open work and needed a decision before it became any — **that
+  decision was made on 2026-09-04**: #109 through #113 are filed, and the band
+  above ranks them. What is left in the roadmap is still a proposal, and it is
+  still the right place to read *why* Phase 0 comes first; the parts that now
+  have issues are marked there.
 
 ## Cross-repo
 
-This file is cc370-only, and the entry-point work is not. Its libc370 half is
-`mvslovers/libc370#159` (the CRT variants) and — now that #99 is in — the
-`__premain()` hook that closes #10. Do not rank those here; the sequence table above is the
-place that keeps them in step.
+This file is cc370-only, and two threads are not.
+
+**The entry-point work.** Its libc370 half is `mvslovers/libc370#159` (the CRT
+variants) and — now that #99 is in — the `__premain()` hook that closes #10. Do
+not rank those here; the sequence table above is the place that keeps them in
+step.
+
+**MVS 3.8j source recovery** (`mvs38src`) is a *consumer*, not a half: it needs
+#109–#113 and #115 and files them here, but it decides nothing about cc370 beyond
+what a caller decides by needing something. It has **no remote yet** — publication
+waits on a licensing answer — so it is a path on this machine, not a link, and
+that is worth knowing before someone goes looking for it. Its `TODO.md` holds the
+sequencing that matters to it, and it is allowed to disagree with the ranking in
+this file — its scale is 5,500 modules of IBM source, ours is a C toolchain, and
+the same issue can be worth a different amount to each. Where the two must agree
+is on what the issue *says*, which is why the issue is the record and neither
+file restates it.
