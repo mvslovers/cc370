@@ -31,6 +31,19 @@ is narrower than "check your bounds" — **a merge rule that only ever writes on
 first sight is an order dependency**, and an order dependency in a linker is
 invisible until someone reorders the link.
 
+The fix turns a silent `rc 0` into a hard link failure for one input shape, so
+"no current build acquires a new failure" was measured, not argued:
+`ld370/tests/esd_scan.py` reads the ESD of a whole corpus of decks and reports
+any weak external that is also referenced by a hard `ER`. Over the ecosystem as
+it stood on 2026-09-04 — 2563 decks in 1419 `.o`/`.a` files — `@@STKLEN` and
+`@@CTCLUP` are the only weak externals present and neither is paired with one.
+Re-run it before touching the promotion rule, or when a project starts using
+`WXTRN`:
+
+```sh
+python3 ld370/tests/esd_scan.py ~/repos/mvs -x mike-orig -x ifox-src -x mvsbld
+```
+
 ---
 
 ## The settled record — four defects of one shape
