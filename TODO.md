@@ -234,6 +234,18 @@ The decision it waits on: commit IFOX00 reference decks for the corpus (sizeable
 or generate them on demand through the mvsMF path and cache. `tests/oracle/capture.py`
 already does the capture for a single module.
 
+**Half of this question is now answered from outside.** `mvs38src` assembles a
+module on the guest with the real IFOX00 and diffs the two decks directly, which
+separates *does as370 assemble like IFOX* from *does the source match the
+shipped object* — a DLIB comparison alone conflates them. Two rules that
+comparison needs, both measured: exclude the END card (each assembler stamps its
+own translator id) and compare columns 1–72 only (73–76 is the card sequence
+number, and ignoring that produced a false alarm on all five cards of one
+module). Both sides must also see the **same macro libraries**, or the diff
+attributes nothing to anyone. That is what found #138. It does not retire this
+item — the gate here is still as370-against-as370 — but it changes what a
+committed corpus of decks would have to add on top.
+
 ---
 
 ## The entry-point work — decided, and it spans two repositories
@@ -481,6 +493,30 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **The September as370 parity run** — #127 (`START`), #128 (`ISEQ`), #129
+  (DC/DS type `S`), #134 (`&SYSECT`), #133 (cross-section duplication factor),
+  #136 (per-section location counter) and #138 (base-register tie-break), closed
+  2026-09-04…06. Driven by `mvs38src`, which assembles recovered MVS 3.8j source
+  with as370 and diffs the deck against what the system ships. Over that tree:
+  4,270 → 4,510 modules assemble, **572 → 832 byte-identical**, 853 → 1,263
+  identical-or-only-`DS`-holes (21.9 % → 30.8 %), and **nothing regressed**.
+
+  Two of the seven unlocked **no module at all** — `&SYSECT` and the
+  base-register tie-break. Between them they were the largest contribution,
+  because they corrected object code that 80-odd modules had been emitting
+  silently and wrongly all along. That is the lesson worth keeping: **the
+  expensive assembler defects are the ones nothing fails on.** No test of ours
+  found either; both needed foreign material and a real IFOX00 to compare
+  against.
+
+  A second lesson, learned twice in one week and once by each session: **a test
+  whose two hypotheses give the same answer is not a test.** `csect_resume.s`
+  could not separate the two origin rules because `align8(4)` and `align8(6)`
+  are both 8; `basereg.s` could not separate "highest-numbered register" from
+  "last registered" because its USINGs are declared ascending. Each needed a
+  second oracle built specifically to disagree — and in the second case the
+  obvious one-character fix would have been wrong.
 
 - **The August as370 parity run** — #94, #93, #88, #82, #74, #72, #70, #68, #64,
   #63, #61, #57, #53, #52, #51, #50, #48, #44, closed 2026-08-28…30. Between them
