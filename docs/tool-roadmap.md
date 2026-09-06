@@ -5,15 +5,21 @@ Phase 0/1 sharpened 2026-09 after a session that hand-decoded these records one
 time too many.*
 
 **Most of this is still a proposal — but it stopped being only a proposal on
-2026-09-04.** Five items now have issues and, more to the point, a **caller**:
-`mvs38src` — a local repository, unpublished while its licensing question is
-open — moves MVS 3.8j source recovery onto the host, assembling recovered source
-with as370 and comparing the deck against the object the system ships. Those items are marked ▸ below and ranked in `TODO.md`; the rest of this
-page is unchanged in status — nothing else here is scheduled.
+2026-09-04, and on 2026-09-06 part of it shipped.** Five items now have issues
+and, more to the point, a **caller**: `mvs38src` — a local repository,
+unpublished while its licensing question is open — moves MVS 3.8j source recovery
+onto the host, assembling recovered source with as370 and comparing the deck
+against the object the system ships. Those items are marked ▸ below and ranked in
+`TODO.md`; the rest of this page is unchanged in status — nothing else here is
+scheduled.
+
+Phase 0's first half is **done** (PR #116): all five tools now share
+`common/mvs370` rather than each carrying its own copy of the primitives. The
+emitters — the part that actually blocks Phases 1-4 — are still ahead.
 
 | | tool | issue |
 |---|---|---|
-| Phase 0 | `libobj370` / `libmvs370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **the gate; the other three depend on it** |
+| Phase 0 | `libobj370` / `libmvs370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **the gate; the other three depend on it.** Primitives landed 2026-09-06 (PR #116); the emitters remain |
 | Phase 1 | `cmplmd370` | [#110](https://github.com/mvslovers/cc370/issues/110) — new to this page, see below |
 | Phase 2 | foreign IEBCOPY unloads | [#113](https://github.com/mvslovers/cc370/issues/113) — *with* libmvs370 by ownership, not behind it |
 | Phase 3 | `idrdump370` | [#111](https://github.com/mvslovers/cc370/issues/111) |
@@ -33,6 +39,13 @@ own formats only.
 | `ld370` | object decks → load module, `-iebcopy` / `-xmit` transport |
 | `ar370` | object decks → `.a` archive with an ESD symbol index |
 | `file370` | read-only inspector for every format above |
+| `xmit370` | host directory ⇄ TSO TRANSMIT of a RECFM=FB **source** PDS |
+| `common/mvs370` | the shared primitives all five link against: big-endian access, CP037, the CKD count field, NETDATA framing |
+
+`xmit370` is on this list because it is easy to forget it exists and then
+duplicate it: it is a second, independent writer of the unload + XMIT container,
+for source libraries rather than load libraries. `common/mvs370` is what Phase 0
+grows into.
 
 Everything below is additional, and most of it is cheap **only after the
 refactor in the last section**.
@@ -47,6 +60,49 @@ The argument below was written before anything depended on it. Three of the tool
 now filed — `cmplmd370`, `idrdump370`, `dasm370` — decode exactly these formats,
 so the question is no longer whether the duplication is worth removing but
 whether there will be three copies of it or six.
+
+**Status: half done, 2026-09-06 (PR #116).** And the first half was not what this
+page predicted. `common/mvs370` already existed — added with `xmit370` in
+`51bdf5b`, describing itself as holding what was *"byte-for-byte duplicated
+across ld370, ar370, file370 and as370"* — but only xmit370 ever included it.
+So step one was **adoption, not extraction**: −166 lines, removing three
+identical `e2a1` decoders, two sets of big-endian accessors, and ld370's complete
+second NETDATA text-unit layer. The validation this page promised held exactly as
+described — 743 corpus modules deck for deck, the IFOX00 and IEWL oracles green.
+
+**What remains is the emitters, and this page should not pretend they are the
+same job.** There are two, and they differ for a real reason rather than by
+accident:
+
+| | ld370 | xmit370 |
+|---|---|---|
+| `emit_unload` | 157 lines | 84 lines |
+| `emit_xmit` | 121 lines | 104 lines |
+| for | RECFM=U **load** libraries | RECFM=FB **source** libraries |
+| additionally knows | `--blocksize`, the `maxtext` split, PDS2 attributes, entry point | ISPF statistics, LRECL, lines×80 |
+
+Same container, different DCB in COPYR1/INMR02. `mvs370.h` states the rule and it
+still holds: unify them *"with two proven implementations in hand rather than one
+guessed abstraction."* Both are separately MVS-validated, and ld370's is the code
+behind four production failures — dropped text, over-packed tracks → S106-0F,
+directory overflow, SIGBUS.
+
+**It is not optional, because the duplication already sits in the worst place.**
+The 3350 geometry constants are copied verbatim between the two, *including the
+ones that are the S106-0F fix*:
+
+```
+TRK_CAP_3350   19069  ld370  ·  19069  xmit370
+TRK_OVH_3350     185  ld370  ·    185  xmit370
+UDEBX_NMTRK       82  ld370  ·     82  xmit370
+UNLOAD_TRKPERCYL  30  ld370  ·     30  xmit370
+```
+
+The next device change has to be got right twice. Order: **the constants and the
+COPYR1/COPYR2 templates first** — mechanical, byte-checkable, and it removes the
+dangerous copy without touching layout logic — **then #113**, whose reader forces
+both shapes to be described precisely and supplies an independent third view,
+**then the merge**.
 
 The object- and load-module format logic — CESD, RLD, control records, IDRs,
 PDS2 directory entries, the IEBCOPY unload geometry — sits **duplicated** across
@@ -272,6 +328,9 @@ over-packed-track defects. With it, they are all thin frontends, and the questio
 #113 needs the unload directory read a second way. That is three or four more
 copies of the same decoders, all filed within one day of each other — which is
 the whole argument for #109 restated by events rather than by reasoning.
+(Half of it is now paid off — see the Phase 0 status — but the emitters, which is
+where `cmplmd370` and `dasm370` will actually read text and RLDs, are still
+ahead.)
 
 ---
 

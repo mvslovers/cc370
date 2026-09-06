@@ -10,7 +10,9 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-04 — 31 open. #99 closed, and
+*Last reconciled against the tracker: 2026-09-06 — 31 open, with #109 half
+landed (PR #116; see the band below and *Recently landed*). Before that,
+2026-09-04: #99 closed, and
 **seven new issues filed the same day — #108, #109, #110, #111, #112, #113,
 #115** — of which **#115 was closed again within hours, because the report was
 wrong and as370 was right** (see *Recently landed*; it is the most useful thing
@@ -60,7 +62,7 @@ Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
-library and the tools on it** (#109 → #110, #111, #112, #113 — new, and the only
+library and the tools on it** (#109 half done → #110, #111, #112, #113 — the only
 band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
 #103), **observability** (#9, #106), **listing fidelity** (#24, #28, #91),
 **deferred** (#36).
@@ -287,24 +289,50 @@ because two startups share one name.
 
 ## The format library and the tools on it — new, and with a consumer
 
-Five issues filed 2026-09-04, and the first band here that exists because
-somebody outside this repository needs it. `mvs38src` assembles
+Five issues filed 2026-09-04 — one of them now half done — and the first band
+here that exists because somebody outside this repository needs it. `mvs38src` assembles
 recovered MVS 3.8j source with as370 and compares the deck against the object the
 system ships; the comparison **is** its success criterion, and an agent works the
 loop unattended. That is a harder contract than the C ecosystem ever placed on
 these tools — it needs machine-readable output and exit codes that mean one thing.
 
-**#109 is the gate, and it was already argued.** It makes
-[`docs/tool-roadmap.md`](docs/tool-roadmap.md) Phase 0 actionable: extract the
-format logic duplicated across as370, ld370 and file370 into `libobj370` /
-`libmvs370`. What changed is that three new tools and one new capability all want
-the same decoders, so the choice is no longer "refactor or not" but "one
-implementation or six". The validation is mechanical and already exists —
-byte-identity corpus plus the IEWL oracles.
+**#109 is the gate, and its first half landed 2026-09-06** (PR #116). It makes
+[`docs/tool-roadmap.md`](docs/tool-roadmap.md) Phase 0 actionable: pull the
+format logic duplicated across the tools into `libobj370` / `libmvs370`. What
+changed is that three new tools and one new capability all want the same
+decoders, so the choice is no longer "refactor or not" but "one implementation
+or six". The validation is mechanical and already exists — byte-identity corpus
+plus the IEWL oracles.
+
+**What the first half established is worth carrying, because it was not what the
+issue assumed.** `common/mvs370` already existed — added with xmit370 in
+`51bdf5b` — and only xmit370 ever included it; the other four carried their own
+copies. So step one was *adoption*, not extraction: −166 lines, three identical
+`e2a1` decoders, two sets of big-endian accessors, and ld370's complete second
+NETDATA layer, all gone. 743 corpus modules reproduce deck for deck.
+
+**The half that remains is the emitters, and it is the harder half.** There are
+two — ld370's for RECFM=U load libraries (157 + 121 lines), xmit370's for
+RECFM=FB source libraries (84 + 104) — differing for a real reason: same
+container, different DCB in COPYR1/INMR02. `mvs370.h`'s own rule governs it:
+unify them *"with two proven implementations in hand rather than one guessed
+abstraction"*. Both are separately MVS-validated, and ld370's is the code behind
+four production failures (dropped text, over-packed tracks → S106-0F, directory
+overflow, SIGBUS).
+
+**Not optional, though — the duplication already sits in the worst place.** The
+3350 geometry constants are copied verbatim between the two, *including the ones
+that are the S106-0F fix*: `TRK_CAP_3350` 19069, `TRK_OVH_3350` 185,
+`UDEBX_NMTRK` 82, `UNLOAD_TRKPERCYL` 30. The next device change has to be got
+right in two places. Order proposed on the issue: **constants and the
+COPYR1/COPYR2 templates first** (mechanical, byte-checkable, and it removes
+exactly the dangerous copy without touching layout), **then #113** — whose reader
+forces both shapes to be described precisely and so supplies the independent
+third view — **then the merge**.
 
 | | depends on | what it is |
 |---|---|---|
-| #109 | — | `libobj370` / `libmvs370`, extracted from the three tools that already work |
+| #109 | — | `libobj370` / `libmvs370`. **Primitives done** (#116); the unload/XMIT **emitters** remain |
 | #110 | #109 | `cmplmd370` — object deck vs. CSECT with tolerated differences (`--difin`/`--difout`, `--clearrld`). Exit 0 **only** on identity |
 | #111 | #109 | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
 | #112 | #109 | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
@@ -446,6 +474,19 @@ Pointers only. The reasoning lives in the issues and their PRs.
   the bytes a current link actually produces (`80 15 82`, product, V/M, packed
   `YYDDDF` and `0HHMMSSF`). The last change to `ld370.c` — the tool has been
   untouched since 2026-08-13.
+- **#109, first half / PR #116** — all five tools now share `common/mvs370`
+  instead of their own copies of it. The surprise was that `common/mvs370`
+  already existed (`51bdf5b`, with xmit370) and only xmit370 used it, so this was
+  adoption rather than extraction: −166 lines, and ld370's entire second NETDATA
+  layer removed. Two conversion behaviours changed deliberately — 53 printable
+  characters that used to render as `?` now render, and ld370 no longer blanks an
+  unknown character when encoding XMIT text units. Verified by the corpus gate
+  (743 modules deck for deck), the IFOX00 and IEWL oracles, and a real C link
+  byte-identical in `.lm`/`.iebcopy`/`.xmit`. Two build paths broke *after* the
+  change and were caught before merge, both of a kind that only fails on a clean
+  rebuild: the corpus gate exports the `as370` subtree alone, and
+  `as370/Makefile` is what `make test-as370` really compiles with. The emitters
+  are untouched and are the rest of the issue.
 - **#115** — filed against as370 for treating IFOX00's IFO026 (severity 4) as
   fatal, so that IBM's shipped `WTO` macro "could not be assembled": the `AIF`
   comment on line 654 reached column 72 and the card said "continued". Closed the
