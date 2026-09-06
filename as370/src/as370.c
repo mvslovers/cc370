@@ -1453,8 +1453,8 @@ static struct macro *lib_load(const char *name) {
 }
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
-    const char *d[] = { "CSECT", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
-                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", "PUSH", "POP", "CCW", NULL };
+    const char *d[] = { "CSECT", "START", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
+                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", "PUSH", "POP", "CCW", "ISEQ", NULL };
     int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
 
@@ -2419,9 +2419,22 @@ static void do_pass(int pass, char **lines, int nlines) {
             continue;
         }
 
-        if (!strcmp(op, "CSECT")) {
+        if (!strcmp(op, "CSECT") || !strcmp(op, "START")) {
+            /* START is CSECT that may set where the first control section begins.
+             * Measured against IFOX00 on MVS/CE (cc370#127):
+             *   START 0   -> SD ADDR 000000, byte for byte the CSECT entry
+             *   START     -> SD ADDR 000000, the same
+             *   START 256 -> SD ADDR 000100, decimal operand, and the LENGTH is
+             *                measured from that origin
+             *   START 5   -> SD ADDR 000008, so the value is ROUNDED UP to a
+             *                doubleword like any section origin.  256 is already
+             *                aligned and hides this; 5 is what shows it.
+             * The rounding needs no code of its own -- the align8 below already
+             * does it, which is why the operand is applied before it. */
             if (in_dsect) { in_dsect = 0; lc = main_lc; }   /* DSECT: resume the saved control-section counter */
             else { org_hwm = 0; }   /* a new/continued CSECT keeps the continuous location counter: distinct sections stack within one assembly, as IFOX does */
+            if (!strcmp(op, "START") && !first_ctl_sect && !in_dsect && opnd[0] && opnd[0] != ',')
+                lc = expr_val(opnd, NULL);   /* only the FIRST section can be placed */
             if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
                 int k, hassect = 0; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) hassect = 1;
                 if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT); }
@@ -2461,6 +2474,15 @@ static void do_pass(int pass, char **lines, int nlines) {
             cur_sect_id = s->sect;
             if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
             if (pass == 1) { s->val = 0; s->defined = 1; }
+        } else if (!strcmp(op, "ISEQ")) {
+            /* Input sequence checking.  Measured against IFOX00 (cc370#128): it
+             * emits no bytes and does not advance the location counter, and an
+             * out-of-sequence statement is still ASSEMBLED -- IFO025 is a
+             * diagnostic, not a rejection (the offending BR 14 appeared at
+             * 000004 with the section two bytes longer).  So recognising the
+             * statement is provably object-neutral, and what is not yet
+             * reproduced is the IFO025 diagnostic itself. */
+            /* nothing to do */
         } else if (!strcmp(op, "TITLE")) {
             if (pass == 1 && lbl[0] && !deck_id[0]) scopy(deck_id, lbl, 8);   /* first named TITLE -> deck id */
         } else if (!strcmp(op, "ENTRY")) {
