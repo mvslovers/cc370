@@ -4,7 +4,7 @@ CC      ?= cc
 CFLAGS  ?= -g -O0 -Wall -Wextra -std=gnu99
 PROG     = as370
 
-COMMON   = ../common/src/mvs370.c
+COMMON   = ../common/src/mvs370.c ../common/src/obj370.c
 COMMONH  = ../common/include/mvs370.h
 
 $(PROG): src/as370.c include/opc_table.h $(COMMON) $(COMMONH)

@@ -24,7 +24,7 @@ fail() { echo "FAIL: $1"; fails=$((fails + 1)); }
 
 echo "=== building ==="
 cc -O2 -Wall -Wextra -Werror -Icommon/include \
-   -o xmit370/xmit370 xmit370/src/xmit370.c common/src/mvs370.c || exit 99
+   -o xmit370/xmit370 xmit370/src/xmit370.c common/src/mvs370.c common/src/obj370.c || exit 99
 X=./xmit370/xmit370
 
 # ---------------------------------------------------------------- fixtures

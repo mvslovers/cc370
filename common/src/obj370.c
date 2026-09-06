@@ -121,3 +121,83 @@ int obj_end_get(const unsigned char *card, struct obj_end *e)
     }
     return 1;
 }
+
+/* ---- load-module records ----
+ * The framing is lifted verbatim from ld370's split_member, which file370's
+ * show_lmod already duplicated statement for statement:
+ *   0x2x  CESD   8 + count at +6
+ *   0x8x  IDR    byte at +1, plus one
+ *   0x0x  CTL    16 + count at +4 + count at +6, and if bit 0x01 is set a pure
+ *                text record of the length at +14 follows it
+ * Anything else is a form neither tool produces (SYM, scatter/translate) and is
+ * reported as malformed rather than guessed at.
+ */
+void lmod_iter_init(struct lmod_iter *it, const unsigned char *m, long n)
+{
+    it->m = m; it->n = n; it->p = 0; it->pending = 0;
+}
+
+int lmod_iter_next(struct lmod_iter *it, struct lmod_item *out)
+{
+    const unsigned char *m = it->m;
+    long p = it->p, blen;
+    int b0, hi;
+
+    if (it->pending) {                       /* the text record announced last time */
+        out->kind = LMOD_TEXT;
+        out->off = p; out->len = it->pending; out->flags = 0;
+        if (p + it->pending > it->n) return -1;
+        it->p = p + it->pending;
+        it->pending = 0;
+        return 1;
+    }
+    if (p >= it->n) return 0;
+    if (p + 8 > it->n) return -1;
+
+    b0 = m[p]; hi = b0 & 0xf0;
+    out->off = p; out->flags = 0;
+    if (hi == 0x20) {
+        out->kind = LMOD_CESD;
+        blen = 8 + mvs_be16(m + p + 6);
+    } else if (hi == 0x80) {
+        out->kind = LMOD_IDR;
+        blen = m[p + 1] + 1;
+    } else if (hi == 0x00) {
+        if (p + 16 > it->n) return -1;
+        out->kind = LMOD_CTL;
+        out->flags = b0;
+        blen = 16 + mvs_be16(m + p + 4) + mvs_be16(m + p + 6);
+        if (b0 & LMOD_CTL_TEXT) it->pending = mvs_be16(m + p + 14);
+    } else {
+        return -1;
+    }
+    if (blen <= 0 || p + blen > it->n) { it->pending = 0; return -1; }
+    out->len = blen;
+    it->p = p + blen;
+    return 1;
+}
+
+int lmod_cesd_walk(const unsigned char *m, long n,
+                   int (*fn)(const struct lmod_esd *e, void *ctx), void *ctx)
+{
+    long p = 0;
+    int id = 0, reported = 0;
+
+    /* The CESD records are the leading ones; the first non-CESD ends the walk. */
+    while (p + 8 <= n && (m[p] & 0xf0) == 0x20) {
+        long cnt = mvs_be16(m + p + 6), it;
+        for (it = 8; it + 16 <= 8 + cnt && p + it + 16 <= n; it += 16) {
+            const unsigned char *e = m + p + it;
+            struct lmod_esd x;
+            x.name = e;
+            x.type = e[8];
+            x.esdid = ++id;              /* position IS the id, counting from 1 */
+            x.addr = mvs_be24(e + 9);
+            x.len  = mvs_be24(e + 13);
+            reported++;
+            if (fn && !fn(&x, ctx)) return reported;
+        }
+        p += 8 + cnt;
+    }
+    return reported;
+}

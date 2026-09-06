@@ -24,7 +24,7 @@ TMP="${TMPDIR:-/tmp}"
 LDDATE=26223 LDTIME=220517
 export LDDATE LDTIME
 
-COMMON="common/src/mvs370.c"
+COMMON="common/src/mvs370.c common/src/obj370.c"
 CF="-O2 -Wall -Wextra -Werror -Icommon/include"
 [ -x "$AS" ] || gcc $CF -Ias370/include -o "$AS" as370/src/as370.c $COMMON || exit 2
 gcc $CF -o "$LD" ld370/src/ld370.c $COMMON || exit 2
