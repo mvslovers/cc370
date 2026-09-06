@@ -1,0 +1,67 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 13.56 09/06/26
+T         SD  0001 000000 000016
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 13.56 09/06/26
+                                      1 * T' woertlich geschrieben, nicht ueber eine Variable (#146).
+                                      2 *
+                                      3 * tattr_symbol.s prueft nur T'&CC -- das Symbol kommt dort durch
+                                      4 * einen Makroparameter.  Ein woertliches T'SF nahm einen anderen
+                                      5 * Zweig und lieferte 'O' (weggelassener Operand), weil die Auswertung
+                                      6 * nur die Variablenform kannte.  Beide Formen gehoeren geprueft; die
+                                      7 * Luecke lag genau zwischen den beiden Fixtures.
+                                      8 *
+                                      9 * Gemessen gegen IFOX00: alle fuenf Faelle OK, offener Code wie
+                                     10 * Makrorumpf, woertlich wie ueber Parameter.
+                                     11 *
+                                     12 * NICHT geprueft wird hier "AIF (T'X'C0D' ...)" in OFFENEM Code: das
+                                     13 * ist unzulaessig, IFOX stellt IFO036 ATTRIBUTE REFERENCE FOR T'X'C0D'
+                                     14 * IS INVALID und nimmt den falschen Zweig.  as370 akzeptiert es und
+                                     15 * antwortet 'N' -- eine fehlende Diagnose, kein Gewinn.  Ueber einen
+                                     16 * Makroparameter ist dieselbe Konstante zulaessig und ergibt 'N'.
+                                     17          MACRO
+                                     18          VIA   &CC,&EXP
+                                     19          AIF   (T'&CC EQ '&EXP').OK
+                                     20          DC    C'BAD'
+                                     21          MEXIT
+                                     22 .OK      ANOP
+                                     23          DC    C'OK '
+                                     24          MEND
+000000                               25 T        CSECT
+000000                               26 SF       DS    F
+000004                               27 SC       DS    CL3
+                                     28 * -- woertlich, offener Code
+                                     29          AIF   (T'SF EQ 'F').L1
+                                     30 .L1      ANOP
+000007 D6D240                        31          DC    C'OK '
+                                     32 .D1      ANOP
+                                     33          AIF   (T'SC EQ 'C').L2
+                                     34 .L2      ANOP
+00000A D6D240                        35          DC    C'OK '
+                                     36 .D2      ANOP
+                                     37 * -- ueber einen Parameter, Makrorumpf
+                                     38          VIA   SF,F
+00000D D6D240                        39+         DC    C'OK '
+                                     40          VIA   SC,C
+000010 D6D240                        41+         DC    C'OK '
+                                     42          VIA   X'C0D',N
+000013 D6D240                        43+         DC    C'OK '
+                                     44          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.56 09/06/26
+SC       00003 00000004 00027
+SF       00004 00000000 00026
+T        00001 00000000 00025
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 13.56 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         45
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        67
