@@ -37,6 +37,8 @@ struct sect {
     long len;                   /* declared length -- the unit the comparison uses */
     unsigned char *bytes;       /* text image, zero where no text landed */
     unsigned char *relo;        /* 1 per byte covered by an address constant */
+    unsigned char *made;        /* 1 where a TXT card actually put something   */
+    unsigned char *ign;         /* 1 where --difin says to ignore              */
 };
 
 struct side {
@@ -63,10 +65,20 @@ static struct sect *sect_add(struct side *sd, const unsigned char *nm8,
     s->len = len;
     s->bytes = calloc((size_t)(len > 0 ? len : 1), 1);
     s->relo  = calloc((size_t)(len > 0 ? len : 1), 1);
-    if (!s->bytes || !s->relo) die("out of memory", NULL);
+    s->made  = calloc((size_t)(len > 0 ? len : 1), 1);
+    s->ign   = calloc((size_t)(len > 0 ? len : 1), 1);
+    if (!s->bytes || !s->relo || !s->made || !s->ign) die("out of memory", NULL);
     if (esdid > 0 && esdid < 65536) sd->id2sect[esdid] = sd->n;
     sd->n++;
     return s;
+}
+
+static struct sect *sect_find(struct side *sd, const char *name)
+{
+    int i;
+    for (i = 0; i < sd->n; i++)
+        if (!strcmp(sd->s[i].name, name)) return &sd->s[i];
+    return NULL;
 }
 
 static void side_init(struct side *sd)
@@ -117,8 +129,18 @@ static void load_deck(struct side *sd, const unsigned char *b, long n)
             if (si < 0) continue;
             {   /* TXT addresses are section-relative in a deck */
                 long a = t.addr - sd->s[si].org;
-                if (a >= 0 && a + t.len <= sd->s[si].len)
+                if (a >= 0 && a + t.len <= sd->s[si].len) {
                     memcpy(sd->s[si].bytes + a, t.data, (size_t)t.len);
+                    /* Record WHERE the assembler produced something.  An offset
+                     * no TXT card covers is one as370 never wrote: the loader
+                     * zeroes it, and whatever the shipped module carries there
+                     * is residue from a DS hole, not a disagreement.  A zero
+                     * INSIDE a TXT card, by contrast, is a zero the assembler
+                     * meant.  That distinction is the difference between "not
+                     * recovered" and "recovered", so the tool computes it
+                     * rather than leaving it to a reader. */
+                    memset(sd->s[si].made + a, 1, (size_t)t.len);
+                }
             }
         } else if (obj_card_type(c) == OBJ_RLD) {
             obj_rld_walk(c, mark_relo, sd);
@@ -198,6 +220,69 @@ static void load_lmod(struct side *sd, const unsigned char *m, long n)
 
 /* ---------------- compare ---------------- */
 
+/* ---- DIFIN / DIFOUT ----
+ * Dave Kreiss' format, unchanged: a header line with '>' in column 1 and the
+ * CSECT name in 2-9, then difference records with a 6-digit hex offset in 1-6
+ * and a 2-digit hex length in 7-8.
+ *
+ * This is the one option whose PURPOSE is to suppress differences, so it is the
+ * one that can quietly turn a real divergence into an exit 0.  It is therefore
+ * the last thing built, after the teeth, and it reports how much it masked --
+ * an exit 0 that needed 400 ignored bytes is a different claim from one that
+ * needed none.
+ */
+static int hexn(const char *s, int n, long *out)
+{
+    long v = 0;
+    int i;
+    for (i = 0; i < n; i++) {
+        int c = s[i], d;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        else return 0;
+        v = v * 16 + d;
+    }
+    *out = v;
+    return 1;
+}
+
+static void difin_load(struct side *sd, const char *path)
+{
+    FILE *f = fopen(path, "r");
+    char line[256], cur[9] = "";
+    int lineno = 0;
+    if (!f) { perror(path); exit(2); }
+    while (fgets(line, sizeof line, f)) {
+        char *p2 = line;
+        long off, len, i;
+        struct sect *s;
+        lineno++;
+        while (*p2 && (p2[strlen(p2) - 1] == '\n' || p2[strlen(p2) - 1] == '\r'))
+            p2[strlen(p2) - 1] = 0;
+        if (!*p2) continue;
+        if (*p2 == '>') {
+            int k;
+            for (k = 0; k < 8 && p2[1 + k] && p2[1 + k] != ' '; k++) cur[k] = p2[1 + k];
+            cur[k] = 0;
+            continue;
+        }
+        if (strlen(p2) < 8 || !hexn(p2, 6, &off) || !hexn(p2 + 6, 2, &len)) {
+            fprintf(stderr, "cmplmd370: %s:%d: not a DIFIN record: %s\n", path, lineno, p2);
+            exit(2);
+        }
+        if (!cur[0]) {
+            fprintf(stderr, "cmplmd370: %s:%d: record before any '>' header\n", path, lineno);
+            exit(2);
+        }
+        s = sect_find(sd, cur);
+        if (!s) continue;              /* a section this comparison does not cover */
+        for (i = 0; i < len; i++)
+            if (off + i >= 0 && off + i < s->len) s->ign[off + i] = 1;
+    }
+    fclose(f);
+}
+
 /* Clusters matter more than the total: three separate one-byte differences and
  * one three-byte run mean very different things (#110). */
 #define MAXCLU 64
@@ -211,9 +296,9 @@ static void hexrun(const unsigned char *p, long n)
 }
 
 static int compare(const struct sect *a, const struct sect *b, int clearrld,
-                   int verbose, const char *label)
+                   int verbose, const char *label, FILE *difout, int *wrote_hdr)
 {
-    long i, diff = 0, nclu = 0, masked = 0;
+    long i, diff = 0, nclu = 0, nrelo = 0, nign = 0, ingap = 0;
     long cluoff[MAXCLU], clulen[MAXCLU];
     int inrun = 0;
 
@@ -223,10 +308,11 @@ static int compare(const struct sect *a, const struct sect *b, int clearrld,
         return 1;
     }
     for (i = 0; i < a->len; i++) {
-        int skip = clearrld && (a->relo[i] || b->relo[i]);
-        if (skip) { masked++; inrun = 0; continue; }
+        if (clearrld && (a->relo[i] || b->relo[i])) { nrelo++; inrun = 0; continue; }
+        if (a->ign[i]) { nign++; inrun = 0; continue; }
         if (a->bytes[i] != b->bytes[i]) {
             diff++;
+            if (!a->made[i]) ingap++;      /* a byte as370 never wrote */
             if (!inrun) {
                 inrun = 1;
                 if (nclu < MAXCLU) { cluoff[nclu] = i; clulen[nclu] = 0; }
@@ -237,22 +323,41 @@ static int compare(const struct sect *a, const struct sect *b, int clearrld,
     }
     if (!diff) {
         if (verbose)
-            printf("  %-8s identical (%ld bytes%s)\n", label, a->len,
-                   masked ? (clearrld ? ", adcons cleared" : "") : ", no adcons");
+            printf("  %-8s identical (%ld bytes%s%s)\n", label, a->len,
+                   nrelo ? ", adcons cleared" : "",
+                   nign ? ", difin applied" : "");
         return 0;
     }
-    printf("  %-8s %ld byte(s) differ in %ld cluster(s) of %ld%s\n",
+    /* Every differing byte outside what a TXT card produced is a DS hole: the
+     * loader zeroed it and the shipped module's content there is residue.  A
+     * difference wholly in gaps says the SOURCE agrees and the tolerance list
+     * is what is missing; one inside generated text says it does not. */
+    printf("  %-8s %ld byte(s) differ in %ld cluster(s) of %ld -- %s\n",
            label, diff, nclu, a->len,
-           masked ? "" : " -- no adcon was cleared, so this is instruction text");
+           ingap == diff ? "ALL in DS holes (no byte as370 wrote)"
+                         : ingap ? "some in DS holes, some in generated text"
+                                 : "all in GENERATED TEXT");
     for (i = 0; i < nclu && i < MAXCLU && verbose; i++) {
         printf("      @%06lX  %2ld  new ", cluoff[i], clulen[i]);
         hexrun(a->bytes + cluoff[i], clulen[i]);
         printf("  ref ");
         hexrun(b->bytes + cluoff[i], clulen[i]);
-        printf("\n");
+        printf("%s\n", a->made[cluoff[i]] ? "" : "  (hole)");
     }
     if (nclu > MAXCLU && verbose)
         printf("      ... %ld more cluster(s) not listed\n", nclu - MAXCLU);
+    if (difout) {
+        if (!*wrote_hdr || 1) fprintf(difout, ">%s\n", label);
+        *wrote_hdr = 1;
+        for (i = 0; i < nclu && i < MAXCLU; i++) {
+            long o = cluoff[i], l = clulen[i];
+            while (l > 0) {                       /* the length field is one byte */
+                long chunk = l > 255 ? 255 : l;
+                fprintf(difout, "%06lX%02lX\n", o, chunk);
+                o += chunk; l -= chunk;
+            }
+        }
+    }
     return 1;
 }
 
@@ -267,6 +372,9 @@ static void usage(FILE *f)
       "  REFERENCE   a bound load-module member, or another object deck\n"
       "\n"
       "  --csect NAME   compare only this section (default: pair all by name)\n"
+      "  --difin FILE   ignore the ranges this file lists (Dave Kreiss' format:\n"
+      "                 '>' + CSECT name, then 6-hex offset + 2-hex length)\n"
+      "  --difout FILE  write the differences found, in that same format\n"
       "  --clearrld     zero address constants before comparing (DEFAULT)\n"
       "  --no-clearrld  compare adcons too -- only meaningful deck against deck\n"
       "  -v             report identical sections too\n"
@@ -277,7 +385,9 @@ static void usage(FILE *f)
 int main(int argc, char **argv)
 {
     const char *fa = NULL, *fb = NULL, *only = NULL;
-    int clearrld = 1, verbose = 0, i, rc = 0, npair = 0;
+    const char *difin = NULL, *difoutp = NULL;
+    FILE *difout = NULL;
+    int clearrld = 1, verbose = 0, i, rc = 0, npair = 0, wrote_hdr = 0;
     unsigned char *ba, *bb;
     long na, nb;
     static struct side A, B;
@@ -286,6 +396,8 @@ int main(int argc, char **argv)
         if (!strcmp(argv[i], "--csect") && i + 1 < argc) only = argv[++i];
         else if (!strcmp(argv[i], "--clearrld")) clearrld = 1;
         else if (!strcmp(argv[i], "--no-clearrld")) clearrld = 0;
+        else if (!strcmp(argv[i], "--difin") && i + 1 < argc) difin = argv[++i];
+        else if (!strcmp(argv[i], "--difout") && i + 1 < argc) difoutp = argv[++i];
         else if (!strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { usage(stdout); return 0; }
         else if (argv[i][0] == '-') { fprintf(stderr, "cmplmd370: unknown option %s\n", argv[i]); usage(stderr); return 2; }
@@ -305,7 +417,11 @@ int main(int argc, char **argv)
     else if (nb >= 4 && obj_card_type(bb) != OBJ_OTHER) load_deck(&B, bb, nb);
     else die("reference is neither a load module nor an object deck", fb);
 
-    printf("%s vs %s%s\n", fa, fb, clearrld ? "" : "  (adcons compared)");
+    if (difin) difin_load(&A, difin);
+    if (difoutp && !(difout = fopen(difoutp, "w"))) { perror(difoutp); return 2; }
+
+    printf("%s vs %s%s%s\n", fa, fb, clearrld ? "" : "  (adcons compared)",
+           difin ? "  (difin applied)" : "");
     for (i = 0; i < A.n; i++) {
         struct sect *b2;
         if (only && strcmp(A.s[i].name, only)) continue;
@@ -320,11 +436,13 @@ int main(int argc, char **argv)
             continue;
         }
         npair++;
-        if (compare(&A.s[i], b2, clearrld, verbose, A.s[i].name[0] ? A.s[i].name : "(private)"))
+        if (compare(&A.s[i], b2, clearrld, verbose,
+                    A.s[i].name[0] ? A.s[i].name : "(private)", difout, &wrote_hdr))
             rc = 1;
     }
     if (only && !npair) { fprintf(stderr, "cmplmd370: no section named %s\n", only); return 2; }
     if (!npair && !rc) { fprintf(stderr, "cmplmd370: no sections paired\n"); return 2; }
+    if (difout) fclose(difout);
     printf("%s\n", rc ? "DIFFER" : "IDENTICAL");
     return rc;
 }
