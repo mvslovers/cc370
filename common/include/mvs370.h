@@ -65,6 +65,61 @@ unsigned char *mvs_read_file(const char *path, long *len);
  */
 void mvs_put_count(unsigned char *p, int cc, int hh, int r, int kl, int dl);
 
+/* ---- 3350 CKD geometry ----
+ * One derivation, several uses -- kept distinct because confusing them IS the
+ * over-packing bug (S106-0F on FETCH, mvslovers/cc370 2026-06-24):
+ *   LEN     physical usable bytes on one track
+ *   OVH     gap + count field carried by every record on it
+ *   MAXBLK  the largest single record that fits, LEN - OVH.  Also exactly the
+ *           UMBLK the 3350 device table in COPYR1 carries, so it is what a
+ *           --blocksize is capped at.
+ * PACK_CAP, the budget the unload emitters pack a track against, is deliberately
+ * MAXBLK and not LEN: costing every record at OVH + data and holding the sum
+ * under MAXBLK leaves one record's overhead unspent, so a track can be
+ * under-filled but never over-packed.  Program FETCH positions by each record's
+ * on-disk count field and rejects a track that claims more than it can hold;
+ * IEBCOPY and BPAM are directory-driven and do not, which is why an over-packed
+ * image round-trips on the host and abends on the machine.
+ */
+#define MVS_TRK_LEN_3350     19254
+#define MVS_TRK_OVH_3350     185
+#define MVS_TRK_MAXBLK_3350  (MVS_TRK_LEN_3350 - MVS_TRK_OVH_3350)   /* 19069 */
+#define MVS_TRK_PACK_CAP_3350 MVS_TRK_MAXBLK_3350
+#define MVS_TRKPERCYL_3350   30
+
+/* ---- IEBCOPY unloaded-PDS environment header ----
+ * COPYR1 (52) + COPYR2 (276), echoed verbatim from a real IEBCOPY unload and
+ * then stamped with the DCB and the data extent.  ld370 (RECFM=U load library)
+ * and xmit370 (RECFM=FB source library) share it byte for byte; only which
+ * fields they stamp differs.
+ */
+#define MVS_ENV_HDR_LEN   328
+#define MVS_COPYR1_LEN    52       /* MVS 3.8j COPYR1 = L$XC138 in DXCOPYR1 */
+extern const unsigned char mvs_unload_env_hdr[MVS_ENV_HDR_LEN];
+
+/* COPYR1 field offsets (DXCOPYR1 / IEBLDUL) */
+#define MVS_XC1DSORG   4
+#define MVS_XC1BLKSZ   6           /* the LIBRARY blocksize */
+#define MVS_XC1LRECL   8
+#define MVS_XC1RECFM  10
+#define MVS_XC1KEYLN  11
+#define MVS_XC1TBLKS  14           /* the unloaded-PS blocksize (= library + 20) */
+
+/* UDEBX (the DEB data extent) within the env header.  The directory's relative
+ * TTR is resolved against this extent, so it must span every track written. */
+#define MVS_UDEBX_STRCC  74
+#define MVS_UDEBX_STRHH  76
+#define MVS_UDEBX_ENDCC  78
+#define MVS_UDEBX_ENDHH  80
+#define MVS_UDEBX_NMTRK  82
+#define MVS_UNLOAD_DATA_CC 0x008d  /* base cylinder of the echoed data extent */
+
+/* Grow the UDEBX data extent to span `ntracks` relative tracks, in whole
+ * cylinders, so the fake-DEB TTR <-> MBBCCHHR conversion stays valid.  Both
+ * emitters did this identically; a divergence here reads the wrong track on
+ * reload, which is silent until it is not. */
+void mvs_udebx_extent(unsigned char *hdr, int ntracks);
+
 /* ---- TSO TRANSMIT / NETDATA ----
  * Text-unit keys, cross-checked against the mainframed/xmi reference.
  */

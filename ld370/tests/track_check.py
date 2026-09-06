@@ -41,6 +41,7 @@ TRK_OVH_3350 = 185          # gap + count field per record
 MAX_BLK_3350 = TRK_LEN_3350 - TRK_OVH_3350      # 19069: largest single record
 
 ENV_HDR = 328               # COPYR1(52) + COPYR2(276)
+COPYR1_LEN = 52             # MVS 3.8j COPYR1 = L$XC138 in DXCOPYR1
 COPYR1_EYE = bytes((0xCA, 0x6D, 0x0F))          # at offset 1..3
 
 # COPYR1 / UDEBX field offsets within the env header.
@@ -68,12 +69,15 @@ fails = []
 
 
 def unwrap_xmit(d):
-    """NETDATA segments -> the concatenated NON-control payload (the unload).
+    """NETDATA segments -> (payload, [logical record lengths]).
 
     Segment = len(1, incl. the 2-byte header) + flags(1) + data; 0x80 first,
     0x40 last, 0x20 control.  Control records are the INMRxx headers and are not
-    part of the unloaded image."""
-    out, cur, ctl, p = b"", b"", False, 0
+    part of the unloaded image.  The record LENGTHS matter as much as the bytes:
+    IEBCOPY writes COPYR1 and COPYR2 as separate logical records, and RECEIVE
+    reads them back that way, so a wrong split is a wrong header even when every
+    byte is right."""
+    out, lens, cur, ctl, p = b"", [], b"", False, 0
     while p + 2 <= len(d):
         ln, flags = d[p], d[p + 1]
         if ln < 2:
@@ -84,9 +88,10 @@ def unwrap_xmit(d):
         if flags & 0x40:
             if not ctl:
                 out += cur
+                lens.append(len(cur))
             cur = b""
         p += ln
-    return out or None
+    return (out, lens) if out else (None, [])
 
 
 def fail(msg):
@@ -122,10 +127,21 @@ def records(u):
 def check(path, data_cc, trkpercyl, template, recfm, from_xmit):
     u = open(path, "rb").read()
     if from_xmit:
-        u = unwrap_xmit(u)
+        u, lens = unwrap_xmit(u)
         if u is None:
             fail("%s: no unload payload found in the NETDATA envelope" % path)
             return
+        # COPYR1 and COPYR2 are separate logical records, and the split is the
+        # header: RECEIVE reads them one record at a time, so framing the pair
+        # as one record -- or splitting it at the wrong offset -- misreads the
+        # DCB even though every byte of the pair is correct.
+        if len(lens) < 2:
+            fail("%s: payload is %d logical record(s); COPYR1 and COPYR2 must be "
+                 "separate" % (path, len(lens)))
+        elif lens[0] != COPYR1_LEN or lens[1] != ENV_HDR - COPYR1_LEN:
+            fail("%s: env header framed as %d + %d bytes, expected %d + %d "
+                 "(COPYR1 + COPYR2)" % (path, lens[0], lens[1], COPYR1_LEN,
+                                        ENV_HDR - COPYR1_LEN))
     if len(u) < ENV_HDR:
         fail("%s is shorter than the %d-byte env header" % (path, ENV_HDR))
         return

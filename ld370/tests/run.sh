@@ -666,6 +666,15 @@ python3 ld370/tests/track_check.py \
     "$TMP/tiny.ld.bin.iebcopy" "$TMP/rldt.ld.bin.iebcopy" "$TMP/klein.ld.bin.iebcopy" \
     "$TMP/lib2.iebcopy" "$TMP/lib3.iebcopy" "$TMP/lib7.iebcopy" "$TMP/lib20.iebcopy" \
     || geo_fails=1
+
+# ...and through the XMIT envelope, which the bare image cannot check: COPYR1 and
+# COPYR2 must arrive as two separate logical records of 52 + 276.  RECEIVE reads
+# them one record at a time, so a wrong split misreads the DCB with every byte of
+# the pair correct.
+"$LD" --pack "MCYL=$TMP/mcyl.lm" --blocksize 1024 --dsn IBMUSER.MCYL.LOAD \
+    -o "$TMP/geox" -iebcopy -xmit 2>/dev/null
+python3 ld370/tests/track_check.py --from-xmit "$TMP/geox.xmit" "$TMP/e2e.xmit" \
+    || geo_fails=1
 [ "$geo_fails" -eq 0 ] || fails=$((fails + 1))
 
 # XMIT reproducibility.  LDDATE/LDTIME exist so a link is byte-comparable between

@@ -45,24 +45,9 @@
  * more, smaller blocks than a load library, so the density matters here more,
  * not less.  See docs/unload-format.md.
  */
-#define UNLOAD_DATA_CC    0x008d   /* base cylinder of the echoed data extent   */
-#define UNLOAD_TRKPERCYL  30       /* 3350 tracks/cylinder                      */
-#define TRK_CAP_3350      19069    /* 3350 usable bytes per track               */
-#define TRK_OVH_3350      185      /* per-record gap+count overhead             */
-#define UDEBX_ENDCC       78       /* DEBENDCC within the 328-byte env header   */
-#define UDEBX_ENDHH       80
-#define UDEBX_NMTRK       82
-#define ENV_HDR_LEN       328      /* COPYR1(52) + COPYR2(276)                  */
-#define COPYR1_LEN        52       /* MVS 3.8j COPYR1 = L$XC138 in DXCOPYR1     */
 #define DIR_BLK           256      /* PDS directory block                       */
 
 /* COPYR1 field offsets (DXCOPYR1 / IEBLDUL) */
-#define XC1DSORG 4
-#define XC1BLKSZ 6
-#define XC1LRECL 8
-#define XC1RECFM 10
-#define XC1KEYLN 11
-#define XC1TBLKS 14
 
 /* Largest NETDATA logical record RECV370 can take: RECVRCPY GETMAINs a fixed
  * 32 KiB buffer ("L R0,=A(32*1024)  max QSAM blocksize") and reserves the first
@@ -74,44 +59,9 @@
 /* A block sits on one track as a single record, so it may not exceed the
  * device's maximum block: track length 19254 less the 185-byte record overhead
  * = 19069, which is exactly the UMBLK the 3350 device table in COPYR1 carries. */
-#define MAX_BLK_3350 19069
-#define TRK_LEN_3350 19254
 
-/* COPYR1 + COPYR2, echoed from a real IEBCOPY unload (same template as ld370).
- * Describes the synthetic source PDS: device characteristics (3350) and the DEB
- * extents the fake-DEB TTR conversion needs.  The DCB half (DSORG/BLKSIZE/
- * LRECL/RECFM/KEYLEN and the unloaded-PS blocksize) is stamped at emit time
- * from the CLI -- that is exactly what differs between a load library and a
- * source library. */
-static const unsigned char env_hdr_template[ENV_HDR_LEN] = {
-    0x00, 0xca, 0x6d, 0x0f, 0x02, 0x00, 0x4a, 0x7d, 0x00, 0x00, 0xc0, 0x00,
-    0x00, 0x00, 0x4a, 0x7d, 0x30, 0x50, 0x20, 0x0b, 0x00, 0x00, 0x4a, 0x7d,
-    0x02, 0x30, 0x00, 0x1e, 0x4b, 0x36, 0x01, 0x0b, 0x52, 0x08, 0x02, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00,
-    0x8f, 0x09, 0x66, 0x44, 0x04, 0x9b, 0xd0, 0xe8, 0x50, 0x00, 0x27, 0xc8,
-    0x00, 0x00, 0x00, 0x8d, 0x00, 0x00, 0x00, 0x8d, 0x00, 0x1d, 0x00, 0x1e,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00 };
+/* The COPYR1 + COPYR2 template is mvs_unload_env_hdr in common/mvs370: byte for
+ * byte the same image ld370 echoes for a load library. */
 
 /* ---- options ---- */
 static const char *opt_dsn;
@@ -408,7 +358,7 @@ static int count_dir_blocks(void)
  * guessed (the fixed-buffer class of bug ld370 hit with large --pack sets). */
 static long unload_size(void)
 {
-    long n = ENV_HDR_LEN + 12;                       /* header + EOD marker */
+    long n = MVS_ENV_HDR_LEN + 12;                       /* header + EOD marker */
     int i, j;
     n += (long)count_dir_blocks() * (12 + 8 + DIR_BLK);
     for (i = 0; i < nmem; i++) {
@@ -449,15 +399,15 @@ static void assign_geometry(void)
 
         m->first_tt = tt; m->first_r = r;            /* default for an empty member */
         for (j = 0; j < m->nblk; j++) {
-            long need = TRK_OVH_3350 + m->blk[j].len;
-            if (r > 1 && trkbytes + need > TRK_CAP_3350) { tt++; r = 1; trkbytes = 0; }
+            long need = MVS_TRK_OVH_3350 + m->blk[j].len;
+            if (r > 1 && trkbytes + need > MVS_TRK_PACK_CAP_3350) { tt++; r = 1; trkbytes = 0; }
             if (j == 0) { m->first_tt = tt; m->first_r = r; }
             m->blk[j].tt = tt; m->blk[j].r = r;
             r++; trkbytes += need;
         }
-        if (r > 1 && trkbytes + TRK_OVH_3350 > TRK_CAP_3350) { tt++; r = 1; trkbytes = 0; }
+        if (r > 1 && trkbytes + MVS_TRK_OVH_3350 > MVS_TRK_PACK_CAP_3350) { tt++; r = 1; trkbytes = 0; }
         m->eof_tt = tt; m->eof_r = r;
-        r++; trkbytes += TRK_OVH_3350;
+        r++; trkbytes += MVS_TRK_OVH_3350;
     }
 }
 
@@ -466,22 +416,22 @@ static void assign_geometry(void)
 static long emit_unload(unsigned char *o, long *bounds)
 {
     long p = 0;
-    int i, j, ntracks = 0, ncyl;
+    int i, j, ntracks = 0;
     int esz = ent_len();
 
-    memcpy(o, env_hdr_template, ENV_HDR_LEN);
+    memcpy(o, mvs_unload_env_hdr, MVS_ENV_HDR_LEN);
     /* Stamp the source-library DCB.  For a load library ld370 only has to touch
      * the two blocksizes; a source library differs in DSORG/LRECL/RECFM too, and
      * RECV370 allocates the target from exactly these when the JCL gives no DCB. */
-    mvs_put16(o + XC1DSORG, MVS_DSORG_PO);
-    mvs_put16(o + XC1BLKSZ, (int)opt_blksize);           /* library BLKSIZE  */
-    mvs_put16(o + XC1LRECL, (int)opt_lrecl);
-    o[XC1RECFM] = (unsigned char)opt_recfm;
-    o[XC1KEYLN] = 0;
-    mvs_put16(o + XC1TBLKS, (int)opt_blksize + 20);      /* unloaded-PS BLKSIZE */
-    p = ENV_HDR_LEN;
-    bounds[0] = COPYR1_LEN;
-    bounds[1] = ENV_HDR_LEN;
+    mvs_put16(o + MVS_XC1DSORG, MVS_DSORG_PO);
+    mvs_put16(o + MVS_XC1BLKSZ, (int)opt_blksize);           /* library BLKSIZE  */
+    mvs_put16(o + MVS_XC1LRECL, (int)opt_lrecl);
+    o[MVS_XC1RECFM] = (unsigned char)opt_recfm;
+    o[MVS_XC1KEYLN] = 0;
+    mvs_put16(o + MVS_XC1TBLKS, (int)opt_blksize + 20);      /* unloaded-PS BLKSIZE */
+    p = MVS_ENV_HDR_LEN;
+    bounds[0] = MVS_COPYR1_LEN;
+    bounds[1] = MVS_ENV_HDR_LEN;
 
     for (i = 0; i < nmem; i++)
         if (mem[i].nblk && mem[i].blk[mem[i].nblk - 1].tt + 1 > ntracks)
@@ -492,11 +442,7 @@ static long emit_unload(unsigned char *o, long *bounds)
 
     /* grow the UDEBX data extent to span every track used, in whole cylinders,
      * so the fake-DEB TTR <-> MBBCCHHR conversion stays valid */
-    ncyl = (ntracks + UNLOAD_TRKPERCYL - 1) / UNLOAD_TRKPERCYL;
-    if (ncyl < 1) ncyl = 1;
-    mvs_put16(o + UDEBX_ENDCC, UNLOAD_DATA_CC + ncyl - 1);
-    mvs_put16(o + UDEBX_ENDHH, UNLOAD_TRKPERCYL - 1);
-    mvs_put16(o + UDEBX_NMTRK, ncyl * UNLOAD_TRKPERCYL);
+    mvs_udebx_extent(o, ntracks);
 
     /* directory: name-sorted entries across 256-byte blocks, filled by SIZE
      * rather than by a fixed entry count (the entry is 42 bytes with ISPF
@@ -537,12 +483,12 @@ static long emit_unload(unsigned char *o, long *bounds)
         for (j = 0; j < mem[i].nblk; j++) {
             long bl = mem[i].blk[j].len;
             int tt = mem[i].blk[j].tt, r = mem[i].blk[j].r;
-            mvs_put_count(o + p, UNLOAD_DATA_CC + tt / UNLOAD_TRKPERCYL,
-                          tt % UNLOAD_TRKPERCYL, r, 0, (int)bl); p += 12;
+            mvs_put_count(o + p, MVS_UNLOAD_DATA_CC + tt / MVS_TRKPERCYL_3350,
+                          tt % MVS_TRKPERCYL_3350, r, 0, (int)bl); p += 12;
             memcpy(o + p, mem[i].data + mem[i].blk[j].off, (size_t)bl); p += bl;
         }
-        mvs_put_count(o + p, UNLOAD_DATA_CC + mem[i].eof_tt / UNLOAD_TRKPERCYL,
-                      mem[i].eof_tt % UNLOAD_TRKPERCYL, mem[i].eof_r, 0, 0); p += 12;
+        mvs_put_count(o + p, MVS_UNLOAD_DATA_CC + mem[i].eof_tt / MVS_TRKPERCYL_3350,
+                      mem[i].eof_tt % MVS_TRKPERCYL_3350, mem[i].eof_r, 0, 0); p += 12;
     }
     bounds[3] = p;
     return p;
@@ -741,9 +687,9 @@ static int do_create(const char *dir)
         die("--blocksize %ld out of range (%ld..32760)", opt_blksize, opt_lrecl);
     if (opt_blksize % opt_lrecl)
         die("--blocksize %ld is not a multiple of --lrecl %ld", opt_blksize, opt_lrecl);
-    if (opt_blksize > MAX_BLK_3350)
+    if (opt_blksize > MVS_TRK_MAXBLK_3350)
         die("--blocksize %ld exceeds %d, the largest block that fits one track",
-            opt_blksize, MAX_BLK_3350);
+            opt_blksize, MVS_TRK_MAXBLK_3350);
 
     if (!opt_userid[0]) {
         const char *u = getenv("USER");
@@ -969,7 +915,7 @@ static long copyr1_len(struct logrec *recs, int nrec)
         if (!recs[i].control && recs[i].len >= 4 && recs[i].b[1] == 0xca &&
             recs[i].b[2] == 0x6d && recs[i].b[3] == 0x0f)
             return recs[i].len;
-    return COPYR1_LEN;
+    return MVS_COPYR1_LEN;
 }
 
 /* The environment header is COPYR1 + COPYR2, each its own logical record, so
@@ -1058,7 +1004,7 @@ static struct geom read_geom(const unsigned char *u)
     g.trkpercyl = mvs_be16(u + 26);
     g.start_cc  = mvs_be16(u + 74);
     g.start_hh  = mvs_be16(u + 76);
-    if (g.trkpercyl < 1) g.trkpercyl = UNLOAD_TRKPERCYL;
+    if (g.trkpercyl < 1) g.trkpercyl = MVS_TRKPERCYL_3350;
     return g;
 }
 
@@ -1127,9 +1073,9 @@ static int do_list(const char *path)
     printf("  environment header %ld bytes (COPYR1 %ld + COPYR2)\n", hdrlen, c1len);
     if (plen >= 16) {
         printf("  source DCB: DSORG=%s RECFM=%s LRECL=%d BLKSIZE=%d (unloaded %d)\n",
-               mvs_be16(u + XC1DSORG) == MVS_DSORG_PO ? "PO" : "PS",
-               recfm_str(u[XC1RECFM]), mvs_be16(u + XC1LRECL),
-               mvs_be16(u + XC1BLKSZ), mvs_be16(u + XC1TBLKS));
+               mvs_be16(u + MVS_XC1DSORG) == MVS_DSORG_PO ? "PO" : "PS",
+               recfm_str(u[MVS_XC1RECFM]), mvs_be16(u + MVS_XC1LRECL),
+               mvs_be16(u + MVS_XC1BLKSZ), mvs_be16(u + MVS_XC1TBLKS));
     }
 
     g = read_geom(u);
@@ -1169,8 +1115,8 @@ static int do_extract(const char *path)
 
     hdrlen = env_hdr_len(recs, nrec, copyr1_len(recs, nrec));
     if (plen < 16) { fprintf(stderr, "xmit370: %s: not an IEBCOPY unload payload\n", path); rc = 1; goto out; }
-    recfm = u[XC1RECFM];
-    lrecl = mvs_be16(u + XC1LRECL);
+    recfm = u[MVS_XC1RECFM];
+    lrecl = mvs_be16(u + MVS_XC1LRECL);
 
     g = read_geom(u);
     nent = read_directory(u, plen, hdrlen, &ents, &data_off);
