@@ -188,6 +188,72 @@ else
     echo "SKIP: corpus ($CBT not present; set XMIT370_CBT)"
 fi
 
+# ---------------------------------------------------- physical CKD geometry
+# xmit_check.py above asserts track DENSITY but not the UDEBX data extent, and
+# the extent is what makes a directory TTR resolve to the right absolute track.
+# ld370's track_check.py asserts both, plus that every env-header byte the
+# emitter does not stamp still equals the committed template -- and since the
+# 3350 constants and that template are the SAME in both tools, the check belongs
+# in one place rather than two.  It reads an XMIT directly with --from-xmit.
+#
+# The multi-cylinder case is the one that matters here: with a single cylinder
+# the correct UDEBX end/NMTRK happen to equal the template's own defaults, so a
+# wrong offset or a dropped stamp is invisible.
+echo "=== geometry: 3350 density, R numbering, UDEBX extent, env template ==="
+GEO=ld370/tests/track_check.py
+mkdir -p "$TMP/geo"
+i=1
+while [ "$i" -le 40 ]; do
+    awk -v n="$i" 'BEGIN{for(k=0;k<400;k++) printf "MEMBER %03d LINE %05d PADDING PADDING\n", n, k}' \
+        > "$TMP/geo/GM$i"
+    i=$((i + 1))
+done
+geo_fails=0
+if $X create -o "$TMP/geo.xmit" --dsn IBMUSER.GEO.ASM \
+        --stats-date 2026-01-02T03:04:05 "$TMP/geo" >/dev/null 2>&1 \
+   && $X create -o "$TMP/geo132.xmit" --dsn IBMUSER.GEOB.ASM --lrecl 132 --blocksize 3168 \
+        --stats-date 2026-01-02T03:04:05 "$TMP/src" >/dev/null 2>&1 \
+   && $X create -o "$TMP/geof.xmit" --dsn IBMUSER.GEOC.ASM --recfm f --blocksize 80 \
+        --stats-date 2026-01-02T03:04:05 "$TMP/src" >/dev/null 2>&1; then
+    python3 "$GEO" --from-xmit --pack-cap --recfm FB \
+        "$TMP/geo.xmit" "$TMP/geo132.xmit" "$TMP/a.xmit" || geo_fails=1
+    python3 "$GEO" --from-xmit --pack-cap --recfm F "$TMP/geof.xmit" || geo_fails=1
+    # A single small source PDS must stay on ONE track: pin it, so ld370's
+    # one-block-per-track policy leaking in here is visible.  It leaves every
+    # geometry rule satisfied and merely spreads the image over more tracks.
+    python3 "$GEO" --from-xmit --pack-cap --recfm FB --max-tracks 1 "$TMP/a.xmit" \
+        || geo_fails=1
+
+    # STRADDLE fixture.  The packing budget is 19069 while a 3350 physically
+    # holds 19254, and most block sizes cannot tell the two apart -- at 3120 a
+    # track takes 5 records either way.  At --blocksize 2560 a record costs 2745
+    # and SIX fit under 19069 while SEVEN fit under 19254, so this is where
+    # "correcting" the budget up to the real track length becomes visible.  It
+    # needs long runs of FULL blocks: a member's last block is short and its
+    # DL=0 EOF costs another record, both of which blur the boundary, so the
+    # members are 960 lines = 30 whole blocks each.
+    mkdir -p "$TMP/dense"
+    di=1
+    while [ "$di" -le 3 ]; do
+        awk -v n="$di" 'BEGIN{for(k=0;k<960;k++) printf "DENSE %03d LINE %05d %s\n", n, k, \
+            "PADDING PADDING PADDING PADDING PADDIN"}' > "$TMP/dense/BM$di"
+        di=$((di + 1))
+    done
+    if $X create -o "$TMP/dense.xmit" --dsn IBMUSER.DENSE.ASM --blocksize 2560 \
+            --stats-date 2026-01-02T03:04:05 "$TMP/dense" >/dev/null 2>&1; then
+        python3 "$GEO" --from-xmit --pack-cap --recfm FB "$TMP/dense.xmit" || geo_fails=1
+    else
+        fail "geometry: dense straddle fixture did not build"
+    fi
+    if [ "$geo_fails" -eq 0 ]; then
+        pass "geometry: multi-cylinder + FB/F shapes within 3350 limits, extent spans the data"
+    else
+        fail "geometry: see the FAIL lines above"
+    fi
+else
+    fail "geometry: fixture create failed"
+fi
+
 echo
 echo "$fails failure(s)"
 exit $fails

@@ -610,6 +610,121 @@ print("  OK: 80 15 82 'LD370     ' V01 M00 26223 22:05:17 (LASTIDR set)")
 EOF
 then :; else fails=$((fails + 1)); fi
 
+# Physical CKD geometry of the unloaded image -- the check ld370 never had.
+#
+# The over-packed-track bug (S106-0F on FETCH, 2026-06-24) got all the way onto
+# real MVS because every host check was lenient in the same way the reload path
+# is: unload_check.py finds members through the directory exactly as IEBCOPY
+# does, and IEBCOPY does not care how many records a track claims.  Program
+# FETCH does, because its channel program positions by each record's on-disk
+# count field.  xmit370 has had this assertion since it was written; the tool
+# where the bug actually happened did not.
+#
+# track_check.py is ABSOLUTE, not self-consistent: it costs every record at real
+# 3350 rates (185 gap+count + data against a 19254-byte track), demands R be
+# 1..n with no hole, requires the UDEBX extent to span every track written, and
+# requires every env-header byte the emitter does not stamp to still equal the
+# committed template.  A wrong constant fails it; ld370 agreeing with itself
+# does not save it.
+#
+# The two shapes below exist because the constants hide from small inputs.  A
+# dense multi-member pack is what makes an under-counted per-record overhead
+# over-pack a track at all; a member spanning more than one cylinder is what
+# makes a wrong UDEBX end/NMTRK differ from the template's own default.  With
+# only the small fixtures above, four of the eight constants tested clean when
+# deliberately corrupted.
+printf '\n=== unload geometry: 3350 track density, R numbering, UDEBX extent, template ===\n'
+geo_fails=0
+
+# (a) dense pack: 40 tiny members -> ~240 records, tracks filled to ~19045/19254
+gspecs=""; gi=1
+while [ "$gi" -le 40 ]; do
+    gm=$(printf 'G%03d' "$gi")
+    printf "%-8s CSECT\n         DC    CL64'PAD'\n         BR    14\n         END   %s\n" "$gm" "$gm" > "$TMP/$gm.s"
+    "$AS" -o "$TMP/$gm.o" "$TMP/$gm.s" 2>/dev/null
+    "$LD" -o "$TMP/$gm.lm" --name "$gm" "$TMP/$gm.o" 2>/dev/null
+    gspecs="$gspecs $gm=$TMP/$gm.lm"
+    gi=$((gi + 1))
+done
+# shellcheck disable=SC2086
+"$LD" --pack $gspecs --dsn IBMUSER.GEO.LOAD -o "$TMP/geodense" -iebcopy 2>/dev/null \
+    || { echo "  FAIL: dense pack did not build"; geo_fails=1; }
+
+# (b) multi-cylinder: a single member is laid out one block per track, so a small
+#     --blocksize turns a modest module into 90 tracks = 3 cylinders cheaply.
+awk 'BEGIN{print "MCYL     CSECT"; for(i=0;i<11000;i++) printf "         DC    F%c%d%c\n",39,i,39;
+           print "         BR    14"; print "         END   MCYL"}' > "$TMP/mcyl.s"
+"$AS" -o "$TMP/mcyl.o" "$TMP/mcyl.s" 2>/dev/null
+"$LD" --blocksize 1024 -o "$TMP/mcyl.lm" --name MCYL "$TMP/mcyl.o" 2>/dev/null
+"$LD" --pack "MCYL=$TMP/mcyl.lm" --blocksize 1024 --dsn IBMUSER.MCYL.LOAD \
+    -o "$TMP/geomcyl" -iebcopy 2>/dev/null \
+    || { echo "  FAIL: multi-cylinder member did not build"; geo_fails=1; }
+
+# every unloaded image this suite has produced, plus the two shapes above
+# --pack-cap: OUR emitters must leave one record's overhead unspent, so no track
+# may exceed 19069 even though 19254 is what a 3350 physically holds.  Without it
+# the most plausible wrong edit -- "correcting" the packing budget up to the real
+# track length -- passes every other check (measured: dense pack 19045 -> 19075).
+# It is opt-in because a real IEBCOPY oracle may legally pack past 19069.
+python3 ld370/tests/track_check.py --pack-cap \
+    "$TMP/geodense.iebcopy" "$TMP/geomcyl.iebcopy" \
+    "$TMP/tiny.ld.bin.iebcopy" "$TMP/rldt.ld.bin.iebcopy" "$TMP/klein.ld.bin.iebcopy" \
+    "$TMP/lib2.iebcopy" "$TMP/lib3.iebcopy" "$TMP/lib7.iebcopy" "$TMP/lib20.iebcopy" \
+    || geo_fails=1
+
+# ...and through the XMIT envelope, which the bare image cannot check: COPYR1 and
+# COPYR2 must arrive as two separate logical records of 52 + 276.  RECEIVE reads
+# them one record at a time, so a wrong split misreads the DCB with every byte of
+# the pair correct.
+"$LD" --pack "MCYL=$TMP/mcyl.lm" --blocksize 1024 --dsn IBMUSER.MCYL.LOAD \
+    -o "$TMP/geox" -iebcopy -xmit 2>/dev/null
+# shellcheck disable=SC2086
+"$LD" --pack $gspecs --dsn IBMUSER.GEO.LOAD -o "$TMP/geodensex" -iebcopy -xmit 2>/dev/null
+# geodensex is the MULTI-member one: the per-member VS framing that the IEB183I
+# fix installed is only exercised through the envelope, and a single member has
+# exactly one EOF so it cannot show a framing regression at all.
+python3 ld370/tests/track_check.py --from-xmit --pack-cap \
+    "$TMP/geox.xmit" "$TMP/geodensex.xmit" "$TMP/e2e.xmit" \
+    || geo_fails=1
+# A single member is laid out one block per track; a multi-member pack fills
+# tracks.  Pinning both counts catches a changed packing POLICY, which leaves
+# every geometry rule satisfied and still emits a different image.
+python3 ld370/tests/track_check.py --pack-cap --max-tracks 90 "$TMP/geomcyl.iebcopy" \
+    || geo_fails=1
+python3 ld370/tests/track_check.py --pack-cap --max-tracks 4 "$TMP/geodense.iebcopy" \
+    || geo_fails=1
+[ "$geo_fails" -eq 0 ] || fails=$((fails + 1))
+
+# XMIT reproducibility.  LDDATE/LDTIME exist so a link is byte-comparable between
+# two runs, but until 2026-09-06 they pinned only the LKED IDR: emit_xmit's
+# INMFTIME still read the wall clock, so every ld370 .xmit differed from itself
+# across a second boundary and could not be byte-compared at all.  Two runs a
+# second apart must now produce an identical file, and INMFTIME must decode to
+# the pinned instant -- LDDATE=26223 is 2026 day 223 = 11 August, LDTIME=220517.
+# The decode half matters as much as the identity half: a stamp frozen at a WRONG
+# constant value would be perfectly reproducible and still wrong.
+printf '\n=== XMIT is byte-reproducible under LDDATE/LDTIME, and INMFTIME decodes ===\n'
+"$AS" -o "$TMP/ftm.o" "$FIX/tiny.s" 2>/dev/null
+"$LD" -o "$TMP/ftm.lm" --name FTM "$TMP/ftm.o" 2>/dev/null
+"$LD" --pack "FTM=$TMP/ftm.lm" --dsn IBMUSER.FTM.LOAD -o "$TMP/ftm1" -iebcopy -xmit 2>/dev/null
+sleep 1
+"$LD" --pack "FTM=$TMP/ftm.lm" --dsn IBMUSER.FTM.LOAD -o "$TMP/ftm2" -iebcopy -xmit 2>/dev/null
+if cmp -s "$TMP/ftm1.xmit" "$TMP/ftm2.xmit"; then
+    if python3 - "$TMP/ftm1.xmit" <<'EOF'
+import sys
+d = open(sys.argv[1], 'rb').read()
+want = "2026081122051700"
+got = d[75:91].decode('cp037')
+if got != want:
+    sys.exit("  FAIL: INMFTIME is %r, expected %r (LDDATE=26223 LDTIME=220517)" % (got, want))
+print("  OK: two runs identical, INMFTIME = %s" % got)
+EOF
+    then :; else fails=$((fails + 1)); fi
+else
+    echo "  FAIL: two pinned runs produced different .xmit -- INMFTIME is not pinned"
+    fails=$((fails + 1))
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"

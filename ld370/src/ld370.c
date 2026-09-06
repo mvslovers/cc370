@@ -566,13 +566,43 @@ static int decfield(const char *s, int n)
     return v;
 }
 
+/* LDDATE=YYDDD -> yy (2-digit) + ddd (day of year); 1 if the variable is set.
+ * Malformed values are fatal rather than ignored: a test that believes it pinned
+ * the clock and silently did not is worse than no pin at all. */
+static int ld_lddate(int *yy, int *ddd)
+{
+    const char *ed = getenv("LDDATE");
+    int v;
+    if (!ed || !*ed) return 0;
+    if (strlen(ed) != 5 || (v = decfield(ed, 5)) < 0 ||
+        v % 1000 < 1 || v % 1000 > 366) {
+        fprintf(stderr, "ld370: LDDATE must be YYDDD (e.g. 26223)\n");
+        exit(2);
+    }
+    *yy = v / 1000; *ddd = v % 1000;
+    return 1;
+}
+/* LDTIME=HHMMSS -> hh, mm, ss; 1 if the variable is set. */
+static int ld_ldtime(int *hh, int *mm, int *ss)
+{
+    const char *et = getenv("LDTIME");
+    int v;
+    if (!et || !*et) return 0;
+    if (strlen(et) != 6 || (v = decfield(et, 6)) < 0 ||
+        v / 10000 > 23 || (v / 100) % 100 > 59 || v % 100 > 59) {
+        fprintf(stderr, "ld370: LDTIME must be HHMMSS (e.g. 220517)\n");
+        exit(2);
+    }
+    *hh = v / 10000; *mm = (v / 100) % 100; *ss = v % 100;
+    return 1;
+}
+
 static void emit_lked_idr(void)
 {
     unsigned char r[22];
-    const char *ed = getenv("LDDATE"), *et = getenv("LDTIME");
     time_t now = time(NULL);
     struct tm *lt = localtime(&now);
-    int yy, ddd, hh, mm, ss, v, i;
+    int yy, ddd, hh, mm, ss, i;
     size_t prodlen = strlen(LD370_IDR_PROD);
 
     if (!lt) {
@@ -583,22 +613,8 @@ static void emit_lked_idr(void)
     ddd = lt->tm_yday + 1;
     hh = lt->tm_hour; mm = lt->tm_min; ss = lt->tm_sec;
 
-    if (ed && *ed) {
-        if (strlen(ed) != 5 || (v = decfield(ed, 5)) < 0 ||
-            v % 1000 < 1 || v % 1000 > 366) {
-            fprintf(stderr, "ld370: LDDATE must be YYDDD (e.g. 26223)\n");
-            exit(2);
-        }
-        yy = v / 1000; ddd = v % 1000;
-    }
-    if (et && *et) {
-        if (strlen(et) != 6 || (v = decfield(et, 6)) < 0 ||
-            v / 10000 > 23 || (v / 100) % 100 > 59 || v % 100 > 59) {
-            fprintf(stderr, "ld370: LDTIME must be HHMMSS (e.g. 220517)\n");
-            exit(2);
-        }
-        hh = v / 10000; mm = (v / 100) % 100; ss = v % 100;
-    }
+    ld_lddate(&yy, &ddd);
+    ld_ldtime(&hh, &mm, &ss);
 
     memset(r, 0, sizeof r);
     r[0] = 0x80;
@@ -657,38 +673,8 @@ static void emit_lked_idr(void)
  * the real oracle is IEBCOPY LOAD + run on MVS.
  * ==========================================================================*/
 
-/* COPYR1 + COPYR2 (328B), echoed verbatim from a real IEBCOPY unload. Describes
- * the synthetic source PDS DCB (DSORG=PO, BLKSIZE=19069, RECFM=U) + volume DEB
- * extents (UDEBX) + device type.  None of it is member-derived. */
-static const unsigned char unload_env_hdr[328] = {
-    0x00, 0xca, 0x6d, 0x0f, 0x02, 0x00, 0x4a, 0x7d, 0x00, 0x00, 0xc0, 0x00,
-    0x00, 0x00, 0x4a, 0x7d, 0x30, 0x50, 0x20, 0x0b, 0x00, 0x00, 0x4a, 0x7d,
-    0x02, 0x30, 0x00, 0x1e, 0x4b, 0x36, 0x01, 0x0b, 0x52, 0x08, 0x02, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00,
-    0x8f, 0x09, 0x66, 0x44, 0x04, 0x9b, 0xd0, 0xe8, 0x50, 0x00, 0x27, 0xc8,
-    0x00, 0x00, 0x00, 0x8d, 0x00, 0x00, 0x00, 0x8d, 0x00, 0x1d, 0x00, 0x1e,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00 };
+/* The COPYR1 + COPYR2 template is mvs_unload_env_hdr in common/mvs370: byte for
+ * byte the same image xmit370 echoes, so it lives in one place. */
 
 /* PDS2 directory user-data (24B), echoed template.  build_userdata() overlays
  * the computed first-text TTR.  TODO(generalise): compute the module
@@ -702,9 +688,7 @@ static const unsigned char unload_userdata[24] = {
 /* echoed environment: cylinder of the source PDS data extent (= UDEBX extent
  * start in the env header) and the base record number on its first track (the
  * source PDS reserved R=1..0x0b for directory blocks before member data). */
-#define UNLOAD_DATA_CC  0x008d
 #define UNLOAD_FIRST_R  0x0c
-#define UNLOAD_TRKPERCYL 30      /* 3350 tracks/cylinder (env header DEBNMTRK / offset 83) */
 /* Multi-member contiguous packing must respect the REAL 3350 track geometry, not the
  * BLKSIZE.  A 3350 track holds 19069 data bytes, and each record costs ~185 bytes of
  * gap+count overhead beyond its data (the 12-byte unload count field is NOT that
@@ -714,13 +698,8 @@ static const unsigned char unload_userdata[24] = {
  * can still read the member.  Real IEBCOPY packs to this density (oracle e2e2: ~12
  * records/track, valid, fetches fine); single-member one-block-per-track also fetches
  * fine -- only the over-dense multi-member tracks fail. */
-#define TRK_CAP_3350    19069    /* 3350 usable bytes per track */
-#define TRK_OVH_3350    185      /* 3350 keyless per-record gap+count overhead */
 /* UDEBX (DEB data extent) fields within the 328-byte env header, patched when a
  * member needs more than one cylinder of tracks. */
-#define UDEBX_ENDCC  78          /* DEBENDCC  (end cylinder)   */
-#define UDEBX_ENDHH  80          /* DEBENDHH  (end head)       */
-#define UDEBX_NMTRK  82          /* DEBNMTRK  (tracks in extent) */
 
 /* write a 12-byte CKD count image: F + MBBCCHHR(M,BB,CC,HH,R) + KL + DL */
 /* one physical block of a load-module member */
@@ -818,9 +797,9 @@ static long member_modlen(const unsigned char *m, long n)
  * malformed one, -3 on OOM. */
 static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember *m)
 {
-    long p = 328, blen;                                 /* skip COPYR1 + COPYR2 */
+    long p = MVS_ENV_HDR_LEN, blen;                                 /* skip COPYR1 + COPYR2 */
     const unsigned char *dir, *e, *ud; int used, nhw; unsigned char *buf;
-    if (ulen < 328 + 12 + 8 + 256 + 12) return -1;
+    if (ulen < MVS_ENV_HDR_LEN + 12 + 8 + 256 + 12) return -1;
     if (u[p + 9] != 8 || mvs_be16(u + p + 10) != 256) return -1;   /* directory record */
     dir = u + p + 20; used = mvs_be16(dir);
     if (used < 2 + 36 || dir[2] == 0xFF) return -1;     /* need one real entry */
@@ -914,7 +893,6 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
 /* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
  * remaining 276). IEBCOPY/TRANSMIT writes COPYR1 and COPYR2 as separate
  * records (confirmed by IDCAMS PRINT of a real unload). */
-#define UNLOAD_COPYR1_LEN 52
 
 /* Emit the IEBCOPY unloaded image of one-or-more members into o[]; return the
  * byte length.  If bounds!=NULL, fill the 4 logical-record end offsets the
@@ -928,7 +906,7 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
  * One directory block. */
 static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *bounds)
 {
-    long p = 0; int i, j, ntracks, ncyl;
+    long p = 0; int i, j, ntracks;
     unsigned char dir[256]; long used;
 
     /* PDS directory entries must be in ascending EBCDIC name order; sort the
@@ -955,16 +933,16 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
                 return -1;
             }
 
-    memcpy(o + p, unload_env_hdr, 328);                 /* COPYR1 + COPYR2 */
+    memcpy(o + p, mvs_unload_env_hdr, MVS_ENV_HDR_LEN);                 /* COPYR1 + COPYR2 */
     /* Stamp the runtime BLKSIZE into the echoed COPYR1: off 6 = library BLKSIZE
      * (== INMR02#1 INM_BLKSZ, the target lib), off 14 = unloaded-PS BLKSIZE
      * (== INMR02#2 INM_BLKSZ).  Both confirmed against real oracles: e2e 3350/19069,
      * CBT 3380/6144 (off6 == INMR02#1, off14 == INMR02#2).  The template baked 19069
      * at both; off 14 was a latent skew (its INMR02#2 already declared MINBLK). */
-    mvs_put16(o + p + 6,  (int)src_blksize);
-    mvs_put16(o + p + 14, (int)UNLOAD_BLKSIZE);
-    p += 328;
-    if (bounds) { bounds[0] = UNLOAD_COPYR1_LEN; bounds[1] = 328; }
+    mvs_put16(o + p + MVS_XC1BLKSZ, (int)src_blksize);
+    mvs_put16(o + p + MVS_XC1TBLKS, (int)UNLOAD_BLKSIZE);
+    p += MVS_ENV_HDR_LEN;
+    if (bounds) { bounds[0] = MVS_COPYR1_LEN; bounds[1] = MVS_ENV_HDR_LEN; }
 
     /* Assign each block (and each member's DL=0 EOF) a relative (track, record).
      *  - single member (validated, device-agnostic): ONE block per track at R=1
@@ -984,17 +962,17 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
      *    validated ALONGSIDE that transport fix; it was not isolated as strictly
      *    necessary vs one-block-per-track, but it matches what IEBCOPY writes. */
     {
-        /* track_cap/cost model in REAL 3350 bytes (TRK_OVH_3350 + data per record),
+        /* track_cap/cost model in REAL 3350 bytes (MVS_TRK_OVH_3350 + data per record),
          * NOT unload bytes (12 + data) -- so a track never claims more records than a
          * 3350 physically holds.  Single member: 0 => one block per track. */
-        long track_cap = (nmem == 1) ? 0 : TRK_CAP_3350;
+        long track_cap = (nmem == 1) ? 0 : MVS_TRK_PACK_CAP_3350;
         int tt = 0, r = 1; long trkbytes = 0;
         for (i = 0; i < nmem; i++) {
             int sawtext = 0;
             mem[i].first_tt = tt; mem[i].first_r = r;       /* defaults (nblk==0) */
             mem[i].text_tt = tt; mem[i].text_r = r;
             for (j = 0; j < mem[i].nblk; j++) {
-                long need = TRK_OVH_3350 + mem[i].blk[j].len;   /* real 3350 track cost */
+                long need = MVS_TRK_OVH_3350 + mem[i].blk[j].len;   /* real 3350 track cost */
                 if (r > 1 && trkbytes + need > track_cap) { tt++; r = 1; trkbytes = 0; }
                 if (j == 0) {                               /* member's first block (post-wrap) */
                     mem[i].first_tt = tt; mem[i].first_r = r;
@@ -1006,9 +984,9 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
                 }
                 r++; trkbytes += need;
             }
-            if (r > 1 && trkbytes + TRK_OVH_3350 > track_cap) { tt++; r = 1; trkbytes = 0; }
+            if (r > 1 && trkbytes + MVS_TRK_OVH_3350 > track_cap) { tt++; r = 1; trkbytes = 0; }
             mem[i].eof_tt = tt; mem[i].eof_r = r;           /* DL=0 EOF = next record */
-            r++; trkbytes += TRK_OVH_3350;
+            r++; trkbytes += MVS_TRK_OVH_3350;
         }
         ntracks = tt + 1;                                   /* highest relative track used + 1 */
     }
@@ -1016,11 +994,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     /* grow the UDEBX data extent to span every track used (incl. each member's
      * EOF track), in whole cylinders, so the fake-DEB TTR<->MBBCCHHR conversion
      * stays valid. */
-    ncyl = (ntracks + UNLOAD_TRKPERCYL - 1) / UNLOAD_TRKPERCYL;
-    if (ncyl < 1) ncyl = 1;
-    mvs_put16(o + UDEBX_ENDCC, UNLOAD_DATA_CC + ncyl - 1);
-    mvs_put16(o + UDEBX_ENDHH, UNLOAD_TRKPERCYL - 1);
-    mvs_put16(o + UDEBX_NMTRK, ncyl * UNLOAD_TRKPERCYL);
+    mvs_udebx_extent(o, ntracks);
 
     /* directory: name-sorted entries split across 256-byte PDS directory blocks.
      * 7 entries per NON-last block (2 + 7*36 = 254 <= 256); the LAST block holds
@@ -1062,23 +1036,23 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
     if (bounds) bounds[2] = p;                          /* directory blocks + EOD marker */
 
     /* member data: one CKD record image per physical block at its assigned
-     * relative (track, record) -- CC = UNLOAD_DATA_CC + tt/UNLOAD_TRKPERCYL,
-     * HH = tt%UNLOAD_TRKPERCYL.  Single member: one block per track, R=1.
+     * relative (track, record) -- CC = MVS_UNLOAD_DATA_CC + tt/MVS_TRKPERCYL_3350,
+     * HH = tt%MVS_TRKPERCYL_3350.  Single member: one block per track, R=1.
      * Several members: contiguous, R incrementing along each track. */
     for (i = 0; i < nmem; i++) {
         for (j = 0; j < mem[i].nblk; j++) {
             long bl = mem[i].blk[j].len;
             int tt = mem[i].blk[j].tt, r = mem[i].blk[j].r;
-            mvs_put_count(o + p, UNLOAD_DATA_CC + tt / UNLOAD_TRKPERCYL,
-                      tt % UNLOAD_TRKPERCYL, r, 0, (int)bl); p += 12;
+            mvs_put_count(o + p, MVS_UNLOAD_DATA_CC + tt / MVS_TRKPERCYL_3350,
+                      tt % MVS_TRKPERCYL_3350, r, 0, (int)bl); p += 12;
             memcpy(o + p, mem[i].bytes + mem[i].blk[j].off, bl); p += bl;
         }
         /* per-member DL=0 EOF -- the on-disk end of file ends the member on
          * reload (IEBRSAM sets RDEOF).  The next member's data continues the
          * R-sequence (contiguous); directory exhaustion stops the load after the
          * last member (IEBDSCPY), so no extra trailer is needed. */
-        mvs_put_count(o + p, UNLOAD_DATA_CC + mem[i].eof_tt / UNLOAD_TRKPERCYL,
-                  mem[i].eof_tt % UNLOAD_TRKPERCYL, mem[i].eof_r, 0, 0); p += 12;
+        mvs_put_count(o + p, MVS_UNLOAD_DATA_CC + mem[i].eof_tt / MVS_TRKPERCYL_3350,
+                  mem[i].eof_tt % MVS_TRKPERCYL_3350, mem[i].eof_r, 0, 0); p += 12;
     }
     if (bounds) bounds[3] = p;                          /* member data + per-member EOF */
     return p;
@@ -1093,7 +1067,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
  * which overran the old static and SIGBUS'd. */
 static long unload_size(struct umember *mem, int nmem)
 {
-    long sz = (long)sizeof unload_env_hdr + 12;   /* env header (328) + EOD marker */
+    long sz = (long)sizeof mvs_unload_env_hdr + 12;   /* env header (328) + EOD marker */
     int per = 7, ndb, i, j;
     if (nmem == 0) ndb = 1;
     else { ndb = (nmem + per - 1) / per; if (nmem % per == 0) ndb++; }
@@ -1178,15 +1152,54 @@ static int write_unload(const char *path, const char *name,
  * the source DCB (BLKSIZE/RECFM) is still echoed -- see TODO.
  * ==========================================================================*/
 
-/* current local time as a 16-EBCDIC-digit INM_FTIME (YYYYMMDDHHMMSShh) */
+/* day-of-year -> month/day, for turning LDDATE's YYDDD into a calendar date.
+ * Done by hand rather than through mktime() so no timezone or DST rule can move
+ * the result: the whole point of LDDATE is a byte-reproducible output. */
+static void ddd_to_md(int year4, int ddd, int *mo, int *dd)
+{
+    static const int ml[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+    int leap = (year4 % 4 == 0 && (year4 % 100 != 0 || year4 % 400 == 0));
+    int m;
+    for (m = 0; m < 12; m++) {
+        int n = ml[m] + (m == 1 && leap);
+        if (ddd <= n) break;
+        ddd -= n;
+    }
+    if (m > 11) { m = 11; ddd = 31; }      /* ddd=366 in a common year: clamp */
+    *mo = m + 1; *dd = ddd;
+}
+
+/* Local time as a 16-EBCDIC-digit INM_FTIME (YYYYMMDDHHMMSShh).
+ *
+ * Honours LDDATE/LDTIME like the LKED IDR does.  It did not before, and that
+ * made an ld370 .xmit impossible to byte-compare between two runs: everything
+ * else in the file is deterministic, so a test pinning LDDATE/LDTIME still saw
+ * the two seconds digits here change underneath it.  YYDDD carries no century;
+ * the toolchain's epoch is 2000, matching the packed YYDDDF in the IDR. */
 static void xmit_ftime(unsigned char e[16])
 {
     char a[17]; time_t t = time(NULL); struct tm *tm = localtime(&t); int i;
-    /* clamp each field to its print width [0..9999]/[0..99] so the fixed 16-char
-     * output is provably within a[17] (GCC can't bound struct tm otherwise). */
-    int yy = ((tm->tm_year + 1900) % 10000 + 10000) % 10000;
-    int mo = ((tm->tm_mon + 1) % 100 + 100) % 100, dd = (tm->tm_mday % 100 + 100) % 100;
-    int hh = (tm->tm_hour % 100 + 100) % 100, mi = (tm->tm_min % 100 + 100) % 100, ss = (tm->tm_sec % 100 + 100) % 100;
+    int yy, mo, dd, hh, mi, ss, dyy, ddd;
+
+    if (!tm) { fprintf(stderr, "ld370: cannot obtain local time for INMFTIME\n"); exit(2); }
+    yy = tm->tm_year + 1900;
+    mo = tm->tm_mon + 1; dd = tm->tm_mday;
+    hh = tm->tm_hour; mi = tm->tm_min; ss = tm->tm_sec;
+
+    if (ld_lddate(&dyy, &ddd)) { yy = 2000 + dyy; ddd_to_md(yy, ddd, &mo, &dd); }
+    ld_ldtime(&hh, &mi, &ss);
+
+    /* Clamp each field to its print width [0..9999]/[0..99] so the fixed 16-char
+     * output is provably within a[17].  This must come AFTER the overrides, not
+     * before: the compiler can bound neither struct tm nor ddd_to_md's outputs,
+     * and clamping only the struct tm values leaves the sprintf unprovable --
+     * gcc rejects it with -Wformat-overflow, which Apple clang does not raise,
+     * so it fails in CI and not on a Mac. */
+    yy = (yy % 10000 + 10000) % 10000;
+    mo = (mo % 100 + 100) % 100; dd = (dd % 100 + 100) % 100;
+    hh = (hh % 100 + 100) % 100; mi = (mi % 100 + 100) % 100;
+    ss = (ss % 100 + 100) % 100;
+
     sprintf(a, "%04d%02d%02d%02d%02d%02d00", yy, mo, dd, hh, mi, ss);
     for (i = 0; i < 16; i++) e[i] = mvs_a2e(a[i]);
 }
