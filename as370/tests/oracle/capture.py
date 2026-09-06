@@ -108,6 +108,11 @@ def main():
                     help="SYSLIB dataset, repeatable and concatenated in the order given "
                          "(default: SYS1.MACLIB). Must match the host -I search order, "
                          "or the two assemblies are not comparable.")
+    ap.add_argument("--deck-on-error", action="store_true",
+                    help="fetch --deck even when IFOX00 returns non-zero. A fixture "
+                         "written to provoke a diagnostic assembles at rc 4 or 8 BY "
+                         "DESIGN and still punches a deck; without this the deck is "
+                         "thrown away and only the listing survives.")
     args = ap.parse_args()
 
     envfile = os.environ.get("AS370_MVS_ENV")
@@ -136,17 +141,37 @@ def main():
     if args.listing:
         Path(args.listing).write_text(sysprint_of(res.spool))
         print(f"listing -> {args.listing}")
-    if res.rc != 0:
-        sys.exit(f"capture.py: IFOX00 returned {res.rc} -- see the listing")
+    failed = res.rc != 0
+    if failed and not (args.deck and args.deck_on_error):
+        # The scratch dataset is CATLG'd by the step that punched into it, so a
+        # bare exit here leaves it behind and the NEXT run's IEFBR14 has to clear
+        # it. Delete it on the way out.
+        if args.deck:
+            try:
+                client.delete_dataset(scratch)
+            except Exception as exc:                      # noqa: BLE001 - best effort
+                print(f"capture.py: could not delete {scratch}: {exc}", file=sys.stderr)
+        sys.exit(f"capture.py: IFOX00 returned {res.rc} -- see the listing "
+                 f"(pass --deck-on-error to keep the deck anyway)")
     if args.deck:
-        raw = client._request("GET", f"/restfiles/ds/{scratch}",
-                              accept="application/octet-stream",
-                              extra_headers={"X-IBM-Data-Type": "binary"})
+        try:
+            raw = client._request("GET", f"/restfiles/ds/{scratch}",
+                                  accept="application/octet-stream",
+                                  extra_headers={"X-IBM-Data-Type": "binary"})
+        except Exception as exc:                          # noqa: BLE001
+            # A severe enough error ends the assembly before anything is punched;
+            # the dataset then holds nothing, or was never catalogued.
+            sys.exit(f"capture.py: no deck to read from {scratch} ({exc}) -- "
+                     f"IFOX00 rc={res.rc}, the listing is all there is")
         Path(args.deck).write_bytes(raw)
         print(f"deck -> {args.deck} ({len(raw)} bytes, "
               f"{len(raw) // 80} cards)")
         client.delete_dataset(scratch)
         print(f"scratch dataset {scratch} deleted")
+        if failed:
+            # Expected, and the caller said so -- but never let it read as clean.
+            print(f"capture.py: IFOX00 returned {res.rc}; deck captured anyway "
+                  f"(--deck-on-error)")
 
 
 main()
