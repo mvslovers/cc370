@@ -1475,5 +1475,58 @@ rm -f /tmp/_se.s /tmp/_se.obj /tmp/_sd.s /tmp/_sd.obj
 [ $sefail = 0 ] && echo "sysect: OK (frozen at the call; a section opened inside the expansion does not move it)"
 fail=$((fail + sefail))
 
+# Cross-section duplication factor (cc370#133).  The counterpart to the case
+# above, and the reason both are tested together: xrl_ counts how MANY
+# relocatable terms an expression has, not which SECTIONS they came from, so
+#
+#     (*-TESTP)/40        one section, absolute      -> IFOX assembles it
+#     (OTHER-TESTQ)       two sections, not absolute -> IFOX gives IFO206, RC 8
+#
+# both net to zero and were indistinguishable.  as370 read the second as the
+# absolute value 0, which is a LEGAL and silent duplication factor: the statement
+# vanished and the assembly ended RC 0.
+#
+# It moves no byte, which is why it survived this long.  The damage is a wrong
+# CATEGORY -- a module IFOX rejects went into the recovery comparison as
+# "assembled", differed, and the difference was charged to the source.
+#
+# The positive half is asserted in the same case, because the obvious fix breaks
+# it: '*' is relocatable and belongs to the CURRENT section, and forgetting to
+# tally it that way makes (*-TESTP) look cross-section and rejects valid code.
+# That happened here on the first attempt.
+dupfail=0
+{ echo 'TESTQ    CSECT'; echo 'OTHER    CSECT'
+  echo "BAD      DC    (OTHER-TESTQ)C${q}X${q}"; echo '         END'; } > /tmp/_x133.s
+./as370 /tmp/_x133.s -o /tmp/_x133.obj >/tmp/_x133.out 2>&1
+if [ $? -ne 8 ]; then
+    echo "dupsect: FAIL (a cross-section duplication factor must give RC 8, IFOX00 IFO206)"; dupfail=1
+elif ! grep -q "not from one section" /tmp/_x133.out; then
+    echo "dupsect: FAIL (flagged, but not as IFO206): $(grep -m1 ERROR /tmp/_x133.out)"; dupfail=1
+fi
+{ echo 'TESTP    CSECT'; echo '         USING TESTP,12'; echo '         DS    (80)X'
+  echo 'PATCH    DC    ((*-TESTP)/40)S(*)'; echo "AFTER    DC    X${q}FF${q}"
+  echo "DUP2     DC    ((AFTER-TESTP)/8)C${q}AB${q}"; echo '         END'; } > /tmp/_y133.s
+if ! ./as370 /tmp/_y133.s -o /tmp/_y133.obj >/dev/null 2>&1; then
+    echo "dupsect: FAIL (a same-section factor is absolute and must still assemble)"; dupfail=1
+else
+    # ...and it must produce IFOX00's bytes, not merely assemble: c050c052 is the
+    # pair of S-cons, and '*' advancing per copy is what makes them differ.
+    got=$(python3 -c "
+d = open('/tmp/_y133.obj','rb').read()
+t = b''
+for o in range(0, len(d)-79, 80):
+    c = d[o:o+80]
+    if c[:4] == bytes((0x02,0xE3,0xE7,0xE3)):
+        t += c[16:16+((c[10]<<8)|c[11])]
+print(t.hex()[:12])
+")
+    if [ "$got" != "c050c052ff" ] && [ "${got#c050c052}" = "$got" ]; then
+        echo "dupsect: FAIL (same-section factor assembled but the bytes moved: $got)"; dupfail=1
+    fi
+fi
+rm -f /tmp/_x133.s /tmp/_x133.obj /tmp/_x133.out /tmp/_y133.s /tmp/_y133.obj
+[ $dupfail = 0 ] && echo "dupsect: OK (cross-section rejected IFO206; same-section still absolute and unmoved)"
+fail=$((fail + dupfail))
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
