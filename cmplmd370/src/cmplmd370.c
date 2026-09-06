@@ -283,10 +283,11 @@ static void difin_load(struct side *sd, const char *path)
     fclose(f);
 }
 
-/* Clusters matter more than the total: three separate one-byte differences and
- * one three-byte run mean very different things (#110). */
-#define MAXCLU 64
-#define CLUBYTES 16
+/* Text output lists at most this many clusters and this many bytes each; --json
+ * lists every cluster whole.  The reader's limit is legibility, the consumer's
+ * is nothing. */
+#define TEXTCLU   64
+#define CLUBYTES  16
 
 static void hexrun(const unsigned char *p, long n)
 {
@@ -295,70 +296,152 @@ static void hexrun(const unsigned char *p, long n)
     if (n > CLUBYTES) printf("..");
 }
 
-static int compare(const struct sect *a, const struct sect *b, int clearrld,
-                   int verbose, const char *label, FILE *difout, int *wrote_hdr)
+/* Clusters matter more than the total: three separate one-byte differences and
+ * one three-byte run mean very different things (#110).
+ *
+ * They are collected into a growable array rather than a fixed one.  The fixed
+ * MAXCLU 64 this started with was fine for reading, but --difout silently
+ * omitted every range past the 64th, and a JSON consumer would have had no way
+ * to know its cluster list was short.  A machine-read format that truncates
+ * without saying so is the failure the caller asked for JSON to avoid. */
+struct clu { long off, len; int in_hole; };
+
+struct result {
+    const char *name;
+    int paired, length_differs, identical;
+    long len_new, len_ref;
+    long diff, nrelo, nign, in_hole, in_text;
+    struct clu *c;
+    long nc, ccap;
+};
+
+static void clu_add(struct result *r, long off, int in_hole)
 {
-    long i, diff = 0, nclu = 0, nrelo = 0, nign = 0, ingap = 0;
-    long cluoff[MAXCLU], clulen[MAXCLU];
+    if (r->nc >= r->ccap) {
+        r->ccap = r->ccap ? r->ccap * 2 : 64;
+        r->c = realloc(r->c, (size_t)r->ccap * sizeof *r->c);
+        if (!r->c) die("out of memory", NULL);
+    }
+    r->c[r->nc].off = off; r->c[r->nc].len = 0; r->c[r->nc].in_hole = in_hole;
+    r->nc++;
+}
+
+static void compare(const struct sect *a, const struct sect *b, int clearrld,
+                    const char *label, struct result *r)
+{
+    long i;
     int inrun = 0;
 
-    if (a->len != b->len) {
-        printf("  %-8s LENGTH differs: new %ld, reference %ld (%+ld)\n",
-               label, a->len, b->len, a->len - b->len);
-        return 1;
-    }
+    memset(r, 0, sizeof *r);
+    r->name = label;
+    r->paired = 1;
+    r->len_new = a->len;
+    r->len_ref = b->len;
+    if (a->len != b->len) { r->length_differs = 1; return; }
+
     for (i = 0; i < a->len; i++) {
-        if (clearrld && (a->relo[i] || b->relo[i])) { nrelo++; inrun = 0; continue; }
-        if (a->ign[i]) { nign++; inrun = 0; continue; }
+        if (clearrld && (a->relo[i] || b->relo[i])) { r->nrelo++; inrun = 0; continue; }
+        if (a->ign[i]) { r->nign++; inrun = 0; continue; }
         if (a->bytes[i] != b->bytes[i]) {
-            diff++;
-            if (!a->made[i]) ingap++;      /* a byte as370 never wrote */
-            if (!inrun) {
-                inrun = 1;
-                if (nclu < MAXCLU) { cluoff[nclu] = i; clulen[nclu] = 0; }
-                nclu++;
-            }
-            if (nclu <= MAXCLU) clulen[nclu - 1]++;
+            r->diff++;
+            if (a->made[i]) r->in_text++; else r->in_hole++;
+            if (!inrun) { inrun = 1; clu_add(r, i, !a->made[i]); }
+            r->c[r->nc - 1].len++;
         } else inrun = 0;
     }
-    if (!diff) {
+    r->identical = (r->diff == 0);
+}
+
+/* Every differing byte outside what a TXT card produced is a DS hole: the loader
+ * zeroed it, and the shipped module's content there is residue.  A difference
+ * wholly in holes says the SOURCE agrees and a tolerance list is what is
+ * missing; one inside generated text says it does not. */
+static const char *verdict(const struct result *r)
+{
+    if (!r->paired)        return "unpaired";
+    if (r->length_differs) return "length";
+    if (r->identical)      return "identical";
+    if (!r->in_text)       return "holes";
+    if (!r->in_hole)       return "text";
+    return "mixed";
+}
+
+static void report_text(const struct result *r, const struct sect *a,
+                        const struct sect *b, int verbose)
+{
+    long i;
+    if (!r->paired) { printf("  %-8s not in the reference\n", r->name); return; }
+    if (r->length_differs) {
+        printf("  %-8s LENGTH differs: new %ld, reference %ld (%+ld)\n",
+               r->name, r->len_new, r->len_ref, r->len_new - r->len_ref);
+        return;
+    }
+    if (r->identical) {
         if (verbose)
-            printf("  %-8s identical (%ld bytes%s%s)\n", label, a->len,
-                   nrelo ? ", adcons cleared" : "",
-                   nign ? ", difin applied" : "");
-        return 0;
+            printf("  %-8s identical (%ld bytes%s%s)\n", r->name, r->len_new,
+                   r->nrelo ? ", adcons cleared" : "", r->nign ? ", difin applied" : "");
+        return;
     }
-    /* Every differing byte outside what a TXT card produced is a DS hole: the
-     * loader zeroed it and the shipped module's content there is residue.  A
-     * difference wholly in gaps says the SOURCE agrees and the tolerance list
-     * is what is missing; one inside generated text says it does not. */
     printf("  %-8s %ld byte(s) differ in %ld cluster(s) of %ld -- %s\n",
-           label, diff, nclu, a->len,
-           ingap == diff ? "ALL in DS holes (no byte as370 wrote)"
-                         : ingap ? "some in DS holes, some in generated text"
-                                 : "all in GENERATED TEXT");
-    for (i = 0; i < nclu && i < MAXCLU && verbose; i++) {
-        printf("      @%06lX  %2ld  new ", cluoff[i], clulen[i]);
-        hexrun(a->bytes + cluoff[i], clulen[i]);
+           r->name, r->diff, r->nc, r->len_new,
+           !r->in_text ? "ALL in DS holes (no byte as370 wrote)"
+                       : !r->in_hole ? "all in GENERATED TEXT"
+                                     : "some in DS holes, some in generated text");
+    if (!verbose) return;
+    for (i = 0; i < r->nc && i < TEXTCLU; i++) {
+        printf("      @%06lX  %2ld  new ", r->c[i].off, r->c[i].len);
+        hexrun(a->bytes + r->c[i].off, r->c[i].len);
         printf("  ref ");
-        hexrun(b->bytes + cluoff[i], clulen[i]);
-        printf("%s\n", a->made[cluoff[i]] ? "" : "  (hole)");
+        hexrun(b->bytes + r->c[i].off, r->c[i].len);
+        printf("%s\n", r->c[i].in_hole ? "  (hole)" : "");
     }
-    if (nclu > MAXCLU && verbose)
-        printf("      ... %ld more cluster(s) not listed\n", nclu - MAXCLU);
-    if (difout) {
-        if (!*wrote_hdr || 1) fprintf(difout, ">%s\n", label);
-        *wrote_hdr = 1;
-        for (i = 0; i < nclu && i < MAXCLU; i++) {
-            long o = cluoff[i], l = clulen[i];
-            while (l > 0) {                       /* the length field is one byte */
-                long chunk = l > 255 ? 255 : l;
-                fprintf(difout, "%06lX%02lX\n", o, chunk);
-                o += chunk; l -= chunk;
-            }
+    if (r->nc > TEXTCLU)
+        printf("      ... %ld more cluster(s) not listed (use --json for all)\n",
+               r->nc - TEXTCLU);
+}
+
+static void report_json(const struct result *r, const struct sect *a,
+                        const struct sect *b, int first)
+{
+    long i, k;
+    printf("%s\n    {\n", first ? "" : ",");
+    printf("      \"name\": \"%s\",\n", r->name);
+    printf("      \"verdict\": \"%s\",\n", verdict(r));
+    if (!r->paired) { printf("      \"paired\": false\n    }"); return; }
+    printf("      \"paired\": true,\n");
+    printf("      \"identical\": %s,\n", r->identical ? "true" : "false");
+    printf("      \"length_new\": %ld,\n      \"length_ref\": %ld,\n", r->len_new, r->len_ref);
+    printf("      \"length_differs\": %s,\n", r->length_differs ? "true" : "false");
+    printf("      \"diff_bytes\": %ld,\n", r->diff);
+    printf("      \"diff_in_holes\": %ld,\n      \"diff_in_text\": %ld,\n",
+           r->in_hole, r->in_text);
+    printf("      \"bytes_cleared_rld\": %ld,\n      \"bytes_ignored_difin\": %ld,\n",
+           r->nrelo, r->nign);
+    printf("      \"clusters\": [");
+    for (i = 0; i < r->nc; i++) {
+        printf("%s\n        {\"offset\": %ld, \"length\": %ld, \"in_hole\": %s, \"new\": \"",
+               i ? "," : "", r->c[i].off, r->c[i].len, r->c[i].in_hole ? "true" : "false");
+        for (k = 0; k < r->c[i].len; k++) printf("%02x", a->bytes[r->c[i].off + k]);
+        printf("\", \"ref\": \"");
+        for (k = 0; k < r->c[i].len; k++) printf("%02x", b->bytes[r->c[i].off + k]);
+        printf("\"}");
+    }
+    printf("%s]\n    }", r->nc ? "\n      " : "");
+}
+
+static void write_difout(FILE *f, const struct result *r)
+{
+    long i;
+    if (!r->paired || r->length_differs || r->identical) return;
+    fprintf(f, ">%s\n", r->name);
+    for (i = 0; i < r->nc; i++) {
+        long o = r->c[i].off, l = r->c[i].len;
+        while (l > 0) {                     /* the length field is one byte */
+            long chunk = l > 255 ? 255 : l;
+            fprintf(f, "%06lX%02lX\n", o, chunk);
+            o += chunk; l -= chunk;
         }
     }
-    return 1;
 }
 
 /* ---------------- driver ---------------- */
@@ -372,12 +455,13 @@ static void usage(FILE *f)
       "  REFERENCE   a bound load-module member, or another object deck\n"
       "\n"
       "  --csect NAME   compare only this section (default: pair all by name)\n"
-      "  --difin FILE   ignore the ranges this file lists (Dave Kreiss' format:\n"
-      "                 '>' + CSECT name, then 6-hex offset + 2-hex length)\n"
-      "  --difout FILE  write the differences found, in that same format\n"
       "  --clearrld     zero address constants before comparing (DEFAULT)\n"
       "  --no-clearrld  compare adcons too -- only meaningful deck against deck\n"
-      "  -v             report identical sections too\n"
+      "  --difin FILE   ignore the ranges this file lists ('>' + CSECT name,\n"
+      "                 then a 6-hex offset and a 2-hex length per record)\n"
+      "  --difout FILE  write the differences found, in that same format\n"
+      "  --json         machine-readable result on stdout, all clusters\n"
+      "  -v             report identical sections and list clusters\n"
       "\n"
       "Exit 0 ONLY on identity; 1 on any difference; 2 on a usage or format error.\n");
 }
@@ -387,7 +471,7 @@ int main(int argc, char **argv)
     const char *fa = NULL, *fb = NULL, *only = NULL;
     const char *difin = NULL, *difoutp = NULL;
     FILE *difout = NULL;
-    int clearrld = 1, verbose = 0, i, rc = 0, npair = 0, wrote_hdr = 0;
+    int clearrld = 1, verbose = 0, json = 0, i, rc = 0, npair = 0, firstj = 1;
     unsigned char *ba, *bb;
     long na, nb;
     static struct side A, B;
@@ -398,6 +482,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--no-clearrld")) clearrld = 0;
         else if (!strcmp(argv[i], "--difin") && i + 1 < argc) difin = argv[++i];
         else if (!strcmp(argv[i], "--difout") && i + 1 < argc) difoutp = argv[++i];
+        else if (!strcmp(argv[i], "--json")) json = 1;
         else if (!strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { usage(stdout); return 0; }
         else if (argv[i][0] == '-') { fprintf(stderr, "cmplmd370: unknown option %s\n", argv[i]); usage(stderr); return 2; }
@@ -420,29 +505,57 @@ int main(int argc, char **argv)
     if (difin) difin_load(&A, difin);
     if (difoutp && !(difout = fopen(difoutp, "w"))) { perror(difoutp); return 2; }
 
-    printf("%s vs %s%s%s\n", fa, fb, clearrld ? "" : "  (adcons compared)",
-           difin ? "  (difin applied)" : "");
+    if (json) {
+        printf("{\n  \"new\": \"%s\",\n  \"reference\": \"%s\",\n", fa, fb);
+        printf("  \"clearrld\": %s,\n", clearrld ? "true" : "false");
+        printf("  \"difin\": %s%s%s,\n", difin ? "\"" : "null",
+               difin ? difin : "", difin ? "\"" : "");
+        printf("  \"sections\": [");
+    } else {
+        printf("%s vs %s%s%s\n", fa, fb, clearrld ? "" : "  (adcons compared)",
+               difin ? "  (difin applied)" : "");
+    }
+
     for (i = 0; i < A.n; i++) {
-        struct sect *b2;
+        struct sect *b2 = NULL;
+        struct result r;
+        const char *label = A.s[i].name[0] ? A.s[i].name : "(private)";
+        int k;
         if (only && strcmp(A.s[i].name, only)) continue;
-        b2 = NULL;
-        {   int k;
-            for (k = 0; k < B.n; k++)
-                if (!strcmp(B.s[k].name, A.s[i].name)) { b2 = &B.s[k]; break; }
-        }
+        for (k = 0; k < B.n; k++)
+            if (!strcmp(B.s[k].name, A.s[i].name)) { b2 = &B.s[k]; break; }
         if (!b2) {
-            printf("  %-8s not in the reference\n", A.s[i].name[0] ? A.s[i].name : "(private)");
+            memset(&r, 0, sizeof r);
+            r.name = label; r.paired = 0; r.len_new = A.s[i].len;
             rc = 1;
+            if (json) { report_json(&r, &A.s[i], &A.s[i], firstj); firstj = 0; }
+            else report_text(&r, &A.s[i], &A.s[i], verbose);
             continue;
         }
         npair++;
-        if (compare(&A.s[i], b2, clearrld, verbose,
-                    A.s[i].name[0] ? A.s[i].name : "(private)", difout, &wrote_hdr))
-            rc = 1;
+        compare(&A.s[i], b2, clearrld, label, &r);
+        if (!r.identical) rc = 1;
+        if (json) { report_json(&r, &A.s[i], b2, firstj); firstj = 0; }
+        else report_text(&r, &A.s[i], b2, verbose);
+        if (difout) write_difout(difout, &r);
+        free(r.c);
     }
-    if (only && !npair) { fprintf(stderr, "cmplmd370: no section named %s\n", only); return 2; }
-    if (!npair && !rc) { fprintf(stderr, "cmplmd370: no sections paired\n"); return 2; }
     if (difout) fclose(difout);
-    printf("%s\n", rc ? "DIFFER" : "IDENTICAL");
+
+    if (only && !npair) {
+        if (json) printf("\n  ],\n  \"error\": \"no section named %s\"\n}\n", only);
+        else fprintf(stderr, "cmplmd370: no section named %s\n", only);
+        return 2;
+    }
+    if (!npair && !rc) {
+        if (json) printf("\n  ],\n  \"error\": \"no sections paired\"\n}\n");
+        else fprintf(stderr, "cmplmd370: no sections paired\n");
+        return 2;
+    }
+    if (json)
+        printf("%s],\n  \"identical\": %s,\n  \"exit\": %d\n}\n",
+               firstj ? "" : "\n  ", rc ? "false" : "true", rc);
+    else
+        printf("%s\n", rc ? "DIFFER" : "IDENTICAL");
     return rc;
 }

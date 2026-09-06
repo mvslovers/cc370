@@ -118,6 +118,34 @@ if [ -f "$FIX/dlib-102/IEFJDSNA.obj" ]; then
         echo "SKIP: --difin (no $FIX/holes.difin)"
     fi
 
+    # --- --json: valid, complete, and agreeing with the exit code ----------
+    # The caller is about to run this over thousands of pairs and read the JSON
+    # rather than the text, so the three ways it could quietly lie are checked:
+    # invalid output, a verdict that disagrees with the exit status, and a
+    # cluster list that is short.
+    cp cmplmd370/tests/json_check.py "$TMP/jcheck.py" 2>/dev/null
+    $C --json "$DD/IKTCAS54.obj" "$DD/IKTCAS54.dlib" > "$TMP/j.json" 2>&1
+    jrc=$?
+    if python3 "$TMP/jcheck.py" "$TMP/j.json" "$jrc" 2>"$TMP/jerr"; then
+        pass "--json: valid, complete, agrees with the exit code"
+    else
+        fail "--json: $(head -1 "$TMP/jerr")"
+    fi
+
+    # --- --difout must not truncate ---------------------------------------
+    # IKTCAS54 differs in 319 clusters.  The fixed 64-cluster array this started
+    # with silently dropped every range past the 64th, so the file it wrote did
+    # not close its own comparison -- and nothing said so.
+    $C --difout "$TMP/big.difin" "$DD/IKTCAS54.obj" "$DD/IKTCAS54.dlib" >/dev/null 2>&1
+    nrange=$(grep -c '^[0-9A-F]' "$TMP/big.difin" 2>/dev/null || echo 0)
+    if [ "$nrange" -lt 300 ]; then
+        fail "--difout wrote only $nrange ranges for a 319-cluster difference"
+    elif $C --difin "$TMP/big.difin" "$DD/IKTCAS54.obj" "$DD/IKTCAS54.dlib" >/dev/null 2>&1; then
+        pass "--difout does not truncate: $nrange ranges close a 319-cluster difference"
+    else
+        fail "--difout: $nrange ranges written but the comparison stays open"
+    fi
+
     # --- --difout must produce a file that closes its own comparison --------
     $C --difout "$TMP/rt.difin" "$DD/IGG0CLB3.obj" "$DD/IGG0CLB3.dlib" >/dev/null 2>&1
     if $C --difin "$TMP/rt.difin" "$DD/IGG0CLB3.obj" "$DD/IGG0CLB3.dlib" >/dev/null 2>&1; then
