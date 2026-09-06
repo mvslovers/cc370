@@ -45,7 +45,7 @@ TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
 LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(VERSION)
 MANDIR  := $(PREFIX)/share/man/man1
 
-TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370 xmit370/xmit370
+TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370 xmit370/xmit370 cmplmd370/cmplmd370
 # shared format primitives (CP037 tables, CKD count field, NETDATA records)
 COMMON  := common/src/mvs370.c common/src/obj370.c
 COMMONH := common/include/mvs370.h common/include/obj370.h
@@ -82,6 +82,8 @@ ar370/ar370: ar370/src/ar370.c $(COMMON) $(COMMONH)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ar370/src/ar370.c $(COMMON)
 file370/file370: file370/src/file370.c $(COMMON) $(COMMONH)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ file370/src/file370.c $(COMMON)
+cmplmd370/cmplmd370: cmplmd370/src/cmplmd370.c $(COMMON) $(COMMONH)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ cmplmd370/src/cmplmd370.c $(COMMON)
 xmit370/xmit370: xmit370/src/xmit370.c $(COMMON) $(COMMONH)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ xmit370/src/xmit370.c $(COMMON)
 
@@ -125,7 +127,7 @@ compiler: $(BUILD)/config.status
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-as370 test-cc370 test-corpus test-xmit370
+test: test-as370 test-cc370 test-corpus test-xmit370 test-cmplmd370
 
 test-as370:
 	@$(MAKE) -C as370 test
@@ -135,6 +137,9 @@ test-cc370: compiler
 
 test-xmit370: xmit370/xmit370
 	@sh xmit370/tests/run.sh
+
+test-cmplmd370: cmplmd370/cmplmd370
+	@sh cmplmd370/tests/run.sh
 
 # --- install --------------------------------------------------------------
 install: install-tools install-compiler install-man
@@ -147,11 +152,13 @@ install-tools: tools
 	@install -m 755 ld370/ld370 $(TGTBIN)/ld370
 	@install -m 755 ar370/ar370 $(TGTBIN)/ar370
 	@install -m 755 file370/file370 $(TGTBIN)/file370
+	@install -m 755 cmplmd370/cmplmd370 $(TGTBIN)/cmplmd370
 	@install -m 755 xmit370/xmit370 $(TGTBIN)/xmit370
 	@ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370
 	@ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
 	@ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
 	@ln -sf ../$(TRIPLE)/bin/file370 $(BINDIR)/file370
+	@ln -sf ../$(TRIPLE)/bin/cmplmd370 $(BINDIR)/cmplmd370
 	@ln -sf ../$(TRIPLE)/bin/xmit370 $(BINDIR)/xmit370
 	@ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as
 	@ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld
