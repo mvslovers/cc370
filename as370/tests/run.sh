@@ -1280,5 +1280,55 @@ rm -f /tmp/_g63.s /tmp/_g63.obj
 [ $dcbfail = 0 ] && echo "dcb: OK (QSAM DCB carries its common-interface block; the 65th global survives)"
 fail=$((fail + dcbfail))
 
+# START and ISEQ (cc370#127, #128).  Both were "undefined operation code" until
+# now, which is why they showed up in a survey of MVS system source as MISSING
+# MACROS: an unknown mnemonic looks the same either way.  START alone is the
+# first cause of failure in 51 modules, ISEQ in 25.
+#
+# Every expectation below is IFOX00's own answer, measured on MVS/CE and not
+# derived from the manual:
+#
+#   START 0    SD 0001 000000 ...     byte for byte the CSECT entry
+#   START      SD 0001 000000 ...     the same
+#   START 256  SD 0001 000100 ...     operand DECIMAL, and the ESD carries it
+#   START 5    SD 0001 000008 ...     ROUNDED UP to a doubleword -- 256 is
+#                                     already aligned and hides this; 5 shows it
+#
+# ISEQ emits nothing and does not advance the location counter, and an
+# out-of-sequence statement is still assembled (IFO025 is a diagnostic, not a
+# rejection).  So the assertion is that the object is IDENTICAL to the same
+# source without it -- what is not yet reproduced is IFO025 itself.
+startfail=0
+for spec in "0:000000" ":000000" "256:000100" "5:000008"; do
+    val=${spec%%:*}; want=${spec##*:}
+    { echo "TESTX    START $val"; echo '         BR    14'; echo "FIELD    DC    F'1'"
+      echo '         END'; } > /tmp/_st.s
+    if ! ./as370 /tmp/_st.s -o /tmp/_st.obj >/dev/null 2>&1; then
+        echo "start: ASSEMBLE FAILED for 'START $val'"; startfail=1; continue
+    fi
+    got=$(python3 -c "
+import sys
+d = open('/tmp/_st.obj','rb').read()
+for o in range(0, len(d)-79, 80):
+    c = d[o:o+80]
+    if c[:4] == bytes((0x02,0xC5,0xE2,0xC4)):
+        print('%06x' % int.from_bytes(c[16+9:16+12],'big')); break
+")
+    if [ "$got" != "$want" ]; then
+        echo "start: FAIL 'START $val' -> SD ADDR $got, IFOX00 says $want"; startfail=1
+    fi
+done
+{ echo 'SEQT     CSECT'; echo '         ISEQ  73,80'; echo '         BR    14'
+  echo '         ISEQ'; echo '         END'; } > /tmp/_iq.s
+{ echo 'SEQT     CSECT'; echo '         BR    14'; echo '         END'; } > /tmp/_nq.s
+if ! ./as370 /tmp/_iq.s -o /tmp/_iq.obj >/dev/null 2>&1; then
+    echo "iseq: ASSEMBLE FAILED"; startfail=1
+elif ./as370 /tmp/_nq.s -o /tmp/_nq.obj >/dev/null 2>&1 && ! cmp -s /tmp/_iq.obj /tmp/_nq.obj; then
+    echo "iseq: FAIL (ISEQ changed the object; it must emit nothing)"; startfail=1
+fi
+rm -f /tmp/_st.s /tmp/_st.obj /tmp/_iq.s /tmp/_iq.obj /tmp/_nq.s /tmp/_nq.obj
+[ $startfail = 0 ] && echo "start/iseq: OK (four START forms match IFOX00's ESD; ISEQ is object-neutral)"
+fail=$((fail + startfail))
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
