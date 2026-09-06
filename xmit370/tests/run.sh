@@ -215,9 +215,36 @@ if $X create -o "$TMP/geo.xmit" --dsn IBMUSER.GEO.ASM \
         --stats-date 2026-01-02T03:04:05 "$TMP/src" >/dev/null 2>&1 \
    && $X create -o "$TMP/geof.xmit" --dsn IBMUSER.GEOC.ASM --recfm f --blocksize 80 \
         --stats-date 2026-01-02T03:04:05 "$TMP/src" >/dev/null 2>&1; then
-    python3 "$GEO" --from-xmit --recfm FB "$TMP/geo.xmit" "$TMP/geo132.xmit" "$TMP/a.xmit" \
+    python3 "$GEO" --from-xmit --pack-cap --recfm FB \
+        "$TMP/geo.xmit" "$TMP/geo132.xmit" "$TMP/a.xmit" || geo_fails=1
+    python3 "$GEO" --from-xmit --pack-cap --recfm F "$TMP/geof.xmit" || geo_fails=1
+    # A single small source PDS must stay on ONE track: pin it, so ld370's
+    # one-block-per-track policy leaking in here is visible.  It leaves every
+    # geometry rule satisfied and merely spreads the image over more tracks.
+    python3 "$GEO" --from-xmit --pack-cap --recfm FB --max-tracks 1 "$TMP/a.xmit" \
         || geo_fails=1
-    python3 "$GEO" --from-xmit --recfm F "$TMP/geof.xmit" || geo_fails=1
+
+    # STRADDLE fixture.  The packing budget is 19069 while a 3350 physically
+    # holds 19254, and most block sizes cannot tell the two apart -- at 3120 a
+    # track takes 5 records either way.  At --blocksize 2560 a record costs 2745
+    # and SIX fit under 19069 while SEVEN fit under 19254, so this is where
+    # "correcting" the budget up to the real track length becomes visible.  It
+    # needs long runs of FULL blocks: a member's last block is short and its
+    # DL=0 EOF costs another record, both of which blur the boundary, so the
+    # members are 960 lines = 30 whole blocks each.
+    mkdir -p "$TMP/dense"
+    di=1
+    while [ "$di" -le 3 ]; do
+        awk -v n="$di" 'BEGIN{for(k=0;k<960;k++) printf "DENSE %03d LINE %05d %s\n", n, k, \
+            "PADDING PADDING PADDING PADDING PADDIN"}' > "$TMP/dense/BM$di"
+        di=$((di + 1))
+    done
+    if $X create -o "$TMP/dense.xmit" --dsn IBMUSER.DENSE.ASM --blocksize 2560 \
+            --stats-date 2026-01-02T03:04:05 "$TMP/dense" >/dev/null 2>&1; then
+        python3 "$GEO" --from-xmit --pack-cap --recfm FB "$TMP/dense.xmit" || geo_fails=1
+    else
+        fail "geometry: dense straddle fixture did not build"
+    fi
     if [ "$geo_fails" -eq 0 ]; then
         pass "geometry: multi-cylinder + FB/F shapes within 3350 limits, extent spans the data"
     else

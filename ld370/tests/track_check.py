@@ -30,6 +30,7 @@ the extent is what makes a relative TTR resolve to the right absolute track.
 
 usage: track_check.py [--from-xmit] IMAGE... [--data-cc N] [--trkpercyl N]
                       [--template FILE|--no-template] [--recfm U|FB]
+                      [--pack-cap] [--max-tracks N]
 """
 import os
 import sys
@@ -124,8 +125,16 @@ def records(u):
     return out, p
 
 
-def check(path, data_cc, trkpercyl, template, recfm, from_xmit):
-    u = open(path, "rb").read()
+def check(path, data_cc, trkpercyl, template, recfm, from_xmit, pack_cap, max_tracks):
+    before = len(fails)                 # per-file verdict, not the global one
+    try:
+        u = open(path, "rb").read()
+    except OSError as e:
+        # NOT sys.exit: an unreadable path used to abort the whole run, so every
+        # image named after it went unchecked while the output read like a
+        # geometry failure.
+        fail("%s: %s" % (path, e))
+        return
     if from_xmit:
         u, lens = unwrap_xmit(u)
         if u is None:
@@ -213,6 +222,18 @@ def check(path, data_cc, trkpercyl, template, recfm, from_xmit):
         if cost > TRK_LEN_3350:
             fail("track CC=%04X HH=%04X holds %d records costing %d bytes, over the "
                  "%d-byte 3350 track" % (cc, hh, len(items), cost, TRK_LEN_3350))
+        elif pack_cap and cost > MAX_BLK_3350:
+            # Tighter than physically necessary, and deliberately so.  OUR emitters
+            # budget a track against MAXBLK (19069), not the physical LEN (19254),
+            # leaving one record's overhead unspent.  Without this bound the
+            # single most plausible wrong edit -- "correcting" the packing budget
+            # up to the real track length -- produces denser tracks that the
+            # 19254 test above still accepts.  Measured: the 40-member dense pack
+            # goes 19045 -> 19075 bytes and every other check stays green.
+            # Opt-in, because a real IEBCOPY oracle may legally pack past 19069.
+            fail("track CC=%04X HH=%04X costs %d bytes, over the %d-byte packing "
+                 "budget (the emitter must leave one record's overhead unspent)"
+                 % (cc, hh, cost, MAX_BLK_3350))
 
     # 4. record numbers on a track must be 1..n with no gap or repeat -- FETCH
     #    positions by R, so a hole is as fatal as an over-packed track.
@@ -246,7 +267,14 @@ def check(path, data_cc, trkpercyl, template, recfm, from_xmit):
             fail("track CC=%04X HH=%04X (relative track %d) is outside the UDEBX "
                  "extent CC %04X..%04X, NMTRK %d" % (cc, hh, abs_trk, strcc, endcc, nmtrk))
 
-    if not fails:
+    if max_tracks is not None and len(tracks) != max_tracks:
+        # A changed packing POLICY (one block per track vs. filling a track) can
+        # leave every geometry rule satisfied and still emit a different image.
+        # The track count is the discriminator, and it is cheap to pin.
+        fail("%s: image spans %d track(s), expected %d"
+             % (path.rsplit('/', 1)[-1], len(tracks), max_tracks))
+
+    if len(fails) == before:
         used = len(tracks)
         worst = max(sum(c for _, c in v) for v in tracks.values())
         print("  OK: %s -- %d data record(s) on %d track(s), fullest %d/%d bytes, "
@@ -261,6 +289,7 @@ RECFM = {"U": 0xC0, "F": 0x80, "FB": 0x90}
 def main(argv):
     data_cc, trkpercyl, paths = 0x8D, 30, []
     tpath, recfm, from_xmit = DEFAULT_TEMPLATE, 0xC0, False
+    pack_cap, max_tracks = False, None
     i = 1
     while i < len(argv):
         if argv[i] == "--data-cc":
@@ -278,6 +307,10 @@ def main(argv):
             recfm = RECFM[argv[i]]
         elif argv[i] == "--from-xmit":
             from_xmit = True
+        elif argv[i] == "--pack-cap":
+            pack_cap = True
+        elif argv[i] == "--max-tracks":
+            i += 1; max_tracks = int(argv[i], 0)
         else:
             paths.append(argv[i])
         i += 1
@@ -291,7 +324,7 @@ def main(argv):
     elif tpath:
         sys.exit("template %s not found" % tpath)
     for p in paths:
-        check(p, data_cc, trkpercyl, template, recfm, from_xmit)
+        check(p, data_cc, trkpercyl, template, recfm, from_xmit, pack_cap, max_tracks)
     return 1 if fails else 0
 
 

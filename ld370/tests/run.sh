@@ -661,7 +661,12 @@ awk 'BEGIN{print "MCYL     CSECT"; for(i=0;i<11000;i++) printf "         DC    F
     || { echo "  FAIL: multi-cylinder member did not build"; geo_fails=1; }
 
 # every unloaded image this suite has produced, plus the two shapes above
-python3 ld370/tests/track_check.py \
+# --pack-cap: OUR emitters must leave one record's overhead unspent, so no track
+# may exceed 19069 even though 19254 is what a 3350 physically holds.  Without it
+# the most plausible wrong edit -- "correcting" the packing budget up to the real
+# track length -- passes every other check (measured: dense pack 19045 -> 19075).
+# It is opt-in because a real IEBCOPY oracle may legally pack past 19069.
+python3 ld370/tests/track_check.py --pack-cap \
     "$TMP/geodense.iebcopy" "$TMP/geomcyl.iebcopy" \
     "$TMP/tiny.ld.bin.iebcopy" "$TMP/rldt.ld.bin.iebcopy" "$TMP/klein.ld.bin.iebcopy" \
     "$TMP/lib2.iebcopy" "$TMP/lib3.iebcopy" "$TMP/lib7.iebcopy" "$TMP/lib20.iebcopy" \
@@ -673,7 +678,20 @@ python3 ld370/tests/track_check.py \
 # the pair correct.
 "$LD" --pack "MCYL=$TMP/mcyl.lm" --blocksize 1024 --dsn IBMUSER.MCYL.LOAD \
     -o "$TMP/geox" -iebcopy -xmit 2>/dev/null
-python3 ld370/tests/track_check.py --from-xmit "$TMP/geox.xmit" "$TMP/e2e.xmit" \
+# shellcheck disable=SC2086
+"$LD" --pack $gspecs --dsn IBMUSER.GEO.LOAD -o "$TMP/geodensex" -iebcopy -xmit 2>/dev/null
+# geodensex is the MULTI-member one: the per-member VS framing that the IEB183I
+# fix installed is only exercised through the envelope, and a single member has
+# exactly one EOF so it cannot show a framing regression at all.
+python3 ld370/tests/track_check.py --from-xmit --pack-cap \
+    "$TMP/geox.xmit" "$TMP/geodensex.xmit" "$TMP/e2e.xmit" \
+    || geo_fails=1
+# A single member is laid out one block per track; a multi-member pack fills
+# tracks.  Pinning both counts catches a changed packing POLICY, which leaves
+# every geometry rule satisfied and still emits a different image.
+python3 ld370/tests/track_check.py --pack-cap --max-tracks 90 "$TMP/geomcyl.iebcopy" \
+    || geo_fails=1
+python3 ld370/tests/track_check.py --pack-cap --max-tracks 4 "$TMP/geodense.iebcopy" \
     || geo_fails=1
 [ "$geo_fails" -eq 0 ] || fails=$((fails + 1))
 
