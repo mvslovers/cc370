@@ -18,6 +18,12 @@ import sys
 
 d = json.load(open(sys.argv[1]))
 rc = int(sys.argv[2])
+# Every field a caller branches on must be present on EVERY path, error paths
+# included -- a bulk run over 3,888 modules found 16 results that carried
+# "error" and neither "exit" nor "identical", so the consumer read null exactly
+# where it most needed an answer.
+for k in ("exit", "identical", "error", "sections"):
+    assert k in d, "key %r missing from the result" % k
 assert d["exit"] == rc, "exit field %r != exit status %d" % (d["exit"], rc)
 assert d["identical"] == (rc == 0), "identical field disagrees with exit status"
 for s in d["sections"]:

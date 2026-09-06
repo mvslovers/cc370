@@ -132,6 +132,15 @@ if [ -f "$FIX/dlib-102/IEFJDSNA.obj" ]; then
         fail "--json: $(head -1 "$TMP/jerr")"
     fi
 
+    # --- the JSON shape must not change on the ERROR paths -----------------
+    $C --json --csect NOSUCHCS "$DD/IEFJDSNA.obj" "$DD/IEFJDSNA.dlib" > "$TMP/e.json" 2>&1
+    erc=$?
+    if python3 "$TMP/jcheck.py" "$TMP/e.json" "$erc" 2>"$TMP/eerr"; then
+        pass "--json keeps its shape on an error path (exit=$erc)"
+    else
+        fail "--json error path: $(head -1 "$TMP/eerr")"
+    fi
+
     # --- --difout must not truncate ---------------------------------------
     # IKTCAS54 differs in 319 clusters.  The fixed 64-cluster array this started
     # with silently dropped every range past the 64th, so the file it wrote did
