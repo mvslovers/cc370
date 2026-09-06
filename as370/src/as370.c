@@ -812,12 +812,25 @@ static struct macro *mac_find(const char *n) {
     return NULL;
 }
 /* ---- macro expansion context + conditional assembly --------------------- */
+/* &SYSECT is the control section in effect WHERE THE MACRO WAS CALLED, and it
+ * does NOT follow a section change made inside the expansion.  Measured on
+ * IFOX00 (cc370#132): a macro that opens INNER CSECT in its own body still gets
+ * FOURTH -- the section it was called from -- on the line after.  So there are
+ * two values: g_sysect runs with the emitted statements, and each invocation
+ * freezes a copy of it at entry.  Looking the section up when the reference is
+ * resolved is the obvious implementation and it is wrong, the same way resolving
+ * an absolute S-con through USING was wrong in #108.
+ *
+ * A DSECT counts as the current section; an unnamed (private) one gives "". */
+static char g_sysect[9] = "";
+
 struct ctx {
     struct macro *m;
     char pv[100][96];                      /* parameter values (may be sublists) */
     const char *namepval;
     char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
     int sysndx;                            /* &SYSNDX for this macro invocation */
+    char sysect[9];                        /* &SYSECT, frozen at the call (see g_sysect) */
     char syslist[32][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
     char arrb[48][20]; char arrnum[48]; int narr;   /* declared SET arrays: base name + 1 if numeric (A/B) */
 };
@@ -902,6 +915,11 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 22) nm[i++] = *p++;
     nm[i] = 0;
     if (!strcmp(nm, "SYSNDX")) { snprintf(out, 96, "%04d", c->sysndx); return; }   /* unique per macro invocation */
+    /* Only inside a macro: IFOX00 rejects &SYSECT in open code with IFO006
+     * (undefined variable symbol) rather than substituting anything, so open
+     * code is left to the general undefined-symbol path -- that is #97, not
+     * this. */
+    if (c->m && !strcmp(nm, "SYSECT")) { scopy(out, c->sysect, 8); return; }
     if (!strcmp(nm, "SYSDATE")) { scopy(out, g_sysdate, 8); return; }   /* assembly date "MM/DD/YY" */
     if (!strcmp(nm, "SYSTIME")) { scopy(out, g_systime, 5); return; }   /* assembly time "HH.MM" */
     char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
@@ -1537,6 +1555,7 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
     g_genlevel++;   /* lines emitted during this expansion are macro-generated */
     struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; c.sysndx = ++g_sysndx;
+    scopy(c.sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
     int k;
     for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
     if (opnd[0]) { char args[100][64]; int na = split_fields(opnd, args, 100), pos = 0;
@@ -1637,6 +1656,13 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         mexp_macro(m, lbl[0] == '.' ? "" : lbl, aopnd, out, nout, depth); return;
     }
     if (*nout >= MAXLINES) return;
+    /* Track the section on EMISSION, not on input: a CSECT a macro generates is
+     * open code by the time it lands here, so a later call sees it -- while the
+     * expansion that produced it does not, because that one froze its copy at
+     * entry.  Both halves of the measured behaviour fall out of that. */
+    if (op[0] && (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") ||
+                  !strcmp(op, "START") || !strcmp(op, "COM")))
+        scopy(g_sysect, (lbl[0] && lbl[0] != '.') ? lbl : "", 8);
     lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN : 0);
     gcard[*nout] = img ? strdup(img) : NULL;
     line_org[*nout] = g_curorg;
@@ -2637,12 +2663,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                             lc += flen;
                         }
                     }
-                } else if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'Y' || ty == 'V') {
-                    int base = (ty == 'H' || ty == 'Y') ? 2 : 4;
+                } else if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'Y' || ty == 'V' || ty == 'S') {
+                    int base = (ty == 'H' || ty == 'Y' || ty == 'S') ? 2 : 4;
                     if (!haslen) { blen = base; long oldlc = lc; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc);
                         if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }   /* DC alignment padding is emitted as zero TXT (IFOX-compatible) */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
-                    long val = 0; int isvcon = (ty == 'V'), isaddr = (ty == 'A' || ty == 'Y' || isvcon);
+                    long val = 0; int isvcon = (ty == 'V'), isscon = (ty == 'S');
+                    int isaddr = (ty == 'A' || ty == 'Y' || isvcon || isscon);
                     if (isaddr) {                                  /* address constant, possibly a value list A(v1,v2,..) */
                         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         char inside[256] = "";
@@ -2662,7 +2689,62 @@ static void do_pass(int pass, char **lines, int nlines) {
                             if (r[0]) { struct sym *s = sym_get(r); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } } }
                         for (k = 0; k < cnt; k++) { int vj; for (vj = 0; vj < nv; vj++) {
                             if (emit_dc) {
-                                if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
+                                if (isscon) {
+                                    /* S-type: a HALFWORD carrying 4 bits of base
+                                     * register and 12 of displacement, resolved
+                                     * here and never relocated -- the loader has
+                                     * nothing to fix up.  Measured on IFOX00
+                                     * (cc370#108), one CSECT under USING TESTS,12:
+                                     *   S(0)       -> 0000   base 0, disp 0
+                                     *   S(4(3))    -> 3004   explicit base 3
+                                     *   S(TARGET)  -> C010   base 12 from USING
+                                     *   2S(0,TARGET) -> 0000 C010 0000 C010
+                                     * The last one needs no code: the duplication
+                                     * factor already wraps the whole operand list
+                                     * in the loop above, which is what IFOX does. */
+                                    long disp = 0; int reg = 0;
+                                    const char *v = vals[vj];
+                                    const char *ip = strchr(v, '(');
+                                    if (ip) {                       /* explicit disp(base) */
+                                        char ds[80]; int dn = (int)(ip - v); if (dn > 79) dn = 79;
+                                        memcpy(ds, v, (size_t)dn); ds[dn] = 0;
+                                        char bs[80]; int bn = 0; const char *bp = ip + 1;
+                                        while (*bp && *bp != ')' && bn < 79) bs[bn++] = *bp++;
+                                        bs[bn] = 0;
+                                        disp = ds[0] ? expr_val(ds, NULL) : 0;
+                                        reg  = bs[0] ? (int)expr_val(bs, NULL) : 0;
+                                    } else if (v[0]) {
+                                        /* Only a RELOCATABLE expression goes
+                                         * through USING.  An absolute one is the
+                                         * displacement itself with base 0 --
+                                         * IFOX gives S(0) the halfword 0000,
+                                         * where resolving it through the active
+                                         * USING would say C000.  Measured; it is
+                                         * the one case of the five that a
+                                         * reasonable implementation gets wrong,
+                                         * and S(0) is the common null S-con. */
+                                        int src = 0; long a = expr_val(v, &src);
+                                        if (src != 0) {
+                                            reg = using_for(a, expr_sect(v), &disp);
+                                            if (!r_addrok) {
+                                                /* IFO209, and it is the SAME condition the RX/RS
+                                                 * operands already report -- so it takes the same
+                                                 * note_addrerr() wording rather than one of its
+                                                 * own.  IFOX emits one message for one situation;
+                                                 * two texts for it would read as two defects.
+                                                 * Measured: "BASE AND DISPLACEMENT CANNOT BE
+                                                 * RESOLVED AND ARE SET TO 0", and the halfword
+                                                 * really is 0000 -- not the unresolved
+                                                 * displacement, which is what using_for's
+                                                 * cross-section fallback leaves behind. */
+                                                note_addrerr(op, i);
+                                                reg = 0; disp = 0;
+                                            }
+                                        } else { disp = a; reg = 0; }
+                                    }
+                                    put(lc, ((long)(reg & 0xf) << 12) | (disp & 0xfff), 2);
+                                }
+                                else if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                                     put(lc, 0, blen); add_reloc(lc, r, 1); rels[nrel - 1].len = blen; }
                                 else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0; long v = vals[vj][0] ? expr_val(vals[vj], &rc) : 0;
                                     struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
@@ -2750,7 +2832,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     /* No storage produced. Say which of the two it is, once per
                      * operand, in pass 1 -- pass 2 walks the same statements. */
                     if (pass == 1) {
-                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* the fifteen valid Assembler XF types; all but S and Q are handled above */
+                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* the fifteen valid Assembler XF types; all but Q are handled above */
                         else note_badtype(ty, i);
                     }
                     /* The label is still defined, as before: withholding it would
