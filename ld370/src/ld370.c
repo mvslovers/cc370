@@ -566,13 +566,43 @@ static int decfield(const char *s, int n)
     return v;
 }
 
+/* LDDATE=YYDDD -> yy (2-digit) + ddd (day of year); 1 if the variable is set.
+ * Malformed values are fatal rather than ignored: a test that believes it pinned
+ * the clock and silently did not is worse than no pin at all. */
+static int ld_lddate(int *yy, int *ddd)
+{
+    const char *ed = getenv("LDDATE");
+    int v;
+    if (!ed || !*ed) return 0;
+    if (strlen(ed) != 5 || (v = decfield(ed, 5)) < 0 ||
+        v % 1000 < 1 || v % 1000 > 366) {
+        fprintf(stderr, "ld370: LDDATE must be YYDDD (e.g. 26223)\n");
+        exit(2);
+    }
+    *yy = v / 1000; *ddd = v % 1000;
+    return 1;
+}
+/* LDTIME=HHMMSS -> hh, mm, ss; 1 if the variable is set. */
+static int ld_ldtime(int *hh, int *mm, int *ss)
+{
+    const char *et = getenv("LDTIME");
+    int v;
+    if (!et || !*et) return 0;
+    if (strlen(et) != 6 || (v = decfield(et, 6)) < 0 ||
+        v / 10000 > 23 || (v / 100) % 100 > 59 || v % 100 > 59) {
+        fprintf(stderr, "ld370: LDTIME must be HHMMSS (e.g. 220517)\n");
+        exit(2);
+    }
+    *hh = v / 10000; *mm = (v / 100) % 100; *ss = v % 100;
+    return 1;
+}
+
 static void emit_lked_idr(void)
 {
     unsigned char r[22];
-    const char *ed = getenv("LDDATE"), *et = getenv("LDTIME");
     time_t now = time(NULL);
     struct tm *lt = localtime(&now);
-    int yy, ddd, hh, mm, ss, v, i;
+    int yy, ddd, hh, mm, ss, i;
     size_t prodlen = strlen(LD370_IDR_PROD);
 
     if (!lt) {
@@ -583,22 +613,8 @@ static void emit_lked_idr(void)
     ddd = lt->tm_yday + 1;
     hh = lt->tm_hour; mm = lt->tm_min; ss = lt->tm_sec;
 
-    if (ed && *ed) {
-        if (strlen(ed) != 5 || (v = decfield(ed, 5)) < 0 ||
-            v % 1000 < 1 || v % 1000 > 366) {
-            fprintf(stderr, "ld370: LDDATE must be YYDDD (e.g. 26223)\n");
-            exit(2);
-        }
-        yy = v / 1000; ddd = v % 1000;
-    }
-    if (et && *et) {
-        if (strlen(et) != 6 || (v = decfield(et, 6)) < 0 ||
-            v / 10000 > 23 || (v / 100) % 100 > 59 || v % 100 > 59) {
-            fprintf(stderr, "ld370: LDTIME must be HHMMSS (e.g. 220517)\n");
-            exit(2);
-        }
-        hh = v / 10000; mm = (v / 100) % 100; ss = v % 100;
-    }
+    ld_lddate(&yy, &ddd);
+    ld_ldtime(&hh, &mm, &ss);
 
     memset(r, 0, sizeof r);
     r[0] = 0x80;
@@ -1178,15 +1194,46 @@ static int write_unload(const char *path, const char *name,
  * the source DCB (BLKSIZE/RECFM) is still echoed -- see TODO.
  * ==========================================================================*/
 
-/* current local time as a 16-EBCDIC-digit INM_FTIME (YYYYMMDDHHMMSShh) */
+/* day-of-year -> month/day, for turning LDDATE's YYDDD into a calendar date.
+ * Done by hand rather than through mktime() so no timezone or DST rule can move
+ * the result: the whole point of LDDATE is a byte-reproducible output. */
+static void ddd_to_md(int year4, int ddd, int *mo, int *dd)
+{
+    static const int ml[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+    int leap = (year4 % 4 == 0 && (year4 % 100 != 0 || year4 % 400 == 0));
+    int m;
+    for (m = 0; m < 12; m++) {
+        int n = ml[m] + (m == 1 && leap);
+        if (ddd <= n) break;
+        ddd -= n;
+    }
+    if (m > 11) { m = 11; ddd = 31; }      /* ddd=366 in a common year: clamp */
+    *mo = m + 1; *dd = ddd;
+}
+
+/* Local time as a 16-EBCDIC-digit INM_FTIME (YYYYMMDDHHMMSShh).
+ *
+ * Honours LDDATE/LDTIME like the LKED IDR does.  It did not before, and that
+ * made an ld370 .xmit impossible to byte-compare between two runs: everything
+ * else in the file is deterministic, so a test pinning LDDATE/LDTIME still saw
+ * the two seconds digits here change underneath it.  YYDDD carries no century;
+ * the toolchain's epoch is 2000, matching the packed YYDDDF in the IDR. */
 static void xmit_ftime(unsigned char e[16])
 {
     char a[17]; time_t t = time(NULL); struct tm *tm = localtime(&t); int i;
+    int yy, mo, dd, hh, mi, ss, dyy, ddd;
+
+    if (!tm) { fprintf(stderr, "ld370: cannot obtain local time for INMFTIME\n"); exit(2); }
     /* clamp each field to its print width [0..9999]/[0..99] so the fixed 16-char
      * output is provably within a[17] (GCC can't bound struct tm otherwise). */
-    int yy = ((tm->tm_year + 1900) % 10000 + 10000) % 10000;
-    int mo = ((tm->tm_mon + 1) % 100 + 100) % 100, dd = (tm->tm_mday % 100 + 100) % 100;
-    int hh = (tm->tm_hour % 100 + 100) % 100, mi = (tm->tm_min % 100 + 100) % 100, ss = (tm->tm_sec % 100 + 100) % 100;
+    yy = ((tm->tm_year + 1900) % 10000 + 10000) % 10000;
+    mo = ((tm->tm_mon + 1) % 100 + 100) % 100; dd = (tm->tm_mday % 100 + 100) % 100;
+    hh = (tm->tm_hour % 100 + 100) % 100; mi = (tm->tm_min % 100 + 100) % 100;
+    ss = (tm->tm_sec % 100 + 100) % 100;
+
+    if (ld_lddate(&dyy, &ddd)) { yy = 2000 + dyy; ddd_to_md(yy, ddd, &mo, &dd); }
+    ld_ldtime(&hh, &mi, &ss);
+
     sprintf(a, "%04d%02d%02d%02d%02d%02d00", yy, mo, dd, hh, mi, ss);
     for (i = 0; i < 16; i++) e[i] = mvs_a2e(a[i]);
 }

@@ -610,6 +610,36 @@ print("  OK: 80 15 82 'LD370     ' V01 M00 26223 22:05:17 (LASTIDR set)")
 EOF
 then :; else fails=$((fails + 1)); fi
 
+# XMIT reproducibility.  LDDATE/LDTIME exist so a link is byte-comparable between
+# two runs, but until 2026-09-06 they pinned only the LKED IDR: emit_xmit's
+# INMFTIME still read the wall clock, so every ld370 .xmit differed from itself
+# across a second boundary and could not be byte-compared at all.  Two runs a
+# second apart must now produce an identical file, and INMFTIME must decode to
+# the pinned instant -- LDDATE=26223 is 2026 day 223 = 11 August, LDTIME=220517.
+# The decode half matters as much as the identity half: a stamp frozen at a WRONG
+# constant value would be perfectly reproducible and still wrong.
+printf '\n=== XMIT is byte-reproducible under LDDATE/LDTIME, and INMFTIME decodes ===\n'
+"$AS" -o "$TMP/ftm.o" "$FIX/tiny.s" 2>/dev/null
+"$LD" -o "$TMP/ftm.lm" --name FTM "$TMP/ftm.o" 2>/dev/null
+"$LD" --pack "FTM=$TMP/ftm.lm" --dsn IBMUSER.FTM.LOAD -o "$TMP/ftm1" -iebcopy -xmit 2>/dev/null
+sleep 1
+"$LD" --pack "FTM=$TMP/ftm.lm" --dsn IBMUSER.FTM.LOAD -o "$TMP/ftm2" -iebcopy -xmit 2>/dev/null
+if cmp -s "$TMP/ftm1.xmit" "$TMP/ftm2.xmit"; then
+    if python3 - "$TMP/ftm1.xmit" <<'EOF'
+import sys
+d = open(sys.argv[1], 'rb').read()
+want = "2026081122051700"
+got = d[75:91].decode('cp037')
+if got != want:
+    sys.exit("  FAIL: INMFTIME is %r, expected %r (LDDATE=26223 LDTIME=220517)" % (got, want))
+print("  OK: two runs identical, INMFTIME = %s" % got)
+EOF
+    then :; else fails=$((fails + 1)); fi
+else
+    echo "  FAIL: two pinned runs produced different .xmit -- INMFTIME is not pinned"
+    fails=$((fails + 1))
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"
