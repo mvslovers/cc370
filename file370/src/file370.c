@@ -210,35 +210,31 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
 /* walk the byte-0 record stream; counts by type, notes the trailing MODEND */
 static void show_lmod(const char *path, const unsigned char *b, long n, int v)
 {
-    long p = 0;
     int ncesd = 0, nidr = 0, nctl = 0, ntext = 0, nrld = 0, last_modend = 0, bad = 0;
 
     if (v) printf("%s:\n", path);          /* header printed after the summary below */
 
-    while (p < n) {
-        int b0 = b[p], hi = b0 & 0xf0; long blen, tlen = 0; int txt = 0;
-        const char *kind;
-        if (hi == 0x20) { kind = "CESD"; blen = 8 + mvs_be16(b + p + 6); ncesd++; }
-        else if (hi == 0x80) { kind = "IDR"; blen = b[p + 1] + 1; nidr++; }
-        else if (hi == 0x00) {                                /* control / RLD */
-            kind = "control"; nctl++;
-            txt = b0 & 0x01;
-            if (b0 & 0x02) nrld++;
-            if (b0 & 0x08) last_modend = 1;
-            tlen = txt ? mvs_be16(b + p + 14) : 0;
-            blen = 16 + mvs_be16(b + p + 4) + mvs_be16(b + p + 6);
-        } else { bad = 1; break; }
-
-        if (p + blen > n) { bad = 1; break; }
-        if (v) printf("    @%06lX  %-8s  %ld bytes%s\n", p, kind, blen,
-                      (hi == 0 && (b0 & 0x08)) ? "  (MODEND)" : "");
-        p += blen;
-        if (txt && tlen) {
-            ntext++;
-            if (p + tlen > n) { bad = 1; break; }
-            if (v) printf("    @%06lX  %-8s  %ld bytes\n", p, "text", tlen);
-            p += tlen;
+    {
+        struct lmod_iter it;
+        struct lmod_item r;
+        int rc;
+        lmod_iter_init(&it, b, n);
+        while ((rc = lmod_iter_next(&it, &r)) == 1) {
+            const char *kind;
+            switch (r.kind) {
+            case LMOD_CESD: kind = "CESD";    ncesd++; break;
+            case LMOD_IDR:  kind = "IDR";     nidr++;  break;
+            case LMOD_TEXT: kind = "text";    ntext++; break;
+            default:        kind = "control"; nctl++;
+                            if (r.flags & LMOD_CTL_RLD) nrld++;
+                            if (r.flags & LMOD_CTL_END) last_modend = 1;
+                            break;
+            }
+            if (v) printf("    @%06lX  %-8s  %ld bytes%s\n", r.off, kind, r.len,
+                          (r.kind == LMOD_CTL && (r.flags & LMOD_CTL_END))
+                              ? "  (MODEND)" : "");
         }
+        if (rc < 0) bad = 1;
     }
 
     /* the summary line goes first when not verbose; when verbose it was preceded

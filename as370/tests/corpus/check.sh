@@ -72,7 +72,7 @@ fi
 
 git -C "$ROOT" archive "$BASE" as370 common | tar -x -C "$TMP" || exit 2
 cc -O2 -w -I"$TMP/as370/include" -I"$TMP/common/include" \
-    -o "$TMP/as370.base" "$TMP/as370/src/as370.c" "$TMP/common/src/mvs370.c" \
+    -o "$TMP/as370.base" "$TMP/as370/src/as370.c" "$TMP/common/src"/*.c \
     || { echo "corpus: baseline as370 ($BASE) does not build"; exit 2; }
 
 # every committed .asm/.s under libc370 except the work-in-progress tree

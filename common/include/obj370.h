@@ -116,4 +116,59 @@ struct obj_end {
 /* Decode one END card.  Returns 1 on success, 0 if `card` is not an END card. */
 int obj_end_get(const unsigned char *card, struct obj_end *e);
 
+/* ---- load-module records ----
+ * A bound member is a stream of self-describing records, each identified by the
+ * high nibble of its first byte.  ld370 walks it to split a member into blocks
+ * and to recover its length; file370 walks it to describe one.  cmplmd370 (#110)
+ * needs it as its MAIN path -- a DLIB member is a bound LOAD MODULE, not an
+ * object deck, so the binder sits in between and every adcon is relocated.
+ */
+enum lmod_kind {
+    LMOD_DONE = 0,
+    LMOD_CESD,          /* composite ESD                                     */
+    LMOD_IDR,           /* identification record (translator / SPZAP / LKED)  */
+    LMOD_CTL,           /* control (and RLD) record                          */
+    LMOD_TEXT           /* the pure-text record a control record announces    */
+};
+
+/* Control-record byte-0 bits. */
+enum { LMOD_CTL_TEXT = 0x01,    /* a text record follows this one   */
+       LMOD_CTL_RLD  = 0x02,    /* this record carries RLD items    */
+       LMOD_CTL_END  = 0x08 };  /* MODEND: last control record      */
+
+struct lmod_item {
+    enum lmod_kind kind;
+    long off;                   /* offset of the record within the member */
+    long len;                   /* its length in bytes                    */
+    int  flags;                 /* LMOD_CTL: byte 0; otherwise 0          */
+};
+
+struct lmod_iter {
+    const unsigned char *m;
+    long n, p, pending;         /* pending = length of an announced text record */
+};
+
+void lmod_iter_init(struct lmod_iter *it, const unsigned char *m, long n);
+/* 1 = item returned, 0 = end of member, -1 = malformed (unknown record type or
+ * a length running past the end).  A caller that stops early just stops. */
+int  lmod_iter_next(struct lmod_iter *it, struct lmod_item *out);
+
+/* ---- the composite ESD inside a load module ----
+ * Same 16-byte item shape as an object deck's ESD, but the records are the
+ * LMOD_CESD ones and there is no per-card ESDID numbering: an entry's position
+ * in the stream IS its id, counting from 1.
+ */
+struct lmod_esd {
+    const unsigned char *name;  /* 8 bytes, EBCDIC (not copied) */
+    int  type;                  /* full type byte, not just the low nibble */
+    int  esdid;                 /* 1-based position in the CESD */
+    long addr;                  /* section origin, or an LR's address */
+    long len;                   /* section length, or an LR's owning ESDID */
+};
+
+/* Walk every CESD entry of a member, in order.  Returns the number reported;
+ * `fn` may be NULL to count.  Stops early if `fn` returns 0. */
+int lmod_cesd_walk(const unsigned char *m, long n,
+                   int (*fn)(const struct lmod_esd *e, void *ctx), void *ctx);
+
 #endif /* OBJ370_H */

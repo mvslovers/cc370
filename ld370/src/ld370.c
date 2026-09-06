@@ -32,6 +32,7 @@
 #include <time.h>
 
 #include "mvs370.h"
+#include "obj370.h"
 
 /* big-endian access, CP037 and the NETDATA layer come from common/mvs370. */
 static long roundup8(long v) { return (v + 7) & ~7L; }
@@ -728,7 +729,7 @@ struct umember {
  * Returns block count, or -1 on an unrecognised record. */
 static int split_member(const unsigned char *m, long n, struct lmblock **out)
 {
-    long p = 0; int k = 0, cap = 256;
+    int k = 0, cap = 256;
     struct lmblock *b = malloc(cap * sizeof *b);
     *out = NULL;
     if (!b) return -1;
@@ -737,28 +738,14 @@ static int split_member(const unsigned char *m, long n, struct lmblock **out)
                         if (!b) return -1; }                          \
         b[k].off = (O); b[k].len = (L); b[k].is_text = (T); k++;      \
     } while (0)
-    while (p < n) {
-        int b0 = m[p], hi = b0 & 0xf0; long blen;
-        if (hi == 0x20) {                               /* CESD */
-            blen = 8 + mvs_be16(m + p + 6);
-        } else if (hi == 0x80) {                        /* IDR */
-            blen = m[p + 1] + 1;
-        } else if (hi == 0x00) {                        /* control / RLD record (16-byte hdr) */
-            int txt = b0 & 0x01;                        /* TXT bit -> pure-text record follows */
-            long tlen = txt ? mvs_be16(m + p + 14) : 0;     /* its length = the control record's CCW count */
-            blen = 16 + mvs_be16(m + p + 4) + mvs_be16(m + p + 6);
-            ADDBLK(p, blen, 0);
-            p += blen;
-            if (txt && tlen) {
-                ADDBLK(p, tlen, 1);
-                p += tlen;
-            }
-            continue;                                   /* self-contained; skip the CESD/IDR tail below */
-        } else {
-            free(b); return -1;                         /* SYM/scatter: not produced by cc370/as370 yet */
-        }
-        ADDBLK(p, blen, 0);                              /* CESD / IDR: one block, advance and loop */
-        p += blen;
+    {
+        struct lmod_iter it;
+        struct lmod_item r;
+        int rc;
+        lmod_iter_init(&it, m, n);
+        while ((rc = lmod_iter_next(&it, &r)) == 1)
+            ADDBLK(r.off, r.len, r.kind == LMOD_TEXT);
+        if (rc < 0) { free(b); return -1; }   /* SYM/scatter: not produced by us */
     }
 #undef ADDBLK
     *out = b;
@@ -771,20 +758,23 @@ static int split_member(const unsigned char *m, long n, struct lmblock **out)
  * section's final addr + length; the module spans 0..max(addr+len), and the
  * single-link path stores roundup8 of that (== roundup8(running)).  SD(0x00),
  * PC(0x04) and CM(0x05) are the section types that reserve storage. */
+static int modlen_cesd(const struct lmod_esd *e, void *ctx)
+{
+    long *maxend = ctx;
+    /* Full type byte here, not the low nibble: a load module's CESD carries
+     * 0x00/0x04/0x05 for the sections that own storage, and this is what the
+     * original scan tested. */
+    if (e->type == 0x00 || e->type == 0x04 || e->type == 0x05) {
+        long end = e->addr + e->len;
+        if (end > *maxend) *maxend = end;
+    }
+    return 1;
+}
+
 static long member_modlen(const unsigned char *m, long n)
 {
-    long maxend = 0, p = 0;
-    while (p + 8 <= n && (m[p] & 0xf0) == 0x20) {        /* CESD record */
-        long cnt = mvs_be16(m + p + 6), it;
-        for (it = 8; it + 16 <= 8 + cnt && p + it + 16 <= n; it += 16) {
-            int ty = m[p + it + 8];
-            if (ty == 0x00 || ty == 0x04 || ty == 0x05) {
-                long end = mvs_be24(m + p + it + 9) + mvs_be24(m + p + it + 13);
-                if (end > maxend) maxend = end;
-            }
-        }
-        p += 8 + cnt;
-    }
+    long maxend = 0;
+    lmod_cesd_walk(m, n, modlen_cesd, &maxend);
     return roundup8(maxend);
 }
 
