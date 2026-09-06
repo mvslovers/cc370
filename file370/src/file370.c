@@ -21,56 +21,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mvs370.h"
+
 #define VERSION_STR "file370 V1.0"
 
-/* ---- EBCDIC (CP037) -> ASCII, single char (matches ld370/ar370 e2a1) ---- */
-static char e2a1(unsigned char e)
-{
-    if (e >= 0xC1 && e <= 0xC9) return (char)('A' + (e - 0xC1));
-    if (e >= 0xD1 && e <= 0xD9) return (char)('J' + (e - 0xD1));
-    if (e >= 0xE2 && e <= 0xE9) return (char)('S' + (e - 0xE2));
-    if (e >= 0xF0 && e <= 0xF9) return (char)('0' + (e - 0xF0));
-    if (e == 0x40) return ' ';
-    if (e == 0x5B) return '$';
-    if (e == 0x7B) return '#';
-    if (e == 0x7C) return '@';
-    if (e == 0x6D) return '_';
-    return '?';
-}
-/* decode an 8-byte EBCDIC, space-padded name into a trimmed ASCII string */
-static const char *nm(const unsigned char *n)
-{
-    static char b[9]; int i;
-    for (i = 0; i < 8; i++) b[i] = e2a1(n[i]);
-    b[8] = 0;
-    for (i = 7; i >= 0 && b[i] == ' '; i--) b[i] = 0;
-    return b;
-}
+/* EBCDIC and big-endian primitives come from common/mvs370.  Everything that
+ * gets PRINTED goes through mvs_e2a_pr(): the full CP037 inverse with '?' for
+ * anything not printable ASCII. */
+
 /* decode a run of EBCDIC bytes into ASCII (into a caller buffer) */
 static void e2a_n(char *dst, const unsigned char *src, int n)
 {
     int i;
-    for (i = 0; i < n; i++) dst[i] = e2a1(src[i]);
+    for (i = 0; i < n; i++) dst[i] = mvs_e2a_pr(src[i]);
     dst[n] = 0;
-}
-
-/* ---- big-endian field access ---- */
-static int be16(const unsigned char *p) { return (p[0] << 8) | p[1]; }
-static long be24(const unsigned char *p) { return ((long)p[0] << 16) | (p[1] << 8) | p[2]; }
-static unsigned long be32(const unsigned char *p)
-{ return ((unsigned long)p[0] << 24) | ((unsigned long)p[1] << 16) | (p[2] << 8) | p[3]; }
-
-/* read a whole file into a malloc'd buffer (caller frees) */
-static unsigned char *read_file(const char *path, long *len)
-{
-    FILE *f = fopen(path, "rb"); long n; unsigned char *b; size_t got;
-    if (!f) { perror(path); return NULL; }
-    fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
-    if (n < 0) { fclose(f); return NULL; }
-    b = malloc((size_t)(n > 0 ? n : 1));
-    if (!b) { fclose(f); return NULL; }
-    got = fread(b, 1, (size_t)n, f); (void)got; fclose(f);
-    *len = n; return b;
 }
 
 /* ---- format detection ---- */
@@ -129,14 +93,14 @@ static void show_obj(const char *path, const unsigned char *b, long n, int v)
         const unsigned char *c = b + off;
         if (c[0] != 0x02) continue;
         if (c[1] == 0xC5 && c[2] == 0xE2 && c[3] == 0xC4) {            /* ESD */
-            int cnt = be16(c + 10), k;
+            int cnt = mvs_be16(c + 10), k;
             for (k = 0; k < cnt / 16; k++) {
                 const unsigned char *e = c + 16 + (long)k * 16;
                 int ty = e[8] & 0x0f;
                 if (ty == 0x00 || ty == 0x04 || ty == 0x05) {
                     if (ty == 0x05) ncm++; else nsd++;
                     if (!first_sect[0]) {
-                        const char *s = nm(e);
+                        const char *s = mvs_nm(e);
                         if (s[0]) strcpy(first_sect, s);
                         else strcpy(first_sect, "(private)");
                     }
@@ -144,12 +108,12 @@ static void show_obj(const char *path, const unsigned char *b, long n, int v)
                 else if (ty == 0x02 || ty == 0x0A) ner++;
             }
         } else if (c[1] == 0xE3 && c[2] == 0xE7 && c[3] == 0xE3) {     /* TXT */
-            textbytes += be16(c + 10);
+            textbytes += mvs_be16(c + 10);
         } else if (c[1] == 0xD9 && c[2] == 0xD3 && c[3] == 0xC4) {     /* RLD */
             nrld++;
         } else if (c[1] == 0xC5 && c[2] == 0xD5 && c[3] == 0xC4) {     /* END */
             if (!(c[5] == 0x40 && c[6] == 0x40 && c[7] == 0x40)) {
-                has_entry = 1; entry_off = be24(c + 5);
+                has_entry = 1; entry_off = mvs_be24(c + 5);
             }
         }
     }
@@ -169,21 +133,21 @@ static void show_obj(const char *path, const unsigned char *b, long n, int v)
         const unsigned char *c = b + off;
         if (c[0] != 0x02 || !(c[1] == 0xC5 && c[2] == 0xE2 && c[3] == 0xC4)) continue;
         {
-            int cnt = be16(c + 10), first = be16(c + 14), k, nid = 0;
+            int cnt = mvs_be16(c + 10), first = mvs_be16(c + 14), k, nid = 0;
             for (k = 0; k < cnt / 16; k++) {
                 const unsigned char *e = c + 16 + (long)k * 16;
                 int ty = e[8] & 0x0f;
                 if (ty == 0x01) {                                     /* LD: no ESDID */
-                    printf("    ESD  --   %-8s  LD  addr=%06lX\n", nm(e), be24(e + 9));
+                    printf("    ESD  --   %-8s  LD  addr=%06lX\n", mvs_nm(e), mvs_be24(e + 9));
                     continue;
                 }
                 if (ty == 0x02 || ty == 0x0A)                         /* ER/WX: no addr/len */
                     printf("    ESD  %3d  %-8s  %s\n",
-                           first + nid, nm(e)[0] ? nm(e) : "(blank)", esd_type(ty));
+                           first + nid, mvs_nm(e)[0] ? mvs_nm(e) : "(blank)", esd_type(ty));
                 else                                                  /* SD/PC/CM section */
                     printf("    ESD  %3d  %-8s  %s  addr=%06lX  len=%06lX\n",
-                           first + nid, nm(e)[0] ? nm(e) : "(blank)", esd_type(ty),
-                           be24(e + 9), be24(e + 13));
+                           first + nid, mvs_nm(e)[0] ? mvs_nm(e) : "(blank)", esd_type(ty),
+                           mvs_be24(e + 9), mvs_be24(e + 13));
                 nid++;
             }
         }
@@ -207,7 +171,7 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
         size = atol((const char *)b + p + 48);
         if (name[0] == '/' && (name[1] == ' ' || name[1] == 0)) {     /* "/" symtab */
             symtab = b + p + 60; symsize = size;
-            if (size >= 4) nsym = (long)be32(b + p + 60);
+            if (size >= 4) nsym = (long)mvs_be32(b + p + 60);
         } else if (name[0] == '/' && name[1] == '/') {                /* "//" longnames */
             /* GNU long-name table -- not counted as an object member */
         } else {
@@ -256,15 +220,15 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v)
     while (p < n) {
         int b0 = b[p], hi = b0 & 0xf0; long blen, tlen = 0; int txt = 0;
         const char *kind;
-        if (hi == 0x20) { kind = "CESD"; blen = 8 + be16(b + p + 6); ncesd++; }
+        if (hi == 0x20) { kind = "CESD"; blen = 8 + mvs_be16(b + p + 6); ncesd++; }
         else if (hi == 0x80) { kind = "IDR"; blen = b[p + 1] + 1; nidr++; }
         else if (hi == 0x00) {                                /* control / RLD */
             kind = "control"; nctl++;
             txt = b0 & 0x01;
             if (b0 & 0x02) nrld++;
             if (b0 & 0x08) last_modend = 1;
-            tlen = txt ? be16(b + p + 14) : 0;
-            blen = 16 + be16(b + p + 4) + be16(b + p + 6);
+            tlen = txt ? mvs_be16(b + p + 14) : 0;
+            blen = 16 + mvs_be16(b + p + 4) + mvs_be16(b + p + 6);
         } else { bad = 1; break; }
 
         if (p + blen > n) { bad = 1; break; }
@@ -321,7 +285,7 @@ static void pds2_attrs(const unsigned char *ud, int nud, char *out, size_t cap)
  * Returns the number of member entries found.  `indent` prefixes each line. */
 static int show_dir_block(const unsigned char *blk, const char *indent, int v)
 {
-    int used = be16(blk), p = 2, members = 0;
+    int used = mvs_be16(blk), p = 2, members = 0;
     if (used < 2 || used > 256) used = 256;
     while (p + 12 <= used) {
         const unsigned char *e = blk + p;
@@ -333,17 +297,17 @@ static int show_dir_block(const unsigned char *blk, const char *indent, int v)
         nud = (c & 0x1f) * 2;                       /* user data length in bytes */
         ud = e + 12;
         members++;
-        printf("%smember %-8s%s  ttr=%06lX", indent, nm(e),
-               alias ? " (alias)" : "", be24(e + 8));
+        printf("%smember %-8s%s  ttr=%06lX", indent, mvs_nm(e),
+               alias ? " (alias)" : "", mvs_be24(e + 8));
         if (nud >= 18) {                            /* load-module PDS2 user data */
-            long modlen = be24(ud + 10), entry = be24(ud + 15);
+            long modlen = mvs_be24(ud + 10), entry = mvs_be24(ud + 15);
             char attrs[96];
             pds2_attrs(ud, nud, attrs, sizeof attrs);
             printf("  entry=%06lX  modlen=%ld", entry, modlen);
             if (attrs[0]) printf("  [%s]", attrs);
             if (v) {
                 printf("\n%s         ATR1=%02X ATR2=%02X  AC=%02X  PDS2TTRT=%06lX",
-                       indent, ud[8], ud[9], (nud >= 24) ? ud[22] : 0, be24(ud));
+                       indent, ud[8], ud[9], (nud >= 24) ? ud[22] : 0, mvs_be24(ud));
             }
         }
         printf("\n");
@@ -369,15 +333,15 @@ static void show_iebcopy(const char *path, const unsigned char *b, long n, int v
         /* one-liner: name the member(s) inline, across all directory blocks */
         long dp = UNLOAD_ENVHDR; int first = 1;
         printf(" --");
-        while (dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && be16(b + dp + 10) == 256) {
+        while (dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && mvs_be16(b + dp + 10) == 256) {
             const unsigned char *blk = b + dp + 20;
-            int used = be16(blk), p = 2;
+            int used = mvs_be16(blk), p = 2;
             if (used < 2 || used > 256) used = 256;
             while (p + 12 <= used) {
                 const unsigned char *e = blk + p; int c, nud;
                 if (memcmp(e, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF", 8) == 0) break;
                 c = e[11]; nud = (c & 0x1f) * 2;
-                printf("%s member %s", first ? "" : ",", nm(e));
+                printf("%s member %s", first ? "" : ",", mvs_nm(e));
                 first = 0; members++;
                 p += 12 + nud;
             }
@@ -395,7 +359,7 @@ static void show_iebcopy(const char *path, const unsigned char *b, long n, int v
          * records (>6 members spill into further blocks), ending at the EOD
          * marker; walk them all. */
         long dp = UNLOAD_ENVHDR; int nblk = 0;
-        while (dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && be16(b + dp + 10) == 256) {
+        while (dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && mvs_be16(b + dp + 10) == 256) {
             members += show_dir_block(b + dp + 20, "    ", v);
             dp += 12 + 8 + 256; nblk++;
         }
@@ -415,15 +379,15 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
 {
     long p = (r[5] == 0xF2) ? 10 : 6;
     while (p + 4 <= len) {
-        int key = be16(r + p), num = be16(r + p + 2);
+        int key = mvs_be16(r + p), num = mvs_be16(r + p + 2);
         long vp = p + 4;                            /* first value: len(2)+data */
         if (key == 0x0002) {                        /* INMDSNAM: num qualifiers */
             char dsn[64]; int dl = 0, q; long t = vp;
             for (q = 0; q < num && t + 2 <= len; q++) {
-                int ql = be16(r + t); t += 2;
+                int ql = mvs_be16(r + t); t += 2;
                 if (t + ql > len) break;
                 if (q && dl < 62) dsn[dl++] = '.';
-                { int z; for (z = 0; z < ql && dl < 62; z++) dsn[dl++] = e2a1(r[t + z]); }
+                { int z; for (z = 0; z < ql && dl < 62; z++) dsn[dl++] = mvs_e2a_pr(r[t + z]); }
                 t += ql;
             }
             dsn[dl] = 0;
@@ -435,11 +399,11 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
                              key == 0x1002 ? "INMTUID " : key == 0x1011 ? "INMFNODE" :
                              key == 0x1012 ? "INMFUID " : key == 0x1024 ? "INMFTIME" : NULL;
             if (kn && vp + 2 <= len) {
-                int sl = be16(r + vp); char s[64];
+                int sl = mvs_be16(r + vp); char s[64];
                 if (sl > 63) sl = 63;
                 if (vp + 2 + sl <= len) { e2a_n(s, r + vp + 2, sl); printf("%s%s   %s\n", indent, kn, s); }
             } else if (key == 0x0049 && vp + 4 <= len) {        /* INMRECFM */
-                int code = be16(r + vp + 2);
+                int code = mvs_be16(r + vp + 2);
                 printf("%sINMRECFM   %s\n", indent,
                        (code & 0xC000) == 0xC000 ? "U" : (code & 0x4800) == 0x4800 ? "VS" :
                        (code & 0x8000) ? "F" : (code & 0x4000) ? "V" : "data");
@@ -447,7 +411,7 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
                         key == 0x102c || key == 0x000c) && vp + 2 <= len) {
                 /* integer DCB / allocation text units: BLKSIZE, LRECL, DSORG,
                  * INMSIZE (alloc size hint), INMDIR (directory blocks) */
-                int vl = be16(r + vp), z; long val = 0;
+                int vl = mvs_be16(r + vp), z; long val = 0;
                 for (z = 0; z < vl && vp + 2 + z < len; z++) val = (val << 8) | r[vp + 2 + z];
                 if (key == 0x003c)                              /* INMDSORG */
                     printf("%sINMDSORG   %s\n", indent,
@@ -459,7 +423,7 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
                            key == 0x102c ? "INMSIZE " : "INMDIR  ", val);
             }
         }
-        { int j; long q = vp; for (j = 0; j < num && q + 2 <= len; j++) { int l = be16(r + q); q += 2 + l; } p = q; }
+        { int j; long q = vp; for (j = 0; j < num && q + 2 <= len; j++) { int l = mvs_be16(r + q); q += 2 + l; } p = q; }
     }
 }
 
@@ -493,25 +457,25 @@ static void show_xmit(const char *path, const unsigned char *b, long n, int v)
                     if (which == 2 && !utility[0]) {
                         long q = 10;
                         while (q + 4 <= reclen) {
-                            int key = be16(rec + q), num = be16(rec + q + 2);
+                            int key = mvs_be16(rec + q), num = mvs_be16(rec + q + 2);
                             long vp = q + 4;
                             if (key == 0x1028 && vp + 2 <= reclen) {        /* INMUTILN */
-                                int sl = be16(rec + vp); if (sl > 15) sl = 15;
+                                int sl = mvs_be16(rec + vp); if (sl > 15) sl = 15;
                                 if (vp + 2 + sl <= reclen) e2a_n(utility, rec + vp + 2, sl);
                             }
                             if (key == 0x0002) {                            /* INMDSNAM */
                                 int dl = 0, qq; long t = vp;
                                 for (qq = 0; qq < num && t + 2 <= reclen; qq++) {
-                                    int ql = be16(rec + t); t += 2;
+                                    int ql = mvs_be16(rec + t); t += 2;
                                     if (t + ql > reclen) break;
                                     if (qq && dl < 62) target_dsn[dl++] = '.';
-                                    { int z; for (z = 0; z < ql && dl < 62; z++) target_dsn[dl++] = e2a1(rec[t + z]); }
+                                    { int z; for (z = 0; z < ql && dl < 62; z++) target_dsn[dl++] = mvs_e2a_pr(rec[t + z]); }
                                     t += ql;
                                 }
                                 target_dsn[dl] = 0;
                                 q = t; continue;
                             }
-                            { int j; long t = vp; for (j = 0; j < num && t + 2 <= reclen; j++) { int l = be16(rec + t); t += 2 + l; } q = t; }
+                            { int j; long t = vp; for (j = 0; j < num && t + 2 <= reclen; j++) { int l = mvs_be16(rec + t); t += 2 + l; } q = t; }
                         }
                     }
                 }
@@ -532,14 +496,14 @@ static void show_xmit(const char *path, const unsigned char *b, long n, int v)
         int nmemb = 0;
         if (inner == F_IEBCOPY) {                    /* count members across all dir blocks */
             long dp = UNLOAD_ENVHDR;
-            while (dp + 12 + 8 + 256 <= datalen && data[dp + 9] == 8 && be16(data + dp + 10) == 256) {
+            while (dp + 12 + 8 + 256 <= datalen && data[dp + 9] == 8 && mvs_be16(data + dp + 10) == 256) {
                 const unsigned char *blk = data + dp + 20;
-                int used = be16(blk), q = 2;
+                int used = mvs_be16(blk), q = 2;
                 if (used < 2 || used > 256) used = 256;
                 while (q + 12 <= used) {
                     const unsigned char *e = blk + q;
                     if (memcmp(e, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF", 8) == 0) break;
-                    if (!nmemb) member = nm(e);      /* first member name */
+                    if (!nmemb) member = mvs_nm(e);      /* first member name */
                     nmemb++;
                     q += 12 + (e[11] & 0x1f) * 2;
                 }
@@ -592,9 +556,9 @@ static void show_xmit(const char *path, const unsigned char *b, long n, int v)
 /* ====================================================================== */
 static int inspect(const char *path, int v)
 {
-    long n; unsigned char *b = read_file(path, &n);
+    long n; unsigned char *b = mvs_read_file(path, &n);
     enum fmt f;
-    if (!b) return 1;
+    if (!b) { perror(path); return 1; }
     if (n == 0) { printf("%s: empty file\n", path); free(b); return 0; }
     f = detect(b, n);
     switch (f) {

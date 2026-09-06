@@ -20,23 +20,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mvs370.h"
+
 #define MAXOBJ 2048
 #define MAXSYM 16384
-
-/* EBCDIC (CP037) -> ASCII, for ESD symbol names (uppercase/digits/nationals) */
-static char e2a1(unsigned char e)
-{
-    if (e >= 0xC1 && e <= 0xC9) return (char)('A' + (e - 0xC1));
-    if (e >= 0xD1 && e <= 0xD9) return (char)('J' + (e - 0xD1));
-    if (e >= 0xE2 && e <= 0xE9) return (char)('S' + (e - 0xE2));
-    if (e >= 0xF0 && e <= 0xF9) return (char)('0' + (e - 0xF0));
-    if (e == 0x40) return ' ';
-    if (e == 0x5B) return '$';
-    if (e == 0x7B) return '#';
-    if (e == 0x7C) return '@';
-    if (e == 0x6D) return '_';
-    return '?';
-}
 
 struct objf { const char *member; unsigned char *data; long size; };
 struct sym  { char name[64]; int obj; };
@@ -70,23 +57,13 @@ static void scan_esd(int oi)
             int t = e[8] & 0x0f, j, blank = 1;
             char nm[9];
             if (!(t == 0x00 || t == 0x01 || t == 0x04 || t == 0x05)) continue;  /* SD/LD/PC/CM */
-            for (j = 0; j < 8; j++) { nm[j] = e2a1(e[j]); if (e[j] != 0x40) blank = 0; }
+            for (j = 0; j < 8; j++) { nm[j] = mvs_e2a_pr(e[j]); if (e[j] != 0x40) blank = 0; }
             nm[8] = 0;
             for (j = 7; j >= 0 && nm[j] == ' '; j--) nm[j] = 0;
             if (blank) continue;                                    /* unnamed private code */
             if (nS < MAXSYM) { strcpy(S[nS].name, nm); S[nS].obj = oi; nS++; }
         }
     }
-}
-
-static unsigned char *read_file(const char *path, long *len)
-{
-    FILE *f = fopen(path, "rb"); long n; unsigned char *b; size_t got;
-    if (!f) { perror(path); return NULL; }
-    fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
-    b = malloc((size_t)n ? (size_t)n : 1);
-    got = fread(b, 1, (size_t)n, f); (void)got; fclose(f);
-    *len = n; return b;
 }
 
 /* write a 60-byte `ar` member header with a verbatim 16-byte name field */
@@ -97,17 +74,14 @@ static void ar_hdr(FILE *f, const char *namefield, long size)
              namefield, 0, 0, 0, "100644", size);
     fwrite(h, 1, 60, f);
 }
-static void put_be32(unsigned char *p, unsigned long v)
-{ p[0] = (v >> 24) & 0xff; p[1] = (v >> 16) & 0xff; p[2] = (v >> 8) & 0xff; p[3] = v & 0xff; }
-
 static int create(const char *arch, int argc, char **argv, int first)
 {
     long stringtab = 0, symdata, symmember, off; int i, s; FILE *f;
 
     for (i = first; i < argc && nO < MAXOBJ; i++) {
         O[nO].member = basename_of(argv[i]);
-        O[nO].data = read_file(argv[i], &O[nO].size);
-        if (!O[nO].data) return 1;
+        O[nO].data = mvs_read_file(argv[i], &O[nO].size);
+        if (!O[nO].data) { perror(argv[i]); return 1; }
         scan_esd(nO);
         nO++;
     }
@@ -127,8 +101,8 @@ static int create(const char *arch, int argc, char **argv, int first)
     fwrite("!<arch>\n", 1, 8, f);
 
     ar_hdr(f, "/", symdata);
-    { unsigned char b[4]; put_be32(b, (unsigned long)nS); fwrite(b, 1, 4, f); }
-    for (s = 0; s < nS; s++) { unsigned char b[4]; put_be32(b, (unsigned long)objoff[S[s].obj]); fwrite(b, 1, 4, f); }
+    { unsigned char b[4]; mvs_put32(b, (unsigned long)nS); fwrite(b, 1, 4, f); }
+    for (s = 0; s < nS; s++) { unsigned char b[4]; mvs_put32(b, (unsigned long)objoff[S[s].obj]); fwrite(b, 1, 4, f); }
     for (s = 0; s < nS; s++) fwrite(S[s].name, 1, strlen(S[s].name) + 1, f);
     if (symdata & 1) fputc('\n', f);
 
@@ -145,8 +119,8 @@ static int create(const char *arch, int argc, char **argv, int first)
 /* list members + the symbol table of an existing archive */
 static int list(const char *arch)
 {
-    long n; unsigned char *a = read_file(arch, &n); long p = 8; int s;
-    if (!a) return 1;
+    long n; unsigned char *a = mvs_read_file(arch, &n); long p = 8; int s;
+    if (!a) { perror(arch); return 1; }
     if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ar370: %s: not an archive\n", arch); return 1; }
     while (p + 60 <= n) {
         char name[17], szs[11]; long size;
