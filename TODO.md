@@ -10,10 +10,12 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-06 — 33 open. #109's `libmvs370`
-half is in (PR #116, #119) and `libobj370` is **not started**; #117 and #118 were
-filed out of #119's review and are open defects inside the emitters. See the
-format-library band and *Recently landed*. Before that, 2026-09-04: #99 closed, and
+*Last reconciled against the tracker: 2026-09-06, second pass — five PRs merged
+that day (#116, #119, #120, #121 for #109; #122, #123, #124 for #110). `#110` is
+functionally complete and accepted by its consumer; `#109`'s readers are in and
+only the as370/ld370/ar370 adoption is left. #117 and #118 remain open defects
+inside the emitters. See the format-library band and *Recently landed*. Before
+that, 2026-09-04: #99 closed, and
 **seven new issues filed the same day — #108, #109, #110, #111, #112, #113,
 #115** — of which **#115 was closed again within hours, because the report was
 wrong and as370 was right** (see *Recently landed*; it is the most useful thing
@@ -63,8 +65,8 @@ Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
-library and the tools on it** (#109 readers → #110, #111, #112; #113, #117, #118
-alongside — the only band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
+library and the tools on it** (#109 adoption left; #110 done; #111, #112, #113,
+#117, #118 open — the only band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
 #103), **observability** (#9, #106), **listing fidelity** (#24, #28, #91),
 **deferred** (#36).
 
@@ -297,16 +299,19 @@ system ships; the comparison **is** its success criterion, and an agent works th
 loop unattended. That is a harder contract than the C ecosystem ever placed on
 these tools — it needs machine-readable output and exit codes that mean one thing.
 
-**#109 is the gate. `libmvs370` is done; `libobj370` has not been started.**
-PR #116 adopted the shared primitives and PR #119 moved the 3350 geometry and the
-COPYR1/COPYR2 template. Both are the *byte* layer. The **object-record** layer
-the issue title names — ESD, TXT, RLD, END — is untouched: `grep -ciE
-'esd|rld|\btxt\b' common/*` returns **0**, while as370, ld370, file370 and
-ar370 still decode those records themselves.
+**#109: `libmvs370` done, `libobj370`'s READERS done, its adoption pending.**
+PRs #116 and #119 moved the byte layer (primitives, 3350 geometry, the
+COPYR1/COPYR2 template). PRs #120 and #121 built `common/obj370` — the
+object-record layer the issue title names — and put **file370** on it: ESD, TXT,
+RLD, END, plus the load-module record walk and CESD.
 
-This file said "the first half landed, the emitters remain". That was wrong in a
-way worth keeping visible, because it made the rest look like one deferred mass:
-it omitted that half of the library named in the title does not exist yet.
+**as370, ld370 and ar370 still carry their own object-deck ESD copies.** That is
+the last of the reader half, and it is the one piece here on nobody's critical
+path.
+
+This file once said "the first half landed, the emitters remain". That was wrong
+in a way worth keeping visible, because it made the rest look like one deferred
+mass: it omitted that half of the library named in the title did not exist yet.
 
 **What landed is worth carrying, because it was not what the issue assumed.**
 `common/mvs370` already existed — added with xmit370 in `51bdf5b` — and only
@@ -343,8 +348,8 @@ those do not already cover.
 
 | | depends on | what it is |
 |---|---|---|
-| #109 | — | `libmvs370` **done** (#116, #119); `libobj370` **not started** — see the split above |
-| #110 | #109 readers | `cmplmd370` — object deck vs. CSECT with tolerated differences (`--difin`/`--difout`, `--clearrld`). Exit 0 **only** on identity |
+| #109 | — | `libmvs370` **done** (#116, #119); `libobj370` **readers done** (#120, #121); **adoption of as370/ld370/ar370 open** |
+| #110 | — | `cmplmd370` — **built and accepted** (#122, #123, #124). Compare, `--clearrld`, `--csect`, `--difin`/`--difout`, `--json`, hole classification |
 | #111 | #109 readers | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
 | #112 | #109 readers | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
 | #113 | *ownership only* | read a **foreign** IEBCOPY unload — an FB source library unloaded by MVS parses to zero members today |
@@ -489,6 +494,35 @@ Pointers only. The reasoning lives in the issues and their PRs.
   the bytes a current link actually produces (`80 15 82`, product, V/M, packed
   `YYDDDF` and `0HHMMSSF`). The last change to `ld370.c` — the tool has been
   untouched since 2026-08-13.
+- **#110 `cmplmd370` / PRs #122, #123, #124** — the host COMPare Load MoDule, and
+  the recovery project's success criterion. It compares an as370 object deck
+  directly against the shipped DLIB **load module**, which works only because
+  the binder relocates adcons but does not touch instructions: zero them on both
+  sides and the rest is comparable without reproducing IBM's bind. Hence
+  `--clearrld` defaults ON, as Dave Kreiss' `CLEARRLD` did.
+  **Result over 102 real pairs:** 18 byte-identical, 9 differing only in `DS`
+  holes, 9 mixed, 14 differing inside generated text, 52 length mismatches — and
+  all 52 correctly reported, no crash anywhere. Accepted by its consumer.
+  Three things worth keeping. **A tool can compute what looked like hand
+  analysis:** our own TXT cards say which offsets the assembler wrote, so a
+  differing byte outside them is DS-hole residue rather than a disagreement —
+  the tool finds exactly the nine modules that were identified by hand.
+  **Real material found two bugs no self-generated case could:** a text record
+  reaching past the sum of section lengths (binder padding) made every reference
+  byte read as zero, which looks exactly like a difference at offset 0; and
+  clusters were collected into a fixed 64, so `--difout` silently omitted every
+  range past the 64th on a 319-cluster module. **The test now asserts the
+  property, not the symptom** — cluster lengths must sum to `diff_bytes`.
+  Closed avenue, recorded so nobody rebuilds it: a third verdict, "differs but
+  explained by a named zap", has no data. `SYS1.SMPPTS` carries only MVS/CE's
+  local layer (28 modules, none among ours); the zaps that left an IDR in 71 % of
+  DLIB members came from IBM's service process and its data is not on the system.
+- **#109 `libobj370` readers / PRs #120, #121** — `common/obj370`: the object
+  record layer (ESD/TXT/RLD/END) and the load-module record walk, with file370
+  converted. The ESDID rule differs between the two and is the trap: a deck
+  numbers from its card's first-id field and skips LD items, a load module's
+  CESD position IS the id. Verified 114/114 against real IBM material by the
+  mvs38src session and 102/102 on the load-module side here.
 - **#109 `libmvs370` / PR #119** — the 3350 geometry, the UDEBX and COPYR1 field
   offsets and the 328-byte COPYR1/COPYR2 template move to `common/`, with
   `mvs_udebx_extent()` replacing the identical computation in both emitters. The

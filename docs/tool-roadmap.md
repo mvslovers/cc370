@@ -13,7 +13,12 @@ against the object the system ships. Those items are marked ▸ below and ranked
 `TODO.md`; the rest of this page is unchanged in status — nothing else here is
 scheduled.
 
-Phase 0 is **half done, and it is the `libmvs370` half**: all five tools share
+Phase 0's `libmvs370` half is done and `libobj370`'s **readers** are too; what
+is left there is putting as370, ld370 and ar370 on them. Phase 1's `cmplmd370`
+is built and accepted by its consumer — the first tool on this page to ship.
+
+Historical note, since the page argued the order: Phase 0 was **half done, and it
+was the `libmvs370` half**: all five tools share
 `common/mvs370` (PR #116), and the 3350 geometry plus the COPYR1/COPYR2 template
 moved there (PR #119). **`libobj370` has not been started** — `grep -ciE
 'esd|rld|\btxt\b' common/*` returns 0, and four tools still decode object
@@ -23,8 +28,8 @@ emitters; see the split under Phase 0.
 | | tool | issue |
 |---|---|---|
 | Phase 0 | `libmvs370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **done** (PR #116, #119) |
-| Phase 0 | `libobj370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **not started; this is what Phases 1-4 wait on** |
-| Phase 1 | `cmplmd370` | [#110](https://github.com/mvslovers/cc370/issues/110) — new to this page, see below |
+| Phase 0 | `libobj370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **readers done** (PR #120, #121); adopting as370/ld370/ar370 is what is left |
+| Phase 1 | `cmplmd370` | [#110](https://github.com/mvslovers/cc370/issues/110) — **built and accepted** (PR #122, #123, #124) |
 | Phase 2 | foreign IEBCOPY unloads | [#113](https://github.com/mvslovers/cc370/issues/113) — *with* libmvs370 by ownership, not behind it |
 | Phase 3 | `idrdump370` | [#111](https://github.com/mvslovers/cc370/issues/111) |
 | Phase 4 | `dasm370` (was `objdump370 -d` / `dis370`) | [#112](https://github.com/mvslovers/cc370/issues/112) |
