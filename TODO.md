@@ -60,6 +60,20 @@ externals, and #99 was the one place ld370 got them wrong. #99 landed on
 | 9 | #35 | as370 | one root cause under two known symptoms | nothing |
 | 10 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 
+**Ahead of all of it, agreed with `mvs38src` on 2026-09-06 and the only part of
+this file that is a joint plan rather than our own ranking:**
+
+| | Issue | Why here |
+|---|---|---|
+| A | **#141** | `SETC` is not substituted in open code — the variable NAME is emitted as data, at `rc=0`. Wrong bytes, not a missing diagnostic. 52 modules use it, 13 assemble, **none is byte-identical** against a tree base rate of 20 %. Its scope is also unmapped, which makes attribution in the whole length group uncertain — that is the reason it goes first. |
+| B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. |
+| C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
+
+`#117` and `#118` do not touch that consumer today — they upload over FTP and
+xmit370 is not in their chain. **At their M7 it changes**: `++PTF`/`++USERMOD`
+are to go out through `xmit370` and be received with `RECV370`, and #118 is then
+a silent defect with their name on it. Build it before M7, not now.
+
 Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 *Recently landed*.
 
@@ -245,6 +259,15 @@ module). Both sides must also see the **same macro libraries**, or the diff
 attributes nothing to anyone. That is what found #138. It does not retire this
 item — the gate here is still as370-against-as370 — but it changes what a
 committed corpus of decks would have to add on top.
+
+**And it is available as an acceptance gate, not only as a report.** `mvs38src`
+runs it on request: 4,533 assemblies, 4,108 comparisons against IBM's own
+object, roughly ten minutes, answering "N byte-identical, none lost" or not.
+Ask for it per tool rather than per branch, so a divergence names the tool.
+That is the right gate for any change that is supposed to alter nothing —
+the 743-module corpus here is our own output and has been structurally blind
+to whole classes: the scatter record, the resumed section, the base-register
+tie, and every `T'` defect moved none of it.
 
 ---
 
