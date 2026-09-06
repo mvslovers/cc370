@@ -76,6 +76,59 @@ case $? in
     *) fail "--csect with an unknown name exited $?, expected 2" ;;
 esac
 
+# --- the gap classification, which decides "recovered" from "not" -------
+# A differing byte no TXT card covers is one as370 never wrote: the loader
+# zeroed it and the shipped module's content there is DS-hole residue.  A
+# difference INSIDE generated text is a real disagreement.  The tool computes
+# that itself rather than leaving it to a reader, and these two cases were
+# established independently from the assembler listings.
+if [ -f "$FIX/dlib-102/IEFJDSNA.obj" ]; then
+    DD="$FIX/dlib-102"
+    $C "$DD/IEFJDSNA.obj" "$DD/IEFJDSNA.dlib" > "$TMP/g1.log" 2>&1
+    grep -q "ALL in DS holes" "$TMP/g1.log" \
+        && pass "IEFJDSNA: the one differing byte is classified as a DS hole" \
+        || fail "IEFJDSNA: not classified as a hole: $(sed -n 2p "$TMP/g1.log")"
+    $C "$DD/HMASMRCC.obj" "$DD/HMASMRCC.dlib" > "$TMP/g2.log" 2>&1
+    grep -q "all in GENERATED TEXT" "$TMP/g2.log" \
+        && pass "HMASMRCC: differs inside generated text, so a real divergence" \
+        || fail "HMASMRCC: not classified as generated text: $(sed -n 2p "$TMP/g2.log")"
+
+    # --- --difin, TWO-SIDED ------------------------------------------------
+    # The only option whose purpose is to SUPPRESS differences, so it is checked
+    # in both directions: with the file each module must pass, and WITHOUT it
+    # each must still fail.  A one-sided check would pass a --difin that masks
+    # everything, which is precisely how a comparator goes quietly green.
+    if [ -f "$FIX/holes.difin" ]; then
+        n_ok=0; n_bad=0
+        for m in AMDSAGTF IEFDB4FA IEFJDSNA IFDMSG53 IGG0CLB3 IGG0CLBR ISTINCR1 ISTZBFAM ISTZGFAB; do
+            $C --difin "$FIX/holes.difin" "$DD/$m.obj" "$DD/$m.dlib" >/dev/null 2>&1; w=$?
+            $C "$DD/$m.obj" "$DD/$m.dlib" >/dev/null 2>&1; wo=$?
+            if [ $w -eq 0 ] && [ $wo -ne 0 ]; then n_ok=$((n_ok + 1)); else n_bad=$((n_bad + 1)); fi
+        done
+        [ $n_bad -eq 0 ] && pass "--difin: 9 modules pass with it and fail without it" \
+                         || fail "--difin: $n_bad of 9 wrong (ok=$n_ok)"
+
+        # ...and it must not reach past what it lists.
+        if $C --difin "$FIX/holes.difin" "$DD/HMASMRCC.obj" "$DD/HMASMRCC.dlib" >/dev/null 2>&1; then
+            fail "--difin masked HMASMRCC, which it does not list"
+        else
+            pass "--difin does not mask a module it does not list"
+        fi
+    else
+        echo "SKIP: --difin (no $FIX/holes.difin)"
+    fi
+
+    # --- --difout must produce a file that closes its own comparison --------
+    $C --difout "$TMP/rt.difin" "$DD/IGG0CLB3.obj" "$DD/IGG0CLB3.dlib" >/dev/null 2>&1
+    if $C --difin "$TMP/rt.difin" "$DD/IGG0CLB3.obj" "$DD/IGG0CLB3.dlib" >/dev/null 2>&1; then
+        pass "--difout round-trips: its own output closes the comparison"
+    else
+        fail "--difout: the file it wrote does not close the comparison"
+    fi
+else
+    echo "SKIP: 102-pair cases (no $FIX/dlib-102)"
+fi
+
 echo
 echo "$fails failure(s)"
 exit $fails
