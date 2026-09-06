@@ -1,0 +1,54 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.14 09/06/26
+T         SD  0001 000000 00001E
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.14 09/06/26
+                                      1 * Typattribut eines selbstdefinierten Terms als Makroparameter.
+                                      2 *
+                                      3 * T' eines selbstdefinierten Terms ist 'N', unabhaengig von der
+                                      4 * Schreibweise.  Gemessen gegen IFOX00: X'C0D' und 4095 liefern
+                                      5 * beide [NUMERIC].  as370 lieferte fuer die hexadezimale Form
+                                      6 * [OTHER] und traf damit den falschen AIF-Zweig.
+                                      7 *
+                                      8 * Der Fall ist nicht akademisch.  SYS1.AMACLIB(ABEND) verzweigt
+                                      9 * auf genau diesem Test:
+                                     10 *
+                                     11 *     AIF   (T'&CC NE 'N').AA
+                                     12 *
+                                     13 * so dass "ABEND X'C0D',,,SYSTEM" bei as370 zu 24 Byte expandiert
+                                     14 * (B *+8 / DC AL4 / L / SLL / SRL / SVC) und bei IFOX zu 8.  In
+                                     15 * IEAVDSEG ist das die gesamte Laengendifferenz des Abschnitts,
+                                     16 * 340 gegen 324 Byte.
+                                     17          MACRO
+                                     18          SHOWT &CC
+                                     19          DC    C'T=&SYSNDX.'
+                                     20          AIF   (T'&CC NE 'N').OTHER
+                                     21          DC    C'[NUMERIC]'
+                                     22          MEXIT
+                                     23 .OTHER   ANOP
+                                     24          DC    C'[OTHER]'
+                                     25          MEND
+000000                               26 T        CSECT
+                                     27          SHOWT X'C0D'
+000000 E37EF0F0F0F1                  28+         DC    C'T=0001'
+000006 BAD5E4D4C5D9C9C3              29+         DC    C'[NUMERIC]'
+                                     30          SHOWT 4095
+00000F E37EF0F0F0F2                  31+         DC    C'T=0002'
+000015 BAD5E4D4C5D9C9C3              32+         DC    C'[NUMERIC]'
+                                     33          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.14 09/06/26
+T        00001 00000000 00026
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 12.14 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         29
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        54
