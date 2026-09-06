@@ -542,20 +542,33 @@ int main(int argc, char **argv)
     }
     if (difout) fclose(difout);
 
-    if (only && !npair) {
-        if (json) printf("\n  ],\n  \"error\": \"no section named %s\"\n}\n", only);
-        else fprintf(stderr, "cmplmd370: no section named %s\n", only);
-        return 2;
+    {   /* One exit through here, so the JSON object has ONE shape.  The error
+         * paths used to print "error" and stop, leaving out "exit" and
+         * "identical" -- the two fields a caller branches on, missing in
+         * exactly the case where it most needs them.  A bulk run over 3,888
+         * modules found 16 of them: the consumer read exit as null and had to
+         * know to fall back on the process status.  A machine-readable answer
+         * that omits a field without saying so is the same defect as one that
+         * truncates a list without saying so. */
+        const char *err = NULL;
+        char errbuf[64];
+        if (only && !npair) {
+            snprintf(errbuf, sizeof errbuf, "no section named %s", only);
+            err = errbuf; rc = 2;
+        } else if (!npair && !rc) {
+            err = "no sections paired"; rc = 2;
+        }
+        if (json) {
+            printf("%s],\n", firstj ? "" : "\n  ");
+            printf("  \"error\": %s%s%s,\n", err ? "\"" : "null",
+                   err ? err : "", err ? "\"" : "");
+            printf("  \"identical\": %s,\n  \"exit\": %d\n}\n",
+                   rc == 0 ? "true" : "false", rc);
+        } else if (err) {
+            fprintf(stderr, "cmplmd370: %s\n", err);
+        } else {
+            printf("%s\n", rc ? "DIFFER" : "IDENTICAL");
+        }
+        return rc;
     }
-    if (!npair && !rc) {
-        if (json) printf("\n  ],\n  \"error\": \"no sections paired\"\n}\n");
-        else fprintf(stderr, "cmplmd370: no sections paired\n");
-        return 2;
-    }
-    if (json)
-        printf("%s],\n  \"identical\": %s,\n  \"exit\": %d\n}\n",
-               firstj ? "" : "\n  ", rc ? "false" : "true", rc);
-    else
-        printf("%s\n", rc ? "DIFFER" : "IDENTICAL");
-    return rc;
 }
