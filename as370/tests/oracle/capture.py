@@ -49,9 +49,18 @@ def load_env(path):
     return env
 
 
-def build_jcl(env, src, scratch, deck):
+def build_jcl(env, src, scratch, deck, syslib=None):
     """One IFOX00 step. PARM matches tests/listref: the listing is column-exact
     to what the committed references were captured with."""
+    # SYSLIB is a concatenation: the first DD carries the name, the rest are
+    # unnamed continuations. A module that needs AMODGEN or one of the recovered
+    # private macro libraries assembles to a different deck -- or not at all --
+    # without them, so a listing captured with the wrong search order is not
+    # comparable to a host run that used a different one.
+    libs = list(syslib) if syslib else ["SYS1.MACLIB"]
+    syslib_dd = "\n".join(
+        (f"//SYSLIB   DD DSN={d},DISP=SHR" if i == 0 else f"//         DD DSN={d},DISP=SHR")
+        for i, d in enumerate(libs))
     parm = "DECK" if deck else "NODECK"
     punch = (f"//SYSPUNCH DD DSN={scratch},DISP=(NEW,CATLG,DELETE),\n"
              f"//             UNIT=SYSDA,SPACE=(TRK,(5,5)),\n"
@@ -66,7 +75,7 @@ def build_jcl(env, src, scratch, deck):
 //             MSGCLASS={env.get('MBT_JES_MSGCLASS', 'A')},MSGLEVEL=(1,1)
 {predel}//ASM      EXEC PGM=IFOX00,
 //          PARM='{parm},LIST,NOLOAD,XREF(FULL),RENT'
-//SYSLIB   DD DSN=SYS1.MACLIB,DISP=SHR
+{syslib_dd}
 //SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
 //SYSUT2   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
 //SYSUT3   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
@@ -95,6 +104,10 @@ def main():
     ap.add_argument("source")
     ap.add_argument("--deck", help="write IFOX00's object deck here")
     ap.add_argument("--listing", help="write the SYSPRINT listing here")
+    ap.add_argument("--syslib", action="append", metavar="DSN",
+                    help="SYSLIB dataset, repeatable and concatenated in the order given "
+                         "(default: SYS1.MACLIB). Must match the host -I search order, "
+                         "or the two assemblies are not comparable.")
     args = ap.parse_args()
 
     envfile = os.environ.get("AS370_MVS_ENV")
@@ -117,7 +130,7 @@ def main():
 
     print(f"submitting to {env['MBT_MVS_HOST']}:{env['MBT_MVS_PORT']} "
           f"as {env['MBT_MVS_USER']}")
-    res = client.submit_jcl(build_jcl(env, src, scratch, bool(args.deck)),
+    res = client.submit_jcl(build_jcl(env, src, scratch, bool(args.deck), args.syslib),
                             wait=True, timeout=180)
     print(f"job {res.jobname} {res.jobid}  status={res.status}  rc={res.rc}")
     if args.listing:
