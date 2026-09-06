@@ -1414,5 +1414,66 @@ rm -f /tmp/_s108.s /tmp/_s108.obj
 [ $sfail = 0 ] && echo "stype: OK (five S-type forms, the section length, and IFO209 match IFOX00)"
 fail=$((fail + sfail))
 
+# &SYSECT (cc370#132).  Unimplemented until now, and it expanded to NOTHING --
+# the silent form: a macro line reading ((*-&SYSECT)/40) became ((*-)/40), and
+# the duplication-factor check then reported IFO217, which is the consequence and
+# not the cause.  61 macros in the mirrors use it, and 597 of 1,256 failing
+# modules call one directly.
+#
+# Three rules, all measured on IFOX00 (MVS/CE), and the second is the one a
+# reasonable implementation gets wrong:
+#
+#   1. the section in effect WHERE THE MACRO WAS CALLED; a DSECT counts
+#   2. it does NOT follow a section change made INSIDE the expansion -- a macro
+#      that opens INNER CSECT in its own body still yields the calling section
+#      on the line after
+#   3. in open code it is undefined (IFO006), not empty -- left to #97
+#
+# Rule 2 is why the value is frozen per invocation instead of looked up when the
+# reference is resolved.  Looking it up is the obvious implementation, and it is
+# wrong the same way resolving an absolute S-con through USING was in #108.
+{ echo '         MACRO'; echo '         SHOWSECT'
+  echo "         DC    C${q}&SYSECT${q}"
+  echo 'INNER    CSECT'
+  echo "         DC    C${q}&SYSECT${q}"
+  echo '         MEND'
+  echo 'FOURTH   CSECT'; echo '         SHOWSECT'; echo '         END'; } > /tmp/_se.s
+{ echo '         MACRO'; echo '         SHOWSECT'
+  echo "         DC    C${q}&SYSECT${q}"; echo '         MEND'
+  echo 'THIRD    DSECT'; echo '         SHOWSECT'; echo '         END'; } > /tmp/_sd.s
+sefail=0
+if ! ./as370 /tmp/_se.s -o /tmp/_se.obj >/dev/null 2>&1; then
+    echo "sysect: ASSEMBLE FAILED"; sefail=1
+else
+    # C'FOURTH' is C6D6E4D9E3C8, and it must appear TWICE in the TEXT -- the
+    # second time AFTER the macro's own INNER CSECT.  Once would mean rule 2 is
+    # not held.  Counted in the TXT records only: the name also stands in the
+    # ESD as the section's own, which an object-wide count picks up as a third.
+    n=$(python3 -c "
+d = open('/tmp/_se.obj','rb').read()
+t = b''
+for o in range(0, len(d)-79, 80):
+    c = d[o:o+80]
+    if c[:4] == bytes((0x02,0xE3,0xE7,0xE3)):
+        t += c[16:16+((c[10]<<8)|c[11])]
+print(t.hex().count('c6d6e4d9e3c8'))
+")
+    if [ "$n" -ne 2 ]; then
+        echo "sysect: FAIL (&SYSECT yielded the calling section $n time(s), expected 2)"; sefail=1
+    fi
+fi
+# A DSECT generates no text, so the value is checked in the LISTING instead of
+# the object -- asserting only that it assembles would pass on an empty &SYSECT,
+# which is exactly the silent failure this closes.
+./as370 -a /tmp/_sd.s -o /tmp/_sd.obj > /tmp/_sd.lst 2>&1
+if ! grep -q "DC    C'THIRD'" /tmp/_sd.lst; then
+    echo "sysect: FAIL (&SYSECT in a DSECT did not expand to THIRD)"
+    grep -m1 "DC    C'" /tmp/_sd.lst || true
+    sefail=1
+fi
+rm -f /tmp/_se.s /tmp/_se.obj /tmp/_sd.s /tmp/_sd.obj
+[ $sefail = 0 ] && echo "sysect: OK (frozen at the call; a section opened inside the expansion does not move it)"
+fail=$((fail + sefail))
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

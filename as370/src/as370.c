@@ -812,12 +812,25 @@ static struct macro *mac_find(const char *n) {
     return NULL;
 }
 /* ---- macro expansion context + conditional assembly --------------------- */
+/* &SYSECT is the control section in effect WHERE THE MACRO WAS CALLED, and it
+ * does NOT follow a section change made inside the expansion.  Measured on
+ * IFOX00 (cc370#132): a macro that opens INNER CSECT in its own body still gets
+ * FOURTH -- the section it was called from -- on the line after.  So there are
+ * two values: g_sysect runs with the emitted statements, and each invocation
+ * freezes a copy of it at entry.  Looking the section up when the reference is
+ * resolved is the obvious implementation and it is wrong, the same way resolving
+ * an absolute S-con through USING was wrong in #108.
+ *
+ * A DSECT counts as the current section; an unnamed (private) one gives "". */
+static char g_sysect[9] = "";
+
 struct ctx {
     struct macro *m;
     char pv[100][96];                      /* parameter values (may be sublists) */
     const char *namepval;
     char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
     int sysndx;                            /* &SYSNDX for this macro invocation */
+    char sysect[9];                        /* &SYSECT, frozen at the call (see g_sysect) */
     char syslist[32][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
     char arrb[48][20]; char arrnum[48]; int narr;   /* declared SET arrays: base name + 1 if numeric (A/B) */
 };
@@ -902,6 +915,11 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 22) nm[i++] = *p++;
     nm[i] = 0;
     if (!strcmp(nm, "SYSNDX")) { snprintf(out, 96, "%04d", c->sysndx); return; }   /* unique per macro invocation */
+    /* Only inside a macro: IFOX00 rejects &SYSECT in open code with IFO006
+     * (undefined variable symbol) rather than substituting anything, so open
+     * code is left to the general undefined-symbol path -- that is #97, not
+     * this. */
+    if (c->m && !strcmp(nm, "SYSECT")) { scopy(out, c->sysect, 8); return; }
     if (!strcmp(nm, "SYSDATE")) { scopy(out, g_sysdate, 8); return; }   /* assembly date "MM/DD/YY" */
     if (!strcmp(nm, "SYSTIME")) { scopy(out, g_systime, 5); return; }   /* assembly time "HH.MM" */
     char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
@@ -1537,6 +1555,7 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
     g_genlevel++;   /* lines emitted during this expansion are macro-generated */
     struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; c.sysndx = ++g_sysndx;
+    scopy(c.sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
     int k;
     for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
     if (opnd[0]) { char args[100][64]; int na = split_fields(opnd, args, 100), pos = 0;
@@ -1637,6 +1656,13 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         mexp_macro(m, lbl[0] == '.' ? "" : lbl, aopnd, out, nout, depth); return;
     }
     if (*nout >= MAXLINES) return;
+    /* Track the section on EMISSION, not on input: a CSECT a macro generates is
+     * open code by the time it lands here, so a later call sees it -- while the
+     * expansion that produced it does not, because that one froze its copy at
+     * entry.  Both halves of the measured behaviour fall out of that. */
+    if (op[0] && (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") ||
+                  !strcmp(op, "START") || !strcmp(op, "COM")))
+        scopy(g_sysect, (lbl[0] && lbl[0] != '.') ? lbl : "", 8);
     lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN : 0);
     gcard[*nout] = img ? strdup(img) : NULL;
     line_org[*nout] = g_curorg;
