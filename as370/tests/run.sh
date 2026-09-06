@@ -914,15 +914,23 @@ rm -f /tmp/_o68.obj
 q="'"
 dcfail=0
 # (a) valid Assembler XF, still unimplemented -> RC 8, "not implemented" wording.
-# P and Z left this list when step 2 implemented them, E and L when step 3 did;
-# S and Q remain, and stay until the pseudo-register feature lands with them.
-for t in "S(T)" "Q(T)"; do
+# P and Z left this list when step 2 implemented them, E and L when step 3 did,
+# and S when #108 did.  Q remains, and stays until the pseudo-register feature
+# lands with it (#76).
+for t in "Q(T)"; do
     printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
     ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
     if [ $? -ne 8 ]; then echo "dc_types: FAIL (DC $t did not give RC 8)"; dcfail=1
     elif ! grep -q "not implemented by as370" /tmp/_d53.out; then
         echo "dc_types: FAIL (DC $t flagged, but not as unimplemented)"; dcfail=1; fi
 done
+# ...and the other direction, which is what #108 actually changed: S must no
+# longer be reported at all.  Without this the loop above could be emptied by
+# accident and nothing would notice.
+printf 'T        CSECT\n         USING T,12\nD1       DC    S(T)\n         END\n' > /tmp/_d53.s
+./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+if [ $? -ne 0 ] || grep -q "not implemented by as370" /tmp/_d53.out; then
+    echo "dc_types: FAIL (DC S is implemented now; it must assemble silently)"; dcfail=1; fi
 printf 'T        CSECT\nX1       CXD\n         END\n' > /tmp/_d53.s
 ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
 if [ $? -ne 8 ] || ! grep -q "CXD is valid Assembler XF but not implemented" /tmp/_d53.out; then
@@ -959,7 +967,7 @@ for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q
     if ! ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1; then
         echo "dc_types: FAIL (implemented type $t wrongly rejected)"; dcfail=1; fi
 done
-[ $dcfail = 0 ] && echo "dc_types: OK (S Q + CXD loud as unimplemented; W/G as ERR198; implemented types unmoved)"
+[ $dcfail = 0 ] && echo "dc_types: OK (Q + CXD loud as unimplemented, S no longer; W/G as ERR198; implemented types unmoved)"
 fail=$((fail + dcfail))
 rm -f /tmp/_d53.s /tmp/_d53.obj /tmp/_d53.out
 
@@ -1329,6 +1337,59 @@ fi
 rm -f /tmp/_st.s /tmp/_st.obj /tmp/_iq.s /tmp/_iq.obj /tmp/_nq.s /tmp/_nq.obj
 [ $startfail = 0 ] && echo "start/iseq: OK (four START forms match IFOX00's ESD; ISEQ is object-neutral)"
 fail=$((fail + startfail))
+
+# DC/DS type S (cc370#108).  A halfword carrying 4 bits of base register and 12
+# of displacement.  Every byte below is IFOX00's own, one CSECT under
+# USING TESTS,12, submitted to MVS/CE and read from SYSPRINT:
+#
+#   SA  DC  S(0)          0000    absolute -> displacement, base 0
+#   SB  DC  S(4(3))       3004    explicit base 3, displacement 4
+#   SC  DC  S(TARGET)     C010    base 12 from the USING
+#   SD  DS  S             --      two bytes reserved, NO object code
+#   SE  DC  2S(0,TARGET)  0000C0100000C010
+#   TARGET DC F'7'        00000007        section length 000014
+#
+# S(0) is the row worth having.  Resolving an ABSOLUTE expression through the
+# active USING gives C000, which is what a reasonable implementation does and
+# what this one did until the oracle said otherwise -- and S(0) is the common
+# null S-con, so it would have been wrong everywhere at once.
+{ echo 'TESTS    CSECT'; echo '         USING TESTS,12'
+  echo 'SA       DC    S(0)'; echo 'SB       DC    S(4(3))'
+  echo 'SC       DC    S(TARGET)'; echo 'SD       DS    S'
+  echo 'SE       DC    2S(0,TARGET)'; echo "TARGET   DC    F${q}7${q}"
+  echo '         END'; } > /tmp/_s108.s
+sfail=0
+if ! ./as370 /tmp/_s108.s -o /tmp/_s108.obj >/dev/null 2>&1; then
+    echo "stype: ASSEMBLE FAILED"; sfail=1
+else
+    # Address-keyed, not concatenated: DS S reserves two bytes and emits NONE,
+    # so the text arrives as TWO records with a hole at 0x0006.  That hole is
+    # itself the assertion -- a DS that emitted zeros would join the records and
+    # still look plausible.
+    got=$(python3 -c "
+d = open('/tmp/_s108.obj','rb').read()
+recs = []
+esd = ''
+for o in range(0, len(d)-79, 80):
+    c = d[o:o+80]
+    if c[:4] == bytes((0x02,0xE3,0xE7,0xE3)):
+        n = (c[10] << 8) | c[11]
+        recs.append('%06x:%s' % (int.from_bytes(c[5:8],'big'), c[16:16+n].hex()))
+    if c[:4] == bytes((0x02,0xC5,0xE2,0xC4)):
+        esd = '%06x' % int.from_bytes(c[16+13:16+16],'big')
+print(' '.join(recs) + ' ' + esd)
+")
+    want="000000:00003004c010 000008:0000c0100000c01000000007 000014"
+    if [ "$got" != "$want" ]; then
+        echo "stype: FAIL"
+        echo "       as370  $got"
+        echo "       IFOX00 $want"
+        sfail=1
+    fi
+fi
+rm -f /tmp/_s108.s /tmp/_s108.obj
+[ $sfail = 0 ] && echo "stype: OK (five S-type forms and the section length match IFOX00)"
+fail=$((fail + sfail))
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

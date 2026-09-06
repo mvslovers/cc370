@@ -2637,12 +2637,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                             lc += flen;
                         }
                     }
-                } else if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'Y' || ty == 'V') {
-                    int base = (ty == 'H' || ty == 'Y') ? 2 : 4;
+                } else if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'Y' || ty == 'V' || ty == 'S') {
+                    int base = (ty == 'H' || ty == 'Y' || ty == 'S') ? 2 : 4;
                     if (!haslen) { blen = base; long oldlc = lc; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc);
                         if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }   /* DC alignment padding is emitted as zero TXT (IFOX-compatible) */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
-                    long val = 0; int isvcon = (ty == 'V'), isaddr = (ty == 'A' || ty == 'Y' || isvcon);
+                    long val = 0; int isvcon = (ty == 'V'), isscon = (ty == 'S');
+                    int isaddr = (ty == 'A' || ty == 'Y' || isvcon || isscon);
                     if (isaddr) {                                  /* address constant, possibly a value list A(v1,v2,..) */
                         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         char inside[256] = "";
@@ -2662,7 +2663,49 @@ static void do_pass(int pass, char **lines, int nlines) {
                             if (r[0]) { struct sym *s = sym_get(r); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } } }
                         for (k = 0; k < cnt; k++) { int vj; for (vj = 0; vj < nv; vj++) {
                             if (emit_dc) {
-                                if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
+                                if (isscon) {
+                                    /* S-type: a HALFWORD carrying 4 bits of base
+                                     * register and 12 of displacement, resolved
+                                     * here and never relocated -- the loader has
+                                     * nothing to fix up.  Measured on IFOX00
+                                     * (cc370#108), one CSECT under USING TESTS,12:
+                                     *   S(0)       -> 0000   base 0, disp 0
+                                     *   S(4(3))    -> 3004   explicit base 3
+                                     *   S(TARGET)  -> C010   base 12 from USING
+                                     *   2S(0,TARGET) -> 0000 C010 0000 C010
+                                     * The last one needs no code: the duplication
+                                     * factor already wraps the whole operand list
+                                     * in the loop above, which is what IFOX does. */
+                                    long disp = 0; int reg = 0;
+                                    const char *v = vals[vj];
+                                    const char *ip = strchr(v, '(');
+                                    if (ip) {                       /* explicit disp(base) */
+                                        char ds[80]; int dn = (int)(ip - v); if (dn > 79) dn = 79;
+                                        memcpy(ds, v, (size_t)dn); ds[dn] = 0;
+                                        char bs[80]; int bn = 0; const char *bp = ip + 1;
+                                        while (*bp && *bp != ')' && bn < 79) bs[bn++] = *bp++;
+                                        bs[bn] = 0;
+                                        disp = ds[0] ? expr_val(ds, NULL) : 0;
+                                        reg  = bs[0] ? (int)expr_val(bs, NULL) : 0;
+                                    } else if (v[0]) {
+                                        /* Only a RELOCATABLE expression goes
+                                         * through USING.  An absolute one is the
+                                         * displacement itself with base 0 --
+                                         * IFOX gives S(0) the halfword 0000,
+                                         * where resolving it through the active
+                                         * USING would say C000.  Measured; it is
+                                         * the one case of the five that a
+                                         * reasonable implementation gets wrong,
+                                         * and S(0) is the common null S-con. */
+                                        int src = 0; long a = expr_val(v, &src);
+                                        if (src != 0) {
+                                            reg = using_for(a, expr_sect(v), &disp);
+                                            if (!r_addrok) note_operr("Addressability error - no USING covers this S-type operand (IFOX00 IFO209)", 8, i);
+                                        } else { disp = a; reg = 0; }
+                                    }
+                                    put(lc, ((long)(reg & 0xf) << 12) | (disp & 0xfff), 2);
+                                }
+                                else if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                                     put(lc, 0, blen); add_reloc(lc, r, 1); rels[nrel - 1].len = blen; }
                                 else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0; long v = vals[vj][0] ? expr_val(vals[vj], &rc) : 0;
                                     struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
@@ -2750,7 +2793,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     /* No storage produced. Say which of the two it is, once per
                      * operand, in pass 1 -- pass 2 walks the same statements. */
                     if (pass == 1) {
-                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* the fifteen valid Assembler XF types; all but S and Q are handled above */
+                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* the fifteen valid Assembler XF types; all but Q are handled above */
                         else note_badtype(ty, i);
                     }
                     /* The label is still defined, as before: withholding it would
