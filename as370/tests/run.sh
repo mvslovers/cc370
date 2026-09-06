@@ -46,6 +46,17 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
 done
 rm -f /tmp/_a.$$ /tmp/_b.$$
 
+# --- issue #144: T' of a symbol, answered by the open-code look-ahead --------
+# The reference is a LISTING, not a deck: the fixture's macro emits OK per case
+# and the IFOX listing shows 17 expansions, all OK. A deck comparison would not
+# show which case failed, only that the bytes differ.
+./as370 tests/tattr_symbol.s -a -o /dev/null 2>/dev/null \
+    | grep -E "^[0-9A-F]{6} .*[0-9]+\+" | grep -oE "C'(OK |BAD)'" > /tmp/_tsym.$$
+nok=$(grep -c "OK " /tmp/_tsym.$$ || true); nbad=$(grep -c "BAD" /tmp/_tsym.$$ || true)
+if [ "$nok" = "17" ] && [ "$nbad" = "0" ]; then echo "tattr_symbol: OK (17/17 == IFOX00)"
+else echo "tattr_symbol: MISMATCH ($nok ok, $nbad bad; IFOX00 has 17 ok, 0 bad)"; fail=1; fi
+rm -f /tmp/_tsym.$$
+
 # --- issue #12: RS/SI/S empty-index operand rejection -----------------------
 # D2(,B2) (or D2(X2,B2)) on an RS/SI/S storage operand has no index field;
 # IFOX00 rejects it (ERR216, severity 12). as370 must reject it too rather than
