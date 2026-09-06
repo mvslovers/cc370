@@ -1,0 +1,45 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.50 09/06/26
+A         SD  0001 000000 000006
+B         SD  0002 000008 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.50 09/06/26
+                                      1 * Resuming a control section.  Each section carries its OWN location
+                                      2 * counter: a resumed CSECT continues where THAT section left off, not
+                                      3 * where the assembly as a whole left off.
+                                      4 *
+                                      5 * Measured against IFOX00 on MVS/CE:
+                                      6 *   A   SD  ADDR 000000  LENGTH 000006   (4 bytes + the resumed 2)
+                                      7 *   B   SD  ADDR 000008  LENGTH 000008
+                                      8 * and the resumed DC lands at LOC 000004 -- back inside A, not after B.
+                                      9 *
+                                     10 * as370 ran one continuous counter for every section, so A came out
+                                     11 * LENGTH 000012 with its resumed text at 000010, overlapping B.
+                                     12 * Nothing in the ecosystem corpus resumes a section, so the
+                                     13 * byte-identity gate could not see it.  The TSO parse macros
+                                     14 * (IKJPARM/IKJKEYWD/...) do it dozens of times per module through
+                                     15 * "&SYSECT CSECT ," and that is where it surfaced.
+000000                               16 A        CSECT
+000000 C1C1C1C1                      17          DC    C'AAAA'
+000008                               18 B        CSECT
+000008 C2C2C2C2C2C2C2C2              19          DC    C'BBBBBBBB'
+000004                               20 A        CSECT
+000004 8181                          21          DC    C'aa'
+                                     22          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.50 09/06/26
+A        00001 00000000 00016  00020
+B        00001 00000008 00018
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 09.50 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         22
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        45

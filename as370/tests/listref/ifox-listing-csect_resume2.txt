@@ -1,0 +1,41 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.55 09/06/26
+A         SD  0001 000000 000010
+B         SD  0002 000010 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.55 09/06/26
+                                      1 * Which counter fixes a section's ORIGIN?
+                                      2 *
+                                      3 * In csect_resume.s A's open-time counter (4) and A's final length (6)
+                                      4 * both round to 8, so B at 000008 cannot tell the two rules apart.
+                                      5 * Here the resumed A grows to 16 -- past B's origin -- so the rules
+                                      6 * disagree and the oracle decides:
+                                      7 *
+                                      8 *   B ADDR 000008 -> the origin is the counter as it stood when B was
+                                      9 *                    opened, and sections may overlap in the listing
+                                     10 *   B ADDR 000010 -> origins come from the FINAL section lengths, so
+                                     11 *                    they are assigned after the whole assembly is seen
+000000                               12 A        CSECT
+000000 C1C1C1C1                      13          DC    C'AAAA'
+000010                               14 B        CSECT
+000010 C2C2C2C2C2C2C2C2              15          DC    C'BBBBBBBB'
+000004                               16 A        CSECT
+000004 F0F1F2F3F4F5F6F7              17          DC    C'0123456789AB'
+                                     18          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.55 09/06/26
+A        00001 00000000 00012  00016
+B        00001 00000010 00014
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 09.55 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         18
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        41
