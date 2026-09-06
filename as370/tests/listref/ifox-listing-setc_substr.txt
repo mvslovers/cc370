@@ -1,0 +1,61 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.39 09/06/26
+T         SD  0001 000000 000010
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.39 09/06/26
+                                      1 * Grenzen der Teilzeichenkette in SETC (#141).
+                                      2 *
+                                      3 * Sechs Faelle, und was die Kandidatenregeln vorhersagen:
+                                      4 *
+                                      5 *   &A  'ABCDEF'(2,3)  gewoehnlich
+                                      6 *         beide Regeln         BCD, keine Meldung
+                                      7 *   &B  'AB'(3,1)       expr1 = Laenge+1
+                                      8 *         XF  (len < expr1)    leer, IFO117 sev 8, RC 8
+                                      9 *         HLASM                leer, keine Meldung, RC 0
+                                     10 *   &C  'AB'(2,9)       expr2 ueber das Ende hinaus
+                                     11 *         toter STR30          B, keine Meldung, RC 0
+                                     12 *         Warnung              B, sev 4, RC 4
+                                     13 *   &D  'AB'(0,2)       expr1 = 0
+                                     14 *         IFO115               leer, sev 8, RC 8
+                                     15 *         as370 heute          klemmt auf 1, liefert AB, still
+                                     16 *   &E  'AB'(-1,2)      expr1 < 0        wie &D
+                                     17 *   &F  'AB'(1,-1)      expr2 < 0
+                                     18 *         IFO116               leer, sev 4, RC 4
+                                     19 *         oder sev 8           leer, RC 8
+                                     20 *
+                                     21 * &D und &E trennen die Regeln in den BYTES, nicht nur im RC.
+000000                               22 T        CSECT
+                                     23          LCLC  &A,&B,&C,&D,&E,&F
+                                     24 &A       SETC  'ABCDEF'(2,3)
+                                     25 &B       SETC  'AB'(3,1)
+         *** ERROR ***
+                                     26 &C       SETC  'AB'(2,9)
+                                     27 &D       SETC  'AB'(0,2)
+         *** ERROR ***
+                                     28 &E       SETC  'AB'(-1,2)
+         *** ERROR ***
+                                     29 &F       SETC  'AB'(1,-1)
+         *** ERROR ***
+                                     30          DC    C'[&A][&B][&C][&D][&E][&F]'
+000000 BAC2C3C4BBBABBBA              31+         DC    C'[BCD][][B][][][]'
+                                     32          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.39 09/06/26
+T        00001 00000000 00022
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 15.39 09/06/26
+   25  IFO117      FIRST EXPRESSION IN SUBSTRING NOTATION EXCEEDS THE LENGTH OF THE STRING
+   27  IFO115      FIRST EXPRESSION IN SUBSTRING NOTATION HAS ZERO OR NEGATIVE VALUE
+   28  IFO115      FIRST EXPRESSION IN SUBSTRING NOTATION HAS ZERO OR NEGATIVE VALUE
+   29  IFO116      SECOND EXPRESSION IN SUBSTRING NOTATION HAS NEGATIVE VALUE
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     4
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         31
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        61
