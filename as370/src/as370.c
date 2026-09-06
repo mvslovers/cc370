@@ -1330,7 +1330,7 @@ static void term_str(struct ctx *c, const char *t, char *out) {
         char ref[44], v[96]; const char *p = t + 2; int i = 0;
         if (*p == '&') { ref[i++] = *p++; while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_')) ref[i++] = *p++;
             if (*p == '(') { ref[i++] = *p++; int d = 1; while (*p && d) { if (*p=='(')d++; else if(*p==')')d--; ref[i++]=*p++; } } ref[i] = 0; vref(c, ref, v); }
-        else v[0] = 0;
+        else { int k = 0; while (*p && k < (int)sizeof v - 1) v[k++] = *p++; v[k] = 0; }   /* T'SYMBOL and T'X'..' written out, not reached through a variable */
         if (!v[0]) strcpy(out, "O");
         else if (is_selfdef(v)) strcpy(out, "N");
         else { char t = styp_find(v); out[0] = t ? t : 'U'; out[1] = 0; }

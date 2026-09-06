@@ -57,6 +57,17 @@ if [ "$nok" = "17" ] && [ "$nbad" = "0" ]; then echo "tattr_symbol: OK (17/17 ==
 else echo "tattr_symbol: MISMATCH ($nok ok, $nbad bad; IFOX00 has 17 ok, 0 bad)"; fail=1; fi
 rm -f /tmp/_tsym.$$
 
+# tattr_literal: the same attribute written OUT rather than reached through a
+# macro parameter -- tattr_symbol only ever exercises T'&CC, and the evaluation
+# took a different branch for a literal T'SF. Five cases, open code and macro
+# body, IFOX00 rc=0.
+./as370 tests/tattr_literal.s -a -o /dev/null 2>/dev/null \
+    | grep -E "^[0-9A-F]{6} " | grep -oE "C'(OK |BAD)'" > /tmp/_tlit.$$
+nok=$(grep -c "OK " /tmp/_tlit.$$ || true); nbad=$(grep -c "BAD" /tmp/_tlit.$$ || true)
+if [ "$nok" = "5" ] && [ "$nbad" = "0" ]; then echo "tattr_literal: OK (5/5 == IFOX00)"
+else echo "tattr_literal: MISMATCH ($nok ok, $nbad bad; IFOX00 has 5 ok, 0 bad)"; fail=1; fi
+rm -f /tmp/_tlit.$$
+
 # --- issue #12: RS/SI/S empty-index operand rejection -----------------------
 # D2(,B2) (or D2(X2,B2)) on an RS/SI/S storage operand has no index field;
 # IFOX00 rejects it (ERR216, severity 12). as370 must reject it too rather than
