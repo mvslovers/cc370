@@ -1556,5 +1556,36 @@ rm -f /tmp/_x133.s /tmp/_x133.obj /tmp/_x133.out /tmp/_y133.s /tmp/_y133.obj
 [ $dupfail = 0 ] && echo "dupsect: OK (cross-section rejected IFO206; same-section still absolute and unmoved)"
 fail=$((fail + dupfail))
 
+# msub's destination is bounded. Substitution EXPANDS, by a factor no call site
+# can bound from its own input: a reference costs two characters to write and
+# vref returns up to 95, so the worst case is 47.5x -- and all four call sites
+# hand msub a 256- or 1024-byte automatic buffer. Ten cards of ordinary
+# conditional assembly walked off eval_setc's sub[256], mexp_macro's ex[1024]
+# and render_model's sub[256], and as370 STILL EXITED 0. Only a sanitizer sees
+# it, so this test builds one; where the host compiler has none it skips rather
+# than pretending to have checked.
+asanfail=0
+asanbin=/tmp/_as370_asan$$
+if ${CC:-cc} -fsanitize=address -O0 -g -Iinclude -I../common/include \
+        -o $asanbin src/as370.c ../common/src/mvs370.c ../common/src/obj370.c \
+        >/dev/null 2>&1; then
+    ASAN_OPTIONS=detect_leaks=0 $asanbin tests/msub_overflow.s -o /tmp/_msub$$.obj \
+        >/tmp/_msub$$.out 2>&1
+    rcm=$?
+    if grep -q "AddressSanitizer" /tmp/_msub$$.out; then
+        echo "msub_overflow: FAIL (sanitizer report -- msub wrote past its destination)"
+        grep -m2 -E "ERROR: AddressSanitizer|in msub " /tmp/_msub$$.out
+        asanfail=1
+    elif [ $rcm -ge 128 ]; then
+        echo "msub_overflow: FAIL (as370 died with signal $((rcm - 128)))"; asanfail=1
+    else
+        echo "msub_overflow: OK (bounded -- no sanitizer report on a 47.5x expansion)"
+    fi
+    rm -rf $asanbin $asanbin.dSYM /tmp/_msub$$.obj /tmp/_msub$$.out
+else
+    echo "msub_overflow: SKIPPED (host compiler has no -fsanitize=address)"
+fi
+fail=$((fail + asanfail))
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

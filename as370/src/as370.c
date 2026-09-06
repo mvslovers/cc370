@@ -1075,17 +1075,37 @@ static void vref(struct ctx *c, const char *ref, char *out) {
         strncpy(out, base, 95); out[95] = 0;
     }
 }
-/* substitute all & references in a model statement (with &x. concatenation) */
-static void msub(struct ctx *c, const char *src, char *dst) {
-    int di = 0; const char *s = src;
-    while (*s) {
+/* substitute all & references in a model statement (with &x. concatenation).
+ *
+ * DST is bounded by DSTSZ, and it has to be: substitution EXPANDS, and by a
+ * factor no call site can bound from its own input. A reference costs two
+ * characters to write and vref returns up to 95, so the worst case is 47.5x --
+ * `&X` repeated into a 255-byte SETC operand yields 12065 bytes, and every call
+ * site here hands over a 256- or 1024-byte automatic buffer.
+ *
+ * That was not theoretical. Ten cards of ordinary conditional assembly --
+ * double a value four times, then concatenate it four times -- walked off
+ * eval_setc's sub[256] and the assembler still exited 0; ASAN is the only
+ * reason it is visible at all. mexp_macro's ex[1024] overflows with NO
+ * expansion whatever, because a macro body card is a joined continuation and
+ * can already exceed 1024 on its own.
+ *
+ * Truncation past DSTSZ is deliberate and is not this function's diagnostic to
+ * raise: eval_setc clips a value at 95 immediately afterwards, render_model
+ * builds a listing image, and mexp_macro's result is re-clamped to 1023 by
+ * parse() one call later. Where XF puts a real limit on a generated field it is
+ * 255, with IFO105 past it -- a separate question from not corrupting memory. */
+static void msub(struct ctx *c, const char *src, char *dst, size_t dstsz) {
+    if (!dstsz) return;
+    size_t di = 0, lim = dstsz - 1; const char *s = src;
+    while (*s && di < lim) {
         if (*s == '&' && (s[1] == '&')) { dst[di++] = '&'; s += 2; continue; }
         if (*s == '&') {
             char ref[44]; int ri = 0; ref[ri++] = *s; const char *p = s + 1;
             while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && ri < 30) ref[ri++] = *p++;
             if (*p == '(') { ref[ri++] = '('; p++; int d = 1; while (*p && d && ri < 42) { if (*p=='(')d++; else if(*p==')'){d--; if(!d){p++;break;}} ref[ri++]=*p++; } ref[ri++] = ')'; }
             ref[ri] = 0;
-            char v[96]; vref(c, ref, v); int r; for (r = 0; v[r]; r++) dst[di++] = v[r];
+            char v[96]; vref(c, ref, v); int r; for (r = 0; v[r] && di < lim; r++) dst[di++] = v[r];
             s = p; if (*s == '.') s++;
         } else dst[di++] = *s++;
     }
@@ -1172,7 +1192,7 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
             while (*q) { if (*q == '\'') { if (q[1] == '\'') { if (il < 255) inner[il++] = '\''; q += 2; continue; } break; }
                 if (il < 255) { inner[il++] = *q; } q++; }
             inner[il] = 0;
-            char sub[256]; msub(c, inner, sub);
+            char sub[256]; msub(c, inner, sub, sizeof sub);
             p = (*q == '\'') ? q + 1 : q;
             if (*p == '(') {                       /* substring (start,len) */
                 ec_ = c; ep_ = p + 1; long st = e_expr(); e_sp(); long ln = 0;
@@ -1747,7 +1767,7 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
     int cur = 0;
     for (i = 0; i < 4; i++) {
         if (!fld[i][0]) continue;
-        char sub[256]; msub(c, fld[i], sub);
+        char sub[256]; msub(c, fld[i], sub, sizeof sub);
         int col = fcol[i]; if (col < cur) col = cur;   /* never overwrite the previous field */
         int sl = (int)strlen(sub), j; for (j = 0; j < sl && col + j < 255; j++) ln[col + j] = sub[j];
         cur = col + sl + 1;                            /* at least one blank before the next field */
@@ -1795,7 +1815,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
-        char ex[1024]; msub(&c, m->body[pc], ex);
+        char ex[1024]; msub(&c, m->body[pc], ex, sizeof ex);
         char gimg[256]; render_model(&c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
         mexp_line(ex, out, nout, depth + 1);
         pc++;
@@ -1858,7 +1878,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
          * which the called macro -- not knowing &OUTM -- would mis-parse). Inside a
          * macro the enclosing expansion has already substituted them. */
         char aopnd[1024];
-        if (g_genlevel == 0) msub(opc, opnd, aopnd); else { strncpy(aopnd, opnd, sizeof aopnd - 1); aopnd[sizeof aopnd - 1] = 0; }
+        if (g_genlevel == 0) msub(opc, opnd, aopnd, sizeof aopnd); else { strncpy(aopnd, opnd, sizeof aopnd - 1); aopnd[sizeof aopnd - 1] = 0; }
         mexp_macro(m, lbl[0] == '.' ? "" : lbl, aopnd, out, nout, depth); return;
     }
     if (*nout >= MAXLINES) return;
