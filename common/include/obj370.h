@@ -105,6 +105,14 @@ int obj_rld_len(int flag);
 int obj_rld_walk(const unsigned char *card,
                  int (*fn)(const struct obj_rld *r, void *ctx), void *ctx);
 
+/* The same items, given the item area directly.  A LOAD MODULE's RLD record
+ * carries item-for-item the same encoding as an object card's, but its data
+ * starts at +16 with the length at +6 rather than the card's count at +10 --
+ * so the framing differs and the items do not.  Found by cmplmd370 (#110), the
+ * first consumer of this header that was not one of the tools it came from. */
+int obj_rld_items(const unsigned char *p, long len,
+                  int (*fn)(const struct obj_rld *r, void *ctx), void *ctx);
+
 /* ---- END ---- */
 struct obj_end {
     int  has_entry;             /* an entry point is named by id + offset */

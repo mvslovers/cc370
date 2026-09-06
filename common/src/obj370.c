@@ -82,30 +82,38 @@ int obj_rld_len(int flag)
     return ((flag & 0x0c) >> 2) + 1;
 }
 
-int obj_rld_walk(const unsigned char *card,
-                 int (*fn)(const struct obj_rld *r, void *ctx), void *ctx)
+int obj_rld_items(const unsigned char *d, long len,
+                  int (*fn)(const struct obj_rld *r, void *ctx), void *ctx)
 {
-    int cnt, p = 16, end, r = 0, pp = 0, same = 0, n = 0;
+    long p = 0;
+    int r = 0, pp = 0, same = 0, n = 0;
 
-    if (obj_card_type(card) != OBJ_RLD) return 0;
-    cnt = mvs_be16(card + 10);
-    end = 16 + cnt;
-    if (end > OBJ_CARD_LEN) end = OBJ_CARD_LEN;
-    while (p + 4 <= end) {
+    while (p + 4 <= len) {
         struct obj_rld it;
         /* R and P are present only on the first item of a run; the previous
          * item's flag bit 0x01 says the next one repeats them. */
-        if (!same) { r = mvs_be16(card + p); pp = mvs_be16(card + p + 2); p += 4; }
-        if (p + 4 > end) break;
+        if (!same) { r = mvs_be16(d + p); pp = mvs_be16(d + p + 2); p += 4; }
+        if (p + 4 > len) break;
         it.r = r; it.p = pp;
-        it.flag = card[p];
-        it.addr = mvs_be24(card + p + 1);
-        same = card[p] & 0x01;
+        it.flag = d[p];
+        it.addr = mvs_be24(d + p + 1);
+        same = d[p] & 0x01;
         p += 4;
         n++;
         if (fn && !fn(&it, ctx)) break;
     }
     return n;
+}
+
+int obj_rld_walk(const unsigned char *card,
+                 int (*fn)(const struct obj_rld *r, void *ctx), void *ctx)
+{
+    long cnt, avail;
+    if (obj_card_type(card) != OBJ_RLD) return 0;
+    cnt = mvs_be16(card + 10);
+    avail = OBJ_CARD_LEN - 16;
+    if (cnt > avail) cnt = avail;
+    return obj_rld_items(card + 16, cnt, fn, ctx);
 }
 
 int obj_end_get(const unsigned char *card, struct obj_end *e)
