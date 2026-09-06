@@ -645,7 +645,7 @@ static int r_addrok;  /* the last using_for found a SAME-SECTION USING in range 
                        * 1 by default so an absolute operand -- which never calls using_for -- is never flagged */
 static int using_for(long val, int sect, long *disp) {
     int i, best = -1; long bd = 0;
-    for (i = 0; i < nusing; i++) { if (usings[i].sect != sect) continue; long dd = val - usings[i].base; if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd)) { best = i; bd = dd; } }
+    for (i = 0; i < nusing; i++) { if (usings[i].sect != sect) continue; long dd = val - usings[i].base; if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd || (dd == bd && usings[i].reg > usings[best].reg))) { best = i; bd = dd; } }
     /* r_addrok records whether the operand's OWN section has a covering USING (the
      * same-section pass above). IFOX resolves a relocatable implicit-base operand
      * only then; otherwise it is IFO209 (addressability error). The caller emits
@@ -657,6 +657,11 @@ static int using_for(long val, int sect, long *disp) {
      *    net-relocatable term's, so a compound USING base (USING A-B+C,r) could
      *    mis-tag its section here -- a latent symmetric expr_sect gap, adjacent to
      *    the non-simply-relocatable handling in #26. Out of scope for #21. */
+    /* Gleichstand: IFOX00 nimmt das HOECHSTNUMMERIERTE Register, nicht den
+     * zuerst (oder zuletzt) registrierten Eintrag -- gemessen an zwei Orakeln,
+     * tests/basereg.s und tests/basereg2.s (#138). Das zweite ist noetig, weil
+     * bei aufsteigend deklarierten USING "hoechstnummeriert" und "zuletzt
+     * registriert" dasselbe Register liefern und nichts entscheiden. */
     r_addrok = (best >= 0);
     if (best < 0) for (i = 0; i < nusing; i++) { long dd = val - usings[i].base; if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd)) { best = i; bd = dd; } }
     if (best >= 0) { *disp = bd; return usings[best].reg; }

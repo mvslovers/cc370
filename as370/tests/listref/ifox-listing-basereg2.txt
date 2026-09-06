@@ -1,0 +1,40 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.50 09/06/26
+T         SD  0001 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.50 09/06/26
+                                      1 * Trennt "hoechstnummeriert" von "zuletzt registriert" (#138).
+                                      2 *
+                                      3 * In basereg.s stehen die USING aufsteigend, dort liefern beide
+                                      4 * Regeln dasselbe Register -- die Messung entscheidet nichts.
+                                      5 * Hier stehen sie ABSTEIGEND:
+                                      6 *
+                                      7 *   Basis 11 -> hoechstnummeriert gewinnt   (IFOX00: 5810 B004)
+                                      8 *   Basis 10 -> zuletzt registriert gewinnt
+                                      9 *
+                                     10 * IFOX nimmt 11, obwohl 10 zuletzt registriert wurde.  Ein Fix,
+                                     11 * der `dd < bd` nur zu `dd <= bd` macht, implementiert "zuletzt
+                                     12 * registriert" und faellt genau hier durch.
+000000                               13 T        CSECT
+                            00000    14          USING T,11
+                            00000    15          USING T,10
+000000 5810 B004      00004          16          L     1,A
+000004                               17 A        DS    F
+                                     18          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.50 09/06/26
+A        00004 00000004 00017  00016
+T        00001 00000000 00013  00014 00015
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 10.50 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         18
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        40

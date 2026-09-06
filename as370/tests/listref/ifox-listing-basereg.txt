@@ -1,0 +1,47 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.50 09/06/26
+T         SD  0001 000000 000010
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.50 09/06/26
+                                      1 * Basisregisterwahl bei mehreren aktiven USING (#138).
+                                      2 *
+                                      3 * Gemessen gegen IFOX00: die kleinste Distanz gewinnt, und bei
+                                      4 * GLEICHER Distanz das HOECHSTNUMMERIERTE Register.
+                                      5 *
+                                      6 *   L 1,A   5810 B00C   Basis 11 gegen 10, gleiche Distanz
+                                      7 *   L 2,B   5820 C000   Basis 12 gegen 9,  gleiche Distanz
+                                      8 *   L 3,A   5830 C008   Basis 12 gibt 008, Basis 11 gaebe 00C
+                                      9 *
+                                     10 * Die dritte Zeile trennt die Distanzregel von der Gleichstands-
+                                     11 * regel: dort ist die Distanz NICHT gleich, und beide Assembler
+                                     12 * nehmen die kleinere.  as370 nahm bei Gleichstand den zuerst
+                                     13 * registrierten Eintrag, weil using_for auf `dd < bd` prueft.
+000000                               14 T        CSECT
+                            00000    15          USING T,10
+                            00000    16          USING T,11
+000000 5810 B00C      0000C          17          L     1,A
+                            00004    18 B        EQU   *
+                            00004    19          USING B,9
+                            00004    20          USING B,12
+000004 5820 C000      00004          21          L     2,B
+000008 5830 C008      0000C          22          L     3,A
+00000C                               23 A        DS    F
+                                     24          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.50 09/06/26
+A        00004 0000000C 00023  00017 00022
+B        00001 00000004 00018  00019 00020 00021
+T        00001 00000000 00014  00015 00016
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 10.50 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         24
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        47
