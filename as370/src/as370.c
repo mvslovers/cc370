@@ -2700,7 +2700,20 @@ static void do_pass(int pass, char **lines, int nlines) {
                                         int src = 0; long a = expr_val(v, &src);
                                         if (src != 0) {
                                             reg = using_for(a, expr_sect(v), &disp);
-                                            if (!r_addrok) note_operr("Addressability error - no USING covers this S-type operand (IFOX00 IFO209)", 8, i);
+                                            if (!r_addrok) {
+                                                /* IFO209, and it is the SAME condition the RX/RS
+                                                 * operands already report -- so it takes the same
+                                                 * note_addrerr() wording rather than one of its
+                                                 * own.  IFOX emits one message for one situation;
+                                                 * two texts for it would read as two defects.
+                                                 * Measured: "BASE AND DISPLACEMENT CANNOT BE
+                                                 * RESOLVED AND ARE SET TO 0", and the halfword
+                                                 * really is 0000 -- not the unresolved
+                                                 * displacement, which is what using_for's
+                                                 * cross-section fallback leaves behind. */
+                                                note_addrerr(op, i);
+                                                reg = 0; disp = 0;
+                                            }
                                         } else { disp = a; reg = 0; }
                                     }
                                     put(lc, ((long)(reg & 0xf) << 12) | (disp & 0xfff), 2);

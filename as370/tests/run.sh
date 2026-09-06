@@ -1387,8 +1387,31 @@ print(' '.join(recs) + ' ' + esd)
         sfail=1
     fi
 fi
+# ...and without addressability.  IFOX00, measured: the halfword is 0000 -- not
+# the unresolved displacement -- and it raises IFO209 with the SAME wording it
+# uses for an instruction operand, because it is the same situation.  as370 gave
+# 0008 and a message of its own until the oracle said otherwise; two texts for
+# one condition read as two defects.
+{ echo 'NOADDR   CSECT'; echo 'SA       DC    S(TARGET)'; echo '         L     1,TARGET'
+  echo "TARGET   DC    F${q}7${q}"; echo '         END'; } > /tmp/_s209.s
+./as370 /tmp/_s209.s -o /tmp/_s209.obj >/tmp/_s209.out 2>&1
+nmsg=$(grep -c "no active USING covers the operand" /tmp/_s209.out)
+if [ "$nmsg" -ne 2 ]; then
+    echo "stype: FAIL (IFO209 wording differs between the DC and the instruction: $nmsg of 2)"; sfail=1
+elif ! python3 -c "
+import sys
+d = open('/tmp/_s209.obj','rb').read()
+for o in range(0, len(d)-79, 80):
+    c = d[o:o+80]
+    if c[:4] == bytes((0x02,0xE3,0xE7,0xE3)) and int.from_bytes(c[5:8],'big') == 0:
+        sys.exit(0 if c[16:18] == b'\x00\x00' else 1)
+sys.exit(1)
+"; then
+    echo "stype: FAIL (an unaddressable S-con must assemble as 0000)"; sfail=1
+fi
+rm -f /tmp/_s209.s /tmp/_s209.obj /tmp/_s209.out
 rm -f /tmp/_s108.s /tmp/_s108.obj
-[ $sfail = 0 ] && echo "stype: OK (five S-type forms and the section length match IFOX00)"
+[ $sfail = 0 ] && echo "stype: OK (five S-type forms, the section length, and IFO209 match IFOX00)"
 fail=$((fail + sfail))
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
