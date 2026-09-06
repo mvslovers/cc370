@@ -494,7 +494,21 @@ Pointers only. The reasoning lives in the issues and their PRs.
   the bytes a current link actually produces (`80 15 82`, product, V/M, packed
   `YYDDDF` and `0HHMMSSF`). The last change to `ld370.c` — the tool has been
   untouched since 2026-08-13.
-- **#110 `cmplmd370` / PRs #122, #123, #124** — the host COMPare Load MoDule, and
+- **`obj370` scatter record / PR #126** — 22 of 5,252 real DLIB members carry a
+  record with byte 0 `X'10'`, and both walkers stopped dead at it. The answer had
+  been in `docs/load-module-format.md` §8 since it was written: byte 0 `X'10'`,
+  bytes 1-3 the data count, 4-byte header. It went unimplemented because a module
+  only carries one when bound SCTR or OVLY, and neither cc370 nor as370 ever
+  emits one — **the same story as `rld[512]` and `dir[256]`: the corpus never
+  contained the triggering input.** Found only when foreign material ran against
+  it. Its 16 members in the tree-wide run now all produce a verdict, one of them
+  byte-identical, and 400 randomly re-run modules are unchanged.
+  The test asserts **continuation, not survival** — every record after the
+  scatter record must be reported exactly as before it was inserted, because
+  "does not crash" also passes a walker that stops one record later. `SYM`
+  (`X'40'`) stays deliberately unknown, verified by flipping the type byte: the
+  point was to learn one documented record, not to make the reader permissive.
+- **#110 `cmplmd370` / PRs #122, #123, #124, #125** — the host COMPare Load MoDule, and
   the recovery project's success criterion. It compares an as370 object deck
   directly against the shipped DLIB **load module**, which works only because
   the binder relocates adcons but does not touch instructions: zero them on both
@@ -513,6 +527,12 @@ Pointers only. The reasoning lives in the issues and their PRs.
   clusters were collected into a fixed 64, so `--difout` silently omitted every
   range past the 64th on a 319-cluster module. **The test now asserts the
   property, not the symptom** — cluster lengths must sum to `diff_bytes`.
+  A later fix belongs with it (#125): on its two error paths the JSON printed
+  `error` and returned, leaving out `exit` and `identical` — the fields a caller
+  branches on, missing where it most needs them. Sixteen of a 3,888-module run
+  hit it, and the missing message hid a real defect underneath (the scatter
+  record above). Same class as the fixed 64-cluster array: **a machine-readable
+  answer that omits something without saying so.** One shape on every path now.
   Closed avenue, recorded so nobody rebuilds it: a third verdict, "differs but
   explained by a named zap", has no data. `SYS1.SMPPTS` carries only MVS/CE's
   local layer (28 modules, none among ours); the zaps that left an IDR in 71 % of
