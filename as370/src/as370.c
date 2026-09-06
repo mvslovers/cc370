@@ -1197,6 +1197,45 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
         else break;
     }
 }
+/* T' of a SELF-DEFINING TERM is 'N', whatever the notation (#142).
+ *
+ * Measured against IFOX00 (tests/tattr_selfdef.s and its listing reference):
+ *
+ *   4095 -> N    X'C0D' -> N    B'1010' -> N    C'AB' -> N
+ *   C'&&' -> N   C'''' -> N     -1 -> U         SYM -> its DS/DC type letter
+ *
+ * as370 used to answer 'N' only when every character was a decimal digit, so
+ * the X/B/C notations fell through to 'U' and every macro branching on
+ * "AIF (T'&X NE 'N')" took the wrong path -- silently, at rc=0, with a longer
+ * expansion that assembles and runs. SYS1.AMACLIB(ABEND) is one of 225 such
+ * macros: it made "ABEND X'C0D',,,SYSTEM" 24 bytes instead of 8, which is the
+ * whole of IEAVDSEG's section length difference.
+ *
+ * Two boundaries worth keeping, both counter-intuitive and both measured
+ * rather than reasoned:
+ *  - a SIGNED decimal is NOT a self-defining term. -1 is 'U', and the old
+ *    all-digits test happened to get that right for the wrong reason.
+ *  - C'&&' and C'''' ARE self-defining terms: the doubled ampersand and the
+ *    doubled quote are one character each, so the run between the delimiters
+ *    is not inspected for content, only delimited.
+ *
+ * A defined SYMBOL answers with its DS/DC type letter, which as370 does not
+ * record per symbol yet -- filed separately. Anything that is neither a
+ * self-defining term nor a known symbol stays 'U'.
+ */
+static int is_selfdef(const char *v) {
+    int i, n;
+    if (!v[0]) return 0;
+    if (isdigit((unsigned char)v[0])) {          /* unsigned decimal; a sign makes it an expression */
+        for (i = 0; v[i]; i++) if (!isdigit((unsigned char)v[i])) return 0;
+        return 1;
+    }
+    if ((v[0] == 'X' || v[0] == 'B' || v[0] == 'C') && v[1] == '\'') {
+        n = (int)strlen(v);
+        return n >= 3 && v[n - 1] == '\'';       /* delimited only, content not inspected */
+    }
+    return 0;
+}
 /* a comparison term is character if quoted or a T' (type) attribute */
 static int term_is_str(const char *t) { return t[0] == '\'' || (t[0] == 'T' && t[1] == '\''); }
 static void term_str(struct ctx *c, const char *t, char *out) {
@@ -1206,7 +1245,7 @@ static void term_str(struct ctx *c, const char *t, char *out) {
             if (*p == '(') { ref[i++] = *p++; int d = 1; while (*p && d) { if (*p=='(')d++; else if(*p==')')d--; ref[i++]=*p++; } } ref[i] = 0; vref(c, ref, v); }
         else v[0] = 0;
         if (!v[0]) strcpy(out, "O");
-        else { int alln = 1, j; for (j = 0; v[j]; j++) if (!isdigit((unsigned char)v[j])) { alln = 0; break; } strcpy(out, alln ? "N" : "U"); }
+        else strcpy(out, is_selfdef(v) ? "N" : "U");
     } else eval_setc(c, t, out);
 }
 static int rel_apply(const char *rel, int cmp) {

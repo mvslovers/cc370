@@ -1,29 +1,44 @@
-* Typattribut eines selbstdefinierten Terms als Makroparameter.
+* Typattribut eines selbstdefinierten Terms (#142).
 *
 * T' eines selbstdefinierten Terms ist 'N', unabhaengig von der
-* Schreibweise.  Gemessen gegen IFOX00: X'C0D' und 4095 liefern
-* beide [NUMERIC].  as370 lieferte fuer die hexadezimale Form
-* [OTHER] und traf damit den falschen AIF-Zweig.
+* Schreibweise.  Gemessen gegen IFOX00, alle acht Faelle:
 *
-* Der Fall ist nicht akademisch.  SYS1.AMACLIB(ABEND) verzweigt
-* auf genau diesem Test:
+*   X'C0D'  N     4095    N     B'1010'  N     C'AB'  N
+*   C'&&'   N     C''''   N     -1       U     NOSUCH U
 *
-*     AIF   (T'&CC NE 'N').AA
+* Zwei Grenzen, beide gegen die Intuition und beide gemessen:
 *
-* so dass "ABEND X'C0D',,,SYSTEM" bei as370 zu 24 Byte expandiert
-* (B *+8 / DC AL4 / L / SLL / SRL / SVC) und bei IFOX zu 8.  In
-* IEAVDSEG ist das die gesamte Laengendifferenz des Abschnitts,
-* 340 gegen 324 Byte.
+*   - ein VORZEICHENBEHAFTETES Dezimalliteral ist KEIN selbst-
+*     definierter Term.  -1 ist 'U'.  Der alte Alle-Ziffern-Test
+*     traf das zufaellig richtig, aus dem falschen Grund.
+*   - C'&&' und C'''' SIND selbstdefinierte Terme.  Der doppelte
+*     Ampersand und das doppelte Hochkomma sind je ein Zeichen,
+*     der Lauf zwischen den Begrenzern wird nicht inspiziert.
+*
+* as370 antwortete 'N' nur bei lauter Dezimalziffern, also fielen
+* die X/B/C-Formen auf 'U' und jedes Makro mit
+*   AIF (T'&X NE 'N')
+* nahm den falschen Zweig -- stumm, bei rc=0.  225 Makros im Baum
+* verzweigen auf ein Typattribut; SYS1.AMACLIB(ABEND) machte
+* ABEND X'C0D',,,SYSTEM zu 24 statt 10 Byte.
+*
+* Ein definiertes SYMBOL antwortet mit seinem DS/DC-Typbuchstaben
+* (F/H/C/X), was as370 nicht je Symbol vorhaelt -- eigenes Issue.
          MACRO
          SHOWT &CC
-         DC    C'T=&SYSNDX.'
          AIF   (T'&CC NE 'N').OTHER
-         DC    C'[NUMERIC]'
+         DC    C'N'
          MEXIT
 .OTHER   ANOP
-         DC    C'[OTHER]'
+         DC    C'U'
          MEND
 T        CSECT
          SHOWT X'C0D'
          SHOWT 4095
+         SHOWT B'1010'
+         SHOWT C'AB'
+         SHOWT C'&&'
+         SHOWT C''''
+         SHOWT -1
+         SHOWT NOSUCH
          END
