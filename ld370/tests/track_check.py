@@ -21,8 +21,15 @@ It is an ABSOLUTE check: every expectation below is a physical property of a
 3350 or a fixed field value, never "ld370 agrees with itself".  A wrong shared
 constant fails it.
 
-usage: track_check.py UNLOAD.iebcopy [--data-cc N] [--trkpercyl N]
-                      [--template FILE]
+It reads either form: a bare -iebcopy image, or --from-xmit to unwrap the
+NETDATA envelope first, so the SAME geometry rules cover both producers of the
+unload container -- ld370 for RECFM=U load libraries and xmit370 for RECFM=FB
+source libraries.  They share these constants, so they should share the check;
+xmit370's own xmit_check.py asserts track density but not the UDEBX extent, and
+the extent is what makes a relative TTR resolve to the right absolute track.
+
+usage: track_check.py [--from-xmit] IMAGE... [--data-cc N] [--trkpercyl N]
+                      [--template FILE|--no-template] [--recfm U|FB]
 """
 import os
 import sys
@@ -46,12 +53,40 @@ DEBSTRCC, DEBSTRHH, DEBENDCC, DEBENDHH, DEBNMTRK = 74, 76, 78, 80, 82
 # cannot: a wrong offset leaves the right one at its template value, and for a
 # field whose correct value never varies (ENDHH is always trk/cyl - 1) the two
 # are indistinguishable from the output alone.
-STAMPED = ((XC1BLKSZ, 2), (XC1TBLKS, 2), (DEBENDCC, 2), (DEBENDHH, 2), (DEBNMTRK, 2))
+# ld370 (load library) touches only the two blocksizes and the extent; xmit370
+# (source library) additionally stamps the DCB, because RECV370 allocates the
+# target from exactly these fields when the JCL gives no DCB.
+STAMPED_EXTENT = ((DEBENDCC, 2), (DEBENDHH, 2), (DEBNMTRK, 2))
+STAMPED_LOAD = ((XC1BLKSZ, 2), (XC1TBLKS, 2)) + STAMPED_EXTENT
+STAMPED_SRC = ((XC1DSORG, 2), (XC1BLKSZ, 2), (XC1LRECL, 2),
+               (XC1RECFM, 1), (XC1KEYLN, 1), (XC1TBLKS, 2)) + STAMPED_EXTENT
 
 DEFAULT_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "fixtures", "unload_env_hdr.bin")
 
 fails = []
+
+
+def unwrap_xmit(d):
+    """NETDATA segments -> the concatenated NON-control payload (the unload).
+
+    Segment = len(1, incl. the 2-byte header) + flags(1) + data; 0x80 first,
+    0x40 last, 0x20 control.  Control records are the INMRxx headers and are not
+    part of the unloaded image."""
+    out, cur, ctl, p = b"", b"", False, 0
+    while p + 2 <= len(d):
+        ln, flags = d[p], d[p + 1]
+        if ln < 2:
+            break                      # trailing zero padding in the FB80 block
+        if flags & 0x80:
+            cur, ctl = b"", bool(flags & 0x20)
+        cur += d[p + 2:p + ln]
+        if flags & 0x40:
+            if not ctl:
+                out += cur
+            cur = b""
+        p += ln
+    return out or None
 
 
 def fail(msg):
@@ -84,8 +119,13 @@ def records(u):
     return out, p
 
 
-def check(path, data_cc, trkpercyl, template):
+def check(path, data_cc, trkpercyl, template, recfm, from_xmit):
     u = open(path, "rb").read()
+    if from_xmit:
+        u = unwrap_xmit(u)
+        if u is None:
+            fail("%s: no unload payload found in the NETDATA envelope" % path)
+            return
     if len(u) < ENV_HDR:
         fail("%s is shorter than the %d-byte env header" % (path, ENV_HDR))
         return
@@ -96,8 +136,8 @@ def check(path, data_cc, trkpercyl, template):
              % (u[1:4].hex(' '), COPYR1_EYE.hex(' ')))
     if be16(u, XC1DSORG) != 0x0200:
         fail("COPYR1 DSORG is %04X, expected 0200 (PO)" % be16(u, XC1DSORG))
-    if u[XC1RECFM] != 0xC0:
-        fail("COPYR1 RECFM is %02X, expected C0 (U) for a load library" % u[XC1RECFM])
+    if recfm is not None and u[XC1RECFM] != recfm:
+        fail("COPYR1 RECFM is %02X, expected %02X" % (u[XC1RECFM], recfm))
     if u[XC1KEYLN] != 0:
         fail("COPYR1 KEYLEN is %d, expected 0" % u[XC1KEYLN])
     blk = be16(u, XC1BLKSZ)
@@ -108,7 +148,7 @@ def check(path, data_cc, trkpercyl, template):
     # 1b. every byte the emitter does not stamp must still be the template's.
     if template is not None:
         mutable = set()
-        for off, n in STAMPED:
+        for off, n in (STAMPED_LOAD if recfm == 0xC0 else STAMPED_SRC):
             mutable.update(range(off, off + n))
         bad = [i for i in range(ENV_HDR)
                if i not in mutable and u[i] != template[i]]
@@ -199,9 +239,12 @@ def check(path, data_cc, trkpercyl, template):
                  strcc, endcc, nmtrk, blk))
 
 
+RECFM = {"U": 0xC0, "F": 0x80, "FB": 0x90}
+
+
 def main(argv):
     data_cc, trkpercyl, paths = 0x8D, 30, []
-    tpath = DEFAULT_TEMPLATE
+    tpath, recfm, from_xmit = DEFAULT_TEMPLATE, 0xC0, False
     i = 1
     while i < len(argv):
         if argv[i] == "--data-cc":
@@ -210,6 +253,15 @@ def main(argv):
             i += 1; trkpercyl = int(argv[i], 0)
         elif argv[i] == "--template":
             i += 1; tpath = argv[i]
+        elif argv[i] == "--no-template":
+            tpath = None
+        elif argv[i] == "--recfm":
+            i += 1
+            if argv[i] not in RECFM:
+                sys.exit("--recfm must be one of %s" % "/".join(RECFM))
+            recfm = RECFM[argv[i]]
+        elif argv[i] == "--from-xmit":
+            from_xmit = True
         else:
             paths.append(argv[i])
         i += 1
@@ -223,7 +275,7 @@ def main(argv):
     elif tpath:
         sys.exit("template %s not found" % tpath)
     for p in paths:
-        check(p, data_cc, trkpercyl, template)
+        check(p, data_cc, trkpercyl, template, recfm, from_xmit)
     return 1 if fails else 0
 
 
