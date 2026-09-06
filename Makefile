@@ -47,8 +47,8 @@ MANDIR  := $(PREFIX)/share/man/man1
 
 TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370 xmit370/xmit370
 # shared format primitives (CP037 tables, CKD count field, NETDATA records)
-COMMON  := common/src/mvs370.c
-COMMONH := common/include/mvs370.h
+COMMON  := common/src/mvs370.c common/src/obj370.c
+COMMONH := common/include/mvs370.h common/include/obj370.h
 # man pages: one .pod per tool -> pod2man -> .1
 MANPODS := $(wildcard man/*.pod)
 MAN1    := $(MANPODS:.pod=.1)

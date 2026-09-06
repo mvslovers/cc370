@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "mvs370.h"
+#include "obj370.h"
 
 #define VERSION_STR "file370 V1.0"
 
@@ -37,20 +38,27 @@ static void e2a_n(char *dst, const unsigned char *src, int n)
     dst[n] = 0;
 }
 
+/* ESD tallies for the one-line summary, filled through obj_esd_walk. */
+struct esd_sum { int nsd, nld, ner, ncm; char first[16]; };
+
+static int sum_esd(const struct obj_esd *e, void *ctx)
+{
+    struct esd_sum *s = ctx;
+    if (obj_is_section(e->type)) {
+        if (e->type == OBJ_CM) s->ncm++; else s->nsd++;
+        if (!s->first[0]) {
+            const char *nm = mvs_nm(e->name);
+            strcpy(s->first, nm[0] ? nm : "(private)");
+        }
+    } else if (e->type == OBJ_LD) s->nld++;
+    else if (e->type == OBJ_ER || e->type == OBJ_WX) s->ner++;
+    return 1;
+}
+
 /* ---- format detection ---- */
 enum fmt { F_UNKNOWN, F_OBJ, F_AR, F_LMOD, F_IEBCOPY, F_XMIT };
 
 /* an OBJ card's bytes 1-3 are one of the EBCDIC card types */
-static int obj_card_type(const unsigned char *c)
-{
-    if (c[0] == 0xC5 && c[1] == 0xE2 && c[2] == 0xC4) return 1;   /* ESD */
-    if (c[0] == 0xE3 && c[1] == 0xE7 && c[2] == 0xE3) return 1;   /* TXT */
-    if (c[0] == 0xD9 && c[1] == 0xD3 && c[2] == 0xC4) return 1;   /* RLD */
-    if (c[0] == 0xC5 && c[1] == 0xD5 && c[2] == 0xC4) return 1;   /* END */
-    if (c[0] == 0xE2 && c[1] == 0xE8 && c[2] == 0xD4) return 1;   /* SYM */
-    return 0;
-}
-
 static enum fmt detect(const unsigned char *b, long n)
 {
     if (n >= 8 && memcmp(b, "!<arch>\n", 8) == 0) return F_AR;
@@ -59,7 +67,7 @@ static enum fmt detect(const unsigned char *b, long n)
     if (n >= 8 && b[2] == 0xC9 && b[3] == 0xD5 && b[4] == 0xD4 &&
         b[5] == 0xD9 && b[6] == 0xF0 && b[7] == 0xF1)
         return F_XMIT;                                            /* "INMR01" at offset 2 */
-    if (n >= 4 && b[0] == 0x02 && obj_card_type(b + 1)) return F_OBJ;
+    if (n >= 4 && obj_card_type(b) != OBJ_OTHER) return F_OBJ;
     if (n >= 1 && (b[0] == 0x20 || b[0] == 0x28)) return F_LMOD;  /* first record = CESD */
     return F_UNKNOWN;
 }
@@ -83,40 +91,30 @@ static const char *esd_type(int t)
 /* ====================================================================== */
 static void show_obj(const char *path, const unsigned char *b, long n, int v)
 {
+    struct esd_sum sm;
     long off, textbytes = 0;
     int nsd = 0, nld = 0, ner = 0, ncm = 0, nrld = 0, has_entry = 0;
     long entry_off = 0;
     char first_sect[16] = "";
 
+    memset(&sm, 0, sizeof sm);
     /* one pass to summarize */
-    for (off = 0; off + 80 <= n; off += 80) {
+    for (off = 0; off + OBJ_CARD_LEN <= n; off += OBJ_CARD_LEN) {
         const unsigned char *c = b + off;
-        if (c[0] != 0x02) continue;
-        if (c[1] == 0xC5 && c[2] == 0xE2 && c[3] == 0xC4) {            /* ESD */
-            int cnt = mvs_be16(c + 10), k;
-            for (k = 0; k < cnt / 16; k++) {
-                const unsigned char *e = c + 16 + (long)k * 16;
-                int ty = e[8] & 0x0f;
-                if (ty == 0x00 || ty == 0x04 || ty == 0x05) {
-                    if (ty == 0x05) ncm++; else nsd++;
-                    if (!first_sect[0]) {
-                        const char *s = mvs_nm(e);
-                        if (s[0]) strcpy(first_sect, s);
-                        else strcpy(first_sect, "(private)");
-                    }
-                } else if (ty == 0x01) nld++;
-                else if (ty == 0x02 || ty == 0x0A) ner++;
-            }
-        } else if (c[1] == 0xE3 && c[2] == 0xE7 && c[3] == 0xE3) {     /* TXT */
-            textbytes += mvs_be16(c + 10);
-        } else if (c[1] == 0xD9 && c[2] == 0xD3 && c[3] == 0xC4) {     /* RLD */
-            nrld++;
-        } else if (c[1] == 0xC5 && c[2] == 0xD5 && c[3] == 0xC4) {     /* END */
-            if (!(c[5] == 0x40 && c[6] == 0x40 && c[7] == 0x40)) {
-                has_entry = 1; entry_off = mvs_be24(c + 5);
-            }
+        switch (obj_card_type(c)) {
+        case OBJ_ESD: obj_esd_walk(c, sum_esd, &sm); break;
+        case OBJ_TXT: { struct obj_txt t; if (obj_txt_get(c, &t)) textbytes += t.len; break; }
+        case OBJ_RLD: nrld++; break;
+        case OBJ_END: { struct obj_end e;
+                        if (obj_end_get(c, &e) && e.has_entry) {
+                            has_entry = 1; entry_off = e.entry_addr;
+                        }
+                        break; }
+        default: break;
         }
     }
+    nsd = sm.nsd; nld = sm.nld; ner = sm.ner; ncm = sm.ncm;
+    if (sm.first[0]) strcpy(first_sect, sm.first);
 
     printf("%s: OS/360 object deck -- %d section(s)", path, nsd + ncm);
     if (first_sect[0]) printf(" (first %s)", first_sect);
