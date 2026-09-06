@@ -376,6 +376,25 @@ static struct lit *lit_get(const char *t) {
  * Stops at a top-level '(' (a subscript), ',' or end — so it also evaluates a
  * displacement like 4+120(13). Not re-entrant (uses parse globals). */
 static const char *xp_; static int xrl_;   /* xrl_ = net relocation count of the last expr_val (0 = absolute) */
+/* Per-section tally of the same terms.  xrl_ alone cannot tell (A-B) inside one
+ * section, which is absolute, from (OTHER-TESTQ) across two, which is not: both
+ * net to zero.  IFOX00 accepts the first and rejects the second with IFO206
+ * (cc370#133); as370 accepted both silently at RC 0. */
+static int xsect_[64], xscnt_[64], xnsect_, xovf_;
+/* 1 if every section's relocatable terms cancelled -- i.e. genuinely absolute
+ * rather than merely net-zero across different sections. */
+static void xsect_tally(int sect, int sign) {
+    int k;
+    for (k = 0; k < xnsect_; k++) if (xsect_[k] == sect) { xscnt_[k] += sign; return; }
+    if (xnsect_ < 64) { xsect_[xnsect_] = sect; xscnt_[xnsect_] = sign; xnsect_++; }
+    else xovf_ = 1;                      /* >64 distinct sections: prove nothing */
+}
+static int xrl_paired(void) {
+    int k;
+    if (xovf_) return 1;                 /* could not track: do not invent an error */
+    for (k = 0; k < xnsect_; k++) if (xscnt_[k]) return 0;
+    return 1;
+}
 static long x_add(void);   /* fwd: additive expression (term +/- term ...) */
 static long x_factor(int sign) {
     while (*xp_ == ' ') xp_++;
@@ -385,7 +404,7 @@ static long x_factor(int sign) {
         while (*xp_ == ' ') { xp_++; } if (*xp_ == ')') xp_++;
         return v;
     }
-    if (*xp_ == '*') { xp_++; xrl_ += sign; return lc; }   /* location counter (relocatable for USING resolution) */
+    if (*xp_ == '*') { xp_++; xrl_ += sign; xsect_tally(cur_sect_id, sign); return lc; }   /* location counter: relocatable, and it belongs to the CURRENT section -- without that (*-HERE) would not pair and the valid case would be rejected */
     if (*xp_ == '-') { xp_++; return -x_factor(-sign); }
     if (*xp_ == '+') { xp_++; return x_factor(sign); }
     if (isdigit((unsigned char)*xp_)) { char *end; long v = strtol(xp_, (char **)&end, 10); xp_ = end; return v; }
@@ -415,7 +434,19 @@ static long x_factor(int sign) {
      * matters: the implicit private-code section is entered under "" (sym_get("")
      * in do_pass), and a factor position holding no symbol at all yields "". */
     if (g_pass == 2 && nm[0] && (!s || (!s->defined && s->type != S_ER))) note_undefsym(nm, g_curln);
-    if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) xrl_ += sign; return s->val; }
+    if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) {
+                 xrl_ += sign;
+                 /* Tally the relocatable terms PER SECTION as well as in total.
+                  * xrl_ alone cannot tell (A-B) within one section, which is
+                  * absolute, from (OTHER-TESTQ) across two, which is not: both
+                  * net to zero.  IFOX00 accepts the first and rejects the second
+                  * with IFO206 (cc370#133), and as370 accepted both silently at
+                  * RC 0.  An ER has no section and is bucketed under 0 with the
+                  * rest, so two DIFFERENT ERs still cancel here -- narrower than
+                  * IFOX, and deliberately left that way rather than guessed. */
+                 xsect_tally(s->sect, sign);
+             }
+             return s->val; }
     return 0;
 }
 static long x_term(int sign) {
@@ -436,7 +467,7 @@ static long x_add(void) {
 }
 static long expr_val(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0;
     while (*xp_ == ' ') xp_++;
     if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; }   /* leading '(' = subscript with no displacement prefix */
     else { v = x_add(); if (reloc) *reloc = xrl_; }
@@ -455,7 +486,7 @@ static long expr_val(const char *e, int *reloc) {
  * which it would silently value at 0.  Same evaluator, without that guard. */
 static long expr_val_full(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0;
     while (*xp_ == ' ') xp_++;
     if (*xp_) { v = x_add(); if (reloc) *reloc = xrl_; }
     else if (reloc) *reloc = 0;
@@ -2612,6 +2643,19 @@ static void do_pass(int pass, char **lines, int nlines) {
                         } else if ((dv = expr_val_full(ex, &rl)), rl != 0) {   /* IFO217, severity 12 */
                             note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
                             note_operr("Duplication factor error - no storage reserved (IFOX00 IFO206)", 8, i);
+                            note_dupbad(i, oi); cnt = 0;
+                        } else if (!xrl_paired()) {
+                            /* Net zero, but the terms came from DIFFERENT sections --
+                             * (OTHER-TESTQ) rather than (*-HERE).  IFOX00 gives IFO206
+                             * and reserves nothing; as370 read it as the absolute value
+                             * 0, which is a LEGAL and silent duplication factor, so the
+                             * statement vanished at RC 0 (cc370#133).
+                             *
+                             * It moves no byte, which is why it survived: the damage is
+                             * a wrong CATEGORY.  A module IFOX rejects went into the
+                             * recovery comparison as "assembled", differed, and the
+                             * difference was charged to the source. */
+                            note_operr("Duplication factor error - the terms are not from one section (IFOX00 IFO206)", 8, i);
                             note_dupbad(i, oi); cnt = 0;
                         } else if (dv < 0) {                      /* IFO206, severity 8 */
                             note_operr("Negative duplication factor (IFOX00 IFO206)", 8, i);
