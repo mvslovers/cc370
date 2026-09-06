@@ -1,0 +1,100 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 13.35 09/06/26
+TSECT     SD  0001 000000 000059
+EXT1      ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 13.35 09/06/26
+                                      1          MACRO
+                                      2          CKT   &CC,&EXP
+                                      3          AIF   (T'&CC EQ '&EXP').OK
+                                      4          DC    C'BAD'
+                                      5          MEXIT
+                                      6 .OK      ANOP
+                                      7          DC    C'OK '
+                                      8          MEND
+000000                                9 TSECT    CSECT
+000000                               10 SF       DS    F
+000004                               11 SH       DS    H
+000006                               12 SC       DS    CL3
+000009                               13 SX       DS    XL2
+000010                               14 SD       DS    D
+000018                               15 SP       DS    PL2
+00001A                               16 SZ       DS    0H
+00001A 0000
+00001C 00000001                      17 DF       DC    F'1'
+000020 C1C2                          18 DC1      DC    C'AB'
+000022 4110 0000      00000          19 LAB      LA    1,0
+                            00005    20 EQA      EQU   5
+                            00000    21 EQR      EQU   SF
+                                     22          EXTRN EXT1
+000000                               23 DSECTN   DSECT
+000000                               24 DSF      DS    F
+000026                               25 TSECT    CSECT
+                                     26          CKT   SF,F
+000026 D6D240                        27+         DC    C'OK '
+                                     28          CKT   SH,H
+000029 D6D240                        29+         DC    C'OK '
+                                     30          CKT   SC,C
+00002C D6D240                        31+         DC    C'OK '
+                                     32          CKT   SX,X
+00002F D6D240                        33+         DC    C'OK '
+                                     34          CKT   SD,D
+000032 D6D240                        35+         DC    C'OK '
+                                     36          CKT   SP,P
+000035 D6D240                        37+         DC    C'OK '
+                                     38          CKT   SZ,H
+000038 D6D240                        39+         DC    C'OK '
+                                     40          CKT   DF,F
+00003B D6D240                        41+         DC    C'OK '
+                                     42          CKT   DC1,C
+00003E D6D240                        43+         DC    C'OK '
+                                     44          CKT   LAB,I
+000041 D6D240                        45+         DC    C'OK '
+                                     46          CKT   EQA,U
+000044 D6D240                        47+         DC    C'OK '
+                                     48          CKT   EQR,U
+000047 D6D240                        49+         DC    C'OK '
+                                     50          CKT   EXT1,T
+00004A D6D240                        51+         DC    C'OK '
+                                     52          CKT   TSECT,J
+00004D D6D240                        53+         DC    C'OK '
+                                     54          CKT   DSECTN,J
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 13.35 09/06/26
+000050 D6D240                        55+         DC    C'OK '
+                                     56          CKT   DSF,F
+000053 D6D240                        57+         DC    C'OK '
+                                     58          CKT   NOSUCH,U
+000056 D6D240                        59+         DC    C'OK '
+                                     60          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.35 09/06/26
+DC1      00002 00000020 00018
+DF       00004 0000001C 00017
+DSECTN   00001 00000000 00023
+DSF      00004 00000000 00024
+EQA      00001 00000005 00020
+EQR      00004 00000000 00021
+EXT1     00001 00000000 00022
+LAB      00004 00000022 00019
+SC       00003 00000006 00012
+SD       00008 00000010 00014
+SF       00004 00000000 00010  00021
+SH       00002 00000004 00011
+SP       00002 00000018 00015
+SX       00002 00000009 00013
+SZ       00002 0000001A 00016
+TSECT    00001 00000000 00009  00025
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 13.35 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         43
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                       100
