@@ -1,0 +1,48 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 11.35 09/06/26
+T         SD  0001 000000 000007
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 11.35 09/06/26
+                                      1 * SETC-Substitution in OFFENEM Code, und die Teilzeichenkette.
+                                      2 *
+                                      3 * Gemessen gegen IFOX00:
+                                      4 *   DC    C'[&A][&B]'   ->  BABBBAC2C3C4BB   = [][BCD]
+                                      5 *   Anweisung 3         ->  IFO117 FIRST EXPRESSION IN SUBSTRING
+                                      6 *                           NOTATION EXCEEDS THE LENGTH OF THE STRING
+                                      7 *
+                                      8 * Zwei getrennte Befunde in einem Fall:
+                                      9 *
+                                     10 *   1. IFOX substituiert &A und &B im DC-Operanden.  as370 gab
+                                     11 *      BA50C1BB BA50C2BB aus -- den Variablennamen woertlich als
+                                     12 *      Daten.  Im Makrorumpf substituiert as370 (&SYSECT laeuft),
+                                     13 *      in offenem Code nicht.
+                                     14 *   2. 'AB'(5,4) greift ueber das Ende.  IFOX liefert die leere
+                                     15 *      Zeichenkette UND stellt IFO117; as370 nahm es wortlos an.
+                                     16 *
+                                     17 * Der zweite Befund ist der Ausloeser in IEDQE2, wo IEDHJN
+                                     18 * '&SYSPARM'(1,4) auf ein leeres &SYSPARM anwendet.
+000000                               19 T        CSECT
+                                     20          LCLC  &A,&B
+                                     21 &A       SETC  'AB'(5,4)
+         *** ERROR ***
+                                     22 &B       SETC  'ABCDEF'(2,3)
+                                     23          DC    C'[&A][&B]'
+000000 BABBBAC2C3C4BB                24+         DC    C'[][BCD]'
+                                     25          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.35 09/06/26
+T        00001 00000000 00019
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 11.35 09/06/26
+   21  IFO117      FIRST EXPRESSION IN SUBSTRING NOTATION EXCEEDS THE LENGTH OF THE STRING
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         24
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        48
