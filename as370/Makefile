@@ -4,8 +4,11 @@ CC      ?= cc
 CFLAGS  ?= -g -O0 -Wall -Wextra -std=gnu99
 PROG     = as370
 
-$(PROG): src/as370.c include/opc_table.h
-	$(CC) $(CFLAGS) -Iinclude -o $@ src/as370.c
+COMMON   = ../common/src/mvs370.c
+COMMONH  = ../common/include/mvs370.h
+
+$(PROG): src/as370.c include/opc_table.h $(COMMON) $(COMMONH)
+	$(CC) $(CFLAGS) -Iinclude -I../common/include -o $@ src/as370.c $(COMMON)
 
 .PHONY: test clean
 test: $(PROG)
