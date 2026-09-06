@@ -17,12 +17,12 @@ Phase 0's `libmvs370` half is done and `libobj370`'s **readers** are too; what
 is left there is putting as370, ld370 and ar370 on them. Phase 1's `cmplmd370`
 is built and accepted by its consumer — the first tool on this page to ship.
 
-**The caller has since paid the page back.** Seven as370 gaps were found and
+**The caller has since paid the page back.** Ten as370 gaps were found and
 closed against IFOX00 between 2026-09-04 and 09-06 (#127, #128, #129, #133,
-#134, #136, #138); over that tree 4,270 → 4,510 modules assemble and **572 → 832
-are byte-identical to the shipped object**, with nothing regressed. Two of the
-seven unlocked no module at all — they corrected object code as370 had been
-emitting silently and wrongly. That is the argument for this page in one line:
+#134, #136, #138, #142, #144, #146); over that tree 4,270 → 4,533 modules
+assemble and **572 → 837 are byte-identical to the shipped object**, with
+nothing regressed. Five were silent, and four of those unlocked no module at
+all — they corrected object code as370 had been emitting silently and wrongly. That is the argument for this page in one line:
 **a tool only measures what its own output already contains, and every gap here
 was found by foreign material.** Detail in `TODO.md`, *Recently landed*.
 

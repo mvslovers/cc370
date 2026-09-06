@@ -495,28 +495,48 @@ at the cost of one more dimension in which two objects can disagree.
 Pointers only. The reasoning lives in the issues and their PRs.
 
 - **The September as370 parity run** — #127 (`START`), #128 (`ISEQ`), #129
-  (DC/DS type `S`), #134 (`&SYSECT`), #133 (cross-section duplication factor),
-  #136 (per-section location counter) and #138 (base-register tie-break), closed
-  2026-09-04…06. Driven by `mvs38src`, which assembles recovered MVS 3.8j source
-  with as370 and diffs the deck against what the system ships. Over that tree:
-  4,270 → 4,510 modules assemble, **572 → 832 byte-identical**, 853 → 1,263
-  identical-or-only-`DS`-holes (21.9 % → 30.8 %), and **nothing regressed**.
+  (DC/DS type `S`), #133 (cross-section duplication factor), #134 (`&SYSECT`),
+  #136 (per-section location counter), #138 (base-register tie-break), #142
+  (`T'` of a self-defining term), #144 (`T'` of a symbol, via an open-code
+  look-ahead) and #146 (`T'` written out rather than through a parameter),
+  closed 2026-09-04…06. Driven by `mvs38src`, which assembles recovered MVS 3.8j
+  source with as370 and diffs the deck against what the system ships. Over that
+  tree: 4,270 → 4,533 modules assemble, **572 → 837 byte-identical**, 853 →
+  1,263 identical-or-only-`DS`-holes (21.9 % → 30.8 %), and **nothing
+  regressed**.
 
-  Two of the seven unlocked **no module at all** — `&SYSECT` and the
-  base-register tie-break. Between them they were the largest contribution,
+  **Five of the ten were silent**, and four of them unlocked no module at all —
+  `&SYSECT`, the cross-section null factor, the base-register tie-break, and
+  the `T'` family. Between them they were the largest contribution,
   because they corrected object code that 80-odd modules had been emitting
   silently and wrongly all along. That is the lesson worth keeping: **the
   expensive assembler defects are the ones nothing fails on.** No test of ours
   found either; both needed foreign material and a real IFOX00 to compare
   against.
 
-  A second lesson, learned twice in one week and once by each session: **a test
-  whose two hypotheses give the same answer is not a test.** `csect_resume.s`
-  could not separate the two origin rules because `align8(4)` and `align8(6)`
-  are both 8; `basereg.s` could not separate "highest-numbered register" from
-  "last registered" because its USINGs are declared ascending. Each needed a
-  second oracle built specifically to disagree — and in the second case the
-  obvious one-character fix would have been wrong.
+  A second lesson, hit **three times in one week on this side alone**: *a
+  fixture whose two hypotheses give the same answer decides nothing.*
+
+  | fixture | the two cases it could not separate |
+  |---|---|
+  | `csect_resume.s` | origin-at-open vs origin-from-final-lengths — `align8(4)` and `align8(6)` are both 8 |
+  | `basereg.s` | highest-numbered register vs last registered — its USINGs are declared ascending |
+  | `tattr_symbol.s` | `T'&VAR` vs `T'SYMBOL` — all 17 cases went through a macro parameter |
+
+  The first two were caught before shipping; **the third shipped**, and #146 is
+  the repair. In the second case the obvious one-character fix (`dd < bd` →
+  `dd <= bd`) would have been wrong. Write down what each candidate rule
+  predicts before capturing: if the predictions match, the fixture proves
+  nothing whatever the oracle says.
+
+  The `T'` family is closed, and closing it answered a question that looked like
+  a fourth defect. The 184 modules calling a type-attribute macro with a
+  self-defining term were **eight times less often byte-identical** than the
+  tree average, and two exact fixes lifted only five of them. The fixes do reach
+  them — 77 of the 184 decks changed — so the set is not depleted by a defect
+  still in hiding: **it selected for complexity.** A module that calls `DCB`
+  with a self-defining term is a module with more going on. Worth remembering
+  the next time a subpopulation looks damning.
 
 - **The August as370 parity run** — #94, #93, #88, #82, #74, #72, #70, #68, #64,
   #63, #61, #57, #53, #52, #51, #50, #48, #44, closed 2026-08-28…30. Between them
