@@ -13,13 +13,17 @@ against the object the system ships. Those items are marked ▸ below and ranked
 `TODO.md`; the rest of this page is unchanged in status — nothing else here is
 scheduled.
 
-Phase 0's first half is **done** (PR #116): all five tools now share
-`common/mvs370` rather than each carrying its own copy of the primitives. The
-emitters — the part that actually blocks Phases 1-4 — are still ahead.
+Phase 0 is **half done, and it is the `libmvs370` half**: all five tools share
+`common/mvs370` (PR #116), and the 3350 geometry plus the COPYR1/COPYR2 template
+moved there (PR #119). **`libobj370` has not been started** — `grep -ciE
+'esd|rld|\btxt\b' common/*` returns 0, and four tools still decode object
+records themselves. What blocks Phases 1-4 is that reader layer, **not** the
+emitters; see the split under Phase 0.
 
 | | tool | issue |
 |---|---|---|
-| Phase 0 | `libobj370` / `libmvs370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **the gate; the other three depend on it.** Primitives landed 2026-09-06 (PR #116); the emitters remain |
+| Phase 0 | `libmvs370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **done** (PR #116, #119) |
+| Phase 0 | `libobj370` | [#109](https://github.com/mvslovers/cc370/issues/109) — **not started; this is what Phases 1-4 wait on** |
 | Phase 1 | `cmplmd370` | [#110](https://github.com/mvslovers/cc370/issues/110) — new to this page, see below |
 | Phase 2 | foreign IEBCOPY unloads | [#113](https://github.com/mvslovers/cc370/issues/113) — *with* libmvs370 by ownership, not behind it |
 | Phase 3 | `idrdump370` | [#111](https://github.com/mvslovers/cc370/issues/111) |
@@ -61,16 +65,35 @@ now filed — `cmplmd370`, `idrdump370`, `dasm370` — decode exactly these form
 so the question is no longer whether the duplication is worth removing but
 whether there will be three copies of it or six.
 
-**Status: half done, 2026-09-06 (PR #116).** And the first half was not what this
-page predicted. `common/mvs370` already existed — added with `xmit370` in
-`51bdf5b`, describing itself as holding what was *"byte-for-byte duplicated
-across ld370, ar370, file370 and as370"* — but only xmit370 ever included it.
-So step one was **adoption, not extraction**: −166 lines, removing three
-identical `e2a1` decoders, two sets of big-endian accessors, and ld370's complete
-second NETDATA text-unit layer. The validation this page promised held exactly as
-described — 743 corpus modules deck for deck, the IFOX00 and IEWL oracles green.
+**Status: `libmvs370` done (PR #116, #119); `libobj370` not started.** And the
+part that landed was not what this page predicted. `common/mvs370` already
+existed — added with `xmit370` in `51bdf5b`, describing itself as holding what
+was *"byte-for-byte duplicated across ld370, ar370, file370 and as370"* — but
+only xmit370 ever included it. So step one was **adoption, not extraction**:
+−166 lines, removing three identical `e2a1` decoders, two sets of big-endian
+accessors, and ld370's complete second NETDATA text-unit layer. PR #119 then
+moved the 3350 geometry and the template. The validation this page promised held
+exactly as described — 743 corpus modules deck for deck, the IFOX00 and IEWL
+oracles green.
 
-**What remains is the emitters, and this page should not pretend they are the
+**All of that is the BYTE layer.** The object-record layer this phase is half
+named after — ESD, TXT, RLD, END — has not been touched, and four tools still
+decode it separately (`as370`, `ld370`, `file370`, and `ar370` for its archive
+index). That matters for the order of the rest:
+
+| | who is waiting | risk |
+|---|---|---|
+| **`libobj370`** — ESD/TXT/END, RLD only to *locate* relocatable fields, the load-module record walk | `cmplmd370`, `idrdump370`, `dasm370` — **all three, and all three only read** | low: reconcile three existing implementations, byte-identity as the oracle |
+| **the emitters** — IEBCOPY unload, XMIT | nobody | high: four production failures behind them, and [#117](https://github.com/mvslovers/cc370/issues/117) / [#118](https://github.com/mvslovers/cc370/issues/118) open inside them |
+
+`cmplmd370` compares an object deck against a DLIB element or against a CSECT in
+a load module. It never writes an unload or an XMIT stream. Neither do the other
+two. **So the readers are on three tools' critical path and are the mechanical
+half; the emitters are on nobody's and are the delicate one.** Acceptance for a
+reader extraction needs nothing new — the byte-identity corpus deck for deck plus
+the ld370 regression is a complete proof when no new output is produced.
+
+**What remains on the emitter side, and this page should not pretend it is the
 same job.** There are two, and they differ for a real reason rather than by
 accident:
 
@@ -87,16 +110,15 @@ guessed abstraction."* Both are separately MVS-validated, and ld370's is the cod
 behind four production failures — dropped text, over-packed tracks → S106-0F,
 directory overflow, SIGBUS.
 
-**It is not optional, because the duplication already sits in the worst place.**
-The 3350 geometry constants are copied verbatim between the two, *including the
-ones that are the S106-0F fix*:
-
-```
-TRK_CAP_3350   19069  ld370  ·  19069  xmit370
-TRK_OVH_3350     185  ld370  ·    185  xmit370
-UDEBX_NMTRK       82  ld370  ·     82  xmit370
-UNLOAD_TRKPERCYL  30  ld370  ·     30  xmit370
-```
+**The dangerous part of that duplication is already gone.** The 3350 geometry
+constants used to be copied verbatim between the two, *including the ones that
+are the S106-0F fix* — `TRK_CAP_3350` 19069, `TRK_OVH_3350` 185, `UDEBX_NMTRK`
+82, `UNLOAD_TRKPERCYL` 30. PR #119 moved them to `common/` and put a
+mutation-tested guard under each. What is left to unify is the layout code, and
+it can wait: **the emitters now gate on their own defects rather than on
+scheduling.** #117 and #118 are two measured defects in exactly the code that
+would be merged, and merging two implementations while both have something open
+merges the defects with them.
 
 The next device change has to be got right twice. Order: **the constants and the
 COPYR1/COPYR2 templates first** — mechanical, byte-checkable, and it removes the
@@ -328,9 +350,9 @@ over-packed-track defects. With it, they are all thin frontends, and the questio
 #113 needs the unload directory read a second way. That is three or four more
 copies of the same decoders, all filed within one day of each other — which is
 the whole argument for #109 restated by events rather than by reasoning.
-(Half of it is now paid off — see the Phase 0 status — but the emitters, which is
-where `cmplmd370` and `dasm370` will actually read text and RLDs, are still
-ahead.)
+(The byte layer is now paid off — see the Phase 0 status. `libobj370`, which is
+where `cmplmd370` and `dasm370` will actually read text and RLDs, is still
+ahead, and it is the one they wait on. The emitters are not.)
 
 ---
 
@@ -361,9 +383,10 @@ assembly rate most are on a tape it cannot currently read, and reading a foreign
 unload needs no extraction to happen first. It belongs *with* libmvs370 by
 ownership, not behind it.
 
-Both orders agree on the only thing that has to be agreed: **#109 comes before
-the tools built on it**, and for the same reason in each — every one of them
-decodes formats it would own. Where they differ, the caller's order wins for work
+Both orders agree on the only thing that has to be agreed: **#109's reader half
+comes before the tools built on it**, and for the same reason in each — every one
+of them decodes object records it would own. The emitter half is in neither
+order, because nothing waits on it. Where they differ, the caller's order wins for work
 done *for* the caller, and `mvs38src/TODO.md` is where that sequencing is kept
 current. It is deliberately not restated here; a copy of someone else's plan is
 wrong the first time they learn something.

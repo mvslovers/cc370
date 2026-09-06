@@ -10,9 +10,10 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-06 — 31 open, with #109 half
-landed (PR #116; see the band below and *Recently landed*). Before that,
-2026-09-04: #99 closed, and
+*Last reconciled against the tracker: 2026-09-06 — 33 open. #109's `libmvs370`
+half is in (PR #116, #119) and `libobj370` is **not started**; #117 and #118 were
+filed out of #119's review and are open defects inside the emitters. See the
+format-library band and *Recently landed*. Before that, 2026-09-04: #99 closed, and
 **seven new issues filed the same day — #108, #109, #110, #111, #112, #113,
 #115** — of which **#115 was closed again within hours, because the report was
 wrong and as370 was right** (see *Recently landed*; it is the most useful thing
@@ -62,8 +63,8 @@ Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
-library and the tools on it** (#109 half done → #110, #111, #112, #113 — the only
-band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
+library and the tools on it** (#109 readers → #110, #111, #112; #113, #117, #118
+alongside — the only band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
 #103), **observability** (#9, #106), **listing fidelity** (#24, #28, #91),
 **deferred** (#36).
 
@@ -296,47 +297,58 @@ system ships; the comparison **is** its success criterion, and an agent works th
 loop unattended. That is a harder contract than the C ecosystem ever placed on
 these tools — it needs machine-readable output and exit codes that mean one thing.
 
-**#109 is the gate, and its first half landed 2026-09-06** (PR #116). It makes
-[`docs/tool-roadmap.md`](docs/tool-roadmap.md) Phase 0 actionable: pull the
-format logic duplicated across the tools into `libobj370` / `libmvs370`. What
-changed is that three new tools and one new capability all want the same
-decoders, so the choice is no longer "refactor or not" but "one implementation
-or six". The validation is mechanical and already exists — byte-identity corpus
-plus the IEWL oracles.
+**#109 is the gate. `libmvs370` is done; `libobj370` has not been started.**
+PR #116 adopted the shared primitives and PR #119 moved the 3350 geometry and the
+COPYR1/COPYR2 template. Both are the *byte* layer. The **object-record** layer
+the issue title names — ESD, TXT, RLD, END — is untouched: `grep -ciE
+'esd|rld|\btxt\b' common/*` returns **0**, while as370, ld370, file370 and
+ar370 still decode those records themselves.
 
-**What the first half established is worth carrying, because it was not what the
-issue assumed.** `common/mvs370` already existed — added with xmit370 in
-`51bdf5b` — and only xmit370 ever included it; the other four carried their own
-copies. So step one was *adoption*, not extraction: −166 lines, three identical
-`e2a1` decoders, two sets of big-endian accessors, and ld370's complete second
-NETDATA layer, all gone. 743 corpus modules reproduce deck for deck.
+This file said "the first half landed, the emitters remain". That was wrong in a
+way worth keeping visible, because it made the rest look like one deferred mass:
+it omitted that half of the library named in the title does not exist yet.
 
-**The half that remains is the emitters, and it is the harder half.** There are
-two — ld370's for RECFM=U load libraries (157 + 121 lines), xmit370's for
-RECFM=FB source libraries (84 + 104) — differing for a real reason: same
-container, different DCB in COPYR1/INMR02. `mvs370.h`'s own rule governs it:
-unify them *"with two proven implementations in hand rather than one guessed
-abstraction"*. Both are separately MVS-validated, and ld370's is the code behind
-four production failures (dropped text, over-packed tracks → S106-0F, directory
-overflow, SIGBUS).
+**What landed is worth carrying, because it was not what the issue assumed.**
+`common/mvs370` already existed — added with xmit370 in `51bdf5b` — and only
+xmit370 ever included it. So step one was *adoption*, not extraction: −166 lines,
+three identical `e2a1` decoders, two sets of big-endian accessors, and ld370's
+complete second NETDATA layer, all gone. #119 then removed the dangerous
+duplication — the 3350 constants that *are* the S106-0F fix, copied verbatim
+between the two emitters — and put a mutation-tested guard under them.
 
-**Not optional, though — the duplication already sits in the worst place.** The
-3350 geometry constants are copied verbatim between the two, *including the ones
-that are the S106-0F fix*: `TRK_CAP_3350` 19069, `TRK_OVH_3350` 185,
-`UDEBX_NMTRK` 82, `UNLOAD_TRKPERCYL` 30. The next device change has to be got
-right in two places. Order proposed on the issue: **constants and the
-COPYR1/COPYR2 templates first** (mechanical, byte-checkable, and it removes
-exactly the dangerous copy without touching layout), **then #113** — whose reader
-forces both shapes to be described precisely and so supplies the independent
-third view — **then the merge**.
+**The rest splits into readers and emitters, and they have nothing in common but
+the issue number.**
+
+| | who is waiting | risk |
+|---|---|---|
+| **object-record readers** — ESD/TXT/END, RLD only to *locate* relocatable fields, plus the load-module record walk | **#110, #111, #112 — all three, and all three only read** | low: reconcile three existing implementations, byte-identity as the oracle |
+| **emitters** — IEBCOPY unload, XMIT | nobody | high: the code behind four production failures, with **#117 and #118 open inside it** |
+
+**Readers first, and explicitly not to speed the emitters up.** `cmplmd370`
+compares an object deck against a DLIB element or against a CSECT inside a load
+module; it never writes an unload or an XMIT stream, and the same holds for
+`idrdump370` and `dasm370`. So the thing on three tools' critical path is the
+mechanical half.
+
+**The emitters wait on their own defects, not on scheduling.** `mvs370.h`'s rule
+— unify *"with two proven implementations in hand rather than one guessed
+abstraction"* — is sharpened by #117 and #118: two measured defects in exactly
+the code that would be unified. Merging two implementations while both have
+something open merges the defects too. Close them, then unify.
+
+Acceptance for the reader extraction is the same as #116's and needs nothing new:
+the byte-identity corpus deck for deck plus the ld370 regression. For a
+reader-only change that is a complete proof, because no output is produced that
+those do not already cover.
 
 | | depends on | what it is |
 |---|---|---|
-| #109 | — | `libobj370` / `libmvs370`. **Primitives done** (#116); the unload/XMIT **emitters** remain |
-| #110 | #109 | `cmplmd370` — object deck vs. CSECT with tolerated differences (`--difin`/`--difout`, `--clearrld`). Exit 0 **only** on identity |
-| #111 | #109 | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
-| #112 | #109 | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
+| #109 | — | `libmvs370` **done** (#116, #119); `libobj370` **not started** — see the split above |
+| #110 | #109 readers | `cmplmd370` — object deck vs. CSECT with tolerated differences (`--difin`/`--difout`, `--clearrld`). Exit 0 **only** on identity |
+| #111 | #109 readers | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
+| #112 | #109 readers | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
 | #113 | *ownership only* | read a **foreign** IEBCOPY unload — an FB source library unloaded by MVS parses to zero members today |
+| #117 / #118 | — | measured defects **in the emitters**; they gate unifying them, and nothing else |
 
 **Why #113 sits here and not in the loud gaps below:** it is a capability, not a
 regression. file370 recognises the container and then finds nothing, because an
@@ -357,7 +369,10 @@ to the result and not only to the paperwork; the roadmap carries the argument.
 **The sequencing lives with the consumer, not here.** `mvs38src/TODO.md` ranks
 these by what unblocks its measurements (#109 and #110 first; #112 waits on how
 large its case D turns out to be). Do not restate that ranking in this file — it
-will be wrong the first time that project learns something.
+will be wrong the first time that project learns something. As of 2026-09-06 that
+project reports 111 of 150 modules assembling and says what is missing is no
+longer an assembler problem but the comparator: without #110 a module can be
+translated and not declared recovered.
 
 ## Loud gaps — nothing silent about them
 
@@ -474,7 +489,21 @@ Pointers only. The reasoning lives in the issues and their PRs.
   the bytes a current link actually produces (`80 15 82`, product, V/M, packed
   `YYDDDF` and `0HHMMSSF`). The last change to `ld370.c` — the tool has been
   untouched since 2026-08-13.
-- **#109, first half / PR #116** — all five tools now share `common/mvs370`
+- **#109 `libmvs370` / PR #119** — the 3350 geometry, the UDEBX and COPYR1 field
+  offsets and the 328-byte COPYR1/COPYR2 template move to `common/`, with
+  `mvs_udebx_extent()` replacing the identical computation in both emitters. The
+  constants moved were the ones the over-packed-track bug was made of, copied
+  verbatim between the two tools. Byte-neutral over 27 artifacts; 14 shared
+  constants each corrupted in turn and every one turns a suite red. Three new
+  guards had to exist first: `LDDATE`/`LDTIME` now pin the XMIT timestamp (before
+  that a `.xmit` could not equal itself across a second boundary, so
+  "output unchanged" was unprovable), `track_check.py` asserts the physical 3350
+  geometry ld370 had never checked, and the same checker covers xmit370 through
+  `--from-xmit`. An adversarial review then found the guard's own hole: the
+  packing budget was unprotected against being "corrected" up to the real track
+  length, 19069 → 19254 — measured green on both suites. **A mutation test is
+  only as good as the plausibility of its mutants**; mine had used 999999.
+- **#109, primitives / PR #116** — all five tools now share `common/mvs370`
   instead of their own copies of it. The surprise was that `common/mvs370`
   already existed (`51bdf5b`, with xmit370) and only xmit370 used it, so this was
   adoption rather than extraction: −166 lines, and ld370's entire second NETDATA
