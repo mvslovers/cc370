@@ -50,22 +50,29 @@ git -C "$ROOT" rev-parse --verify "$BASE" >/dev/null 2>&1 \
 TMP=$(mktemp -d) || exit 2
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
-# Build the baseline assembler from BASE. The whole as370 subtree is exported,
-# not just as370.c, so a revision whose opcode table or headers differ still
-# builds. -w rather than -Werror: we want that revision's BEHAVIOUR, and an
-# older one need not be warning-clean under today's host compiler.
+# Build the baseline assembler from BASE. The as370 subtree AND common/ are
+# exported, not just as370.c, so a revision whose opcode table, headers or shared
+# primitives differ still builds -- as370 has used common/mvs370 since the #109
+# adoption, and exporting as370 alone would leave the baseline unable to find
+# mvs370.h. common/ predates that (it arrived with xmit370), so compiling it in
+# is harmless for a revision that does not yet include the header.
+# -w rather than -Werror: we want that revision's BEHAVIOUR, and an older one
+# need not be warning-clean under today's host compiler.
 #
 # Compare the SOURCE, not the two binaries: they are built with different flags
 # (-w here against -Werror in the Makefile), so identical sources still produce
 # different executables. `git diff` against the revision covers uncommitted work
 # in the tree as well, which is the case that matters most while developing.
-if git -C "$ROOT" diff --quiet "$BASE" -- as370/src as370/include 2>/dev/null; then
+# common/ is in that path list for the same reason it is in the export: a change
+# to the shared CP037 table moves every deck in the corpus.
+if git -C "$ROOT" diff --quiet "$BASE" -- as370/src as370/include common 2>/dev/null; then
     echo "corpus: as370 source is unchanged against $BASE -- nothing to compare"
     exit 0
 fi
 
-git -C "$ROOT" archive "$BASE" as370 | tar -x -C "$TMP" || exit 2
-cc -O2 -w -I"$TMP/as370/include" -o "$TMP/as370.base" "$TMP/as370/src/as370.c" \
+git -C "$ROOT" archive "$BASE" as370 common | tar -x -C "$TMP" || exit 2
+cc -O2 -w -I"$TMP/as370/include" -I"$TMP/common/include" \
+    -o "$TMP/as370.base" "$TMP/as370/src/as370.c" "$TMP/common/src/mvs370.c" \
     || { echo "corpus: baseline as370 ($BASE) does not build"; exit 2; }
 
 # every committed .asm/.s under libc370 except the work-in-progress tree
