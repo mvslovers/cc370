@@ -210,7 +210,7 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
 /* walk the byte-0 record stream; counts by type, notes the trailing MODEND */
 static void show_lmod(const char *path, const unsigned char *b, long n, int v)
 {
-    int ncesd = 0, nidr = 0, nctl = 0, ntext = 0, nrld = 0, last_modend = 0, bad = 0;
+    int ncesd = 0, nidr = 0, nctl = 0, ntext = 0, nrld = 0, nscat = 0, last_modend = 0, bad = 0;
 
     if (v) printf("%s:\n", path);          /* header printed after the summary below */
 
@@ -224,6 +224,7 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v)
             switch (r.kind) {
             case LMOD_CESD: kind = "CESD";    ncesd++; break;
             case LMOD_IDR:  kind = "IDR";     nidr++;  break;
+            case LMOD_SCATTER: kind = "scatter"; nscat++; break;
             case LMOD_TEXT: kind = "text";    ntext++; break;
             default:        kind = "control"; nctl++;
                             if (r.flags & LMOD_CTL_RLD) nrld++;
@@ -241,7 +242,11 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v)
      * by the record dump, so print it as a trailing total either way. */
     if (!v) printf("%s: ", path);
     else    printf("  ");
-    printf("MVS load module member -- %d CESD, %d IDR, %d text record(s), "
+    if (nscat) printf("MVS load module member -- %d CESD, %d IDR, %d scatter, "
+                      "%d text record(s), %d control, %d w/RLD%s, %ld bytes%s\n",
+           ncesd, nidr, nscat, ntext, nctl, nrld, last_modend ? ", MODEND" : "", n,
+           bad ? " (TRUNCATED/unrecognized record)" : "");
+    else printf("MVS load module member -- %d CESD, %d IDR, %d text record(s), "
            "%d control, %d w/RLD%s, %ld bytes%s\n",
            ncesd, nidr, ntext, nctl, nrld, last_modend ? ", MODEND" : "", n,
            bad ? " (TRUNCATED/unrecognized record)" : "");

@@ -29,6 +29,8 @@ CF="-O2 -Wall -Wextra -Werror -Icommon/include"
 [ -x "$AS" ] || gcc $CF -Ias370/include -o "$AS" as370/src/as370.c $COMMON || exit 2
 gcc $CF -o "$LD" ld370/src/ld370.c $COMMON || exit 2
 gcc $CF -o "$AR" ar370/src/ar370.c $COMMON || exit 2
+FI=./file370/file370
+gcc $CF -o "$FI" file370/src/file370.c $COMMON || exit 2
 
 fails=0
 
@@ -694,6 +696,46 @@ python3 ld370/tests/track_check.py --pack-cap --max-tracks 90 "$TMP/geomcyl.iebc
 python3 ld370/tests/track_check.py --pack-cap --max-tracks 4 "$TMP/geodense.iebcopy" \
     || geo_fails=1
 [ "$geo_fails" -eq 0 ] || fails=$((fails + 1))
+
+# Scatter/translation record (byte 0 = X'10').  A module bound SCTR or OVLY
+# carries one after its CESD and IDRs; neither cc370 nor as370 emits one, so the
+# record walk had never met it and stopped dead -- file370 reported
+# "TRUNCATED/unrecognized", cmplmd370 "malformed load-module record stream".  A
+# tree-wide run over 5,252 real DLIB members found 22 that carry one, almost all
+# ICK*, and every one of them was unreadable.
+#
+# docs/load-module-format.md section 8: byte 0 = X'10', bytes 1-3 = the DATA
+# byte count, 4-byte header, so the record is 4 + count.  The fixture is built
+# here rather than committed, by splicing a record of that exact shape into a
+# real IEWL member after its IDRs -- the position section 2 gives it.
+printf '\n=== scatter/translation record is walked, not treated as the end ===\n'
+python3 - "$FIX/e2e.iewl-member.bin" "$TMP/scatter.lm" <<'EOF'
+import sys
+src = open(sys.argv[1], 'rb').read()
+p = 0
+while p < len(src) and (src[p] & 0xF0) in (0x20, 0x80):      # CESD and IDR records
+    p += (8 + ((src[p+6] << 8) | src[p+7])) if (src[p] & 0xF0) == 0x20 else src[p+1] + 1
+data = bytes(range(16))
+open(sys.argv[2], 'wb').write(
+    src[:p] + bytes([0x10]) + len(data).to_bytes(3, 'big') + data + src[p:])
+EOF
+sc_before=$("$FI" "$FIX/e2e.iewl-member.bin")
+sc_after=$("$FI" "$TMP/scatter.lm")
+if printf '%s' "$sc_after" | grep -q "TRUNCATED"; then
+    echo "  FAIL: the scatter record still ends the walk: $sc_after"
+    fails=$((fails + 1))
+elif ! printf '%s' "$sc_after" | grep -q "1 scatter"; then
+    echo "  FAIL: the scatter record was not reported: $sc_after"
+    fails=$((fails + 1))
+elif [ "$(printf '%s' "$sc_before" | sed 's/.*-- //;s/, [0-9]* bytes.*//')" \
+     != "$(printf '%s' "$sc_after" | sed 's/.*-- //;s/1 scatter, //;s/, [0-9]* bytes.*//')" ]; then
+    echo "  FAIL: the records after the scatter record changed"
+    echo "        before: $sc_before"
+    echo "        after:  $sc_after"
+    fails=$((fails + 1))
+else
+    echo "  OK: scatter record walked (4 + count), every later record unchanged"
+fi
 
 # XMIT reproducibility.  LDDATE/LDTIME exist so a link is byte-comparable between
 # two runs, but until 2026-09-06 they pinned only the LKED IDR: emit_xmit's
