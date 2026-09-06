@@ -610,6 +610,64 @@ print("  OK: 80 15 82 'LD370     ' V01 M00 26223 22:05:17 (LASTIDR set)")
 EOF
 then :; else fails=$((fails + 1)); fi
 
+# Physical CKD geometry of the unloaded image -- the check ld370 never had.
+#
+# The over-packed-track bug (S106-0F on FETCH, 2026-06-24) got all the way onto
+# real MVS because every host check was lenient in the same way the reload path
+# is: unload_check.py finds members through the directory exactly as IEBCOPY
+# does, and IEBCOPY does not care how many records a track claims.  Program
+# FETCH does, because its channel program positions by each record's on-disk
+# count field.  xmit370 has had this assertion since it was written; the tool
+# where the bug actually happened did not.
+#
+# track_check.py is ABSOLUTE, not self-consistent: it costs every record at real
+# 3350 rates (185 gap+count + data against a 19254-byte track), demands R be
+# 1..n with no hole, requires the UDEBX extent to span every track written, and
+# requires every env-header byte the emitter does not stamp to still equal the
+# committed template.  A wrong constant fails it; ld370 agreeing with itself
+# does not save it.
+#
+# The two shapes below exist because the constants hide from small inputs.  A
+# dense multi-member pack is what makes an under-counted per-record overhead
+# over-pack a track at all; a member spanning more than one cylinder is what
+# makes a wrong UDEBX end/NMTRK differ from the template's own default.  With
+# only the small fixtures above, four of the eight constants tested clean when
+# deliberately corrupted.
+printf '\n=== unload geometry: 3350 track density, R numbering, UDEBX extent, template ===\n'
+geo_fails=0
+
+# (a) dense pack: 40 tiny members -> ~240 records, tracks filled to ~19045/19254
+gspecs=""; gi=1
+while [ "$gi" -le 40 ]; do
+    gm=$(printf 'G%03d' "$gi")
+    printf "%-8s CSECT\n         DC    CL64'PAD'\n         BR    14\n         END   %s\n" "$gm" "$gm" > "$TMP/$gm.s"
+    "$AS" -o "$TMP/$gm.o" "$TMP/$gm.s" 2>/dev/null
+    "$LD" -o "$TMP/$gm.lm" --name "$gm" "$TMP/$gm.o" 2>/dev/null
+    gspecs="$gspecs $gm=$TMP/$gm.lm"
+    gi=$((gi + 1))
+done
+# shellcheck disable=SC2086
+"$LD" --pack $gspecs --dsn IBMUSER.GEO.LOAD -o "$TMP/geodense" -iebcopy 2>/dev/null \
+    || { echo "  FAIL: dense pack did not build"; geo_fails=1; }
+
+# (b) multi-cylinder: a single member is laid out one block per track, so a small
+#     --blocksize turns a modest module into 90 tracks = 3 cylinders cheaply.
+awk 'BEGIN{print "MCYL     CSECT"; for(i=0;i<11000;i++) printf "         DC    F%c%d%c\n",39,i,39;
+           print "         BR    14"; print "         END   MCYL"}' > "$TMP/mcyl.s"
+"$AS" -o "$TMP/mcyl.o" "$TMP/mcyl.s" 2>/dev/null
+"$LD" --blocksize 1024 -o "$TMP/mcyl.lm" --name MCYL "$TMP/mcyl.o" 2>/dev/null
+"$LD" --pack "MCYL=$TMP/mcyl.lm" --blocksize 1024 --dsn IBMUSER.MCYL.LOAD \
+    -o "$TMP/geomcyl" -iebcopy 2>/dev/null \
+    || { echo "  FAIL: multi-cylinder member did not build"; geo_fails=1; }
+
+# every unloaded image this suite has produced, plus the two shapes above
+python3 ld370/tests/track_check.py \
+    "$TMP/geodense.iebcopy" "$TMP/geomcyl.iebcopy" \
+    "$TMP/tiny.ld.bin.iebcopy" "$TMP/rldt.ld.bin.iebcopy" "$TMP/klein.ld.bin.iebcopy" \
+    "$TMP/lib2.iebcopy" "$TMP/lib3.iebcopy" "$TMP/lib7.iebcopy" "$TMP/lib20.iebcopy" \
+    || geo_fails=1
+[ "$geo_fails" -eq 0 ] || fails=$((fails + 1))
+
 # XMIT reproducibility.  LDDATE/LDTIME exist so a link is byte-comparable between
 # two runs, but until 2026-09-06 they pinned only the LKED IDR: emit_xmit's
 # INMFTIME still read the wall clock, so every ld370 .xmit differed from itself
