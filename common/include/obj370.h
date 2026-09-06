@@ -136,7 +136,8 @@ enum lmod_kind {
     LMOD_CESD,          /* composite ESD                                     */
     LMOD_IDR,           /* identification record (translator / SPZAP / LKED)  */
     LMOD_CTL,           /* control (and RLD) record                          */
-    LMOD_TEXT           /* the pure-text record a control record announces    */
+    LMOD_TEXT,          /* the pure-text record a control record announces    */
+    LMOD_SCATTER        /* scatter/translation record (SCTR or OVLY modules)  */
 };
 
 /* Control-record byte-0 bits. */

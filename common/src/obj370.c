@@ -133,12 +133,22 @@ int obj_end_get(const unsigned char *card, struct obj_end *e)
 /* ---- load-module records ----
  * The framing is lifted verbatim from ld370's split_member, which file370's
  * show_lmod already duplicated statement for statement:
- *   0x2x  CESD   8 + count at +6
- *   0x8x  IDR    byte at +1, plus one
- *   0x0x  CTL    16 + count at +4 + count at +6, and if bit 0x01 is set a pure
- *                text record of the length at +14 follows it
- * Anything else is a form neither tool produces (SYM, scatter/translate) and is
- * reported as malformed rather than guessed at.
+ *   0x2x  CESD     8 + count at +6
+ *   0x8x  IDR      byte at +1, plus one
+ *   0x1x  SCATTER  4 + count at +1..3
+ *   0x0x  CTL      16 + count at +4 + count at +6, and if bit 0x01 is set a
+ *                  pure text record of the length at +14 follows it
+ *
+ * The scatter record was added after a tree-wide run met it: 22 of 5,252 DLIB
+ * members carry one, almost all ICK*, and both walkers stopped dead at it --
+ * file370 said "TRUNCATED/unrecognized", cmplmd370 said "malformed".  Neither
+ * cc370 nor as370 emits one, which is why it went unnoticed; a module bound
+ * SCTR or OVLY does.  docs/load-module-format.md section 8 has the layout:
+ * byte 0 = X'10', bytes 1-3 = the DATA byte count, 4-byte header
+ * (HEWLFOUT.ASM:973-984), so the record is 4 + count and several may follow
+ * each other because the data is segmented into <=1024-byte records.
+ *
+ * SYM records and anything else remain malformed rather than guessed at.
  */
 void lmod_iter_init(struct lmod_iter *it, const unsigned char *m, long n)
 {
@@ -170,6 +180,9 @@ int lmod_iter_next(struct lmod_iter *it, struct lmod_item *out)
     } else if (hi == 0x80) {
         out->kind = LMOD_IDR;
         blen = m[p + 1] + 1;
+    } else if (hi == 0x10) {
+        out->kind = LMOD_SCATTER;
+        blen = 4 + mvs_be24(m + p + 1);
     } else if (hi == 0x00) {
         if (p + 16 > it->n) return -1;
         out->kind = LMOD_CTL;
