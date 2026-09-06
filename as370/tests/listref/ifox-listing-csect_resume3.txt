@@ -1,0 +1,44 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.29 09/06/26
+A         SD  0001 000000 00000C
+B         SD  0002 000010 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.29 09/06/26
+                                      1 * Fortsetzung MAL END-Literalpool -- die Komposition, nicht die Teile.
+                                      2 *
+                                      3 * Der END-Pool gehoert dem ERSTEN Abschnitt (#68) und wird dort an
+                                      4 * dessen Ende abgelegt.  Er verlaengert also A, nachdem B laengst
+                                      5 * eroeffnet ist.  Wenn Origins aus den ENDlaengen kommen, muss B hinter
+                                      6 * dem Pool liegen, nicht davor:
+                                      7 *
+                                      8 *   B ADDR 000010 -> der Pool zaehlt zu A's Endlaenge, B rueckt nach
+                                      9 *   B ADDR 000008 -> B steht vor dem Pool, die Verkettung ignoriert ihn
+000000                               10 A        CSECT
+                            00000    11          USING *,15
+000000 5810 F008      00008          12          L     1,=F'1'
+000010                               13 B        CSECT
+000010 C2C2C2C2C2C2C2C2              14          DC    C'BBBBBBBB'
+000004                               15 A        CSECT
+000004 8181                          16          DC    C'aa'
+                                     17          END
+000008 00000001                      18                =F'1'
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.29 09/06/26
+A        00001 00000000 00010  00015
+B        00001 00000010 00013
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.29 09/06/26
+=F'1'    00004 00000008 00018  00012
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 10.29 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         17
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         6
+TOTAL RECORDS PRINTED                        44

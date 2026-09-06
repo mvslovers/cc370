@@ -74,7 +74,14 @@ enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
 struct esdent { struct sym *s; int role; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
 
-struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[64]; int size; int algn; int sect; int defln; };
+struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[64]; int size; int algn; int sect; int defln; int psect; };
+/* `sect` is where the literal was first REFERENCED -- it drives USING
+ * resolution, and an END pool that moves sections re-stamps it so the
+ * reference resolves through a USING covering the section it landed in.
+ * `psect` is where the pool actually PLACED it, which is not the same
+ * section when an LTORG in a later control section flushes a literal that
+ * was used in an earlier one. Only psect may convert loc from its section's
+ * own counter to a module address (#136): sect would add the wrong origin. */
 static struct lit lits[MAXLIT];
 static int nlit;
 static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
@@ -124,6 +131,34 @@ static void sect_lc_of(int sect, long end) {
     if (sect > 0 && sect < MAXSECT && end > sect_hwm[sect]) sect_hwm[sect] = end;
 }
 static void note_sect_lc(long end) { sect_lc_of(cur_sect_id, end); }
+/* Per-section location counters, and the origins chained from them.
+ *
+ * IFOX00 gives each control section its own counter from zero (BLDESD,
+ * xdict.asm:85, stores a zero XLCTR) and chains the sections into the module
+ * afterwards. as370 used to run ONE continuous counter for the whole assembly,
+ * which is the same thing exactly as long as no section is ever RESUMED -- and
+ * nothing in the ecosystem corpus resumes one, so the byte-identity gate could
+ * not see the difference (#136).
+ *
+ * Two oracles settle the model. A resumed section continues its own counter
+ * (`csect_resume.s`: A comes back at 000004, not after B). And a section's
+ * ORIGIN comes from the FINAL lengths, not from the counter as it stood when
+ * the section was opened (`csect_resume2.s`: the resumed A grows to 16 and B
+ * lands at 000010 = align8(16)) -- which is why origins cannot be assigned
+ * during pass 1 at all, and are chained between the passes instead.
+ *
+ * THE INVARIANT THE TWO-SPACE SCHEME RESTS ON: every origin is align8, and no
+ * alignment in the language is coarser than a doubleword. So pass 1's relative
+ * lc and pass 2's absolute lc agree in the low three bits, and every alignment
+ * decision -- `while (lc & 1)`, DC/DS boundary rounding, the literal pool --
+ * pads identically in both passes. Without it the passes would disagree about
+ * every address after the first odd-length section, which is precisely what
+ * `opened` exists to prevent for the section origins themselves. */
+static long sect_org[MAXSECT];    /* absolute origin; 0 until assign_origins() runs between the passes */
+static long sect_rel[MAXSECT];    /* the section's OWN counter, always relative to its origin, in both passes */
+static long sect_len1[MAXSECT];   /* pass 1 length, captured before pass 2 clears sect_hwm */
+static int  sect_ord[MAXSECT], nsect_ord;   /* control sections in order of first definition -- the chaining order */
+static long start_base;           /* START operand: where the chain begins (rounded, like any origin) */
 /* The END literal pool belongs to the FIRST control section (#68).
  *
  * IFOX00 (xfour.asm, ENDING): "THE FIRST CONTROL SECTION, IF ANY, IS RESUMED AT
@@ -150,6 +185,14 @@ static int  errors;
 static int  g_curln;           /* lines[] index of the statement being assembled -- line context for diagnostics raised from helpers (e.g. sym_get) */
 static int  g_pass;            /* the pass do_pass is running, 0 outside it -- x_factor's undefined-symbol diagnostic
                                 * must stay silent in pass 1, where a forward reference is not yet defined and legal */
+static int  is_dsect_id(int id) { return id > 0 && id < 256 && dsect_sect[id]; }
+/* A DSECT owns no address space, so its origin stays 0 and its symbols are
+ * never relocated. In pass 1 every counter is relative, so the base is 0
+ * there too; only pass 2 adds the origin that was chained in between. */
+static long sect_base(int id) {
+    if (g_pass != 2 || id <= 0 || id >= MAXSECT) return 0;
+    return sect_org[id];
+}
 static char g_ovl_name[64];     /* set by parse() to the full over-length ORDINARY name-field token (>8, non-&); the assembly loop abandons it (IFO016). Empty when the name field is <=8 or absent. */
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
 static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
@@ -2252,8 +2295,11 @@ static long pool_extent(const int *mem, int n, long base) {
  * The first control section is resumed at its HIGHEST address, so the base is
  * the section's high-water mark where a backward ORG left the counter below it.
  * A first section that is RESUMED after a later one (A, B, A) reserves at its
- * first close; as370's continuous location counter already mislays such a
- * resumption entirely, so the pool is not what is wrong with that module. */
+ * first close, and the room it takes still belongs to that section -- which is
+ * why the reservation extends sect_hwm rather than the running counter. Since
+ * origins are chained from the finished lengths (#136), a later section then
+ * lands behind the pool automatically; csect_resume3.s is the oracle for that
+ * composition (A len 00000C, B at 000010). */
 static void pool_reserve(void) {
     static int mem[4096];
     if (pool_defer || first_ctl_sect <= 0) return;
@@ -2310,6 +2356,43 @@ static void prescan_literals(char **lines, int nlines) {
     litpool = 0;
 }
 
+/* Chain the control sections into the module, between the passes.
+ *
+ * This cannot happen during pass 1: a section's origin follows from the FINAL
+ * length of everything in front of it, and a section's final length is not
+ * known until the whole assembly has been seen. `csect_resume2.s` is the
+ * measurement -- the resumed A grows past B's would-be origin, and IFOX still
+ * puts B behind A's finished 16 bytes. `csect_resume3.s` adds the composition
+ * that makes the ordering unavoidable: the END literal pool is placed in the
+ * FIRST section long after the later ones were opened, and IFOX still moves
+ * them behind it (A len 00000C, B at 000010).
+ *
+ * Pass 1 therefore leaves every address relative to its own section, and this
+ * turns them absolute in one sweep -- symbols and literals alike, since a
+ * literal referenced before the pool is flushed is read out of pass 1's
+ * placement. Symbols that are not section-relative are left alone: an absolute
+ * EQU has no origin to add, and neither has an external reference. */
+static void assign_origins(void) {
+    int k;
+    long org = start_base;
+    for (k = 0; k < MAXSECT; k++) sect_len1[k] = sect_hwm[k];   /* pass 2 clears sect_hwm; the lengths are needed after that */
+    for (k = 0; k < nsect_ord; k++) {
+        int id = sect_ord[k];
+        if (id <= 0 || id >= MAXSECT || is_dsect_id(id)) continue;   /* a DSECT owns no address space and is never chained */
+        sect_org[id] = org;
+        org = align8(org + sect_len1[id]);   /* IFOX rounds each origin up (xfour.asm:313), and charges the padding to nobody */
+    }
+    for (k = 0; k < nsym; k++) {
+        struct sym *s = &syms[k];
+        if (!s->defined || s->sect <= 0 || s->sect >= MAXSECT) continue;
+        if (is_dsect_id(s->sect) || s->type == S_ABS || s->type == S_ER) continue;
+        s->val += sect_org[s->sect];
+    }
+    for (k = 0; k < nlit; k++)
+        if (lits[k].psect > 0 && lits[k].psect < MAXSECT && !is_dsect_id(lits[k].psect))
+            lits[k].loc += sect_org[lits[k].psect];   /* the pool's section, not the reference's */
+}
+
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0; g_pass = pass;
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
@@ -2318,6 +2401,11 @@ static void do_pass(int pass, char **lines, int nlines) {
      * the END pool moves between sections between pass 1's placement and pass 2's,
      * so a carried-over high-water mark would place it twice (#68). */
     first_ctl_sect = 0; pool_defer = 0; pool_org = 0; modlen = 0; memset(sect_hwm, 0, sizeof sect_hwm);
+    /* Each pass rebuilds every section's own counter from scratch; the ORIGINS
+     * (sect_org) must survive, since pass 2 runs against the chain assigned
+     * from pass 1's lengths. The chaining order is likewise built once. */
+    memset(sect_rel, 0, sizeof sect_rel);
+    if (pass == 1) { nsect_ord = 0; start_base = 0; memset(sect_org, 0, sizeof sect_org); }
     int pre_csect = 0;                  /* a content statement appeared before the first CSECT */
     int prev_li = -1;                   /* previous statement captured for the -a listing (byte count is deferred) */
     if (pass == 2) nrel = 0;
@@ -2488,10 +2576,12 @@ static void do_pass(int pass, char **lines, int nlines) {
              *                aligned and hides this; 5 is what shows it.
              * The rounding needs no code of its own -- the align8 below already
              * does it, which is why the operand is applied before it. */
-            if (in_dsect) { in_dsect = 0; lc = main_lc; }   /* DSECT: resume the saved control-section counter */
-            else { org_hwm = 0; }   /* a new/continued CSECT keeps the continuous location counter: distinct sections stack within one assembly, as IFOX does */
-            if (!strcmp(op, "START") && !first_ctl_sect && !in_dsect && opnd[0] && opnd[0] != ',')
-                lc = expr_val(opnd, NULL);   /* only the FIRST section can be placed */
+            /* Leaving whatever is current: park its own counter, relative to
+             * its origin, so resuming it later picks up exactly there. */
+            if (cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = lc - sect_base(cur_sect_id);
+            in_dsect = 0; org_hwm = 0;
+            if (!strcmp(op, "START") && !first_ctl_sect && opnd[0] && opnd[0] != ',')
+                start_base = align8(expr_val(opnd, NULL));   /* only the FIRST section can be placed; the chain starts there */
             if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
                 int k, hassect = 0; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) hassect = 1;
                 if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT); }
@@ -2518,18 +2608,33 @@ static void do_pass(int pass, char **lines, int nlines) {
              * so it produces no TXT, and it is not charged to the section before
              * it either, because that one's length comes from its own high-water
              * mark rather than from this origin. */
-            if (++s->opened == 1 && !in_dsect) lc = align8(lc);
+            /* A section BEGINS at its own zero; a RESUMED one picks its own
+             * counter back up. The doubleword rounding that used to happen here
+             * has moved to the chaining between the passes, where the origins
+             * are actually assigned. */
+            if (++s->opened == 1 && s->sect < MAXSECT) {
+                sect_rel[s->sect] = 0;
+                if (pass == 1 && nsect_ord < MAXSECT) sect_ord[nsect_ord++] = s->sect;   /* definition order = chaining order */
+            }
             cur_sect_id = s->sect;
-            if (!first_ctl_sect && !in_dsect) first_ctl_sect = cur_sect_id;   /* IFOX FSTCSECT: the first section that is not a DSECT (nor COM) */
-            if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = lc; s->defined = 1; esd_add(s, ESD_SECT); }   /* first definition: origin = the rounded counter; a reopen keeps its origin */
+            lc = sect_base(cur_sect_id) + (cur_sect_id < MAXSECT ? sect_rel[cur_sect_id] : 0);
+            if (!first_ctl_sect) first_ctl_sect = cur_sect_id;   /* IFOX FSTCSECT: the first section that is not a DSECT (nor COM) */
+            if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }   /* relative origin; assign_origins() makes it absolute */
             if (pass == 2) cur_sect_esdid = s->esdid;
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
+            /* A DSECT is just another section with its own counter -- the save
+             * and restore this used to do by hand for the enclosing control
+             * section is now what every section gets. main_lc/main_sect_id are
+             * kept because the DSECT-to-END path still restores through them. */
             if (!in_dsect) { main_lc = lc; main_sect_id = cur_sect_id; }
-            lc = 0; in_dsect = 1; org_hwm = 0;
+            if (cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = lc - sect_base(cur_sect_id);
+            in_dsect = 1; org_hwm = 0;
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
             cur_sect_id = s->sect;
             if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
+            if (++s->opened == 1 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;   /* a DSECT is never chained, so it takes no slot in sect_ord */
+            lc = (cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;   /* sect_base is 0 for a DSECT in either pass */
             if (pass == 1) { s->val = 0; s->defined = 1; }
         } else if (!strcmp(op, "ISEQ")) {
             /* Input sequence checking.  Measured against IFOX00 (cc370#128): it
@@ -2938,7 +3043,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             { int mi; for (mi = 0; mi < nmem; mi++) {
                 struct lit *l = &lits[mem[mi]];
                 lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
-                if (pass == 1) { l->loc = lc;   /* =V external refs are registered at first use in lit_get */
+                if (pass == 1) { l->loc = lc; l->psect = cur_sect_id;   /* =V external refs are registered at first use in lit_get */
                     if (defer) l->sect = cur_sect_id; }   /* the pool moved sections: references resolve through the USING covering THIS one */
                 else emit_lit(l);
                 l->placed = 1;
@@ -3390,6 +3495,7 @@ int main(int argc, char **argv) {
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
     { int k; for (k = 0; k < nlit; k++) lits[k].placed = 0; }
     { int k; for (k = 0; k < nsym; k++) syms[k].opened = 0; }   /* `opened` counts within a pass: pass 2 must see the same sections begin */
+    assign_origins();
     do_pass(2, lines, nl);
     g_pass = 0;   /* everything below (emit_obj, emit_listing_a) is past the point where a diagnostic could still be printed */
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
