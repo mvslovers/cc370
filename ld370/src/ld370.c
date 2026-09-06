@@ -31,13 +31,9 @@
 #include <string.h>
 #include <time.h>
 
-/* ---- big-endian field access ---- */
-static int be16(const unsigned char *p) { return (p[0] << 8) | p[1]; }
-static long be24(const unsigned char *p) { return ((long)p[0] << 16) | (p[1] << 8) | p[2]; }
-static void put16(unsigned char *p, int v) { p[0] = (v >> 8) & 0xff; p[1] = v & 0xff; }
-static void put24(unsigned char *p, long v) { p[0] = (v >> 16) & 0xff; p[1] = (v >> 8) & 0xff; p[2] = v & 0xff; }
-static long rdval(const unsigned char *p, int n) { long v = 0; int i; for (i = 0; i < n; i++) v = (v << 8) | p[i]; return v; }
-static void wrval(unsigned char *p, long v, int n) { int i; for (i = n - 1; i >= 0; i--) { p[i] = v & 0xff; v >>= 8; } }
+#include "mvs370.h"
+
+/* big-endian access, CP037 and the NETDATA layer come from common/mvs370. */
 static long roundup8(long v) { return (v + 7) & ~7L; }
 
 /* ---- verbose trace: narrate the linker's phases (off by default) ---- */
@@ -63,40 +59,6 @@ static void trace(const char *fmt, ...)
     va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap);
     fputc('\n', stderr);
 }
-static char e2a1(unsigned char e)
-{
-    if (e >= 0xC1 && e <= 0xC9) return (char)('A' + (e - 0xC1));
-    if (e >= 0xD1 && e <= 0xD9) return (char)('J' + (e - 0xD1));
-    if (e >= 0xE2 && e <= 0xE9) return (char)('S' + (e - 0xE2));
-    if (e >= 0xF0 && e <= 0xF9) return (char)('0' + (e - 0xF0));
-    if (e == 0x40) return ' ';
-    if (e == 0x5B) return '$';
-    if (e == 0x7B) return '#';
-    if (e == 0x7C) return '@';
-    if (e == 0x6D) return '_';
-    return '?';
-}
-static const char *nm(const unsigned char *n)
-{
-    static char b[9]; int i;
-    for (i = 0; i < 8; i++) b[i] = e2a1(n[i]);
-    b[8] = 0;
-    for (i = 7; i >= 0 && b[i] == ' '; i--) b[i] = 0;
-    return b;
-}
-/* ASCII -> EBCDIC (CP037), single char; inverse of e2a1. Unmappable -> space. */
-static unsigned char a2e1(char a)
-{
-    if (a >= 'A' && a <= 'I') return (unsigned char)(0xC1 + (a - 'A'));
-    if (a >= 'J' && a <= 'R') return (unsigned char)(0xD1 + (a - 'J'));
-    if (a >= 'S' && a <= 'Z') return (unsigned char)(0xE2 + (a - 'S'));
-    if (a >= '0' && a <= '9') return (unsigned char)(0xF0 + (a - '0'));
-    if (a == '$') return 0x5B;
-    if (a == '#') return 0x7B;
-    if (a == '@') return 0x7C;
-    if (a == '_') return 0x6D;
-    return 0x40;
-}
 /* build an 8-byte EBCDIC, space-padded member name from an ASCII string */
 static void member_name(unsigned char d[8], const char *s)
 {
@@ -104,7 +66,7 @@ static void member_name(unsigned char d[8], const char *s)
     for (i = 0; i < 8; i++) {
         char c = (i < n) ? s[i] : ' ';
         if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-        d[i] = a2e1(c);
+        d[i] = mvs_a2e(c);
     }
 }
 
@@ -122,7 +84,7 @@ static void member_name(unsigned char d[8], const char *s)
  * 19069 alike), where the old 19069 only fit a fresh >=19069 library.  --blocksize
  * overrides it (6144 for a small/old device, 19069 for a 3350-full-track lib).  It
  * drives the text-record split limit (maxtext), the unloaded-form BLKSIZE, the
- * COPYR1 UBLKSIZE and the INMR02 INMBLKSZ -- all must agree, or the IEBCOPY reload /
+ * COPYR1 UBLKSIZE and the INMR02 INM_BLKSZ -- all must agree, or the IEBCOPY reload /
  * RECEIVE self-alloc mis-sizes the target (the SB37 class of failure). */
 static long src_blksize = 15040;
 /* Text-record split limit: pack member-data into logical records <= this.  Must be
@@ -249,16 +211,6 @@ static int nO = 0;
 static long entry_pt = 0;
 
 /* read a whole file into a malloc'd buffer (caller frees) */
-static unsigned char *read_file(const char *path, long *len)
-{
-    FILE *f = fopen(path, "rb"); long n; unsigned char *b; size_t got;
-    if (!f) { perror(path); return NULL; }
-    fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
-    b = malloc((size_t)(n > 0 ? n : 1));
-    got = fread(b, 1, (size_t)n, f); (void)got; fclose(f);
-    *len = n; return b;
-}
-
 /* ---- PASS 1: object-deck reader (inverse of as370.c) ---- */
 static void parse_object(const unsigned char *buf, long len, struct obj *o)
 {
@@ -269,15 +221,15 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
         const unsigned char *c = buf + off;
         if (c[0] != 0x02) continue;
         if (c[1] == 0xC5 && c[2] == 0xE2 && c[3] == 0xC4) {            /* ESD */
-            int cnt = be16(c + 10), first = be16(c + 14), k, nid = 0;
+            int cnt = mvs_be16(c + 10), first = mvs_be16(c + 14), k, nid = 0;
             for (k = 0; k < cnt / 16; k++) {
                 const unsigned char *e = c + 16 + k * 16;
                 int ty = e[8] & 0x0f;
                 if (ty == T_LD) {            /* label def (entry): carries no ESDID; record for the composite ESD */
                     o->ld = grow_arr(o->ld, &o->ldcap, o->nld + 1, sizeof *o->ld);
                     memcpy(o->ld[o->nld].name, e, 8);
-                    o->ld[o->nld].addr = be24(e + 9);
-                    o->ld[o->nld].owner_local = (int)be24(e + 13);   /* owning section's local ESDID */
+                    o->ld[o->nld].addr = mvs_be24(e + 9);
+                    o->ld[o->nld].owner_local = (int)mvs_be24(e + 13);   /* owning section's local ESDID */
                     o->nld++;
                     continue;
                 }
@@ -286,16 +238,16 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                 o->loc[id].used = 1;
                 memcpy(o->loc[id].name, e, 8);
                 o->loc[id].type = ty;
-                o->loc[id].addr = be24(e + 9);
-                o->loc[id].len = be24(e + 13);
+                o->loc[id].addr = mvs_be24(e + 9);
+                o->loc[id].len = mvs_be24(e + 13);
                 if (is_sect_type(ty) && o->sect_local < 0) o->sect_local = id;
-                trace("  ESD id=%d  %-8s  %s  len=%06lX", id, nm(o->loc[id].name),
+                trace("  ESD id=%d  %-8s  %s  len=%06lX", id, mvs_nm(o->loc[id].name),
                       is_sect_type(ty) ? "SD(section)" : ty == T_ER ? "ER(extern ref)" :
                       ty == T_WX ? "WX(weak extern)" : "?",
                       o->loc[id].len);
             }
         } else if (c[1] == 0xE3 && c[2] == 0xE7 && c[3] == 0xE3) {     /* TXT */
-            long addr = be24(c + 5), cnt = be16(c + 10), need = addr + cnt;
+            long addr = mvs_be24(c + 5), cnt = mvs_be16(c + 10), need = addr + cnt;
             if (need > o->textcap) {                       /* grow on demand; never silently drop */
                 long ncap = o->textcap ? o->textcap : 4096;
                 unsigned char *nt;
@@ -309,21 +261,21 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                 memcpy(o->text + addr, c + 16, cnt);
                 if (need > o->textlen) o->textlen = need;
             }
-            trace("  TXT  %ld bytes -> local section id=%d at offset %06lX", cnt, be16(c + 14), addr);
+            trace("  TXT  %ld bytes -> local section id=%d at offset %06lX", cnt, mvs_be16(c + 14), addr);
         } else if (c[1] == 0xD9 && c[2] == 0xD3 && c[3] == 0xC4) {     /* RLD */
-            int cnt = be16(c + 10), p = 16, end = 16 + cnt, R = 0, P = 0, same = 0;
+            int cnt = mvs_be16(c + 10), p = 16, end = 16 + cnt, R = 0, P = 0, same = 0;
             while (p + 4 <= end && p + 4 <= 80) {
-                if (!same) { R = be16(c + p); P = be16(c + p + 2); p += 4; }
+                if (!same) { R = mvs_be16(c + p); P = mvs_be16(c + p + 2); p += 4; }
                 if (p + 4 > end) break;
                 o->rld = grow_arr(o->rld, &o->rldcap, o->nrld + 1, sizeof *o->rld);
                 o->rld[o->nrld].R = R; o->rld[o->nrld].P = P;
-                o->rld[o->nrld].flag = c[p]; o->rld[o->nrld].addr = be24(c + p + 1);
+                o->rld[o->nrld].flag = c[p]; o->rld[o->nrld].addr = mvs_be24(c + p + 1);
                 same = c[p] & 0x01; p += 4; o->nrld++;
             }
         } else if (c[1] == 0xC5 && c[2] == 0xD5 && c[3] == 0xC4) {     /* END */
             if (!(c[5] == 0x40 && c[6] == 0x40 && c[7] == 0x40)) {     /* entry by section ESDID + offset */
-                entry_pt = be24(c + 5);
-                o->has_entry = 1; o->entry_id = be16(c + 14); o->entry_off = be24(c + 5);
+                entry_pt = mvs_be24(c + 5);
+                o->has_entry = 1; o->entry_id = mvs_be16(c + 14); o->entry_off = mvs_be24(c + 5);
             }
         }
     }
@@ -366,7 +318,7 @@ static int load_archive(const char *path)
 {
     long n, p; unsigned char *a; struct archive *ar;
     if (nAR >= MAXAR) { fprintf(stderr, "ld370: too many archives\n"); return 1; }
-    a = read_file(path, &n);
+    a = mvs_read_file(path, &n);
     if (!a) return 1;
     if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ld370: %s: not an archive\n", path); free(a); return 1; }
     ar = &AR[nAR]; ar->data = a; ar->size = n;
@@ -495,7 +447,7 @@ static int autocall(void)
                 const char *want;
                 if (!O[i].loc[j].used || O[i].loc[j].type != T_ER) continue;
                 if (is_defined(O[i].loc[j].name)) continue;       /* already satisfied */
-                want = nm(O[i].loc[j].name);
+                want = mvs_nm(O[i].loc[j].name);
                 /* among ALL definers of `want`, prefer one that does not also
                  * re-define an already-resolved strong symbol; fall back to the
                  * first definer only if every candidate conflicts. */
@@ -653,7 +605,7 @@ static void emit_lked_idr(void)
     r[1] = 0x15;
     r[2] = 0x82;   /* IDR, len-1, LKED|LASTIDR */
     for (i = 0; i < 10; i++) {
-      r[3 + i] = (i < (int)prodlen) ? a2e1(LD370_IDR_PROD[i]) : 0x40;
+      r[3 + i] = (i < (int)prodlen) ? mvs_a2e(LD370_IDR_PROD[i]) : 0x40;
     }
     r[13] = (unsigned char)(((LD370_IDR_VV / 10) << 4)
                       |  (LD370_IDR_VV % 10));
@@ -771,14 +723,6 @@ static const unsigned char unload_userdata[24] = {
 #define UDEBX_NMTRK  82          /* DEBNMTRK  (tracks in extent) */
 
 /* write a 12-byte CKD count image: F + MBBCCHHR(M,BB,CC,HH,R) + KL + DL */
-static void put_count(unsigned char *p, int cc, int hh, int r, int kl, int dl)
-{
-    p[0] = 0;                                   /* F flag */
-    p[1] = 0; p[2] = 0; p[3] = 0;               /* M(1) + BB(2) */
-    put16(p + 4, cc); put16(p + 6, hh); p[8] = (unsigned char)r;   /* CC HH R */
-    p[9] = (unsigned char)kl; put16(p + 10, dl);                   /* KL DL */
-}
-
 /* one physical block of a load-module member */
 struct lmblock { long off, len; int is_text; int tt, r; };  /* tt,r assigned in emit_unload */
 /* a member to be unloaded */
@@ -817,13 +761,13 @@ static int split_member(const unsigned char *m, long n, struct lmblock **out)
     while (p < n) {
         int b0 = m[p], hi = b0 & 0xf0; long blen;
         if (hi == 0x20) {                               /* CESD */
-            blen = 8 + be16(m + p + 6);
+            blen = 8 + mvs_be16(m + p + 6);
         } else if (hi == 0x80) {                        /* IDR */
             blen = m[p + 1] + 1;
         } else if (hi == 0x00) {                        /* control / RLD record (16-byte hdr) */
             int txt = b0 & 0x01;                        /* TXT bit -> pure-text record follows */
-            long tlen = txt ? be16(m + p + 14) : 0;     /* its length = the control record's CCW count */
-            blen = 16 + be16(m + p + 4) + be16(m + p + 6);
+            long tlen = txt ? mvs_be16(m + p + 14) : 0;     /* its length = the control record's CCW count */
+            blen = 16 + mvs_be16(m + p + 4) + mvs_be16(m + p + 6);
             ADDBLK(p, blen, 0);
             p += blen;
             if (txt && tlen) {
@@ -852,11 +796,11 @@ static long member_modlen(const unsigned char *m, long n)
 {
     long maxend = 0, p = 0;
     while (p + 8 <= n && (m[p] & 0xf0) == 0x20) {        /* CESD record */
-        long cnt = be16(m + p + 6), it;
+        long cnt = mvs_be16(m + p + 6), it;
         for (it = 8; it + 16 <= 8 + cnt && p + it + 16 <= n; it += 16) {
             int ty = m[p + it + 8];
             if (ty == 0x00 || ty == 0x04 || ty == 0x05) {
-                long end = be24(m + p + it + 9) + be24(m + p + it + 13);
+                long end = mvs_be24(m + p + it + 9) + mvs_be24(m + p + it + 13);
                 if (end > maxend) maxend = end;
             }
         }
@@ -877,14 +821,14 @@ static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember
     long p = 328, blen;                                 /* skip COPYR1 + COPYR2 */
     const unsigned char *dir, *e, *ud; int used, nhw; unsigned char *buf;
     if (ulen < 328 + 12 + 8 + 256 + 12) return -1;
-    if (u[p + 9] != 8 || be16(u + p + 10) != 256) return -1;   /* directory record */
-    dir = u + p + 20; used = be16(dir);
+    if (u[p + 9] != 8 || mvs_be16(u + p + 10) != 256) return -1;   /* directory record */
+    dir = u + p + 20; used = mvs_be16(dir);
     if (used < 2 + 36 || dir[2] == 0xFF) return -1;     /* need one real entry */
     e = dir + 2; ud = e + 12; nhw = e[11] & 0x1F;
     if (dir[2 + 12 + nhw * 2] != 0xFF) return -2;       /* a second entry -> multi-member */
     memcpy(m->name, e, 8);
-    m->modlen = be24(ud + 10);                          /* PDS2STOR (total storage) */
-    m->entry  = be24(ud + 15);                          /* PDS2EPA  (entry point)   */
+    m->modlen = mvs_be24(ud + 10);                          /* PDS2STOR (total storage) */
+    m->entry  = mvs_be24(ud + 15);                          /* PDS2EPA  (entry point)   */
     /* Capture the WHOLE 24-byte PDS2 user-data so the re-packed directory keeps
      * every member-intrinsic attribute -- AC (PDSAPFAC), RENT/REUS/REFR/OVLY/...
      * (PDS2ATR1/2), FTBL etc. -- not just entry+modlen.  build_userdata then only
@@ -896,7 +840,7 @@ static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember
     if (!buf) return -3;
     blen = 0;
     while (p + 12 <= ulen) {                            /* member data records until DL=0 */
-        int kl = u[p + 9]; long dl = be16(u + p + 10);
+        int kl = u[p + 9]; long dl = mvs_be16(u + p + 10);
         p += 12;
         if (dl == 0) break;                            /* member EOF */
         memcpy(buf + blen, u + p + kl, (size_t)dl); blen += dl;
@@ -916,11 +860,11 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
      * the member is laid out in the (possibly multi-member) output. */
     if (m->have_src_ud) {
         memcpy(ud, m->src_ud, 24);
-        put16(ud, m->text_tt); ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT */
+        mvs_put16(ud, m->text_tt); ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT */
         return;
     }
     memcpy(ud, unload_userdata, 24);
-    put16(ud, m->text_tt); ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (text_tt, text_r) */
+    mvs_put16(ud, m->text_tt); ud[2] = (unsigned char)m->text_r;   /* PDS2TTRT = (text_tt, text_r) */
     if (m->modlen >= 0) {                                     /* computed from the link */
         long ftbl = m->modlen, origin = 0; int j, ntext = 0, have_rld = 0, first_text = -1;
         for (j = 0; j < m->nblk; j++) {
@@ -934,8 +878,8 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
             long co = m->blk[first_text - 1].off;            /* its CCW load address (off 9-11) = origin */
             origin = ((long)m->bytes[co + 9] << 16) | (m->bytes[co + 10] << 8) | m->bytes[co + 11];
         }
-        put24(ud + 10, m->modlen);                           /* PDS2STOR (total storage) */
-        put16(ud + 13, (int)ftbl);                           /* PDS2FTBL (first text block len) */
+        mvs_put24(ud + 10, m->modlen);                           /* PDS2STOR (total storage) */
+        mvs_put16(ud + 13, (int)ftbl);                           /* PDS2FTBL (first text block len) */
         /* PDS2ATR1/2: the template is from a single-text, no-RLD, origin=0,
          * entry=0 module.  Recompute the per-module flags so multi-text / RLD /
          * non-zero-entry modules are described truthfully -- PDS21BLK left set on
@@ -950,7 +894,7 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
                  | (m->entry == 0 ? 0x20 : 0));              /* PDS2EP0:  entry point is zero */
     }
     if (m->entry >= 0)
-        put24(ud + 15, m->entry);                            /* PDS2EPA (entry point) */
+        mvs_put24(ud + 15, m->entry);                            /* PDS2EPA (entry point) */
     /* APF section (IHAPDS PDSAPF), valid because PDS2FTB1 PDSAPFLG (ud[18] bit4,
      * 0x88 in the template) is set: PDSAPFCT = length of the AC in bytes (1),
      * PDSAPFAC = the authorization code (SETCODE AC(n)).  Leaving PDSAPFCT 0 with
@@ -1007,18 +951,18 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
             if (mem[i].blk[j].len > src_blksize) {
                 fprintf(stderr, "ld370: member '%s' has a %ld-byte block > --blocksize "
                         "%ld; rebuild it with a matching --blocksize\n",
-                        nm(mem[i].name), mem[i].blk[j].len, src_blksize);
+                        mvs_nm(mem[i].name), mem[i].blk[j].len, src_blksize);
                 return -1;
             }
 
     memcpy(o + p, unload_env_hdr, 328);                 /* COPYR1 + COPYR2 */
     /* Stamp the runtime BLKSIZE into the echoed COPYR1: off 6 = library BLKSIZE
-     * (== INMR02#1 INMBLKSZ, the target lib), off 14 = unloaded-PS BLKSIZE
-     * (== INMR02#2 INMBLKSZ).  Both confirmed against real oracles: e2e 3350/19069,
+     * (== INMR02#1 INM_BLKSZ, the target lib), off 14 = unloaded-PS BLKSIZE
+     * (== INMR02#2 INM_BLKSZ).  Both confirmed against real oracles: e2e 3350/19069,
      * CBT 3380/6144 (off6 == INMR02#1, off14 == INMR02#2).  The template baked 19069
      * at both; off 14 was a latent skew (its INMR02#2 already declared MINBLK). */
-    put16(o + p + 6,  (int)src_blksize);
-    put16(o + p + 14, (int)UNLOAD_BLKSIZE);
+    mvs_put16(o + p + 6,  (int)src_blksize);
+    mvs_put16(o + p + 14, (int)UNLOAD_BLKSIZE);
     p += 328;
     if (bounds) { bounds[0] = UNLOAD_COPYR1_LEN; bounds[1] = 328; }
 
@@ -1074,9 +1018,9 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
      * stays valid. */
     ncyl = (ntracks + UNLOAD_TRKPERCYL - 1) / UNLOAD_TRKPERCYL;
     if (ncyl < 1) ncyl = 1;
-    put16(o + UDEBX_ENDCC, UNLOAD_DATA_CC + ncyl - 1);
-    put16(o + UDEBX_ENDHH, UNLOAD_TRKPERCYL - 1);
-    put16(o + UDEBX_NMTRK, ncyl * UNLOAD_TRKPERCYL);
+    mvs_put16(o + UDEBX_ENDCC, UNLOAD_DATA_CC + ncyl - 1);
+    mvs_put16(o + UDEBX_ENDHH, UNLOAD_TRKPERCYL - 1);
+    mvs_put16(o + UDEBX_NMTRK, ncyl * UNLOAD_TRKPERCYL);
 
     /* directory: name-sorted entries split across 256-byte PDS directory blocks.
      * 7 entries per NON-last block (2 + 7*36 = 254 <= 256); the LAST block holds
@@ -1099,15 +1043,15 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
             for (i = lo; i < hi; i++) {
                 unsigned char *e = dir + used;
                 memcpy(e, mem[i].name, 8);
-                put16(e + 8, mem[i].first_tt);
+                mvs_put16(e + 8, mem[i].first_tt);
                 e[10] = (unsigned char)mem[i].first_r;       /* TTR = (first_tt, first_r) */
                 e[11] = 0x2c;                                /* alias=0, 1 TTR, 12 halfwords user data */
                 build_userdata(e + 12, &mem[i]);
                 used += 8 + 3 + 1 + 24;
             }
             if (last) { memset(dir + used, 0xff, 8); used += 12; }   /* FF end-of-dir terminator */
-            put16(dir, (int)used);
-            put_count(o + p, 0, 0, 0, 8, 256); p += 12;              /* dir block record */
+            mvs_put16(dir, (int)used);
+            mvs_put_count(o + p, 0, 0, 0, 8, 256); p += 12;              /* dir block record */
             if (last) memset(o + p, 0xff, 8);                        /* key = high values */
             else memcpy(o + p, mem[hi - 1].name, 8);                 /* key = high name in block */
             p += 8;
@@ -1125,7 +1069,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
         for (j = 0; j < mem[i].nblk; j++) {
             long bl = mem[i].blk[j].len;
             int tt = mem[i].blk[j].tt, r = mem[i].blk[j].r;
-            put_count(o + p, UNLOAD_DATA_CC + tt / UNLOAD_TRKPERCYL,
+            mvs_put_count(o + p, UNLOAD_DATA_CC + tt / UNLOAD_TRKPERCYL,
                       tt % UNLOAD_TRKPERCYL, r, 0, (int)bl); p += 12;
             memcpy(o + p, mem[i].bytes + mem[i].blk[j].off, bl); p += bl;
         }
@@ -1133,7 +1077,7 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
          * reload (IEBRSAM sets RDEOF).  The next member's data continues the
          * R-sequence (contiguous); directory exhaustion stops the load after the
          * last member (IEBDSCPY), so no extra trailer is needed. */
-        put_count(o + p, UNLOAD_DATA_CC + mem[i].eof_tt / UNLOAD_TRKPERCYL,
+        mvs_put_count(o + p, UNLOAD_DATA_CC + mem[i].eof_tt / UNLOAD_TRKPERCYL,
                   mem[i].eof_tt % UNLOAD_TRKPERCYL, mem[i].eof_r, 0, 0); p += 12;
     }
     if (bounds) bounds[3] = p;                          /* member data + per-member EOF */
@@ -1168,11 +1112,11 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
     for (i = 0; i < nmem; i++) {
         mem[i].nblk = split_member(mem[i].bytes, mem[i].len, &mem[i].blk);
         if (mem[i].nblk < 0) {
-            fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", nm(mem[i].name));
+            fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", mvs_nm(mem[i].name));
             return 1;
         }
         trace("=== unload: member '%s', %d block(s), %ld bytes ===",
-              nm(mem[i].name), mem[i].nblk, mem[i].len);
+              mvs_nm(mem[i].name), mem[i].nblk, mem[i].len);
     }
     unl = malloc((size_t)(unload_size(mem, nmem) + 64));   /* +64 paranoia margin */
     if (!unl) { fprintf(stderr, "ld370: out of memory for unload image\n");
@@ -1224,77 +1168,17 @@ static int write_unload(const char *path, const char *name,
  * data; flags 0x80=first-of-record, 0x40=last, 0x20=control.  Segments pack
  * continuously into 80-byte records; the final record is zero-padded.
  *
- * One file is transmitted (a load library) => INMNUMF=1; a multi-member library
+ * One file is transmitted (a load library) => INM_NUMF=1; a multi-member library
  * is still one file, its members inside the unload directory (no wrapper change
  * for --pack).  Validated host-side structurally vs an e2e.xmit.bin oracle
- * modulo INMFTIME (an inherent timestamp carve-out); real oracle = RECEIVE+run.
+ * modulo INM_FTIME (an inherent timestamp carve-out); real oracle = RECEIVE+run.
  *
- * INMSIZE / INMDIR are computed from the packed data so RECEIVE allocates the
+ * INM_SIZE / INM_DIR are computed from the packed data so RECEIVE allocates the
  * target large enough (a hardcoded constant caused SB37 on multi-module packs);
  * the source DCB (BLKSIZE/RECFM) is still echoed -- see TODO.
  * ==========================================================================*/
 
-/* NETDATA text-unit keys (subset emitted here) */
-enum { INMDSNAM = 0x0002, INMDIR = 0x000c, INMBLKSZ = 0x0030, INMDSORG = 0x003c,
-       INMLRECL = 0x0042, INMRECFM = 0x0049, INMTNODE = 0x1001, INMTUID = 0x1002,
-       INMFNODE = 0x1011, INMFUID = 0x1012, INMFTIME = 0x1024, INMUTILN = 0x1028,
-       INMSIZE = 0x102c, INMNUMF = 0x102f };
-
-/* one text unit: key(2) + count(2, =1) + length(2) + value */
-static void tu(unsigned char *b, long *p, int key, const unsigned char *val, int len)
-{
-    put16(b + *p, key); *p += 2;
-    put16(b + *p, 1);   *p += 2;
-    put16(b + *p, len); *p += 2;
-    memcpy(b + *p, val, len); *p += len;
-}
-static void tui(unsigned char *b, long *p, int key, long v, int n)   /* integer value */
-{
-    unsigned char t[4]; wrval(t, v, n); tu(b, p, key, t, n);
-}
-static void tus(unsigned char *b, long *p, int key, const char *s)   /* EBCDIC string value */
-{
-    unsigned char t[44]; int i, n = (int)strlen(s); if (n > 44) n = 44;
-    for (i = 0; i < n; i++) t[i] = a2e1(s[i]);
-    tu(b, p, key, t, n);
-}
-/* INMDSNAM: one value per '.'-separated qualifier of dsn */
-static void tu_dsname(unsigned char *b, long *p, const char *dsn)
-{
-    const char *s = dsn; int nq = 1, i; const char *q;
-    for (q = dsn; *q; q++) if (*q == '.') nq++;
-    put16(b + *p, INMDSNAM); *p += 2;
-    put16(b + *p, nq);       *p += 2;
-    for (;;) {
-        int qn = 0; while (s[qn] && s[qn] != '.') qn++;
-        put16(b + *p, qn); *p += 2;
-        for (i = 0; i < qn; i++) b[(*p)++] = a2e1(s[i]);
-        if (!s[qn]) break;
-        s += qn + 1;
-    }
-}
-static long inmr_hdr(unsigned char *r, int n)        /* 'INMR0n' eyecatcher */
-{
-    r[0] = 0xc9; r[1] = 0xd5; r[2] = 0xd4; r[3] = 0xd9; r[4] = 0xf0;
-    r[5] = (unsigned char)(0xf0 + n);
-    return 6;
-}
-
-/* append a logical record as NETDATA segments (<=253 data bytes each) */
-static void netdata_seg(unsigned char *o, long *p, const unsigned char *rec, long len, int control)
-{
-    long off = 0; int ctl = control ? 0x20 : 0;
-    do {
-        long n = len - off; if (n > 253) n = 253;
-        int flags = ctl | (off == 0 ? 0x80 : 0) | (off + n >= len ? 0x40 : 0);
-        o[(*p)++] = (unsigned char)(n + 2);
-        o[(*p)++] = (unsigned char)flags;
-        memcpy(o + *p, rec + off, n); *p += n;
-        off += n;
-    } while (off < len);
-}
-
-/* current local time as a 16-EBCDIC-digit INMFTIME (YYYYMMDDHHMMSShh) */
+/* current local time as a 16-EBCDIC-digit INM_FTIME (YYYYMMDDHHMMSShh) */
 static void xmit_ftime(unsigned char e[16])
 {
     char a[17]; time_t t = time(NULL); struct tm *tm = localtime(&t); int i;
@@ -1304,7 +1188,7 @@ static void xmit_ftime(unsigned char e[16])
     int mo = ((tm->tm_mon + 1) % 100 + 100) % 100, dd = (tm->tm_mday % 100 + 100) % 100;
     int hh = (tm->tm_hour % 100 + 100) % 100, mi = (tm->tm_min % 100 + 100) % 100, ss = (tm->tm_sec % 100 + 100) % 100;
     sprintf(a, "%04d%02d%02d%02d%02d%02d00", yy, mo, dd, hh, mi, ss);
-    for (i = 0; i < 16; i++) e[i] = a2e1(a[i]);
+    for (i = 0; i < 16; i++) e[i] = mvs_a2e(a[i]);
 }
 
 /* Build the XMIT of one unloaded image (unl[0..bounds[3]) split at bounds[])
@@ -1314,72 +1198,72 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
                       const char *dsn)
 {
     unsigned char r[1024]; long rp, p = 0; unsigned char ft[16];
-    /* Size the target from the ACTUAL packed data.  INMSIZE was a hardcoded E2E
+    /* Size the target from the ACTUAL packed data.  INM_SIZE was a hardcoded E2E
      * constant (19069 = one 3350 block), so TSO/NJE38 RECEIVE -- which allocates
-     * the target dataset itself from INMSIZE -- gave ~1 track to ANY library and
+     * the target dataset itself from INM_SIZE -- gave ~1 track to ANY library and
      * a multi-module pack abended SB37 (out of space) even on a near-empty volume.
      * INMR02 #1 (IEBCOPY) sizes the reloaded load library = the member DATA space
-     * (the directory is separate, via INMDIR); #2 (INMCOPY) sizes the unloaded VS
-     * form.  INMDIR scales with the directory block count. */
+     * (the directory is separate, via INM_DIR); #2 (INMCOPY) sizes the unloaded VS
+     * form.  INM_DIR scales with the directory block count. */
     long data_size = bounds[3] - bounds[2];          /* member-data records (PDS data space) */
     long unl_size  = bounds[3];                       /* whole unloaded VS form */
     long q; int ndb = 0, inmdir;
-    for (q = bounds[1]; q < bounds[2] && unl[q + 9] == 8 && be16(unl + q + 10) == 256; q += 12 + 8 + 256)
+    for (q = bounds[1]; q < bounds[2] && unl[q + 9] == 8 && mvs_be16(unl + q + 10) == 256; q += 12 + 8 + 256)
         ndb++;                                        /* count directory blocks */
     inmdir = (ndb + 5 < 10) ? 10 : ndb + 5;           /* >= entries needed, with headroom */
 
     /* INMR01 -- transmission header */
-    rp = inmr_hdr(r, 1);
-    tui(r, &rp, INMLRECL, 80, 4);
-    tus(r, &rp, INMFNODE, "ORIGNODE");
-    tus(r, &rp, INMFUID,  "IBMUSER");
-    tus(r, &rp, INMTNODE, "IBMUSER");
-    tus(r, &rp, INMTUID,  "DUMMY");
-    xmit_ftime(ft); tu(r, &rp, INMFTIME, ft, 16);
-    tui(r, &rp, INMNUMF, 1, 1);
-    netdata_seg(o, &p, r, rp, 1);
+    rp = mvs_inmr_hdr(r, 1);
+    mvs_tui(r, &rp, INM_LRECL, 80, 4);
+    mvs_tus(r, &rp, INM_FNODE, "ORIGNODE");
+    mvs_tus(r, &rp, INM_FUID,  "IBMUSER");
+    mvs_tus(r, &rp, INM_TNODE, "IBMUSER");
+    mvs_tus(r, &rp, INM_TUID,  "DUMMY");
+    xmit_ftime(ft); mvs_tu(r, &rp, INM_FTIME, ft, 16);
+    mvs_tui(r, &rp, INM_NUMF, 1, 1);
+    mvs_netdata_seg(o, &p, r, rp, 1);
 
     /* INMR02 #1 -- IEBCOPY: attributes of the SOURCE load library (recreated by
-     * RECEIVE, which allocates the target from INMSIZE/INMDIR).  TODO: the DCB
+     * RECEIVE, which allocates the target from INM_SIZE/INM_DIR).  TODO: the DCB
      * (BLKSIZE/RECFM) is still echoed from the E2E source library. */
-    rp = inmr_hdr(r, 2);
-    put24(r + rp, 0); r[rp + 3] = 1; rp += 4;            /* file number = 1 */
-    tus(r, &rp, INMUTILN, "IEBCOPY");
-    tui(r, &rp, INMSIZE, data_size, 4);
-    tui(r, &rp, INMDIR, inmdir, 3);
-    tui(r, &rp, INMLRECL, 0, 4);
-    tui(r, &rp, INMDSORG, 0x0200, 2);                   /* PO */
-    tui(r, &rp, INMBLKSZ, UNLOAD_SRC_BLKSIZE, 4);       /* source load-library BLKSIZE */
-    tui(r, &rp, INMRECFM, 0xc002, 2);                   /* U */
-    tu_dsname(r, &rp, dsn);
-    netdata_seg(o, &p, r, rp, 1);
+    rp = mvs_inmr_hdr(r, 2);
+    mvs_put24(r + rp, 0); r[rp + 3] = 1; rp += 4;            /* file number = 1 */
+    mvs_tus(r, &rp, INM_UTILN, "IEBCOPY");
+    mvs_tui(r, &rp, INM_SIZE, data_size, 4);
+    mvs_tui(r, &rp, INM_DIR, inmdir, 3);
+    mvs_tui(r, &rp, INM_LRECL, 0, 4);
+    mvs_tui(r, &rp, INM_DSORG, 0x0200, 2);                   /* PO */
+    mvs_tui(r, &rp, INM_BLKSZ, UNLOAD_SRC_BLKSIZE, 4);       /* source load-library BLKSIZE */
+    mvs_tui(r, &rp, INM_RECFM, 0xc002, 2);                   /* U */
+    mvs_tu_dsname(r, &rp, dsn);
+    mvs_netdata_seg(o, &p, r, rp, 1);
 
     /* INMR02 #2 -- INMCOPY: attributes of the unloaded form (the in-stream data,
      * RECFM=VS).  Constant for our IEBCOPY-unload format. */
-    rp = inmr_hdr(r, 2);
-    put24(r + rp, 0); r[rp + 3] = 1; rp += 4;
-    tus(r, &rp, INMUTILN, "INMCOPY");
-    tui(r, &rp, INMSIZE, unl_size, 4);
-    tui(r, &rp, INMLRECL, UNLOAD_BLKSIZE - 4, 4);       /* VS: max logical record = BLKSIZE-4 */
-    tui(r, &rp, INMDSORG, 0x4000, 2);                   /* PS */
-    tui(r, &rp, INMBLKSZ, UNLOAD_BLKSIZE, 4);           /* = IEBCOPY MINBLK; must hold one record unspanned */
-    tui(r, &rp, INMRECFM, 0x4802, 2);                   /* VS */
-    netdata_seg(o, &p, r, rp, 1);
+    rp = mvs_inmr_hdr(r, 2);
+    mvs_put24(r + rp, 0); r[rp + 3] = 1; rp += 4;
+    mvs_tus(r, &rp, INM_UTILN, "INMCOPY");
+    mvs_tui(r, &rp, INM_SIZE, unl_size, 4);
+    mvs_tui(r, &rp, INM_LRECL, UNLOAD_BLKSIZE - 4, 4);       /* VS: max logical record = BLKSIZE-4 */
+    mvs_tui(r, &rp, INM_DSORG, 0x4000, 2);                   /* PS */
+    mvs_tui(r, &rp, INM_BLKSZ, UNLOAD_BLKSIZE, 4);           /* = IEBCOPY MINBLK; must hold one record unspanned */
+    mvs_tui(r, &rp, INM_RECFM, 0x4802, 2);                   /* VS */
+    mvs_netdata_seg(o, &p, r, rp, 1);
 
-    /* INMR03 -- data record descriptor.  INMSIZE mirrors INMR02#1 (the IEBCOPY
-     * file), as the e2e oracle has it (INMR03 INMSIZE == INMR02#1 INMSIZE); it was
-     * the last hardcoded 19069 the INMSIZE/SB37 fix left behind -- RECEIVE ignores
+    /* INMR03 -- data record descriptor.  INM_SIZE mirrors INMR02#1 (the IEBCOPY
+     * file), as the e2e oracle has it (INMR03 INM_SIZE == INMR02#1 INM_SIZE); it was
+     * the last hardcoded 19069 the INM_SIZE/SB37 fix left behind -- RECEIVE ignores
      * it (a wrong value never abended), but keep it consistent with the packed data. */
-    rp = inmr_hdr(r, 3);
-    tui(r, &rp, INMSIZE, data_size, 4);
-    tui(r, &rp, INMLRECL, 80, 4);
-    tui(r, &rp, INMDSORG, 0x4000, 2);
-    tui(r, &rp, INMRECFM, 0x0001, 2);
-    netdata_seg(o, &p, r, rp, 1);
+    rp = mvs_inmr_hdr(r, 3);
+    mvs_tui(r, &rp, INM_SIZE, data_size, 4);
+    mvs_tui(r, &rp, INM_LRECL, 80, 4);
+    mvs_tui(r, &rp, INM_DSORG, 0x4000, 2);
+    mvs_tui(r, &rp, INM_RECFM, 0x0001, 2);
+    mvs_netdata_seg(o, &p, r, rp, 1);
 
     /* COPYR1 / COPYR2 are one logical record each. */
-    netdata_seg(o, &p, unl,             bounds[0],              0);
-    netdata_seg(o, &p, unl + bounds[0], bounds[1] - bounds[0], 0);
+    mvs_netdata_seg(o, &p, unl,             bounds[0],              0);
+    mvs_netdata_seg(o, &p, unl + bounds[0], bounds[1] - bounds[0], 0);
     /* directory: each 256-byte directory block is its OWN VS record -- IEBCOPY
      * reads SYSUT1 one VS record at a time, so packing several dir blocks into one
      * would lose all but the first (same failure mode as the per-member case
@@ -1388,13 +1272,13 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     {
         long q = bounds[1];
         while (q < bounds[2]) {
-            long reclen = 12 + unl[q + 9] + be16(unl + q + 10);
+            long reclen = 12 + unl[q + 9] + mvs_be16(unl + q + 10);
             long nq = q + reclen;
             if (nq < bounds[2]) {                  /* bundle the trailing EOD with the last block */
-                long nlen = 12 + unl[nq + 9] + be16(unl + nq + 10);
+                long nlen = 12 + unl[nq + 9] + mvs_be16(unl + nq + 10);
                 if (nq + nlen >= bounds[2]) reclen += nlen;
             }
-            netdata_seg(o, &p, unl + q, reclen, 0);
+            mvs_netdata_seg(o, &p, unl + q, reclen, 0);
             q += reclen;
         }
     }
@@ -1413,20 +1297,20 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
         while (q < bounds[3]) {
             long cs = q, clen = 0;
             while (q < bounds[3]) {
-                long dl = be16(unl + q + 10);
+                long dl = mvs_be16(unl + q + 10);
                 long reclen = 12 + unl[q + 9] + dl;
                 if (clen > 0 && clen + reclen > MAXTEXT) break;
                 clen += reclen; q += reclen;
                 if (dl == 0) break;             /* member EOF -> end this VS record */
                 if (clen >= MAXTEXT) break;
             }
-            netdata_seg(o, &p, unl + cs, clen, 0);
+            mvs_netdata_seg(o, &p, unl + cs, clen, 0);
         }
     }
 
     /* INMR06 -- trailer */
-    rp = inmr_hdr(r, 6);
-    netdata_seg(o, &p, r, rp, 1);
+    rp = mvs_inmr_hdr(r, 6);
+    mvs_netdata_seg(o, &p, r, rp, 1);
 
     while (p % 80) o[p++] = 0;                           /* pad final FB80 record */
     return p;
@@ -1440,7 +1324,7 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
     for (i = 0; i < nmem; i++) {
         mem[i].nblk = split_member(mem[i].bytes, mem[i].len, &mem[i].blk);
         if (mem[i].nblk < 0) {
-            fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", nm(mem[i].name));
+            fprintf(stderr, "ld370: cannot split member '%s' (unknown record)\n", mvs_nm(mem[i].name));
             return 1;
         }
     }
@@ -1592,7 +1476,7 @@ int main(int argc, char **argv)
         else if (ends_with(argv[i], ".a")) { if (load_archive(argv[i])) return 1; }
         else objfiles[nobjf++] = argv[i];
     }
-    if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INMDSNAM default; RECEIVE DA(...) overrides */
+    if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INM_DSNAM default; RECEIVE DA(...) overrides */
 
     /* --blocksize bounds: >= 1K (smallest IEWL text size), and small enough that the
      * unloaded-PS BLKSIZE (UNLOAD_BLKSIZE = src_blksize + 20) stays within the
@@ -1706,7 +1590,7 @@ int main(int argc, char **argv)
     /* --- PASS 1: read every explicit object module --- */
     trace("=== PASS 1: read %d object module(s) ===", nobjf);
     for (i = 0; i < nobjf; i++) {
-        long n; unsigned char *b = read_file(objfiles[i], &n);
+        long n; unsigned char *b = mvs_read_file(objfiles[i], &n);
         trace("- object: %s", objfiles[i]);
         if (!b) return 1;
         O = grow_arr(O, &Ocap, nO + 1, sizeof *O);
@@ -1752,7 +1636,7 @@ int main(int argc, char **argv)
              * @@MAIN and hijack the entry.  Since --include members are processed
              * before autocall, the app's entry is seen first and kept. */
             if (G[gi].type == 0x03 && G[gi].owner >= 0) {
-                trace("  duplicate entry '%s' ignored (first definition kept)", nm(o->ld[j].name));
+                trace("  duplicate entry '%s' ignored (first definition kept)", mvs_nm(o->ld[j].name));
                 continue;
             }
             G[gi].type = 0x03; G[gi].in_addr = o->ld[j].addr;
@@ -1765,7 +1649,7 @@ int main(int argc, char **argv)
             if (!G[i].is_sect && G[i].type == T_ER) {
                 if (nunres == 0)
                     fprintf(stderr, "ld370: unresolved external reference(s):\n");
-                fprintf(stderr, "    %s\n", nm(G[i].name));
+                fprintf(stderr, "    %s\n", mvs_nm(G[i].name));
                 nunres++;
             }
         if (nunres && !allow_unresolved) {
@@ -1803,7 +1687,7 @@ int main(int argc, char **argv)
             G[i].gid = ++gid;
             G[i].org = (G[i].def_obj >= 0 ? O[G[i].def_obj].object_base : 0) + G[i].in_addr;
             trace("  section '%s' -> ESDID %d  origin=%06lX  length=%ld",
-                  nm(G[i].name), G[i].gid, G[i].org, G[i].len);
+                  mvs_nm(G[i].name), G[i].gid, G[i].org, G[i].len);
         }
     int nsect = gid;
     for (i = 0; i < nG; i++)
@@ -1874,12 +1758,12 @@ int main(int argc, char **argv)
                 base = G[G[Rg].owner].org + G[Rg].in_addr;   /* LR (entry): owner origin + offset */
             if (base >= 0) {                          /* relocate by (final target - input value) */
                 long delta = base - o->loc[o->rld[j].R].addr;
-                long v = rdval(mod + loc, len) + delta;
-                wrval(mod + loc, v, len);
-                trace("  adcon@%06lX -> %s: %+ld (final %06lX)", loc, nm(G[Rg].name), delta, base);
+                long v = mvs_rdval(mod + loc, len) + delta;
+                mvs_wrval(mod + loc, v, len);
+                trace("  adcon@%06lX -> %s: %+ld (final %06lX)", loc, mvs_nm(G[Rg].name), delta, base);
             } else {
                 trace("  adcon@%06lX -> %s: UNRESOLVED, left for the loader",
-                      loc, Rg >= 0 ? nm(G[Rg].name) : "?");
+                      loc, Rg >= 0 ? mvs_nm(G[Rg].name) : "?");
             }
         }
     }
@@ -1898,24 +1782,24 @@ int main(int argc, char **argv)
             for (i = 0; i < nG; i++) if (G[i].gid == gid) { gi = i; break; }
             if (in_rec == 0) {                        /* open a new CESD record */
                 unsigned char h[8]; memset(h, 0, 8);
-                h[0] = 0x20; put16(h + 4, gid);       /* off4-5 = first ESD-ID; off6-7 set on close */
+                h[0] = 0x20; mvs_put16(h + 4, gid);       /* off4-5 = first ESD-ID; off6-7 set on close */
                 emit(h, 8); nrec++;
             }
             unsigned char e[16]; memset(e, 0, 16);
             memcpy(e, G[gi].name, 8);
             e[8] = (unsigned char)G[gi].type;
             if (G[gi].is_sect) {
-                put24(e + 9, G[gi].org); e[12] = 0x01; put24(e + 13, G[gi].len);
+                mvs_put24(e + 9, G[gi].org); e[12] = 0x01; mvs_put24(e + 13, G[gi].len);
             } else if (G[gi].type == 0x03) {  /* LR (label/entry): label address + owning section's ESDID */
                 long oorg = G[gi].owner >= 0 ? G[G[gi].owner].org : 0;
                 int  ogid = G[gi].owner >= 0 ? G[G[gi].owner].gid : 0;
-                put24(e + 9, oorg + G[gi].in_addr); e[12] = 0x01; put24(e + 13, ogid);
+                mvs_put24(e + 9, oorg + G[gi].in_addr); e[12] = 0x01; mvs_put24(e + 13, ogid);
             } else {                          /* unresolved ER: 00 .. 00 40 40 (matches IEWL) */
                 e[12] = 0x00; e[13] = 0x00; e[14] = 0x40; e[15] = 0x40;
             }
             emit(e, 16); in_rec++;
             if (in_rec == 15 || gid == nG) {          /* close record: byte count at record off 6 */
-                put16(out + olen - 16 * in_rec - 2, 16 * in_rec);
+                mvs_put16(out + olen - 16 * in_rec - 2, 16 * in_rec);
                 in_rec = 0;
             }
         }
@@ -1971,17 +1855,17 @@ int main(int argc, char **argv)
                     idlen = multi ? 4 * (sg - first) : 4;
                     memset(cr, 0, (size_t)(16 + idlen));
                     cr[0] = (is_last && !have_rld) ? 0x0D : 0x01;   /* MODEND on the very last record */
-                    put16(cr + 4, idlen); put16(cr + 6, 0);
-                    cr[8] = 0x06; put24(cr + 9, p); cr[12] = 0x40; put16(cr + 14, (int)rlen);
+                    mvs_put16(cr + 4, idlen); mvs_put16(cr + 6, 0);
+                    cr[8] = 0x06; mvs_put24(cr + 9, p); cr[12] = 0x40; mvs_put16(cr + 14, (int)rlen);
                     if (multi) {
                         for (g = first, k = 0; g < sg; g++, k++) {
                             int gi = gidx[g];           /* gidx is origin-sorted: g is a POSITION */
                             long span = (g < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
-                            put16(cr + 16 + 4 * k, G[gi].gid);    /* ID/length list = the CSECT's CESD-ID */
-                            put16(cr + 18 + 4 * k, (int)span);
+                            mvs_put16(cr + 16 + 4 * k, G[gi].gid);    /* ID/length list = the CSECT's CESD-ID */
+                            mvs_put16(cr + 18 + 4 * k, (int)span);
                         }
                     } else {                            /* one section (whole or a split piece) */
-                        put16(cr + 16, G[gidx[first]].gid); put16(cr + 18, (int)rlen);
+                        mvs_put16(cr + 16, G[gidx[first]].gid); mvs_put16(cr + 18, (int)rlen);
                     }
                     emit(cr, 16 + idlen);               /* control record */
                     emit(mod + p, rlen);                /* text record (<= MAXTEXT) */
@@ -2025,20 +1909,20 @@ int main(int argc, char **argv)
                 isize = same ? 4 : 8;                            /* flag+addr, or + R/P prefix */
                 if (rec_hdr < 0 || rec_data + isize > RLDMAX) {  /* close prev record, start a new one */
                     unsigned char rh[16];
-                    if (rec_hdr >= 0) put16(out + rec_hdr + 6, (int)rec_data);
+                    if (rec_hdr >= 0) mvs_put16(out + rec_hdr + 6, (int)rec_data);
                     memset(rh, 0, 16); rh[0] = 0x02;
                     rec_hdr = olen; emit(rh, 16); rec_data = 0;
                     prevR = prevP = -1; prevflag_off = -1; same = 0;   /* no continuation across records */
                 }
                 if (same) out[prevflag_off] |= 0x01;
-                else { unsigned char rp[4]; put16(rp, Rgid); put16(rp + 2, Pgid); emit(rp, 4); rec_data += 4; }
+                else { unsigned char rp[4]; mvs_put16(rp, Rgid); mvs_put16(rp + 2, Pgid); emit(rp, 4); rec_data += 4; }
                 prevflag_off = olen;
-                emitb(flag); { unsigned char a[3]; put24(a, addr); emit(a, 3); }
+                emitb(flag); { unsigned char a[3]; mvs_put24(a, addr); emit(a, 3); }
                 rec_data += 4;
                 prevR = Rgid; prevP = Pgid;
             }
         }
-        if (rec_hdr >= 0) { put16(out + rec_hdr + 6, (int)rec_data); out[rec_hdr] = 0x0E; }
+        if (rec_hdr >= 0) { mvs_put16(out + rec_hdr + 6, (int)rec_data); out[rec_hdr] = 0x0E; }
         trace("  RLD records:     %d item(s) in <=%ld-byte records (last byte0=0E)", total_rld, RLDMAX);
     }
 

@@ -9,7 +9,19 @@
 /* ---- big-endian field access ---- */
 int  mvs_be16(const unsigned char *p) { return (p[0] << 8) | p[1]; }
 long mvs_be24(const unsigned char *p) { return ((long)p[0] << 16) | (p[1] << 8) | p[2]; }
+unsigned long mvs_be32(const unsigned char *p)
+{
+    return ((unsigned long)p[0] << 24) | ((unsigned long)p[1] << 16)
+         | ((unsigned long)p[2] << 8)  |  (unsigned long)p[3];
+}
 void mvs_put16(unsigned char *p, int v) { p[0] = (v >> 8) & 0xff; p[1] = v & 0xff; }
+void mvs_put32(unsigned char *p, unsigned long v)
+{
+    p[0] = (unsigned char)((v >> 24) & 0xff);
+    p[1] = (unsigned char)((v >> 16) & 0xff);
+    p[2] = (unsigned char)((v >> 8) & 0xff);
+    p[3] = (unsigned char)(v & 0xff);
+}
 void mvs_put24(unsigned char *p, long v)
 {
     p[0] = (unsigned char)((v >> 16) & 0xff);
@@ -86,14 +98,17 @@ void mvs_name8(unsigned char d[8], const char *s)
     }
 }
 
+char mvs_e2a_pr(int c)
+{
+    unsigned char a = mvs_e2a(c);
+    return (a >= 0x20 && a < 0x7f) ? (char)a : '?';
+}
+
 const char *mvs_nm(const unsigned char n[8])
 {
     static char b[9];
     int i;
-    for (i = 0; i < 8; i++) {
-        unsigned char a = mvs_e2a(n[i]);
-        b[i] = (a >= 0x20 && a < 0x7f) ? (char)a : '?';
-    }
+    for (i = 0; i < 8; i++) b[i] = mvs_e2a_pr(n[i]);
     b[8] = 0;
     for (i = 7; i >= 0 && b[i] == ' '; i--) b[i] = 0;
     return b;

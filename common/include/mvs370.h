@@ -1,13 +1,17 @@
 /* mvs370.h -- primitives shared by the cc370 host tools.
  *
- * These are the pieces that were byte-for-byte duplicated across ld370, ar370,
- * file370 and as370: big-endian field access, the CP037 translation tables, the
- * CKD count field, and the TSO TRANSMIT / NETDATA record primitives.
+ * Big-endian field access, the CP037 translation tables, the CKD count field,
+ * and the TSO TRANSMIT / NETDATA record primitives.  All five tools use these
+ * now (as370, ld370, ar370, file370, xmit370); until 2026-09-06 only xmit370
+ * did and the other four carried their own copies -- three byte-identical
+ * EBCDIC decoders, two sets of big-endian accessors, and a second complete
+ * NETDATA text-unit layer in ld370.
  *
  * Deliberately NOT here (yet): the IEBCOPY unload and XMIT *emitters*.  ld370's
  * versions are load-module specific and MVS-validated; xmit370 has its own
  * RECFM=FB emitter.  Unifying them is a follow-up, to be done with two proven
- * implementations in hand rather than one guessed abstraction.
+ * implementations in hand rather than one guessed abstraction.  That follow-up
+ * is the remaining half of mvslovers/cc370#109, and what #110/#111/#112 wait on.
  */
 #ifndef MVS370_H
 #define MVS370_H
@@ -17,8 +21,10 @@
 /* ---- big-endian field access ---- */
 int  mvs_be16(const unsigned char *p);
 long mvs_be24(const unsigned char *p);
+unsigned long mvs_be32(const unsigned char *p);
 void mvs_put16(unsigned char *p, int v);
 void mvs_put24(unsigned char *p, long v);
+void mvs_put32(unsigned char *p, unsigned long v);
 long mvs_rdval(const unsigned char *p, int n);
 void mvs_wrval(unsigned char *p, long v, int n);
 
@@ -35,6 +41,15 @@ extern const unsigned char mvs_a2e_tab[256];
 extern const unsigned char mvs_e2a_tab[256];
 unsigned char mvs_a2e(int c);
 unsigned char mvs_e2a(int c);
+/* EBCDIC -> ASCII for text we are about to PRINT: the full CP037 inverse, but
+ * anything that lands outside printable ASCII becomes '?'.  Use this and never
+ * mvs_e2a() for display -- 161 of the 256 EBCDIC bytes map to a non-printable
+ * ASCII byte, and writing those to a terminal raw is how a hex dump starts
+ * emitting control characters.  ld370/ar370/file370 each carried a hand-rolled
+ * partial decoder that returned '?' for everything it did not know; this renders
+ * the 53 printable characters they were losing (lowercase, '.', '-', '(' ...)
+ * and keeps their '?' for the rest. */
+char mvs_e2a_pr(int c);
 
 /* 8-byte blank-padded EBCDIC member/section name from an ASCII string */
 void mvs_name8(unsigned char d[8], const char *s);

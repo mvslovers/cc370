@@ -74,14 +74,14 @@ all: tools compiler man
 
 # --- standalone tools (normal single-file C binaries) ---------------------
 tools: $(TOOLS)
-as370/as370: as370/src/as370.c as370/include/opc_table.h
-	$(HOSTCC) $(CFLAGS) -Ias370/include -o $@ $<
-ld370/ld370: ld370/src/ld370.c
-	$(HOSTCC) $(CFLAGS) -o $@ $<
-ar370/ar370: ar370/src/ar370.c
-	$(HOSTCC) $(CFLAGS) -o $@ $<
-file370/file370: file370/src/file370.c
-	$(HOSTCC) $(CFLAGS) -o $@ $<
+as370/as370: as370/src/as370.c as370/include/opc_table.h $(COMMON) $(COMMONH)
+	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ as370/src/as370.c $(COMMON)
+ld370/ld370: ld370/src/ld370.c $(COMMON) $(COMMONH)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ld370/src/ld370.c $(COMMON)
+ar370/ar370: ar370/src/ar370.c $(COMMON) $(COMMONH)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ar370/src/ar370.c $(COMMON)
+file370/file370: file370/src/file370.c $(COMMON) $(COMMONH)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ file370/src/file370.c $(COMMON)
 xmit370/xmit370: xmit370/src/xmit370.c $(COMMON) $(COMMONH)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ xmit370/src/xmit370.c $(COMMON)
 
