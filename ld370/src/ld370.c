@@ -1182,15 +1182,23 @@ static void xmit_ftime(unsigned char e[16])
     int yy, mo, dd, hh, mi, ss, dyy, ddd;
 
     if (!tm) { fprintf(stderr, "ld370: cannot obtain local time for INMFTIME\n"); exit(2); }
-    /* clamp each field to its print width [0..9999]/[0..99] so the fixed 16-char
-     * output is provably within a[17] (GCC can't bound struct tm otherwise). */
-    yy = ((tm->tm_year + 1900) % 10000 + 10000) % 10000;
-    mo = ((tm->tm_mon + 1) % 100 + 100) % 100; dd = (tm->tm_mday % 100 + 100) % 100;
-    hh = (tm->tm_hour % 100 + 100) % 100; mi = (tm->tm_min % 100 + 100) % 100;
-    ss = (tm->tm_sec % 100 + 100) % 100;
+    yy = tm->tm_year + 1900;
+    mo = tm->tm_mon + 1; dd = tm->tm_mday;
+    hh = tm->tm_hour; mi = tm->tm_min; ss = tm->tm_sec;
 
     if (ld_lddate(&dyy, &ddd)) { yy = 2000 + dyy; ddd_to_md(yy, ddd, &mo, &dd); }
     ld_ldtime(&hh, &mi, &ss);
+
+    /* Clamp each field to its print width [0..9999]/[0..99] so the fixed 16-char
+     * output is provably within a[17].  This must come AFTER the overrides, not
+     * before: the compiler can bound neither struct tm nor ddd_to_md's outputs,
+     * and clamping only the struct tm values leaves the sprintf unprovable --
+     * gcc rejects it with -Wformat-overflow, which Apple clang does not raise,
+     * so it fails in CI and not on a Mac. */
+    yy = (yy % 10000 + 10000) % 10000;
+    mo = (mo % 100 + 100) % 100; dd = (dd % 100 + 100) % 100;
+    hh = (hh % 100 + 100) % 100; mi = (mi % 100 + 100) % 100;
+    ss = (ss % 100 + 100) % 100;
 
     sprintf(a, "%04d%02d%02d%02d%02d%02d00", yy, mo, dd, hh, mi, ss);
     for (i = 0; i < 16; i++) e[i] = mvs_a2e(a[i]);
