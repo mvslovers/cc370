@@ -24,7 +24,8 @@ fail=0
 # literal pool counts toward the first section's length before the later
 # ones are placed behind it. Nothing else in this corpus resumes a section.
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
-         csect_resume csect_resume2 csect_resume3; do
+         csect_resume csect_resume2 csect_resume3 \
+         basereg basereg2; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
