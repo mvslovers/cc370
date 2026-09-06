@@ -25,7 +25,7 @@ fail=0
 # ones are placed behind it. Nothing else in this corpus resumes a section.
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
-         basereg basereg2 tattr_selfdef; do
+         basereg basereg2 tattr_selfdef amp_subst; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -1555,6 +1555,44 @@ fi
 rm -f /tmp/_x133.s /tmp/_x133.obj /tmp/_x133.out /tmp/_y133.s /tmp/_y133.obj
 [ $dupfail = 0 ] && echo "dupsect: OK (cross-section rejected IFO206; same-section still absolute and unmoved)"
 fail=$((fail + dupfail))
+
+# '&&' folding, and where it belongs. Measured against IFOX00 three ways:
+# tests/amp_fold.s (no variable symbol in the module at all -- DC folds anyway),
+# tests/amp_subst.s (the generated line still carries '&&' and emits three
+# bytes, so substitution passes the pair through and only DC folds) and
+# tests/amp_selfdef.s (C'&&' is one byte in an EXPRESSION too, and a literal's
+# length counts the pair as one).
+#
+# as370 used to do the exact opposite on both counts -- msub folded, the DC
+# scanner did not -- so the two defects cancelled and 950 modules of deck
+# byte-identity could never show it. amp_subst is in the byte-identity loop
+# above and is what holds the pair together: repair either half alone and it
+# fails.
+#
+# amp_fold and amp_selfdef are NOT byte-identical yet, and not because of '&&':
+# L' of a C constant with no explicit length is 1 in as370 where IFOX00 gives
+# the constant's length. That is a separate defect, so this test pins the
+# difference to exactly those bytes -- every other byte must match the oracle,
+# and when L' is fixed this test fails and becomes a plain byte-identity check.
+ampfail=0
+for s in amp_fold:104 amp_selfdef:99; do
+    f=${s%%:*}; lbyte=${s##*:}
+    ./as370 "tests/$f.s" -o "/tmp/_$f.obj" >/dev/null 2>&1
+    if [ $? -ge 8 ]; then echo "$f: ASSEMBLE FAILED"; ampfail=1; continue; fi
+    nbe=$(( ($(wc -c < "tests/ref/$f.obj") / 80 - 1) * 80 ))
+    d=$(python3 -c "
+import sys
+n=int('$nbe'); k=int('$lbyte')
+a=open('/tmp/_$f.obj','rb').read()[:n]; b=open('tests/ref/$f.obj','rb').read()[:n]
+if len(a)!=len(b): print('size %d vs %d'%(len(a),len(b))); sys.exit()
+d=[i+1 for i,(x,y) in enumerate(zip(a,b)) if x!=y]
+print('' if d==[k] else 'differs at %s, expected only the L%s byte %d'%(d[:6],chr(39),k))
+")
+    if [ -n "$d" ]; then echo "$f: FAIL ($d)"; ampfail=1
+    else echo "$f: OK (== IFOX00 apart from the known L' byte $lbyte)"; fi
+    rm -f "/tmp/_$f.obj"
+done
+fail=$((fail + ampfail))
 
 # msub's destination is bounded. Substitution EXPANDS, by a factor no call site
 # can bound from its own input: a reference costs two characters to write and

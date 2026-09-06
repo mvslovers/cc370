@@ -392,7 +392,9 @@ static void lit_classify(struct lit *l) {
         int base = (ty == 'E') ? 4 : (ty == 'D') ? 8 : 16;
         l->size = haslen ? len : base; l->algn = haslen ? 1 : (base == 16 ? 8 : base);
     } else if (ty == 'X') { const char *q = strchr(p, '\''); unsigned char tmp[260]; int nb = q ? hex_to_bytes(q + 1, tmp, 260) : 0; l->size = haslen ? len : nb; l->algn = 1;
-    } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; } sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
+    } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; }
+        if (*e == '&' && e[1] == '&') { sl++; e += 2; continue; }
+        sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
     } else { l->size = 4; l->algn = 4; }
     if (l->size < 1) l->size = 1;
 }
@@ -459,7 +461,8 @@ static long x_factor(int sign) {
     }
     if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
         char kind = *xp_; xp_ += 2; long v = 0;
-        if (kind == 'C') { while (*xp_ && *xp_ != '\'') { v = (v << 8) | mvs_a2e((unsigned char)*xp_); xp_++; } }
+        if (kind == 'C') { while (*xp_ && *xp_ != '\'') { if (*xp_ == '&' && xp_[1] == '&') xp_++;   /* '&&' is one '&' (tests/amp_selfdef.s) */
+                                                        v = (v << 8) | mvs_a2e((unsigned char)*xp_); xp_++; } }
         else { int base = (kind == 'X') ? 16 : 2; while (*xp_ && *xp_ != '\'') {
                    int c = toupper((unsigned char)*xp_), dv = (c >= '0' && c <= '9') ? c - '0' : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : 0;
                    v = v * base + dv; xp_++; } }
@@ -1099,7 +1102,7 @@ static void msub(struct ctx *c, const char *src, char *dst, size_t dstsz) {
     if (!dstsz) return;
     size_t di = 0, lim = dstsz - 1; const char *s = src;
     while (*s && di < lim) {
-        if (*s == '&' && (s[1] == '&')) { dst[di++] = '&'; s += 2; continue; }
+        if (*s == '&' && (s[1] == '&')) { if (di + 1 >= lim) break; dst[di++] = '&'; dst[di++] = '&'; s += 2; continue; }
         if (*s == '&') {
             char ref[44]; int ri = 0; ref[ri++] = *s; const char *p = s + 1;
             while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && ri < 30) ref[ri++] = *p++;
@@ -1132,7 +1135,7 @@ static long selfdef(const char *s) {
         int kind = *s; s += 2;
         if (kind == 'X') { while (*s && *s != '\'') v = v * 16 + hexv(*s++); }
         else if (kind == 'B') { while (*s && *s != '\'') v = v * 2 + (*s++ == '1' ? 1 : 0); }
-        else { while (*s && *s != '\'') { if (*s == '\'' && s[1] == '\'') s++; v = (v << 8) | mvs_a2e((unsigned char)*s++); } }
+        else { while (*s && *s != '\'') { if (*s == '&' && s[1] == '&') s++; v = (v << 8) | mvs_a2e((unsigned char)*s++); } }
     } else v = atol(s);
     return neg ? -v : v;
 }
@@ -1148,7 +1151,7 @@ static long e_prim(void) {
         int kind = *ep_; long v = 0; ep_ += 2;
         if (kind == 'X') { while (*ep_ && *ep_ != '\'') v = v * 16 + hexv(*ep_++); }
         else if (kind == 'B') { while (*ep_ && *ep_ != '\'') v = v * 2 + (*ep_++ == '1' ? 1 : 0); }
-        else { while (*ep_ && *ep_ != '\'') { if (*ep_ == '\'' && ep_[1] == '\'') ep_++; v = (v << 8) | mvs_a2e((unsigned char)*ep_++); } }   /* C': EBCDIC byte values */
+        else { while (*ep_ && *ep_ != '\'') { if (*ep_ == '&' && ep_[1] == '&') ep_++; v = (v << 8) | mvs_a2e((unsigned char)*ep_++); } }   /* C': EBCDIC byte values; '&&' is one '&' */
         if (*ep_ == '\'') ep_++;
         return v;
     }
@@ -2398,7 +2401,9 @@ static void emit_lit(struct lit *l) {
         int pad = l->size - nb, j; for (j = 0; j < l->size; j++) put(l->loc + j, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1);
     } else if (ty == 'C') {
         const char *q = strchr(p, '\''); char body[256]; int slen = 0;
-        if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; } body[slen++] = *e++; } }
+        if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
+            if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
+            body[slen++] = *e++; } }
         int j; for (j = 0; j < l->size; j++) put(l->loc + j, j < slen ? mvs_a2e((unsigned char)body[j]) : 0x40, 1);
     } else put(l->loc, l->val, l->size);
     g_curln = svln;
@@ -3067,6 +3072,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (q) { const char *e = q + 1;
                         while (*e && slen < 1023) {
                             if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
+                            if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
                             body[slen++] = *e++;
                         } }
                     int emit = haslen ? blen : (q ? slen : 1);   /* valueless DS nC reserves cnt*1 bytes (default C length 1) */

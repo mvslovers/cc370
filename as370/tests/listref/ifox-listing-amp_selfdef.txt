@@ -1,0 +1,54 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.49 09/06/26
+T         SD  0001 000000 000012
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.49 09/06/26
+                                      1 * Ist C'&&' als SELBSTDEFINIERTER Term ein Byte oder zwei?
+                                      2 *
+                                      3 * amp_fold.s hat die DC-Konstante geklaert: die DC-Verarbeitung
+                                      4 * faltet.  Offen bleibt der AUSDRUCKS-Kontext -- C'&&' in einer
+                                      5 * Arithmetik -- und die Laenge eines Literals.
+                                      6 *
+                                      7 *   Regel A  auch dort gefaltet
+                                      8 *              A = 0050   ein Byte, Wert X'50'
+                                      9 *              B = 02     L'CC ist 2
+                                     10 *   Regel B  nur die DC-Verarbeitung faltet
+                                     11 *              A = 5050   zwei Byte
+                                     12 *              B = 04     L'CC ist 4
+                                     13 *
+                                     14 * as370 faltet heute an KEINER der beiden Stellen.  Wird nur die
+                                     15 * DC-Seite repariert, muss diese Fixture sagen, ob die
+                                     16 * Ausdrucksseite mitgeht.
+000000                               17 T        CSECT
+                            00000    18          USING T,15
+000000 0050                          19 A        DC    AL2(C'&&')
+000002 02                            20 B        DC    AL1(L'CC)
+000003 5050                          21 CC       DC    C'&&&&'
+000005 00
+000006 D200 1000 F010 00000 00010    22          MVC   0(1,1),=C'&&&&'
+00000C C5D5C4                        23          DC    C'END'
+000010                               24          LTORG
+000010 5050                          25                =C'&&&&'
+                                     26          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.49 09/06/26
+A        00002 00000000 00019
+B        00001 00000002 00020
+CC       00002 00000003 00021  00020
+T        00001 00000000 00017  00018
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.49 09/06/26
+=C'&&&&' 00002 00000010 00025  00022
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 15.49 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         25
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        54
