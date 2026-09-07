@@ -65,7 +65,7 @@ this file that is a joint plan rather than our own ranking:**
 
 | | Issue | Why here |
 |---|---|---|
-| A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`, awaiting the `mvs38src` tree-wide gate before merge.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too — which is where the issue's own named case lives. Seven IFOX00 oracles; deck byte-identity on the issue's own fixture. Measured: libc370 743 unmoved, MVSBLD 413 newly flagged `0→8` (all the `'&SYSPARM'(1,4)` case IFOX flags as well), 32 newly assembling, 33 decks moved and **none while both sides assembled cleanly**. The scope question the issue asked is answered: one hole, and everything else in open code already worked. |
+| A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
 | B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
 
@@ -91,6 +91,16 @@ reading, and neither fixed:**
   where no deck can move; `parse()` — which decides real operands — is
   deliberately left alone and is what the issue is for.
 
+- **#151** — a `SETC` value is clipped at 95 characters where IFOX00 holds 255.
+  Silent, and it re-emerges wearing someone else's name: a substring indexing
+  past 95 reports `IFO117`, which is true of the clipped value and false of the
+  program. `BLSR3270` is the case — **no ampersand anywhere in its source**, 32
+  bogus `IFO117`, all of them a 128-character `GBLC` translation table read
+  through two macros. It is also the correction to a claim in this file's own
+  planning: "neither corpus needs a longer value" was measured over open-code
+  substring `SETC` only and never scanned macro bodies, where the users are —
+  46 macro members and 5 modules. Wants the tree-wide gate before it moves,
+  and it moves generated text wherever a long value is in use.
 - **#150** — an **in-stream** macro definition is not listed, so every statement
   after one is numbered short by the number of cards it held. Listing-only, but
   the statement number is what a diagnostic is addressed by. Exactly the shape
