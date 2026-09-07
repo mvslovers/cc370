@@ -1,0 +1,63 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 23.14 09/06/26
+T         SD  0001 000000 000006
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 23.14 09/06/26
+                                      1 * '&SYSPARM'(1,4) auf einem leeren &SYSPARM (#141).
+                                      2 *
+                                      3 * Der namentliche Ausloeser des Issues, als eigener Code
+                                      4 * nachgebaut nach dem Muster des echten Makros: LCLC, dann zwei
+                                      5 * Teilzeichenketten auf &SYSPARM.  Ohne PARM=SYSPARM(...) ist das
+                                      6 * die leere Zeichenkette, und beide greifen ueber das Ende.
+                                      7 *
+                                      8 * Zwei Fragen in einer Fixture:
+                                      9 *
+                                     10 * 1. Ist &SYSPARM in OFFENEM Code definiert?
+                                     11 *      definiert, leer   (1,4) -> IFO117
+                                     12 *      undefiniert       IFO006 statt IFO117
+                                     13 * 2. Meldet IFOX die Teilzeichenkette auch im MAKRORUMPF?
+                                     14 *      ja    die Anweisungen im Rumpf werden geflaggt
+                                     15 *      nein  nur die offene
+                                     16 *    Entscheidet, ob die Diagnose in eval_setc gehoert -- also in
+                                     17 *    BEIDE Pfade -- oder nur in den Offen-Code-Pfad.
+                                     18 *
+                                     19 * 420 MVSBLD-Module haengen an Frage 2: sie rufen das Makro, und
+                                     20 * as370 hielt sie fuer sauber, weil es die Meldung nicht stellte.
+                                     21          MACRO
+                                     22          MHJN
+                                     23          LCLC  &HJA,&HJB
+                                     24 &HJA     SETC  '&SYSPARM'(1,4)
+                                     25 &HJB     SETC  '&SYSPARM'(5,4)
+                                     26 M        DC    C'[&HJA][&HJB]'
+                                     27          MEND
+000000                               28 T        CSECT
+                                     29          LCLC  &A
+                                     30 &A       SETC  '&SYSPARM'(1,4)
+         *** ERROR ***
+                                     31 O        DC    C'[&A]'
+000000 BABB                          32+O        DC    C'[]'
+                                     33          MHJN
+         *** ERROR ***
+000002 BABBBABB                      34+M        DC    C'[][]'
+                                     35          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 23.14 09/06/26
+M        00004 00000002 00034
+O        00002 00000000 00032
+T        00001 00000000 00028
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 23.14 09/06/26
+   30  IFO117      FIRST EXPRESSION IN SUBSTRING NOTATION EXCEEDS THE LENGTH OF THE STRING
+   33  IFO117      FIRST EXPRESSION IN SUBSTRING NOTATION EXCEEDS THE LENGTH OF THE STRING
+   33  IFO117      FIRST EXPRESSION IN SUBSTRING NOTATION EXCEEDS THE LENGTH OF THE STRING
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     2
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         33
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        63

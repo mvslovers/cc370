@@ -67,7 +67,7 @@ DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: all tools compiler man install install-tools install-compiler install-man \
-        test test-as370 test-cc370 test-corpus test-xmit370 clean uninstall help
+        test test-as370 test-listref test-cc370 test-corpus test-xmit370 clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler man
@@ -127,10 +127,19 @@ compiler: $(BUILD)/config.status
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-as370 test-cc370 test-corpus test-xmit370 test-cmplmd370
+test: test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370
 
 test-as370:
 	@$(MAKE) -C as370 test
+
+# Column-exact comparison of the as370 -a listing against committed IFOX00
+# SYSPRINT references. Separate from test-as370 because it answers a different
+# question -- run.sh compares DECKS, this compares the LISTING, and a listing
+# defect moves no bytes. It went unrun for months on that reasoning and caught a
+# real regression the first time it was pointed at #141's change.
+# Case 1 needs the libc370 checkout and skips without it, so this is CI-safe.
+test-listref: as370/as370
+	@sh as370/tests/listref/check.sh
 
 test-cc370: compiler
 	@sh cc370/tests/run.sh

@@ -25,7 +25,7 @@ fail=0
 # ones are placed behind it. Nothing else in this corpus resumes a section.
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
-         basereg basereg2 tattr_selfdef amp_subst; do
+         basereg basereg2 tattr_selfdef amp_subst subst_cont; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -1555,6 +1555,131 @@ fi
 rm -f /tmp/_x133.s /tmp/_x133.obj /tmp/_x133.out /tmp/_y133.s /tmp/_y133.obj
 [ $dupfail = 0 ] && echo "dupsect: OK (cross-section rejected IFO206; same-section still absolute and unmoved)"
 fail=$((fail + dupfail))
+
+# Compare two decks up to (not including) the END card, which differs only in
+# the optional translator IDR. Written as a function over temp files because
+# run.sh runs under sh: no process substitution.
+deck_eq() {
+    de_ref_sz=$(wc -c < "$2"); de_my_sz=$(wc -c < "$1")
+    [ "$de_ref_sz" = "$de_my_sz" ] || return 1
+    de_n=$(( (de_ref_sz / 80 - 1) * 80 ))
+    head -c "$de_n" "$1" > /tmp/_de_a.$$; head -c "$de_n" "$2" > /tmp/_de_b.$$
+    cmp -s /tmp/_de_a.$$ /tmp/_de_b.$$; de_rc=$?
+    rm -f /tmp/_de_a.$$ /tmp/_de_b.$$
+    return $de_rc
+}
+
+# sysparm_substr is the issue's own named case, rebuilt as our own code:
+# '&SYSPARM'(1,4) on an empty &SYSPARM, in open code AND in a macro body, the
+# way the real IEDHJN writes it. IFOX00 raises IFO117 in both and counts TWO
+# flagged statements over THREE messages -- the open-code SETC, and the macro
+# CALL line carrying both of the body's. That is why the diagnostic lives in
+# eval_setc rather than in the open-code path: 420 MVSBLD modules call such a
+# macro, and as370 called every one of them clean.
+#
+# setc_substr and var_opcode are byte-identity fixtures too, but they return 8
+# BY DESIGN and so cannot ride in the loop above, which treats RC>=8 as a failed
+# assembly. Both decks are IFOX00's, captured with --deck-on-error.
+#
+# setc_substr pins all four substring boundaries in one assembly, and the
+# STATEMENT NUMBERS matter as much as the bytes: IFOX00 flags 25, 27, 28 and 29.
+# var_opcode pins the operation-field rule -- '&O' holding 'DC' is substituted
+# and assembles, '&P' holding a MACRO NAME is substituted and then REJECTED,
+# because macro calls are already resolved when substitution runs.
+rc8fail=0
+for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8; do
+    f8=${s8%%:*}; rest8=${s8#*:}; nf8=${rest8%%:*}; rc8=${rest8##*:}
+    ./as370 "tests/$f8.s" -o "/tmp/_$f8$$.obj" >/dev/null 2>"/tmp/_$f8$$.err"; got8=$?
+    if [ $got8 != $rc8 ]; then
+        echo "$f8: FAIL (expected RC $rc8, got $got8)"; rc8fail=1
+    elif ! deck_eq "/tmp/_$f8$$.obj" "tests/ref/$f8.obj"; then
+        echo "$f8: FAIL (deck differs from IFOX00)"; rc8fail=1
+    elif [ "$nf8" != 1 ] && ! grep -q "$nf8 Statements Flagged" "/tmp/_$f8$$.err"; then
+        echo "$f8: FAIL (expected IFOX's $nf8 flagged statements)"; rc8fail=1
+    else
+        echo "$f8: OK (== IFOX00, RC $rc8, $nf8 flagged)"
+    fi
+    rm -f "/tmp/_$f8$$.obj" "/tmp/_$f8$$.err"
+done
+fail=$((fail + rc8fail))
+
+# --- issue #141: variable symbols are substituted in OPEN CODE ---------------
+# The issue's own fixture. as370 emitted BA50C1BBBA50C2BB -- the variable NAMES
+# as data -- at rc 0, where IFOX00 emits BABBBAC2C3C4BB and returns 8. Three
+# things are asserted because the defect had three faces: the deck, the listing
+# and the return code.
+#
+# The listing is the part that is easy to get half right. IFOX00 lists the
+# conditional-assembly statements (ALOGIC is on by default) and prints a
+# substituted model statement TWICE -- the source card with no location, then
+# the generated card with the object code and the '+'. So the DC is statement 23
+# and 24+, not statement 20.
+#
+# The statement NUMBER and the "in line N" number are different things and both
+# are checked: as370 reports the input CARD (line_org), which for this fixture
+# is 21 and happens to equal IFOX's statement number only because every card
+# ahead of it is a listed statement.
+sofail=0
+./as370 tests/setc_open.s -o /tmp/_so$$.obj -a >/tmp/_so$$.lst 2>/tmp/_so$$.err; rcso=$?
+nbe=$(( ($(wc -c < tests/ref/setc_open.obj) / 80 - 1) * 80 ))
+if [ $rcso != 8 ]; then
+    echo "setc_open: FAIL (expected RC 8 for IFO117, got $rcso)"; sofail=1
+elif ! deck_eq /tmp/_so$$.obj tests/ref/setc_open.obj; then
+    echo "setc_open: FAIL (deck differs from IFOX00 -- substitution or the substring)"; sofail=1
+elif ! grep -q 'IFO117) in line 21' /tmp/_so$$.err; then
+    echo "setc_open: FAIL (no IFO117 on the SETC card)"; sofail=1
+elif ! grep -q '1 Statement Flagged /   8 was Highest Severity' /tmp/_so$$.err; then
+    echo "setc_open: FAIL (not IFOX's 1 flagged statement at severity 8)"; sofail=1
+elif ! grep -qE '^ +23 +DC +C.\[&A\]\[&B\]' /tmp/_so$$.lst; then
+    echo "setc_open: FAIL (the model statement is not listed as statement 23)"; sofail=1
+elif ! grep -qE '^000000 BABBBAC2C3C4BB +24\+' /tmp/_so$$.lst; then
+    echo "setc_open: FAIL (no generated statement 24+ carrying the object code)"; sofail=1
+elif ! grep -qE "^ +21 &A +SETC" /tmp/_so$$.lst; then
+    echo "setc_open: FAIL (the SETC statement is not listed -- ALOGIC)"; sofail=1
+else
+    echo "setc_open: OK (deck == IFOX00, RC 8, IFO117, model 23 + generated 24+)"
+fi
+rm -f /tmp/_so$$.obj /tmp/_so$$.lst /tmp/_so$$.err
+
+# The remarks field is NOT substituted, and a system variable pairs like any
+# other substitution. Both measured in tests/listref/ifox-listing-remark_sub.txt:
+# statement 24+ carries 'BEMERKUNG &X UND & ENDE' verbatim -- the reference to
+# &X and the bare '&' both survive -- and &SYSDATE produces its own 26/27+ pair.
+# Listing-only by construction: &SYSDATE would date-stamp a deck.
+./as370 tests/remark_sub.s -o /dev/null -a >/tmp/_rs$$.lst 2>&1
+if ! grep -qE '^000000 E9 +24\+' /tmp/_rs$$.lst; then
+    echo "remark_sub: FAIL (no generated statement 24+ for the substituted DC)"; sofail=1
+elif ! grep -q 'BEMERKUNG &X UND & ENDE' /tmp/_rs$$.lst; then
+    echo "remark_sub: FAIL (the remarks field was substituted -- it must be verbatim)"; sofail=1
+elif ! grep -qE '^ +26 C +DC +C.&SYSDATE' /tmp/_rs$$.lst; then
+    echo "remark_sub: FAIL (&SYSDATE did not produce a model/generated pair)"; sofail=1
+else
+    echo "remark_sub: OK (remarks verbatim; &SYSDATE pairs)"
+fi
+rm -f /tmp/_rs$$.lst
+
+# R2, and it is deliberately NOT IFOX00 parity. tests/setc_undef.s is #97's
+# oracle: IFOX00 raises IFO006 and generates NO object code for the statement,
+# and takes no cross-reference entry for its name. as370 leaves an unresolvable
+# reference EXACTLY as written instead -- concatenation dot included -- so the
+# card is byte-identical to what it was before substitution existed -- the X'4B'
+# in the expected bytes IS that dot, kept. That keeps
+# #141 from trading one class of wrong bytes for another while #97 is open.
+./as370 tests/setc_undef.s -o /tmp/_su$$.obj >/dev/null 2>&1
+got=$(python3 -c "
+d=open('/tmp/_su$$.obj','rb').read(); t=b''
+for o in range(0,len(d)-79,80):
+    c=d[o:o+80]
+    if c[:4]==bytes((0x02,0xE3,0xE7,0xE3)): t+=c[16:16+((c[10]<<8)|c[11])]
+print(t.hex())
+")
+if [ "$got" != "c1e9c2c150e44bc2c5d5c4" ]; then
+    echo "setc_undef: FAIL (expected AZB + A&U.B verbatim + END, got $got)"; sofail=1
+else
+    echo "setc_undef: OK (&X substituted, undefined &U left verbatim -- #97, not #141)"
+fi
+rm -f /tmp/_su$$.obj
+fail=$((fail + sofail))
 
 # '&&' folding, and where it belongs. Measured against IFOX00 three ways:
 # tests/amp_fold.s (no variable symbol in the module at all -- DC folds anyway),
