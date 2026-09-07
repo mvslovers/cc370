@@ -217,7 +217,7 @@
     { "STCKC", F_S, 0xB207, 0 },
     { "SPT", F_S, 0xB208, 0 },
     { "STPT", F_S, 0xB209, 0 },
-    { "PTLB", F_S, 0xB20D, 0 },
+    { "PTLB", F_S0, 0xB20D, 0 },   /* no operand -- see F_S0 in as370.c */
     { "SPX", F_S, 0xB210, 0 },
     { "STPX", F_S, 0xB211, 0 },
     { "STAP", F_S, 0xB212, 0 },

@@ -49,7 +49,13 @@ static size_t bcat(char *d, size_t dsz, size_t at, const char *s) {
  * marking at note_overlong, long before the preprocessor is declared. */
 #define MAXLINES 131072
 
-enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC, F_S };
+/* F_S0: the S opcode space with NO operand.  IFOX00's own table is the
+ * authority -- ifnx5m.asm describes every operand-bearing mnemonic with an
+ * OPND card ahead of its OPCD (206 of them), and exactly two entries carry an
+ * OPCD alone: IPK X'B20B' and PTLB X'B20D' (ifnx5m.asm:1562-1563).  With no
+ * operand the rest of the card is a remark, so the operand field must not be
+ * read at all. */
+enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC, F_S, F_S0 };
 
 struct opc { const char *name; int fmt; int op; int m1; };  /* m1 = implied mask for branch pseudos */
 static const struct opc optab[] = {
@@ -60,7 +66,7 @@ static const struct opc optab[] = {
     { "BNH", F_BC, 0x47, 13 }, { "BNL", F_BC, 0x47, 11 }, { "BZ", F_BC, 0x47, 8 }, { "BNZ", F_BC, 0x47, 7 },
     { "BP", F_BC, 0x47, 2 }, { "BM", F_BC, 0x47, 4 }, { "BO", F_BC, 0x47, 1 }, { "BNO", F_BC, 0x47, 14 },
     { "BNP", F_BC, 0x47, 13 }, { "BNM", F_BC, 0x47, 11 },
-    { "IPK", F_S, 0xB20B, 0 }, { "SPKA", F_S, 0xB20A, 0 }, { "STCK", F_S, 0xB205, 0 },
+    { "IPK", F_S0, 0xB20B, 0 }, { "SPKA", F_S, 0xB20A, 0 }, { "STCK", F_S, 0xB205, 0 },
     { "BCT", F_RX, 0x46, 0 }, { "SVC", F_SVC, 0x0A, 0 },
     { "BR",  F_BR, 0x07, 15 }, { "BER", F_BR, 0x07, 8 }, { "BNER", F_BR, 0x07, 7 }, { "NOPR", F_BR, 0x07, 0 },
     { "BHR", F_BR, 0x07, 2 }, { "BLR", F_BR, 0x07, 4 }, { "BNHR", F_BR, 0x07, 13 }, { "BNLR", F_BR, 0x07, 11 },
@@ -2758,7 +2764,8 @@ static void prescan_literals(char **lines, int nlines) {
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (!parse(buf, lbl, op, opnd)) continue;
         if (!op[0]) continue;
-        if (op_find(op)) lit_scan_operands(opnd);
+        const struct opc *po = op_find(op);
+        if (po) { if (po->fmt != F_S0) lit_scan_operands(opnd); }   /* the F_S0 skip has to match the assembly loop's, or the pre-scan registers a literal pass 1 never sees */
         else if (!strcmp(op, "LTORG")) litpool++;        /* every LTORG closes a pool, exactly as the assembly loop counts them */
         else if (!strcmp(op, "END")) { end_seen = 1; break; }
     }
@@ -2841,6 +2848,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
 
         const struct opc *o = op_find(op);
+        if (o && o->fmt == F_S0) opnd[0] = 0;   /* a zero-operand instruction's operand field is a remark: not a literal, not a symbol reference, not a length-attribute term */
         if (cur_sect_id == 0 && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG")))
             pre_csect = 1;   /* statement before the first CSECT opens the implicit unnamed PC */
         if (cur_sect_id == 0 && !in_dsect && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG"))) {
@@ -2909,6 +2917,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                         lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)(im & 0xff) << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
+                case F_S0:   /* no operand: 2-byte opcode + a zero halfword, and the operand field was blanked above because it is a remark */
+                    put(lc, o->op, 2); put(lc + 2, 0, 2); lc += 4; break;
                 case F_S: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
                     if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
