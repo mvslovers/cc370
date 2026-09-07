@@ -2644,7 +2644,7 @@ static void emit_lit(struct lit *l) {
         for (vj = 0; vj < nv; vj++) { long loc = l->loc + (long)vj * per;
             if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                 put(loc, 0, per); add_reloc(loc, r, 1); rels[nrel - 1].len = per; }
-            else { int rc = 0; long v = vv[vj][0] ? expr_val(vv[vj], &rc) : 0; put(loc, v, per);
+            else { int rc = 0; long v = vv[vj][0] ? expr_val_full(vv[vj], &rc) : 0; put(loc, v, per);   /* leading '(' -- see the DC arm and cc370#167 */
                 char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
                 struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
                 int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
@@ -3320,7 +3320,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                                 }
                                 else if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                                     put(lc, 0, blen); add_reloc(lc, r, 1); rels[nrel - 1].len = blen; }
-                                else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0; long v = vals[vj][0] ? expr_val(vals[vj], &rc) : 0;
+                                else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0;
+                                    /* expr_val_full, not expr_val: a nominal value IS an
+                                     * expression, and expr_val reads a LEADING '(' as a
+                                     * machine operand's subscript and returns 0 without a
+                                     * word -- so DC Y((INDEXEND-INDEX1)/2) assembled as
+                                     * zero at rc 0 (cc370#167).  Nothing to do with the
+                                     * forward references it was found through: DC Y((1+1))
+                                     * had the same 0, and so did a backward pair.  The
+                                     * same guard was already known wrong for a duplication
+                                     * factor, which is what expr_val_full was written for
+                                     * -- it was simply never applied here. */
+                                    long v = vals[vj][0] ? expr_val_full(vals[vj], &rc) : 0;
                                     struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
                                     int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
                                     /* in_dsect: a DC inside a DSECT reserves storage and generates no constant at all
