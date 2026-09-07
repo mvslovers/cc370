@@ -2,6 +2,25 @@
 # Assemble each sample and verify the object deck (all cards before the END
 # card, which legitimately differs only in the IDR) is byte-identical to the
 # IFOX00 reference in tests/ref/.
+#
+# BEFORE ADDING A TEST HERE, CHECK THAT IT FAILS WITHOUT THE FIX.
+# A fixture that passes on both binaries is not a weak test, it is a NON-test,
+# and it is indistinguishable from a passing one ever after. Two were caught
+# only by running them against the old binary on purpose:
+#   - rldlen.s (#186) first used an A-con in the DSECT. The clobbering call site
+#     is the V-con path, so it passed both ways and proved nothing.
+#   - attrapos.s (#149) needed a THIRD case: the obvious fix passes the macro
+#     parameter and literal-identity cases and fails only on the closing quote
+#     of a string ending in an attribute letter -- the case that cost 96 decks.
+# So: build the fixture, run the PRE-fix binary against it, and record in the
+# comment what that binary scores. If you cannot make it score differently, the
+# fixture is not testing the change.
+#
+# And do not trust this suite alone for an as370 change. 743 corpus modules and
+# every reference deck here stayed green through a version of #149 that cost 96
+# identities on the 5,528-module tree, because not one of them contains a string
+# ending in an attribute letter. The mvs38src tree-wide gate is the instrument,
+# and its LOST line is the one that matters.
 cd "$(dirname "$0")/.." || exit 2
 # Macro libraries: maclib (the PDP macros -- PDPTOP/PDPPRLG/PDPEPIL) and sysmac
 # (host-only mirror of the SYS1.MACLIB members the build needs: SAVE/RETURN/

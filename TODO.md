@@ -639,6 +639,25 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | as370 alone flags | 512 | 236 |
   | hand-over list | 2,107 | 1,389 |
 
+  **The artefact that reports success.** Three times in one day, in three
+  different tools, an instrument said "fine" because it could not see the thing
+  it was measuring — and each was caught by a number looking slightly wrong
+  rather than by a check:
+
+  - a fixture that passed on **both** binaries (`rldlen.s` with an A-con instead
+    of a V-con in the DSECT) — a non-test, indistinguishable from a passing one;
+  - `rebuild_classes.py` collecting into a `defaultdict`, so a class with no
+    members was never rewritten and kept its last non-empty contents — **the one
+    file it never refreshed was the one where a fix had succeeded completely**;
+  - a `no-as370-deck` count reading `10 -> 10` while one module lost a deck to a
+    timeout race and another gained one for real.
+
+  The shared shape is worth more than any of the three defects: **an instrument
+  that cannot observe the change reports success**, and success is the reading
+  nobody investigates. So make a fixture fail before you trust it passing, seed
+  every class before writing class files, and treat a count that did not move as
+  a claim to check rather than a result.
+
   **The named trap: two builds at once.** Three times in one day, between the two
   sessions and in both directions, a figure came back plausible and wrong because
   it was measured with one binary against state written by another. Both
