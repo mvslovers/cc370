@@ -65,7 +65,7 @@ this file that is a joint plan rather than our own ranking:**
 
 | | Issue | Why here |
 |---|---|---|
-| A | **#141** | `SETC` is not substituted in open code — the variable NAME is emitted as data, at `rc=0`. Wrong bytes, not a missing diagnostic. 52 modules use it, 13 assemble, **none is byte-identical** against a tree base rate of 20 %. Its scope is also unmapped, which makes attribution in the whole length group uncertain — that is the reason it goes first. |
+| A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`, awaiting the `mvs38src` tree-wide gate before merge.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too — which is where the issue's own named case lives. Seven IFOX00 oracles; deck byte-identity on the issue's own fixture. Measured: libc370 743 unmoved, MVSBLD 413 newly flagged `0→8` (all the `'&SYSPARM'(1,4)` case IFOX flags as well), 32 newly assembling, 33 decks moved and **none while both sides assembled cleanly**. The scope question the issue asked is answered: one hole, and everything else in open code already worked. |
 | B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
 
@@ -77,12 +77,34 @@ a silent defect with their name on it. Build it before M7, not now.
 Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 *Recently landed*.
 
+**Filed while fixing #141, both silent, both found by a gate rather than by
+reading, and neither fixed:**
+
+- **#148** — `L'` of a constant whose length comes from its value is always 1.
+  `C'ABC'` answers 1 where IFOX00 answers 3. The oracle is committed
+  (`amp_fold`, `amp_selfdef`, `len_attr`) and `run.sh` pins the difference to
+  exactly that byte, so it **fails when this is fixed** and becomes a plain
+  byte-identity check. Wants the corpus measurement first: `L'` is everywhere in
+  macro code.
+- **#149** — an attribute apostrophe opens a quote state, so an operand carrying
+  `L'A` swallows the remarks field. Fixed in the substitution splitter by #141,
+  where no deck can move; `parse()` — which decides real operands — is
+  deliberately left alone and is what the issue is for.
+
+Also unfiled and worth a decision: as370 does not list macro **definition** cards
+at all, so any listing containing an in-stream macro numbers lower than IFOX00's.
+Same class as the conditional-statement listing #141 just fixed, listing-only,
+found on `tests/sysparm_substr.s`.
+
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
 library and the tools on it** (#109 adoption left; #110 done; #111, #112, #113,
 #117, #118 open — the only band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
 #103), **observability** (#9, #106), **listing fidelity** (#24, #28, #91),
-**deferred** (#36).
+**deferred** (#36). `&&` folding moved from the substituter to the DC scanner
+en route to #141 (`6d235db`): the two paths had contradicted each other at `rc=0`
+since as370 existed, and the two defects cancelled, so 950 modules of deck
+byte-identity could never show it.
 
 ---
 
