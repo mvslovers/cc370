@@ -87,11 +87,19 @@ static int nsym;
 /* ESD is a list of (symbol, role) events in source order. A name can appear as
  * BOTH an LD (locally defined entry) and an ER (referenced via =V/EXTRN) — IFOX
  * emits two ESD entries in that case, so roles are tracked separately. */
+/* Operand-field width. IFOX00's ceiling is 255 characters and it says so when a
+ * field passes it: ifnx1a.asm:4565 `BAL TLINK,WRNERR` / `DC AL1(SEV42)` /
+ * ERR42 'EXCEEDS 255 CHARACTERS' / `AH INPTR,H255 CHOP OFF FIRST 255`, and
+ * erms.asm:114 ERR105 for a generated field. as370 clamped every field at 63
+ * regardless of the caller's array, silently, and then evaluated the truncated
+ * text as if it were the whole operand. */
+#define FLDW 256
+
 enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
 struct esdent { struct sym *s; int role; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
 
-struct lit { char text[64]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[64]; int size; int algn; int sect; int defln; int psect; };
+struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int sect; int defln; int psect; };
 /* `sect` is where the literal was first REFERENCED -- it drives USING
  * resolution, and an END pool that moves sections re-stamps it so the
  * reference resolves through a USING covering the section it landed in.
@@ -258,7 +266,7 @@ static void init_sysvars(void) {
 
 static int hexv(int c);            /* fwd */
 static int hex_to_bytes(const char *s, unsigned char *out, int max);   /* fwd */
-static int split_fields(const char *s, char f[][64], int max);   /* fwd */
+static int split_fields(const char *s, char f[][FLDW], int max);   /* fwd */
 
 /* An EXTERNAL symbol longer than 8 characters.  MVS object-deck (ESD) names are
  * limited to 8 bytes; Assembler XF (IFOX00) rejects an over-length symbol --
@@ -398,9 +406,9 @@ static void lit_classify(struct lit *l) {
     l->isV = (ty == 'V'); l->isA = (ty == 'A' || ty == 'V' || ty == 'Y');
     if (ty == 'A' || ty == 'V' || ty == 'Y') {
         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
-        if (lp && rp && rp > lp) { int n = (int)(rp - lp - 1); if (n > 63) n = 63; memcpy(l->ext, lp + 1, n); l->ext[n] = 0; }
+        if (lp && rp && rp > lp) { int n = (int)(rp - lp - 1); if (n > FLDW - 1) n = FLDW - 1; memcpy(l->ext, lp + 1, n); l->ext[n] = 0; }
         int per = haslen ? len : (ty == 'Y' ? 2 : 4);
-        char vv[64][64]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;   /* =AL1(a,b,c): one constant per value */
+        char vv[64][FLDW]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;   /* =AL1(a,b,c): one constant per value */
         l->size = per * nv; l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
     } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
     } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
@@ -613,14 +621,14 @@ static int hex_to_bytes(const char *s, unsigned char *out, int max) {
 /* split operand into fields at top-level (depth-0, unquoted) commas. A comma
  * inside parens or a 'quoted' string is not a separator, so =X'80,8F' and
  * C'a,b' stay intact; the K'/N'/L'/T' attribute apostrophe is not a quote. */
-static int split_fields(const char *s, char f[][64], int max) {
+static int split_fields(const char *s, char f[][FLDW], int max) {
     int n = 0, depth = 0, q = 0; const char *start = s, *p = s;
     for (;; p++) {
         if (*p == '\'') { if (q || !(p > s && strchr("KNLT", p[-1]))) q = !q; }
         else if (!q && *p == '(') depth++;
         else if (!q && *p == ')') depth--;
         if ((!q && *p == ',' && depth == 0) || *p == 0) {
-            int len = (int)(p - start); if (len > 63) len = 63;
+            int len = (int)(p - start); if (len > FLDW - 1) len = FLDW - 1;
             if (n < max) { memcpy(f[n], start, len); f[n][len] = 0; n++; }
             if (*p == 0) break;
             start = p + 1;
@@ -638,7 +646,7 @@ static int split_fields(const char *s, char f[][64], int max) {
  * silently. Shared (and static) because both call sites want the same size and
  * do_pass is not recursive. */
 #define MAXEXTSYM 512
-static char extsym[MAXEXTSYM][64];
+static char extsym[MAXEXTSYM][FLDW];
 /* split a DC/DS operand list at top-level commas, respecting 'quoted' strings
  * ('' is an embedded quote) and (parenthesised) sub-expressions */
 static int dc_split(const char *s, char f[][1024], int max) {
@@ -821,14 +829,14 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
         { int d2 = 0; const char *q2 = lp;
           for (; *q2; q2++) { if (*q2 == '(') d2++; else if (*q2 == ')') { if (--d2 == 0) { rp = q2; break; } } } }
         int n = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1);
-        char inside[64]; if (n > 63) n = 63; memcpy(inside, lp + 1, n); inside[n] = 0;
+        char inside[FLDW]; if (n > FLDW - 1) n = FLDW - 1; memcpy(inside, lp + 1, n); inside[n] = 0;   /* the subscript span, at the operand ceiling: a 43-character length expression was cut at 31 mid-symbol (IEDQAU) */
         char *tok = inside;
         while (1) {
             char *cm = NULL;                                       /* the separator is a TOP-LEVEL comma: (3),5 is two subscripts, not three */
             { int d3 = 0; char *q3 = tok;
               for (; *q3; q3++) { if (*q3 == '(') d3++; else if (*q3 == ')') { if (d3) d3--; } else if (*q3 == ',' && !d3) { cm = q3; break; } } }
             int len = cm ? (int)(cm - tok) : (int)strlen(tok);
-            char t[32]; if (len > 31) len = 31; memcpy(t, tok, len); t[len] = 0;
+            char t[FLDW]; if (len > FLDW - 1) len = FLDW - 1; memcpy(t, tok, len); t[len] = 0;
             /* eval_reg, not expr_val: a subscript may be written (3), and
              * expr_val reads a leading '(' as a subscript of its own and returns
              * 0.  eval_reg already strips a fully-enclosing pair for exactly this
@@ -1820,7 +1828,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
         pp[oi] = 0; }
     struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
     scopy(m->namep, pl, sizeof m->namep - 1); scopy(m->name, po, sizeof m->name - 1);
-    if (pp[0]) { char flds[100][64]; int nf = split_fields(pp, flds, 100), k;
+    if (pp[0]) { char flds[100][FLDW]; int nf = split_fields(pp, flds, 100), k;
         for (k = 0; k < nf && k < 100; k++) { char *eq = strchr(flds[k], '=');
             if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
             else scopy(m->pname[k], flds[k], 19);
@@ -1857,7 +1865,7 @@ static int g_sysndx;
  * expander and open-code processing so &FUNC set in open code reaches the macros. */
 static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *opnd) {
     if (!strncmp(op, "GBL", 3) || !strncmp(op, "LCL", 3)) {
-        int isg = (op[0] == 'G'); char fl[24][64]; int nf = split_fields(opnd, fl, 24), j;
+        int isg = (op[0] == 'G'); char fl[24][FLDW]; int nf = split_fields(opnd, fl, 24), j;
         for (j = 0; j < nf; j++) { char *lp = strchr(fl[j], '(');
             if (lp) { if (c->narr < 48) { int b2 = (int)(lp - fl[j]); if (b2 > 19) b2 = 19; memcpy(c->arrb[c->narr], fl[j], b2); c->arrb[c->narr][b2] = 0; c->arrnum[c->narr] = (op[3] != 'C'); c->narr++; }
                        if (isg) mark_global(fl[j]); }  /* array */
@@ -1966,7 +1974,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     scopy(c.sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
     int k;
     for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
-    if (opnd[0]) { char args[100][64]; int na = split_fields(opnd, args, 100), pos = 0;
+    if (opnd[0]) { char args[100][FLDW]; int na = split_fields(opnd, args, 100), pos = 0;
         for (k = 0; k < na; k++) {
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
@@ -2694,7 +2702,7 @@ static void emit_lit(struct lit *l) {
     char ty = toupper((unsigned char)*p++);
     if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
     if (ty == 'V' || ty == 'A' || ty == 'Y') {            /* address constant, possibly a value list =AL1(a,b,c) */
-        char vv[64][64]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;
+        char vv[64][FLDW]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;
         int per = l->size / nv, vj;
         for (vj = 0; vj < nv; vj++) { long loc = l->loc + (long)vj * per;
             if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
@@ -2791,7 +2799,7 @@ static void pool_reserve(void) {
 }
 /* register every literal operand of a machine instruction (pass 1 and the pre-scan) */
 static void lit_scan_operands(const char *opnd) {
-    char F[4][64]; int nf = split_fields(opnd, F, 4), k;
+    char F[4][FLDW]; int nf = split_fields(opnd, F, 4), k;
     for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
 }
 /* Walk the statement list for literals alone, before pass 1 (#68).
@@ -2914,7 +2922,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
         if (o) {
             while (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }   /* instructions are halfword-aligned */
-            char F[4][64]; int nf = split_fields(opnd, F, 4);   /* nf: SRP needs its third operand */
+            char F[4][FLDW]; int nf = split_fields(opnd, F, 4);   /* nf: SRP needs its third operand */
             if (pass == 1) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = ins_len(o->fmt); }
                 lit_scan_operands(opnd);   /* same registration the pre-scan ran, so the two cannot drift */
@@ -3142,7 +3150,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;
                     struct sym *s = sym_get(extsym[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1; esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
-            char F[4][64]; split_fields(opnd, F, 4);
+            char F[4][FLDW]; split_fields(opnd, F, 4);
             if (pass == 2 && nusing < 32) {
                 int reg = (int)expr_val(F[1], 0);
                 long base = (F[0][0] == '*') ? lc : expr_val(F[0], 0);
@@ -3152,7 +3160,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
             }
         } else if (!strcmp(op, "DROP")) {
-            if (pass == 2) { char F[4][64]; int nf = split_fields(opnd, F, 4), j, k;
+            if (pass == 2) { char F[4][FLDW]; int nf = split_fields(opnd, F, 4), j, k;
                 if (!nf) nusing = 0;                       /* DROP with no operand drops all */
                 else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0);
                     for (k = 0; k < nusing; ) { if (usings[k].reg == r) { usings[k] = usings[--nusing]; } else k++; } } }
@@ -3163,7 +3171,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 else if (usp > 0) { usp--; memcpy(usings, ustk[usp], sizeof usings); nusing = ustkn[usp]; }                      /* POP */
             }
         } else if (!strcmp(op, "CNOP")) {                      /* align with NOPR (0x0700) fill */
-            char F[2][64]; split_fields(opnd, F, 2);
+            char F[2][FLDW]; split_fields(opnd, F, 2);
             int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0), g = 0;
             if (nn > 0) while ((lc % nn) != b && g++ < 64) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; }
         } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
@@ -3173,7 +3181,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
             { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 8; }
-            if (pass == 2) { char F[4][64]; int nf = split_fields(opnd, F, 4);
+            if (pass == 2) { char F[4][FLDW]; int nf = split_fields(opnd, F, 4);
                 put(lc, expr_val(F[0], 0) & 0xff, 1);
                 int rc = 0; long av = nf >= 2 ? expr_val(F[1], &rc) : 0; put(lc + 1, av, 3);
                 if (rc != 0) { char rsym[64]; reloc_sym(F[1], rsym, sizeof rsym);
@@ -3304,7 +3312,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         char body[1024]; int slen = 0; const char *e = q + 1;
                         while (*e && *e != '\'' && slen < 1023) body[slen++] = *e++;
                         body[slen] = 0;
-                        static char fvals[512][64]; int nv = split_fields(body, fvals, 512), vi;
+                        static char fvals[512][FLDW]; int nv = split_fields(body, fvals, 512), vi;
                         if (nv < 1) { nv = 1; fvals[0][0] = 0; }
                         for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
                             if (emit_dc) emit_float(lc, fvals[vi], flen);
@@ -3494,7 +3502,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                          * dropped EXTRN symbol -- its storage would never be
                          * reserved, so lc would under-advance at RC 0 and every
                          * later symbol would shift: the very defect #53 closes. */
-                        static char vals[512][64]; int nv = split_fields(body, vals, 512), vi;
+                        static char vals[512][FLDW]; int nv = split_fields(body, vals, 512), vi;
                         if (nv < 1) { nv = 1; vals[0][0] = 0; }
                         for (k = 0; k < cnt; k++) {
                             for (vi = 0; vi < nv; vi++) {
@@ -3531,7 +3539,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 4; } }
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0;
-                char F[4][64]; int nf = split_fields(opnd, F, 4);
+                char F[4][FLDW]; int nf = split_fields(opnd, F, 4);
                 /* expr_val_full on both: an EQU operand is an expression, and
                  * expr_val reads a leading '(' as a subscript and answers 0.
                  * N EQU (B-A)/2 equated to zero while the control N EQU B-A-2
