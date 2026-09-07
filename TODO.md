@@ -66,8 +66,9 @@ this file that is a joint plan rather than our own ranking:**
 | | Issue | Why here |
 |---|---|---|
 | A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
-| B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. |
+| B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. **It is larger than the five, and #165 proved how**: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. Same shape suspected and unscoped in `dc_split` (`:643`), `EQU` (`:3413`) and `SYM+(expr)` (`:761`). |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
+| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. |
 
 `#117` and `#118` do not touch that consumer today — they upload over FTP and
 xmit370 is not in their chain. **At their M7 it changes**: `++PTF`/`++USERMOD`
@@ -89,7 +90,15 @@ reading, and neither fixed:**
 - **#149** — an attribute apostrophe opens a quote state, so an operand carrying
   `L'A` swallows the remarks field. Fixed in the substitution splitter by #141,
   where no deck can move; `parse()` — which decides real operands — is
-  deliberately left alone and is what the issue is for.
+  deliberately left alone and is what the issue is for. **Measured 2026-09-07:
+  14 of #153's modules, 9 of them clean on `parse()` alone — and it is also the
+  root of #157**, whose `GENPARML` trio comes from `N'&MF` on `AMACLIB(IDACB2)`
+  line 124 letting the sequence field reach the operand, not from the `DS`.
+  `attr_apos()` is not the fix: stateless, it misreads the closing quote of
+  `C'E'` and moves 10 of 399 sampled modules *away* from IFOX. Gate it on quote
+  state, and use IFOX's letter set `T L I S N K` (`ifnx1a.asm:4862`), not
+  `LTKNISE`. `dc_split` (`as370.c:643`) has the same blindness on the DC path,
+  and there it is silent: 4 modules, 72 cards, wrong bytes at rc 0.
 
 - **#151** — a `SETC` value is clipped at 95 characters where IFOX00 holds 255.
   Silent, and it re-emerges wearing someone else's name: a substring indexing
@@ -589,6 +598,33 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **#153, the first two of sixteen** — `84cf294` (#164) and `879e86a` (#165),
+  merged 2026-09-07. `parse()` did not know the `.*` comment card, so
+  `capture_macro()` ended a definition on the word `MEND` inside a prose card:
+  `AMODGEN(IECDSECS)` card 131 quotes a sample macro that way, and as370 kept
+  130 of its 1,672 cards — `FORCORE`, `WTG`, `UCB`, `IHADCB` and the whole
+  `IECDSECT` tail were never generated. And `IPK`/`PTLB` were coded `F_S`, so
+  the remark behind the mnemonic was read as the operand. Over the 5,528:
+  **rc 0 4154 → 4312, byte-identical 3465 → 3558 (+93, none lost)**; of #153's
+  333 modules, 144 go clean. Reproduced independently by `mvs38src` from both
+  branches and their merge.
+
+  **Two lessons worth more than the count.** All 93 gained modules were booked
+  to *cc370* in `module-table.tsv`, none to the source — the first evidence that
+  the ownership attribution itself holds. And the byte gain far exceeds the rc
+  gain (+93 against +158 rc, but only +13 rc from #165 alone) because most of
+  the `IPK` class never flagged anything: 48 modules were returning rc 0 with a
+  wrong deck, which is **#140** wearing this issue's name.
+
+  **A defect of ours made the triage harder and is now the next step:** the
+  stderr diagnostic dump is category-ordered (`as370.c:3936-4038`,
+  undefined-symbol printed last) and `line_org` folds every macro-generated
+  message onto the call card, so "first diagnostic" is neither first nor
+  causal — all 75 of `IFG0190P`'s said *"in line 1"*. Both are byte-safe, both
+  should land before further mechanism work, and until they do, reach figures
+  derived from as370's own message order are isolation evidence, not counts.
+  The fourteen unfixed mechanisms in #153 carry exactly that caveat.
 
 - **The September as370 parity run** — #127 (`START`), #128 (`ISEQ`), #129
   (DC/DS type `S`), #133 (cross-section duplication factor), #134 (`&SYSECT`),
