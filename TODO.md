@@ -134,13 +134,28 @@ byte-identity could never show it.
 merged.** It reports "258 of 5528 modules contain `&&`; of the 82 that assemble,
 39 move". The candidate list behind those figures was built with the shell's
 `grep`, which in this environment resolves to a wrapper that returns **nothing at
-all** on MVSBLD's 80-column CRLF members — no output, no error, no zero. The real
-count is **1124** modules, and the authoritative movement figure is `mvs38src`'s
-tree-wide gate: **70 decks moved, 29 new identities**, measured over the whole
-tree with no candidate list involved. The direction and the conclusion stand; the
-side-figures in that message are a fourfold undercount. The lesson is the
-stronger one: **where the whole tree can be measured, do not scan first** — a
-candidate list can only ever subtract.
+all** on MVSBLD's 80-column CRLF members — no output, no error, no zero.
+
+The right figure is **144**: modules with `&&` in a *code* card, which is also
+exactly the set with `&&` in *open code*. A first replacement of 1124 counted
+comment cards too and was wrong in the other direction — a `&&` in a comment
+cannot reach the object deck. Two artifacts, one four times low and one eight
+times high, around a number neither of us had measured properly.
+
+Movement, from `mvs38src`'s tree-wide gate: **71 of the 144 moved, and the 144
+contain every one of the 29 identities the commit gained.** Not one gainer falls
+outside it.
+
+**That last line refutes something written here first.** The note used to say a
+candidate list can only subtract and that one should never scan before measuring.
+Against the `&&` list that is plainly false — half of it moved and it captured
+the gains completely. The distinction that survives is `mvs38src`'s: **`&&` is a
+lexical fact of the card**, present or absent, and nothing between the card and
+the deck can hide it; a variable-symbol reference is only the *start* of a value
+flow, and `BLSR3270` shows what that flow crosses — fourteen `COPY` members and a
+`GBLC`. So: **scan where the defect is lexical, measure the tree where it is
+not.** The scepticism about the `--mode emit` scan holds; the general claim did
+not.
 
 ---
 
