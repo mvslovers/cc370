@@ -26,6 +26,17 @@
  * plain loop, not strncpy/strncat, so it is free of the (false-positive here)
  * -Wstringop-truncation those builtins draw for a deliberate truncating copy. */
 static void scopy(char *d, const char *s, size_t n) { size_t i = 0; while (i < n && s[i]) { d[i] = s[i]; i++; } d[i] = 0; }
+/* Append S to D at offset AT, never writing past DSZ-1, and return the new
+ * offset. Used where a card is assembled from fields whose sizes sum to more
+ * than the destination: an snprintf("%s %s %s") there is a format whose output
+ * the compiler cannot bound, and glibc's fortify headers reject it under
+ * -Werror=format-truncation -- a diagnostic macOS cannot produce, so it fails
+ * only in CI. Building the card explicitly makes the bound visible instead. */
+static size_t bcat(char *d, size_t dsz, size_t at, const char *s) {
+    if (at + 1 >= dsz) return at;
+    while (*s && at + 1 < dsz) d[at++] = *s++;
+    d[at] = 0; return at;
+}
 
 /* as370 runs on the host (not MVS), so these limits are sized for real
  * modules, not the 24-bit target. Largest rexx370 CSECT is well under these. */
@@ -2062,10 +2073,20 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         /* The assembled card is built plainly rather than from the listing image:
          * the image is bounded by the 72-column card it is drawn on, and a
          * substituted operand can be far longer than the model it came from. */
-        char ex[4096];
-        snprintf(ex, sizeof ex, "%-8s %s %s", nmf, opf, odf);
-        strncpy(sysbuf, ex, sizeof sysbuf - 1); sysbuf[sizeof sysbuf - 1] = 0;
-        strncpy(buf, sysbuf, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
+        /* Name in column 1 padded to at least 8 -- an OVER-length name is kept
+         * whole, not truncated, so it still reaches the IFO016 path -- then the
+         * operation, then the operand. The remarks field is dropped: it is not
+         * assembled, and the listing takes the column-preserved image above. */
+        char ex[4096]; size_t k = 0;
+        k = bcat(ex, sizeof ex, k, nmf);
+        while (k < 8 && k + 1 < sizeof ex) ex[k++] = ' ';
+        if (k + 1 < sizeof ex) ex[k++] = ' ';
+        k = bcat(ex, sizeof ex, k, opf);
+        if (k + 1 < sizeof ex) ex[k++] = ' ';
+        k = bcat(ex, sizeof ex, k, odf);
+        ex[k] = 0;
+        scopy(sysbuf, ex, sizeof sysbuf - 1);
+        scopy(buf, sysbuf, sizeof buf - 1); parse(buf, lbl, op, opnd);
         subst = 1;
     }
     struct macro *m = NULL;
