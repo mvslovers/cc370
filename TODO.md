@@ -610,6 +610,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | #175 | a relocatable `EQU` belongs to the section of its VALUE | +282 | 452 | 2 |
   | #178 | a `USING` replaces the domain of its base register | +108 | 167 | 0 |
   | #180 | where a continued operand ends depends on the statement | +24 | 90 | 5 |
+  | #182 | an attribute apostrophe is not a quote in `parse()` | +23 | 50 | 1 |
 
   Over the tree, as of #171: `as370 == IFOX00` **3,466 → 3,737 of 5,528**
   (62.7 % → 67.6 %), recovered against IBM's own object 869 → 902, silent
@@ -676,6 +677,39 @@ Pointers only. The reasoning lives in the issues and their PRs.
   exactly IFOX00's `0x1ad` and was marked +71. Distance is now the address-keyed
   section image on both sides, and #170's row was restated from 172/6 to 178/1.
   A deck's cards are an encoding, not the object.
+
+- **#149, and the first regression of the run — caught by the gate, not by
+  reasoning.** `3b510c4` (#182). `parse()` toggled quote state on every
+  apostrophe, so after `L'A`/`T'&V`/`K'&P` the state stayed inverted, the first
+  blank read as "inside a string", and the remarks field was swallowed. Invisible
+  on a machine instruction — the evaluator stops at the real operand end — but
+  not on a **macro call**, where the tail becomes a parameter, and not in the
+  **literal pool**, where it becomes part of the literal's *name* so one literal
+  is laid down twice. The second is libc370 `@@crt0` card 266, and it is why the
+  743-corpus moved for the first time in the run: `@@crt0` and `@@crt1` lose a
+  duplicated literal and shrink four bytes.
+
+  **The obvious fix scored +0 and −96.** `attr_apos()` is a purely lexical test,
+  so it reads the CLOSING quote of a string whose last character is an attribute
+  letter as an attribute apostrophe. `AMDPREAD` card 327 —
+  `READ MAPDECB,SF,(R3),(REG0),'S' READ RECORD INTO BUFFER` — ends in `'S'`, the
+  string never closed, the remark joined the macro's operands, `MAPDECB` was
+  never defined, and **96 modules lost byte-identity with 175 decks further**.
+  Inside a string an apostrophe can only close it; the guard is `q ||`, and every
+  other attribute-aware scan in the file already had it. **`split_card()` calls
+  `attr_apos()` without it** and has the same latent reading — it cannot move a
+  deck, so it is left for #141's owner.
+
+  Two things worth keeping from that. The local suite stayed green through the
+  broken version: **743 corpus modules and 21 IFOX reference decks all passed a
+  change that cost 96 identities**, because none of them contains a string ending
+  in an attribute letter. And `tests/attrapos.s` therefore carries **three**
+  cases — macro parameter, literal identity, closing-quote guard — since the
+  obvious fix passes the first two.
+
+  **+23, none lost, 50 closer, one further by three bytes. rc 0 4493 → 4526.**
+  #156 falls to zero as a side effect (`IEEVMNT1`, `IFNX6B` were its whole
+  population); #155 is unmoved at 5.
 
 - **#154's third cause: the continuation join — five of the class, +24 in the
   tree.** `ccd061b` (#180). A continued line's operand ends at the first blank

@@ -19,6 +19,12 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# attrapos is the #149 oracle and carries three cases, because the obvious fix
+# fails the third: an attribute apostrophe (L'A) is not a quote, so parse() must
+# not toggle on it -- but INSIDE a string an apostrophe can only close it, and
+# attr_apos() is a purely lexical test that does not know that. Without the
+# `q ||' guard the closing quote of 'S' reads as an attribute (S is an attribute
+# letter), the string never closes, and 96 decks lost their identity.
 # contparen is #154's third-cause oracle, and it carries BOTH halves of the rule
 # because each half alone breaks the other: a macro call ends its operand at the
 # first blank outside quotes even inside an open paren (so the remark is dropped),
@@ -37,7 +43,7 @@ fail=0
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
-         amp_fold amp_selfdef len_attr equsect contparen; do
+         amp_fold amp_selfdef len_attr equsect contparen attrapos; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
