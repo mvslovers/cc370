@@ -660,7 +660,11 @@ static int dc_split(const char *s, char f[][1024], int max) {
 }
 static long imm_val(const char *s) {
     if (s[0] == 'C' && s[1] == '\'') return mvs_a2e((unsigned char)s[2]);
-    return expr_val(s, NULL);   /* X'..'/B'..'/decimal/symbol AND arithmetic on them (X'FF'-FLAG) */
+    /* expr_val_full: an SI immediate has no subscript, so expr_val's leading-'('
+     * guard protects nothing here and only turns MVI DEBLNGTH,(DEBSIZE+7)/8 into
+     * X'00'.  IFOX hands the I field to the ordinary expression evaluator
+     * (ifnx5m.asm, "X5V - EVALUATE EXPRESSIONS"). */
+    return expr_val_full(s, NULL);   /* X'..'/B'..'/decimal/symbol AND arithmetic on them (X'FF'-FLAG) */
 }
 /* pick the USING covering address val in section sect; returns base reg and
  * displacement. Prefers a same-section USING in range, else any USING in range
@@ -3254,7 +3258,26 @@ static void do_pass(int pass, char **lines, int nlines) {
                 int ty = *p ? toupper((unsigned char)*p++) : 0;
                 int blen = 0, haslen = 0;            /* explicit length modifier Ln or L(expr) */
                 if (*p == 'L') { p++; haslen = 1;
-                    if (*p == '(') { const char *rp = strchr(p, ')'); char ex[64]; int en = rp ? (int)(rp - p - 1) : 0; if (en > 63) en = 63; memcpy(ex, p + 1, en); ex[en] = 0; blen = (int)expr_val(ex, NULL); p = rp ? rp + 1 : p + strlen(p); }
+                    /* Two defects lived on this line, and the comment on the
+                     * duplication factor above named the second one and left it.
+                     * strchr(')') took the FIRST close paren, so L((*-CSECT)/20)
+                     * measured "(*-CSECT"; and expr_val reads a leading '(' as a
+                     * machine operand's subscript and answers 0.  Either alone
+                     * still gives the wrong length -- paren-only yields 0,
+                     * expr_val_full-only yields twenty times too many bytes --
+                     * so both, with the same balanced scan the duplication
+                     * factor uses.  A length of 0 stays legal: DS 0CL(...) is. */
+                    if (*p == '(') { const char *st = p + 1, *q = st; int d = 1, qt = 0;
+                        for (; *q; q++) {
+                            if (*q == '\'') { qt = !qt; continue; }
+                            if (qt) continue;
+                            if (*q == '(') d++;
+                            else if (*q == ')' && --d == 0) break;
+                        }
+                        char ex[256]; int en = (int)(q - st); if (en > 255) en = 255;
+                        memcpy(ex, st, (size_t)en); ex[en] = 0;
+                        blen = (int)expr_val_full(ex, NULL); if (blen < 0) blen = 0;
+                        p = *q ? q + 1 : q; }
                     else while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
                 if (ty == 'E' || ty == 'D' || ty == 'L') {
@@ -3509,8 +3532,16 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0;
                 char F[4][64]; int nf = split_fields(opnd, F, 4);
-                s->val = expr_val(F[0], &rc); s->defined = 1; s->sect = cur_sect_id;
-                s->len = (nf >= 2 && F[1][0]) ? (int)expr_val(F[1], NULL) : 1;   /* EQU value,length: 2nd operand sets the length attribute (L') */
+                /* expr_val_full on both: an EQU operand is an expression, and
+                 * expr_val reads a leading '(' as a subscript and answers 0.
+                 * N EQU (B-A)/2 equated to zero while the control N EQU B-A-2
+                 * was right -- silently, and an equate feeds every reference to
+                 * it.  Measured on nine modules whose whole deck differs from
+                 * IFOX00's in one to three bytes, eight with this as the sole
+                 * cause: IEAVESVC BNGIRMOT IEAVELCR IEAVECH0 IGG019P7 IGFINTVL
+                 * IGG019KG IGG019KH. */
+                s->val = expr_val_full(F[0], &rc); s->defined = 1; s->sect = cur_sect_id;
+                s->len = (nf >= 2 && F[1][0]) ? (int)expr_val_full(F[1], NULL) : 1;   /* EQU value,length: 2nd operand sets the length attribute (L') */
                 s->type = (rc == 0) ? S_ABS : S_REL; }   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
