@@ -103,9 +103,12 @@ reading, and neither fixed:**
   open-code substring `SETC` only and never looked in a macro body, and a first
   replacement count of 46/5 measured operand *text* to column 72 instead of the
   value — i.e. it counted the remarks field, which is **#149** counting itself.
-  The module that led here (`BLSR3270`, no ampersand in its own source, 32 bogus
-  `IFO117`) is **not** the witness: the macro holding its table is web-mirror
-  material of unestablished maintenance level. Gate it against **IBM's object**
+  The module that led here (`BLSR3270`, **no variable symbol in any code card**,
+  32 bogus `IFO117`) is **not** the witness: it reaches the 128-character table
+  through a `COPY` chain into the `BLSR327*` family, every member of which is
+  web-mirror material of unestablished maintenance level. Following `COPY` and
+  `GBLC` edges, 71 modules can reach an over-95 value — 43 assembling, 4 already
+  byte-identical — which is the set a gate must cover, not a forecast. Gate it against **IBM's object**
   when it moves, not against as370 — before #141 this clip was silent and put
   wrong characters in decks that already assembled, the `&SYSECT` pattern.
 - **#150** — an **in-stream** macro definition is not listed, so every statement
@@ -126,6 +129,18 @@ library and the tools on it** (#109 adoption left; #110 done; #111, #112, #113,
 en route to #141 (`6d235db`): the two paths had contradicted each other at `rc=0`
 since as370 existed, and the two defects cancelled, so 950 modules of deck
 byte-identity could never show it.
+
+**Correction to that commit's own message, which cannot be amended now it is
+merged.** It reports "258 of 5528 modules contain `&&`; of the 82 that assemble,
+39 move". The candidate list behind those figures was built with the shell's
+`grep`, which in this environment resolves to a wrapper that returns **nothing at
+all** on MVSBLD's 80-column CRLF members — no output, no error, no zero. The real
+count is **1124** modules, and the authoritative movement figure is `mvs38src`'s
+tree-wide gate: **70 decks moved, 29 new identities**, measured over the whole
+tree with no candidate list involved. The direction and the conclusion stand; the
+side-figures in that message are a fourfold undercount. The lesson is the
+stronger one: **where the whole tree can be measured, do not scan first** — a
+candidate list can only ever subtract.
 
 ---
 
