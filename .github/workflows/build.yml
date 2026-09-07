@@ -72,6 +72,9 @@ jobs:
       - name: as370 suite (byte-identity to the IFOX00 reference decks)
         run: make test-as370
 
+      - name: as370 listing references (IFOX00 SYSPRINT, column-exact)
+        run: make test-listref
+
       - name: ld370 suite (byte-identity to the IEWL/IEBCOPY oracles)
         run: sh ld370/tests/run.sh
 

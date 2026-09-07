@@ -1,0 +1,52 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.40 09/06/26
+T         SD  0001 000000 00000A
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.40 09/06/26
+                                      1 * Bemerkungsfeld und Systemglobal in offenem Code (#141).
+                                      2 *
+                                      3 * Zwei Fragen, beide nur im Listing sichtbar.
+                                      4 *
+                                      5 * 1. Wird das BEMERKUNGSFELD substituiert?
+                                      6 *      IFOX FEVAL60, kein JSUBCMNT   Bemerkung bleibt woertlich,
+                                      7 *                                    auch das nackte &
+                                      8 *      ganze Karte durch msub        Z, und das & faellt weg
+                                      9 *    IBM liefert 2030 nackte & in offenen Bemerkungen aus, in
+                                     10 *    716 MVSBLD-Modulen -- daran haengt, ob feldweise substituiert
+                                     11 *    werden muss.
+                                     12 *
+                                     13 * 2. Erzeugt ein SYSTEMGLOBAL das Modell/Erzeugnis-Paar?
+                                     14 *      paart        zwei Anweisungen, + auf der zweiten
+                                     15 *      paart nicht  eine Anweisung
+                                     16 *    Entscheidet, ob has_varsym() die Karte VOR oder NACH
+                                     17 *    sysvar_sub() prueft.
+                                     18 *
+                                     19 * Kein Deck erfasst: &SYSDATE macht es datumsabhaengig.
+000000                               20 T        CSECT
+                                     21          LCLC  &X
+                                     22 &X       SETC  'Z'
+                                     23 A        DC    C'&X'            BEMERKUNG &X UND & ENDE
+000000 E9                            24+A        DC    C'Z'             BEMERKUNG &X UND & ENDE
+000001 D8                            25 B        DC    C'Q'
+                                     26 C        DC    C'&SYSDATE'
+000002 F0F961F0F661F2F6              27+C        DC    C'09/06/26'
+                                     28          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.40 09/06/26
+A        00001 00000000 00024
+B        00001 00000001 00025
+C        00008 00000002 00027
+T        00001 00000000 00020
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 15.40 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         26
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        52

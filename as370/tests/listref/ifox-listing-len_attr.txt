@@ -1,0 +1,65 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 22.52 09/06/26
+T         SD  0001 000000 000029
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 22.52 09/06/26
+                                      1 * Laengenattribut L' einer Konstanten ohne explizite Laenge.
+                                      2 *
+                                      3 * Gefunden beim Verdrahten der '&&'-Orakel: amp_fold und
+                                      4 * amp_selfdef sind bis auf genau ein Byte identisch, und das Byte
+                                      5 * ist ein L'.
+                                      6 *
+                                      7 * as370 setzt das Symbol, BEVOR der Rumpf gelesen ist, und nimmt
+                                      8 * dann die explizite Laenge oder 1.  Wo die Laenge aus dem WERT
+                                      9 * kommt, ist das Ergebnis immer 1:
+                                     10 *
+                                     11 *   Typ    Wert        as370   erwartet
+                                     12 *   C      'ABC'         1        3
+                                     13 *   X      'FFFF'        1        2
+                                     14 *   C      3C'AB'        1        2   (eine Konstante, nicht drei)
+                                     15 *
+                                     16 * F, H, A haben eine feste implizite Laenge und stimmen deshalb;
+                                     17 * CL7 hat eine explizite und stimmt auch.  Die Fixture haelt beide
+                                     18 * Gruppen nebeneinander, damit die Grenze im Deck steht.
+000000                               19 T        CSECT
+000000 C1C2C3                        20 CC       DC    C'ABC'
+000003 FFFF                          21 XX       DC    X'FFFF'
+000005 0A                            22 BB       DC    B'1010'
+000006 0000
+000008 00000001                      23 FF       DC    F'1'
+00000C 0001                          24 HH       DC    H'1'
+00000E 0000
+000010 00000000                      25 AA       DC    A(T)
+000014                               26 DD       DS    CL7
+00001B C1C2C1C2C1C2                  27 EE       DC    3C'AB'
+000021 03020104                      28          DC    AL1(L'CC,L'XX,L'BB,L'FF)
+000025 02040702                      29          DC    AL1(L'HH,L'AA,L'DD,L'EE)
+                                     30          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 22.52 09/06/26
+ 0001     0001      0C     000010
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 22.52 09/06/26
+AA       00004 00000010 00025  00029
+BB       00001 00000005 00022  00028
+CC       00003 00000000 00020  00028
+DD       00007 00000014 00026  00029
+EE       00002 0000001B 00027  00029
+FF       00004 00000008 00023  00028
+HH       00002 0000000C 00024  00029
+T        00001 00000000 00019  00025
+XX       00002 00000003 00021  00028
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 22.52 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         30
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        65

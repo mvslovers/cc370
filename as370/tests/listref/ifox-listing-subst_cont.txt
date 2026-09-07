@@ -1,0 +1,46 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 23.18 09/06/26
+T         SD  0001 000000 00005B
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 23.18 09/06/26
+                                      1 * Substitution auf einer FORTSETZUNGSKARTE (#141).
+                                      2 *
+                                      3 * mexp_line bekommt zusammengefuegte Karten: eine Anweisung mit
+                                      4 * Fortsetzung ist da laengst eine einzige Zeile von mehreren
+                                      5 * hundert Zeichen.  Der Feldsplitter darf dort nicht bei Spalte 72
+                                      6 * aufhoeren -- sonst wird der Operand still abgeschnitten.
+                                      7 *
+                                      8 *   Grenze bei 72   Konstante endet nach 'XYBBBBBB', Sektion 0x39
+                                      9 *   volle Karte     Konstante vollstaendig, Sektion 0x5B
+                                     10 *
+                                     11 * Gefunden an BLSCAMOD, das acht Bytes einer Konstanten verlor,
+                                     12 * deren Wert auf der zweiten Karte weiterlaeuft.  Die Referenz
+                                     13 * steht hier absichtlich VOR der Fortsetzung und der Rest dahinter,
+                                     14 * damit beide Haelften geprueft werden.
+000000                               15 T        CSECT
+                                     16          LCLC  &V
+                                     17 &V       SETC  'XY'
+                                     18 A        DC    C'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&V.BBBBB*
+                                                       BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBZZZ'
+000000 C1C1C1C1C1C1C1C1              19+A        DC    C'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXYBBBBBB*
+000008 C1C1C1C1C1C1C1C1                +               BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBZZZ'
+000058 C5D5C4                        20 B        DC    C'END'
+                                     21          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 23.18 09/06/26
+A        00088 00000000 00019
+B        00003 00000058 00020
+T        00001 00000000 00015
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 23.18 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         21
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        46

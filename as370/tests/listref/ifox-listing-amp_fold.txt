@@ -1,0 +1,51 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.38 09/06/26
+T         SD  0001 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.38 09/06/26
+                                      1 * Faltung von '&&' in einer C-Konstanten OHNE jede Substitution.
+                                      2 *
+                                      3 * as370 widerspricht sich heute selbst, bei identischem Quelltext:
+                                      4 *
+                                      5 *   offener Code    DC C'&&'   ->  5050   zwei Bytes
+                                      6 *   im Makrorumpf   DC C'&&'   ->  50     ein Byte
+                                      7 *
+                                      8 * Einer der beiden Pfade ist falsch.  Die Fixture trennt sie:
+                                      9 *
+                                     10 *   Regel A  immer falten
+                                     11 *            A = 1 Byte, B = 3 Bytes, C = 2 Bytes, L'A=1, L'B=3
+                                     12 *   Regel B  nur bei Substitution falten
+                                     13 *            A = 2 Bytes, B = 4 Bytes, C = 4 Bytes, L'A=2, L'B=4
+                                     14 *
+                                     15 * Kein Variablensymbol im Modul, damit die Frage allein an der
+                                     16 * DC-Verarbeitung haengt und nicht am Substituierer.
+                                     17 *
+                                     18 * 422 DC-Operanden in 139 MVSBLD-Modulen haengen an der Antwort.
+000000                               19 T        CSECT
+000000 50                            20 A        DC    C'&&'
+000001 C150C2                        21 B        DC    C'A&&B'
+000004 5050                          22 C        DC    C'&&&&'
+000006 01                            23 LA       DC    AL1(L'A)
+000007 03                            24 LB       DC    AL1(L'B)
+                                     25          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.38 09/06/26
+A        00001 00000000 00020  00023
+B        00003 00000001 00021  00024
+C        00002 00000004 00022
+LA       00001 00000006 00023
+LB       00001 00000007 00024
+T        00001 00000000 00019
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 15.38 09/06/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         25
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        51

@@ -15,7 +15,19 @@ cd "$(dirname "$0")/../.." || exit 2
 LIBC370=${LIBC370:-../../libc370}
 fail=0
 
+# Case 1 assembles a macro-library module and is the only case that needs the
+# libc370 checkout; the other four are self-contained. It SKIPS rather than
+# fails where libc370 is absent, so this suite can run in CI, which has no
+# ecosystem checkout beside it. Skipping case 1 costs the NOMLOGIC guard -- it
+# is the case that proves conditional statements inside a macro stay unlisted --
+# so a local run with libc370 present remains the real gate.
+have_libc=1
+[ -d "$LIBC370/maclib" ] && [ -d "$LIBC370/sysmac" ] || have_libc=0
+
 # --- case 1: tstlist -- general listing (ESD + SOURCE + RLD) ----------------
+if [ $have_libc = 0 ]; then
+    echo "listref tstlist: SKIPPED (needs the libc370 checkout; set LIBC370=<path>)"
+else
 REF=tests/listref/ifox-listing-tstlist.txt
 OUT=/tmp/as370-listref.$$
 ASMDATE=06/18/26 ASMTIME=06.42 ./as370 tests/listref/tstlist.s \
@@ -52,6 +64,7 @@ PY
 [ $? = 0 ] && echo "listref tstlist: ESD + SOURCE + RLD column-exact to IFOX00" \
            || { echo "listref tstlist: MISMATCH"; fail=1; }
 rm -f "$OUT"
+fi
 
 # --- case 2: reloc_disp -- issue #18 (IFO228, relocatable displacement) ------
 # A machine instruction with a relocatable displacement and an explicit base is
@@ -190,5 +203,60 @@ PY
 [ $? = 0 ] && echo "listref multi_csect: per-section ESD lengths column-exact to IFOX00" \
            || { echo "listref multi_csect: MISMATCH"; fail=1; }
 rm -f "$OUT4"
+
+# --- case 5: setc_open -- issue #141 (substitution in open code) -------------
+# The listing half of #141, and the half that is easy to get half right. Three
+# things have to hold at once and each was wrong before:
+#
+#   the CONDITIONAL statements are listed. IFOX00 prints LCLC and both SETC
+#   cards -- ALOGIC is on by default, as the fixture's own OPTIONS line says --
+#   where as370 swallowed them, so everything after them was numbered three low.
+#
+#   a substituted model statement is listed TWICE: the source card, print-only
+#   with no location, then the generated card carrying the object code and the
+#   '+'. Statements 23 and 24+.
+#
+#   the values are IFOX's. &A is null because 'AB'(5,4) starts past the end --
+#   that is the IFO117 the assembly returns 8 for -- and &B is BCD.
+#
+# It is also the guard on the OTHER half of the listing rule: NOMLOGIC is the
+# default and IFOX00 lists none of the ~70 conditional statements inside
+# tstlist's SAVE and RETURN. Case 1 above fails loudly if this listing gate ever
+# stops being restricted to generation level 0.
+#
+# IFOX flags the SETC, so its listing carries an *** ERROR *** marker; norm()
+# drops those from both sides as in the other error cases here.
+REF5=tests/listref/ifox-listing-setc_open.txt
+OUT5=/tmp/as370-listref-so.$$
+ASMDATE=09/06/26 ASMTIME=11.35 ./as370 tests/setc_open.s -a="$OUT5" >/dev/null 2>&1
+python3 - "$REF5" "$OUT5" <<'PYX'
+import sys
+ref  = open(sys.argv[1]).read().split("\n")
+mine = open(sys.argv[2]).read().split("\n")
+HDR = ("SYMBOL   TYPE", "  LOC  OBJECT", "POS.ID")
+def norm(lines):
+    out = []
+    for l in lines:
+        l = l.replace("\f", "").rstrip()
+        if "CROSS-REFERENCE" in l:         break      # as370 emits no XREF page
+        if l == "":                        continue
+        if l.strip() == "*** ERROR ***":   continue   # IFOX-only diagnostic marker
+        out.append(l)
+    return out
+R, M = norm(ref), norm(mine)
+ok = True
+for i in range(max(len(R), len(M))):
+    r = R[i] if i < len(R) else "<none>"
+    m = M[i] if i < len(M) else "<none>"
+    hdr = any(r.startswith(p) for p in HDR)
+    rc, mc = (r[:90], m[:90]) if hdr else (r, m)
+    if rc != mc:
+        ok = False
+        print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
+sys.exit(0 if ok else 1)
+PYX
+[ $? = 0 ] && echo "listref setc_open: open-code substitution column-exact to IFOX00" \
+           || { echo "listref setc_open: MISMATCH"; fail=1; }
+rm -f "$OUT5"
 
 exit $fail

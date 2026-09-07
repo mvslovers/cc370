@@ -1,0 +1,44 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.39 09/06/26
+T         SD  0001 000000 000006
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.39 09/06/26
+                                      1 * Eine nicht aufloesbare Variablenreferenz in offenem Code
+                                      2 * (#141, Grenze zu #97).
+                                      3 *
+                                      4 * &X ist deklariert und gesetzt, &U nie.  Was macht IFOX aus &U?
+                                      5 *
+                                      6 *   R1  zu leer substituieren    B = C1C2       (AB)
+                                      7 *   R2  woertlich stehenlassen   B = C150E4C2   (A&UB)
+                                      8 *   R3  IFO006, kein Objektcode  B erzeugt NICHTS, RC 8
+                                      9 *
+                                     10 * Die drei sagen verschiedene BYTES voraus, nicht nur RC.
+                                     11 * C zeigt, ob die Assemblierung ueberhaupt weiterlaeuft.
+000000                               12 T        CSECT
+                                     13          LCLC  &X
+                                     14 &X       SETC  'Z'
+                                     15 A        DC    C'A&X.B'
+000000 C1E9C2                        16+A        DC    C'AZB'
+                                     17 B        DC    C'A&U.B'
+         *** ERROR ***
+000003 C5D5C4                        18 C        DC    C'END'
+                                     19          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.39 09/06/26
+A        00003 00000000 00016
+C        00003 00000003 00018
+T        00001 00000000 00012
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 15.39 09/06/26
+   17  IFO006      UNDEFINED VARIABLE SYMBOL &U
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         18
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        44

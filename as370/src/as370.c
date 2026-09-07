@@ -197,6 +197,10 @@ static char g_ovl_name[64];     /* set by parse() to the full over-length ORDINA
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
 static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
 static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
+/* &SYSPARM: the assembly's PARM=SYSPARM() string, and the NULL string when
+ * none is given -- which is the case the fixtures and the ecosystem run under,
+ * and the one that makes '&SYSPARM'(1,4) an IFO117 rather than four blanks. */
+static char g_sysparm[96] = "";
 /* as370's own translator identity (working title V2.0; product rename to as370
  * is planned). Stamped into the object's END-record IDR and the -a listing
  * header so the deck identifies itself rather than masquerading as IFOX. */
@@ -392,7 +396,9 @@ static void lit_classify(struct lit *l) {
         int base = (ty == 'E') ? 4 : (ty == 'D') ? 8 : 16;
         l->size = haslen ? len : base; l->algn = haslen ? 1 : (base == 16 ? 8 : base);
     } else if (ty == 'X') { const char *q = strchr(p, '\''); unsigned char tmp[260]; int nb = q ? hex_to_bytes(q + 1, tmp, 260) : 0; l->size = haslen ? len : nb; l->algn = 1;
-    } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; } sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
+    } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; }
+        if (*e == '&' && e[1] == '&') { sl++; e += 2; continue; }
+        sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
     } else { l->size = 4; l->algn = 4; }
     if (l->size < 1) l->size = 1;
 }
@@ -459,7 +465,8 @@ static long x_factor(int sign) {
     }
     if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
         char kind = *xp_; xp_ += 2; long v = 0;
-        if (kind == 'C') { while (*xp_ && *xp_ != '\'') { v = (v << 8) | mvs_a2e((unsigned char)*xp_); xp_++; } }
+        if (kind == 'C') { while (*xp_ && *xp_ != '\'') { if (*xp_ == '&' && xp_[1] == '&') xp_++;   /* '&&' is one '&' (tests/amp_selfdef.s) */
+                                                        v = (v << 8) | mvs_a2e((unsigned char)*xp_); xp_++; } }
         else { int base = (kind == 'X') ? 16 : 2; while (*xp_ && *xp_ != '\'') {
                    int c = toupper((unsigned char)*xp_), dv = (c >= '0' && c <= '9') ? c - '0' : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : 0;
                    v = v * base + dv; xp_++; } }
@@ -872,6 +879,15 @@ static struct lrec lrecs[MAXLINES];
  * for an ordinary source line, where lines[] is already the verbatim card. */
 static char *gcard[MAXLINES];
 static const char *g_genimg;   /* image for the single line the next mexp_line emits */
+/* The lines[] slot a conditional-assembly diagnostic attaches to, or -1 when no
+ * statement is being evaluated. A SETC substring error has no statement of its
+ * own to point at otherwise: eval_setc is three calls below the card, and the
+ * recorders address a statement by its lines[] index. Armed by mexp_line for an
+ * open-code CA statement and by mexp_macro for one in a macro body -- the macro
+ * CALL line in that case, which is the card line_org already reports. */
+static int g_ca_slot = -1;
+static int g_mcall_slot = -1;  /* the macro CALL line's slot, for a diagnostic raised inside the body */
+static void note_operr(const char *msg, int sev, int line);   /* fwd: eval_setc raises IFO115/116/117 */
 /* source-file line number each expanded line derives from (for diagnostics): an
  * open-code statement -> its own line; a macro/COPY-generated line -> the line of
  * the call/COPY in the input file. g_curorg is the line currently being expanded. */
@@ -988,12 +1004,25 @@ static const char *ep_; static struct ctx *ec_;        /* SETA parser state (ten
 /* value of a "&name" / "&name(idx)" reference. For a macro parameter the
  * subscript selects a sublist element; for a SET symbol it selects an array
  * element &name(idx), stored under the flat name "&name(N)". */
+/* Set by vref for the reference it just evaluated: 0 when the name resolved to
+ * nothing because it is not known at all -- no LCLx/GBLx declaration, no SET,
+ * not a parameter, not a system variable. A DECLARED but unset symbol resolves,
+ * to the empty string; the two are otherwise indistinguishable (both give ""),
+ * and open-code substitution has to tell them apart to leave an unknown
+ * reference alone rather than delete it. */
+static int g_vref_res;
 static void vref(struct ctx *c, const char *ref, char *out) {
-    out[0] = 0;
+    out[0] = 0; g_vref_res = 1;
     const char *p = ref + 1; char nm[24]; int i = 0;
     while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 22) nm[i++] = *p++;
     nm[i] = 0;
     if (!strcmp(nm, "SYSNDX")) { snprintf(out, 96, "%04d", c->sysndx); return; }   /* unique per macro invocation */
+    /* &SYSPARM is a system global, defined in open code as well as in a macro
+     * (ifnx1j.asm:1358). With no PARM=SYSPARM() its value is the NULL string --
+     * not blanks, and K' of it is 0 (ifnx3n.asm:395-406) -- which is what makes
+     * IEDHJN's '&SYSPARM'(1,4) reach IFO117 rather than yielding four blanks.
+     * It resolves, so R2 substitutes it away instead of leaving it verbatim. */
+    if (!strcmp(nm, "SYSPARM")) { scopy(out, g_sysparm, 95); return; }
     /* Only inside a macro: IFOX00 rejects &SYSECT in open code with IFO006
      * (undefined variable symbol) rather than substituting anything, so open
      * code is left to the general undefined-symbol path -- that is #97, not
@@ -1068,29 +1097,64 @@ static void vref(struct ctx *c, const char *ref, char *out) {
         }
         else { long idx; { const char *sep = ep_; struct ctx *sec = ec_; idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec; } char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn);
             if (v) { strncpy(out, v, 95); out[95] = 0; }
-            else { int a; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; break; } strncpy(out, def, 95); out[95] = 0; } }   /* unset array element -> default */
+            else { int a, decl = 0; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; decl = 1; break; } g_vref_res = decl; strncpy(out, def, 95); out[95] = 0; } }   /* unset array element -> declared default, else unresolved */
     } else {
         if (!is_param) base = set_find(c, amp);
-        if (!base) base = "";
+        if (!base) { base = ""; g_vref_res = 0; }
         strncpy(out, base, 95); out[95] = 0;
     }
 }
-/* substitute all & references in a model statement (with &x. concatenation) */
-static void msub(struct ctx *c, const char *src, char *dst) {
-    int di = 0; const char *s = src;
-    while (*s) {
-        if (*s == '&' && (s[1] == '&')) { dst[di++] = '&'; s += 2; continue; }
+/* substitute all & references in a model statement (with &x. concatenation).
+ *
+ * DST is bounded by DSTSZ, and it has to be: substitution EXPANDS, and by a
+ * factor no call site can bound from its own input. A reference costs two
+ * characters to write and vref returns up to 95, so the worst case is 47.5x --
+ * `&X` repeated into a 255-byte SETC operand yields 12065 bytes, and every call
+ * site here hands over a 256- or 1024-byte automatic buffer.
+ *
+ * That was not theoretical. Ten cards of ordinary conditional assembly --
+ * double a value four times, then concatenate it four times -- walked off
+ * eval_setc's sub[256] and the assembler still exited 0; ASAN is the only
+ * reason it is visible at all. mexp_macro's ex[1024] overflows with NO
+ * expansion whatever, because a macro body card is a joined continuation and
+ * can already exceed 1024 on its own.
+ *
+ * Truncation past DSTSZ is deliberate and is not this function's diagnostic to
+ * raise: eval_setc clips a value at 95 immediately afterwards, render_model
+ * builds a listing image, and mexp_macro's result is re-clamped to 1023 by
+ * parse() one call later. Where XF puts a real limit on a generated field it is
+ * 255, with IFO105 past it -- a separate question from not corrupting memory. */
+static void msub_ex(struct ctx *c, const char *src, char *dst, size_t dstsz, int keepunres) {
+    if (!dstsz) return;
+    size_t di = 0, lim = dstsz - 1; const char *s = src;
+    while (*s && di < lim) {
+        if (*s == '&' && (s[1] == '&')) { if (di + 1 >= lim) break; dst[di++] = '&'; dst[di++] = '&'; s += 2; continue; }
         if (*s == '&') {
+            const char *start = s;
             char ref[44]; int ri = 0; ref[ri++] = *s; const char *p = s + 1;
             while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && ri < 30) ref[ri++] = *p++;
             if (*p == '(') { ref[ri++] = '('; p++; int d = 1; while (*p && d && ri < 42) { if (*p=='(')d++; else if(*p==')'){d--; if(!d){p++;break;}} ref[ri++]=*p++; } ref[ri++] = ')'; }
             ref[ri] = 0;
-            char v[96]; vref(c, ref, v); int r; for (r = 0; v[r]; r++) dst[di++] = v[r];
+            char v[96]; vref(c, ref, v);
+            if (keepunres && !g_vref_res) {
+                /* R2: a reference that names nothing is left EXACTLY as written,
+                 * concatenation dot included, so the card is byte-identical to
+                 * what it was before substitution ran. Deleting it -- which is
+                 * what an empty value does -- would trade one class of wrong
+                 * bytes for another, and IFOX00's own answer is neither: it
+                 * raises IFO006 and generates no object code at all for the
+                 * statement (tests/setc_undef.s). That is #97, and this leaves
+                 * the door open for it rather than guessing at it. */
+                while (start < p && di < lim) dst[di++] = *start++;
+                s = p; continue;
+            }
+            int r; for (r = 0; v[r] && di < lim; r++) dst[di++] = v[r];
             s = p; if (*s == '.') s++;
         } else dst[di++] = *s++;
     }
     dst[di] = 0;
 }
+static void msub(struct ctx *c, const char *src, char *dst, size_t dstsz) { msub_ex(c, src, dst, dstsz, 0); }
 /* SETA arithmetic evaluator: numbers, &refs, N'/K'/L' attributes, + - * / ( ) */
 static const char *ep_; static struct ctx *ec_;
 static long e_expr(void);
@@ -1112,7 +1176,7 @@ static long selfdef(const char *s) {
         int kind = *s; s += 2;
         if (kind == 'X') { while (*s && *s != '\'') v = v * 16 + hexv(*s++); }
         else if (kind == 'B') { while (*s && *s != '\'') v = v * 2 + (*s++ == '1' ? 1 : 0); }
-        else { while (*s && *s != '\'') { if (*s == '\'' && s[1] == '\'') s++; v = (v << 8) | mvs_a2e((unsigned char)*s++); } }
+        else { while (*s && *s != '\'') { if (*s == '&' && s[1] == '&') s++; v = (v << 8) | mvs_a2e((unsigned char)*s++); } }
     } else v = atol(s);
     return neg ? -v : v;
 }
@@ -1128,7 +1192,7 @@ static long e_prim(void) {
         int kind = *ep_; long v = 0; ep_ += 2;
         if (kind == 'X') { while (*ep_ && *ep_ != '\'') v = v * 16 + hexv(*ep_++); }
         else if (kind == 'B') { while (*ep_ && *ep_ != '\'') v = v * 2 + (*ep_++ == '1' ? 1 : 0); }
-        else { while (*ep_ && *ep_ != '\'') { if (*ep_ == '\'' && ep_[1] == '\'') ep_++; v = (v << 8) | mvs_a2e((unsigned char)*ep_++); } }   /* C': EBCDIC byte values */
+        else { while (*ep_ && *ep_ != '\'') { if (*ep_ == '&' && ep_[1] == '&') ep_++; v = (v << 8) | mvs_a2e((unsigned char)*ep_++); } }   /* C': EBCDIC byte values; '&&' is one '&' */
         if (*ep_ == '\'') ep_++;
         return v;
     }
@@ -1172,16 +1236,37 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
             while (*q) { if (*q == '\'') { if (q[1] == '\'') { if (il < 255) inner[il++] = '\''; q += 2; continue; } break; }
                 if (il < 255) { inner[il++] = *q; } q++; }
             inner[il] = 0;
-            char sub[256]; msub(c, inner, sub);
+            char sub[256]; msub(c, inner, sub, sizeof sub);
             p = (*q == '\'') ? q + 1 : q;
             if (*p == '(') {                       /* substring (start,len) */
                 ec_ = c; ep_ = p + 1; long st = e_expr(); e_sp(); long ln = 0;
                 if (*ep_ == ',') { ep_++; ln = e_expr(); }
                 if (*ep_ == ')') ep_++;
                 p = ep_;
-                int n = (int)strlen(sub), a = (int)st - 1; if (a < 0) a = 0; if (a > n) a = n;
-                int take = (int)ln; if (take > n - a) take = n - a; if (take < 0) take = 0;
-                memcpy(piece, sub + a, take); piece[take] = 0;
+                int n = (int)strlen(sub);
+                /* IFOX00 checks the two expressions in this order and assigns the
+                 * NULL string when either fails -- it does not clamp. Measured on
+                 * all four boundaries at once, tests/setc_substr.s:
+                 *   'AB'(0,2) / (-1,2)  IFO115, null    severity 8
+                 *   'AB'(3,1)           IFO117, null    severity 8
+                 *   'AB'(1,-1)          IFO116, null    severity 4  <- the only
+                 *                                                      warning
+                 *   'AB'(2,9)           'B', and NO diagnostic: a second
+                 *                       expression running past the end simply
+                 *                       truncates (the "ERROR IF EXPR 2 HIGH"
+                 *                       label in the source is dead code).
+                 * as370 clamped a low first expression to 1 and returned the whole
+                 * string, so 'AB'(0,2) gave AB where IFOX gives nothing -- wrong
+                 * bytes, silently, on the macro path as much as in open code.
+                 * Severities are jermsgcd.asm SEV115/116/117 = 8 / 4 / 8. */
+                int bad = 0;
+                if (st <= 0) { note_operr("first expression in substring notation has zero or negative value (IFOX00 IFO115)", 8, g_ca_slot); bad = 1; }
+                else if (n < (int)st) { note_operr("first expression in substring notation exceeds the length of the string (IFOX00 IFO117)", 8, g_ca_slot); bad = 1; }
+                if (ln < 0) { note_operr("second expression in substring notation has negative value (IFOX00 IFO116)", 4, g_ca_slot); bad = 1; }
+                if (bad) { piece[0] = 0; }
+                else { int a = (int)st - 1;
+                       int take = (int)ln; if (take > n - a) take = n - a; if (take < 0) take = 0;
+                       memcpy(piece, sub + a, take); piece[take] = 0; }
             } else { strncpy(piece, sub, 255); piece[255] = 0; }
         } else if (*p == '&') {
             char ref[64]; int i = 0; ref[i++] = *p++;
@@ -1705,49 +1790,82 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
     if (!strcmp(op, "ANOP")) return 1;
     return 0;
 }
-/* Render a macro model statement for the listing's SOURCE column, the way IFOX
- * does it: each field (name / operation / operand / comment) is substituted in
- * place but keeps the *start column it had in the model card*, and cols 73-80
- * (the library sequence number) are carried through verbatim. So `&NAME B ...`
- * with &NAME empty still prints `B` in its model column, and an operand that
- * grows/shrinks under substitution leaves the comment anchored where the model
- * put it. The substituted operand may overflow its model width; a following
- * field is then pushed right by one blank rather than overwritten. */
-static void render_model(struct ctx *c, const char *model, const char *seq, char *out) {
+/* An apostrophe that opens a quoted string, or one that merely introduces an
+ * ATTRIBUTE -- the ' in L'A, T'&V, K'&SYSPARM. The card splitters used to
+ * toggle quote state on every apostrophe alike, so an operand carrying an
+ * attribute reference had an odd count, the state never closed, and the whole
+ * remarks field was swallowed into the operand (mvslovers/cc370#149). That was
+ * invisible while every field was substituted anyway; it stops being invisible
+ * the moment the remarks field must be left alone.
+ *
+ * An attribute letter stands ALONE. The character before it must not be part of
+ * a longer token, or two ordinary strings are misread: `DC C'L'` closes on its
+ * own quote, and `DC CL&A'&E'` -- SAVE's identifier card, and the one that
+ * caught this -- ends in the 'A' of the VARIABLE SYMBOL &A, where the quote
+ * opens a string. So '&' bars the reading exactly as a letter does. */
+static int attr_apos(const char *card, int i) {
+    if (i < 1 || !strchr("LTKNISE", card[i-1])) return 0;
+    if (i >= 2) { char b = card[i-2];
+        if (isalnum((unsigned char)b) || b=='@' || b=='#' || b=='$' || b=='_' || b=='&') return 0; }
+    return 1;
+}
+/* Split a card (cols 1-72) into name / operation / operand / remarks, keeping
+ * each field's start column. The operand stops at the first blank that is
+ * outside quotes and outside parentheses; the remarks field is then everything
+ * up to col 72, internal blanks included. A sequence-symbol name (.NAME) is
+ * dropped -- it is not a name field.
+ *
+ * SEQCOL is where the fields stop. For a LISTING IMAGE that is column 72, so
+ * the library sequence number in 73-80 is not mistaken for text. For SPLITTING
+ * A STATEMENT it must be the card's full length: mexp_line is handed JOINED
+ * continuation cards, hundreds of characters long, and stopping at 72 silently
+ * truncates the operand -- which is how BLSCAMOD lost 8 bytes off a constant
+ * whose value continues onto a second card. */
+#define FLDMAX 1024
+static void split_card(const char *model, int mlen, int seqcol, int *fcol, char fld[4][FLDMAX]) {
+    int p = 0, k;
+    for (k = 0; k < 4; k++) { fcol[k] = 0; fld[k][0] = 0; }
+    if (p < mlen && model[0] != ' ') {
+        int q = 0; while (p < mlen && p < seqcol && model[p] != ' ') { if (q < FLDMAX-1) fld[0][q++] = model[p]; p++; }
+        fld[0][q] = 0; if (fld[0][0] == '.') fld[0][0] = 0;
+    }
+    while (p < mlen && p < seqcol && model[p] == ' ') p++;
+    if (p < mlen && p < seqcol) { fcol[1] = p; int q = 0; while (p < mlen && p < seqcol && model[p] != ' ') { if (q < FLDMAX-1) fld[1][q++] = model[p]; p++; } fld[1][q] = 0; }
+    while (p < mlen && p < seqcol && model[p] == ' ') p++;
+    if (p < mlen && p < seqcol) { fcol[2] = p; int q = 0, inq = 0, dep = 0;
+        while (p < mlen && p < seqcol) { char ch = model[p];
+            if (ch == '\'' && !attr_apos(model, p)) inq = !inq;
+            else if (!inq && ch == '(') dep++; else if (!inq && ch == ')') { if (dep) dep--; }
+            if (ch == ' ' && !inq && dep == 0) break;
+            if (q < FLDMAX-1) { fld[2][q++] = ch; } p++; }
+        fld[2][q] = 0; }
+    while (p < mlen && p < seqcol && model[p] == ' ') p++;
+    if (p < mlen && p < seqcol) { fcol[3] = p; int q = 0; while (p < mlen && p < seqcol) { if (q < FLDMAX-1) fld[3][q++] = model[p]; p++; } fld[3][q] = 0; }
+}
+/* Render a model statement for the listing's SOURCE column, the way IFOX does
+ * it: each field keeps the *start column it had in the model card*, and cols
+ * 73-80 (the library sequence number) are carried through verbatim. So `&NAME
+ * B ...` with &NAME empty still prints `B` in its model column, and an operand
+ * that grows/shrinks under substitution leaves the comment anchored where the
+ * model put it. The substituted operand may overflow its model width; a
+ * following field is then pushed right by one blank rather than overwritten.
+ *
+ * KEEPUNRES leaves a reference that resolves to nothing verbatim, and FIELDS is
+ * the set of fields to substitute -- 0xF for a macro model statement, 0x7 in
+ * open code, where the remarks field is not substituted (remark_sub.s). */
+static void render_model_ex(struct ctx *c, const char *model, const char *seq, char *out,
+                            int fields, int keepunres) {
     char ln[256]; int i; for (i = 0; i < 255; i++) { ln[i] = ' '; } ln[255] = 0;
     int seqcol = 72;                                  /* a card is 80 cols; the sequence number sits at 73-80 (index 72-79) */
     int mlen = (int)strlen(model); while (mlen > 0 && (model[mlen-1]=='\n'||model[mlen-1]=='\r')) mlen--;
-    /* split the model card (cols 1-72) into name / operation / operand / comment,
-     * remembering each field's start column. The operand stops at the first blank
-     * that is not inside quotes or parentheses (like parse()); the comment is
-     * then everything up to col 72, internal blanks included. */
-    int fcol[4]; char fld[4][128]; int p = 0, k;
-    for (k = 0; k < 4; k++) { fcol[k] = 0; fld[k][0] = 0; }
-    /* name (only if col 1 is non-blank); a sequence-symbol label (.NAME) is dropped */
-    if (p < mlen && model[0] != ' ') {
-        int q = 0; while (p < mlen && p < seqcol && model[p] != ' ') { if (q < 127) fld[0][q++] = model[p]; p++; }
-        fld[0][q] = 0; if (fld[0][0] == '.') fld[0][0] = 0;   /* sequence symbol -> no generated name */
-    }
-    while (p < mlen && p < seqcol && model[p] == ' ') p++;
-    /* operation */
-    if (p < mlen && p < seqcol) { fcol[1] = p; int q = 0; while (p < mlen && p < seqcol && model[p] != ' ') { if (q < 127) fld[1][q++] = model[p]; p++; } fld[1][q] = 0; }
-    while (p < mlen && p < seqcol && model[p] == ' ') p++;
-    /* operand (quote/paren aware) */
-    if (p < mlen && p < seqcol) { fcol[2] = p; int q = 0, inq = 0, dep = 0;
-        while (p < mlen && p < seqcol) { char ch = model[p];
-            if (ch == '\'') inq = !inq; else if (!inq && ch == '(') dep++; else if (!inq && ch == ')') { if (dep) dep--; }
-            if (ch == ' ' && !inq && dep == 0) break;
-            if (q < 127) { fld[2][q++] = ch; } p++; }
-        fld[2][q] = 0; }
-    while (p < mlen && p < seqcol && model[p] == ' ') p++;
-    /* comment: the remainder up to col 72, verbatim (internal blanks kept) */
-    if (p < mlen && p < seqcol) { fcol[3] = p; int q = 0; while (p < mlen && p < seqcol) { if (q < 127) fld[3][q++] = model[p]; p++; } fld[3][q] = 0; }
-    /* place each field's substituted text at its model start column, shifting a
-     * field right only when the previous one overran it */
+    int fcol[4]; char fld[4][FLDMAX];
+    split_card(model, mlen, seqcol, fcol, fld);
     int cur = 0;
     for (i = 0; i < 4; i++) {
         if (!fld[i][0]) continue;
-        char sub[256]; msub(c, fld[i], sub);
+        char sub[FLDMAX * 2];
+        if (fields & (1 << i)) msub_ex(c, fld[i], sub, sizeof sub, keepunres);
+        else scopy(sub, fld[i], sizeof sub - 1);
         int col = fcol[i]; if (col < cur) col = cur;   /* never overwrite the previous field */
         int sl = (int)strlen(sub), j; for (j = 0; j < sl && col + j < 255; j++) ln[col + j] = sub[j];
         cur = col + sl + 1;                            /* at least one blank before the next field */
@@ -1756,6 +1874,9 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
     if (seq) { int j; for (j = 0; j < 8 && seq[j]; j++) ln[seqcol + j] = seq[j]; }
     int n = 255; while (n > 0 && ln[n-1] == ' ') n--; ln[n] = 0;   /* trim trailing blanks */
     strcpy(out, ln);
+}
+static void render_model(struct ctx *c, const char *model, const char *seq, char *out) {
+    render_model_ex(c, model, seq, out, 0xF, 0);
 }
 /* expand a macro invocation, interpreting conditional assembly */
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
@@ -1789,13 +1910,15 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
         if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
-        if (set_stmt(&c, bl, bo, bod)) { pc++; continue; }   /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
+        { g_ca_slot = g_mcall_slot;                          /* a substring error in the body points at the call */
+          int isca = set_stmt(&c, bl, bo, bod); g_ca_slot = -1;
+          if (isca) { pc++; continue; } }                     /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
         if (!strcmp(bo, "AIF")) { char cond[512], seq[20]; aif_split(bod, cond, seq);
             if (eval_cond(&c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
-        char ex[1024]; msub(&c, m->body[pc], ex);
+        char ex[1024]; msub(&c, m->body[pc], ex, sizeof ex);
         char gimg[256]; render_model(&c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
         mexp_line(ex, out, nout, depth + 1);
         pc++;
@@ -1834,6 +1957,43 @@ static void sysvar_sub(const char *src, char *dst) {
     }
     dst[di] = 0;
 }
+/* Is this one of the conditional-assembly statements set_stmt interprets? Asked
+ * BEFORE set_stmt runs, because the statement needs a lines[] slot to exist so a
+ * diagnostic raised while evaluating it has something to attach to. */
+static int is_ca_op(const char *op) {
+    return !strncmp(op, "GBL", 3) || !strncmp(op, "LCL", 3) ||
+           !strcmp(op, "SETA") || !strcmp(op, "SETB") || !strcmp(op, "SETC") ||
+           !strcmp(op, "ANOP");
+}
+/* Does this card carry a variable symbol that substitution has to resolve?
+ *
+ * Only the name, operation and operand fields count. The REMARKS field is not
+ * substituted -- IFOX00's FEVAL60 moves it with no preceding GOIF and jtext.asm
+ * has no JSUBCMNT flag, and tests/remark_sub.s shows '&X' and a bare '&'
+ * surviving verbatim onto the generated line. That is not a nicety: IBM ships
+ * 2030 bare ampersands in open-code remarks across 716 MVSBLD modules, and a
+ * whole-card substitution deletes every one of them.
+ *
+ * '&&' is a doubled ampersand, not a reference, and does not make a card a model
+ * statement (tests/amp_fold.s assembles with no substitution at all). A lone '&'
+ * that names nothing does not either.
+ *
+ * Tested on the card BEFORE sysvar_sub: &SYSDATE is a system global and pairs
+ * like any other substitution (tests/remark_sub.s, statements 26 and 27+). */
+static int has_varsym(const char *card) {
+    int fcol[4]; char fld[4][FLDMAX]; int i;
+    int ml = (int)strlen(card); while (ml > 0 && (card[ml-1] == '\n' || card[ml-1] == '\r')) ml--;
+    split_card(card, ml, ml, fcol, fld);   /* a reference can sit past column 72 of a joined card */
+    for (i = 0; i < 3; i++) {
+        const char *q = fld[i];
+        while (*q) {
+            if (*q == '&' && q[1] == '&') { q += 2; continue; }
+            if (*q == '&' && (isalpha((unsigned char)q[1]) || q[1]=='@' || q[1]=='#' || q[1]=='$' || q[1]=='_')) return 1;
+            q++;
+        }
+    }
+    return 0;
+}
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
     struct ctx *opc = &g_opc;   /* shared open-code context */
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
@@ -1842,24 +2002,107 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     strncpy(buf, sysbuf, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
-     * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`. */
-    if (op[0] && (set_stmt(opc, lbl, op, opnd))) return;
+     * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`.
+     *
+     * The statement is LISTED, not swallowed. IFOX00 prints it under ALOGIC,
+     * which is on by default (the fixtures' own OPTIONS line reads
+     * `ALIGN, ALOGIC, ...`), and statement numbering counts it -- tests/
+     * setc_open.s has the DC at statement 23 where as370 used to put it at 20.
+     * It is listed only in OPEN CODE: NOMLOGIC is the default and IFOX00 lists
+     * none of the 70 conditional statements inside tstlist's SAVE and RETURN. */
+    if (op[0] && is_ca_op(op)) {
+        int slot = -1;
+        if (g_genlevel == 0 && *nout < MAXLINES) {
+            slot = *nout;
+            lflags[slot] = LF_NOASM; gcard[slot] = img ? strdup(img) : NULL;
+            line_org[slot] = g_curorg; out[slot] = strdup(sysbuf); (*nout)++;
+        }
+        g_ca_slot = slot;                  /* where a substring diagnostic attaches */
+        int done = set_stmt(opc, lbl, op, opnd);
+        g_ca_slot = -1;
+        if (done) return;
+        if (slot >= 0) { free(out[--(*nout)]); free((void *)gcard[*nout]); gcard[*nout] = NULL; }   /* not a CA statement after all */
+    }
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
         char *cb[2048]; int n = lib_readlines(opnd, cb, 2048, NULL, 0);   /* COPY takes the member entire */
         if (n >= 0) { mexp_block(cb, n, out, nout, depth + 1, NULL); return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
     }
+    /* SUBSTITUTION IN OPEN CODE (#141). Everything above this point interprets
+     * the statement; from here it is a MODEL statement, and its variable symbols
+     * have to be resolved before anything looks at it.
+     *
+     * The order is forced, not chosen:
+     *   - after set_stmt, because the name field of `&A SETC ...` IS the variable
+     *     symbol. Substituting the whole card first leaves lbl empty and defines
+     *     a symbol called "", and turns `LCLC &A,&B` into `LCLC ,`.
+     *   - after COPY, because a member name is not a model field.
+     *   - BEFORE the macro lookup, because IFOX00 substitutes the operation field
+     *     and only then looks the op code up (ifnx3a.asm:576, then OPSC1 at 622).
+     *   - before the CSECT tracking below, so `&N CSECT` records the substituted
+     *     name as &SYSECT.
+     * Only at generation level 0: text arriving from mexp_macro has been
+     * substituted once already, and a second pass would resolve a reference the
+     * first one deliberately left alone. */
+    char genimg[256]; int subst = 0, opsubst = 0;
+    /* A comment card is not a model statement. IFOX00 substitutes nothing in one
+     * -- there is no field to substitute, the whole card is text -- and treating
+     * it as one turns every '&' in a comment into a generated statement pair.
+     * The fixture for this very issue has two such cards in its own header. */
+    int iscmt = (line[0] == '*') || (line[0] == '.' && line[1] == '*');
+    if (g_genlevel == 0 && !iscmt && op[0] && has_varsym(line)) {   /* the RAW card: &SYSDATE is a system global and pairs (remark_sub.s 26/27+) */
+        int fcol[4]; char fld[4][FLDMAX];
+        int ml = (int)strlen(sysbuf); while (ml > 0 && (sysbuf[ml-1] == '\n' || sysbuf[ml-1] == '\r')) ml--;
+        split_card(sysbuf, ml, ml, fcol, fld);   /* the whole joined card, not 72 columns */
+        char nmf[FLDMAX * 2], opf[FLDMAX * 2], odf[FLDMAX * 4];
+        msub_ex(opc, fld[0], nmf, sizeof nmf, 1);
+        msub_ex(opc, fld[1], opf, sizeof opf, 1);
+        msub_ex(opc, fld[2], odf, sizeof odf, 1);
+        opsubst = strcmp(fld[1], opf) != 0;
+        render_model_ex(opc, sysbuf, NULL, genimg, 0x7, 1);   /* listing image: fields 0-2, remarks verbatim */
+        /* The assembled card is built plainly rather than from the listing image:
+         * the image is bounded by the 72-column card it is drawn on, and a
+         * substituted operand can be far longer than the model it came from. */
+        char ex[4096];
+        snprintf(ex, sizeof ex, "%-8s %s %s", nmf, opf, odf);
+        strncpy(sysbuf, ex, sizeof sysbuf - 1); sysbuf[sizeof sysbuf - 1] = 0;
+        strncpy(buf, sysbuf, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
+        subst = 1;
+    }
     struct macro *m = NULL;
-    if (op[0] && !known_op(op) && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
+    /* A SUBSTITUTED operation field cannot name a macro. IFOX00 resolves macro
+     * calls in the edit phase, before substitution runs, so a generated op code
+     * is looked up in the machine/assembler table alone: tests/var_opcode.s has
+     * `&P SETC 'MYMAC'` generate `B MYMAC` and answers IFO101 GENERATED OP CODE
+     * INVALID OR IS UNDEFINED rather than expanding it. as370's note_unknown
+     * says the same thing in its own words, at the same severity. */
+    if (op[0] && !known_op(op) && !opsubst && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
     if (m) {   /* keep the macro call line itself for the listing (not assembled); its expansion is flagged generated */
-        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); gcard[*nout] = img ? strdup(img) : NULL; line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
+        if (subst && *nout < MAXLINES) {   /* the model card, then the generated call */
+            lflags[*nout] = LF_NOASM; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
+            out[*nout] = strdup(line); (*nout)++;
+        }
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM); gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
         /* HLASM substitutes the caller's variable symbols in a macro's arguments
          * in the caller's context. At open-code level resolve them from g_opc, so
          * e.g. `DCB MACRF=P&OUTM.M` binds &MACRF='PMM' (not the literal 'P&OUTM.M',
          * which the called macro -- not knowing &OUTM -- would mis-parse). Inside a
-         * macro the enclosing expansion has already substituted them. */
+         * macro the enclosing expansion has already substituted them. The card-level
+         * substitution above has already done it when it ran. */
         char aopnd[1024];
-        if (g_genlevel == 0) msub(opc, opnd, aopnd); else { strncpy(aopnd, opnd, sizeof aopnd - 1); aopnd[sizeof aopnd - 1] = 0; }
-        mexp_macro(m, lbl[0] == '.' ? "" : lbl, aopnd, out, nout, depth); return;
+        if (subst || g_genlevel > 0) { strncpy(aopnd, opnd, sizeof aopnd - 1); aopnd[sizeof aopnd - 1] = 0; }
+        else msub(opc, opnd, aopnd, sizeof aopnd);
+        int savecall = g_mcall_slot; g_mcall_slot = *nout - 1;   /* the call line just appended */
+        mexp_macro(m, lbl[0] == '.' ? "" : lbl, aopnd, out, nout, depth);
+        g_mcall_slot = savecall; return;
+    }
+    /* A substituted model statement is listed TWICE, the way IFOX00 lists it:
+     * the source card, print-only and with no location, then the generated card
+     * carrying the object code and the '+'. tests/setc_open.s statements 23 and
+     * 24+; tests/remark_sub.s 23/24+ and 26/27+. */
+    if (subst && *nout + 1 < MAXLINES) {
+        lflags[*nout] = LF_NOASM; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
+        out[*nout] = strdup(line); (*nout)++;
+        img = genimg;
     }
     if (*nout >= MAXLINES) return;
     /* Track the section on EMISSION, not on input: a CSECT a macro generates is
@@ -1869,7 +2112,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") ||
                   !strcmp(op, "START") || !strcmp(op, "COM")))
         scopy(g_sysect, (lbl[0] && lbl[0] != '.') ? lbl : "", 8);
-    lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN : 0);
+    lflags[*nout] = (unsigned char)(g_genlevel > 0 || subst ? LF_GEN : 0);
     gcard[*nout] = img ? strdup(img) : NULL;
     line_org[*nout] = g_curorg;
     if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
@@ -1970,6 +2213,14 @@ static void note_notimpl(const char *what, int line) {
  * 177 is 12 (jermsgcd.asm). */
 static char operr_msg[128][96]; static int operr_ln[128]; static int operr_sev[128]; static int noperr;
 static void note_operr(const char *msg, int sev, int line) {
+    /* A diagnostic with no statement to attach to is dropped, not recorded: main
+     * prints lines[operr_ln[j]] and line_org[operr_ln[j]], so a negative index
+     * would read out of bounds. It happens where a conditional-assembly
+     * statement is evaluated with no lines[] slot armed -- an AIF condition,
+     * which mexp_block branches on without ever emitting the card. Stated in
+     * #141 rather than papered over: a substring error inside an AIF cannot be
+     * attributed in this design. */
+    if (line < 0) return;
     mark_flagged(line);
     if (noperr < 128) { scopy(operr_msg[noperr], msg, 95); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
 }
@@ -2378,7 +2629,9 @@ static void emit_lit(struct lit *l) {
         int pad = l->size - nb, j; for (j = 0; j < l->size; j++) put(l->loc + j, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1);
     } else if (ty == 'C') {
         const char *q = strchr(p, '\''); char body[256]; int slen = 0;
-        if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; } body[slen++] = *e++; } }
+        if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
+            if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
+            body[slen++] = *e++; } }
         int j; for (j = 0; j < l->size; j++) put(l->loc + j, j < slen ? mvs_a2e((unsigned char)body[j]) : 0x40, 1);
     } else put(l->loc, l->val, l->size);
     g_curln = svln;
@@ -3047,6 +3300,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (q) { const char *e = q + 1;
                         while (*e && slen < 1023) {
                             if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
+                            if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
                             body[slen++] = *e++;
                         } }
                     int emit = haslen ? blen : (q ? slen : 1);   /* valueless DS nC reserves cnt*1 bytes (default C length 1) */
@@ -3559,6 +3813,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
+        else if (!strncmp(argv[ai], "--sysparm=", 10)) scopy(g_sysparm, argv[ai] + 10, 95);   /* IFOX PARM=SYSPARM(...); default is the null string */
         else if (!strcmp(argv[ai], "-m") && ai + 1 < argc) ++ai;   /* -m HLASM-option: accepted, not yet implemented */
         else if (!strcmp(argv[ai], "--")) { /* end of options: recognised, no-op */ }
         else if (!strcmp(argv[ai], "-E")) eonly = 1;       /* (internal) dump macro-expanded source */

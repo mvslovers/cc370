@@ -1,0 +1,53 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.40 09/06/26
+T         SD  0001 000000 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.40 09/06/26
+                                      1 * Ein Variablensymbol im OPERATIONSFELD in offenem Code (#141).
+                                      2 *
+                                      3 * IFOX substituiert das Operationsfeld VOR dem Nachschlagen
+                                      4 * (ifnx3a.asm:576 vor OPSC1:622).  Zwei Fragen:
+                                      5 *
+                                      6 * 1. A -- eine Anweisung als Wert
+                                      7 *      substituiert    A DC C'X'  ->  E7
+                                      8 *      nicht           IFO101, oder gar nichts
+                                      9 * 2. B -- ein MAKRONAME als Wert
+                                     10 *      Makroaufrufe sind in der Editierphase schon aufgeloest
+                                     11 *                      IFO101, KEINE Expansion
+                                     12 *      oder doch       Expansion, DC C'MAC'
+                                     13 *    Entscheidet, ob msub vor mac_find/lib_load laufen darf oder
+                                     14 *    nur vor known_op.
+                                     15          MACRO
+                                     16          MYMAC
+                                     17          DC    C'MAC'
+                                     18          MEND
+000000                               19 T        CSECT
+                                     20          LCLC  &O,&P
+                                     21 &O       SETC  'DC'
+                                     22 &P       SETC  'MYMAC'
+                                     23 A        &O    C'X'
+000000 E7                            24+A        DC    C'X'
+                                     25 B        &P
+                                     26+B        MYMAC
+         *** ERROR ***
+000001 C5D5C4                        27 C        DC    C'END'
+                                     28          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.40 09/06/26
+A        00001 00000000 00024
+C        00003 00000001 00027
+T        00001 00000000 00019
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 15.40 09/06/26
+   26  IFO101      GENERATED OP CODE INVALID OR IS UNDEFINED
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         26
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        53

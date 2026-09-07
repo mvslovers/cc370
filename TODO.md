@@ -65,7 +65,7 @@ this file that is a joint plan rather than our own ranking:**
 
 | | Issue | Why here |
 |---|---|---|
-| A | **#141** | `SETC` is not substituted in open code — the variable NAME is emitted as data, at `rc=0`. Wrong bytes, not a missing diagnostic. 52 modules use it, 13 assemble, **none is byte-identical** against a tree base rate of 20 %. Its scope is also unmapped, which makes attribution in the whole length group uncertain — that is the reason it goes first. |
+| A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
 | B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
 
@@ -77,12 +77,55 @@ a silent defect with their name on it. Build it before M7, not now.
 Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 *Recently landed*.
 
+**Filed while fixing #141, both silent, both found by a gate rather than by
+reading, and neither fixed:**
+
+- **#148** — `L'` of a constant whose length comes from its value is always 1.
+  `C'ABC'` answers 1 where IFOX00 answers 3. The oracle is committed
+  (`amp_fold`, `amp_selfdef`, `len_attr`) and `run.sh` pins the difference to
+  exactly that byte, so it **fails when this is fixed** and becomes a plain
+  byte-identity check. Wants the corpus measurement first: `L'` is everywhere in
+  macro code.
+- **#149** — an attribute apostrophe opens a quote state, so an operand carrying
+  `L'A` swallows the remarks field. Fixed in the substitution splitter by #141,
+  where no deck can move; `parse()` — which decides real operands — is
+  deliberately left alone and is what the issue is for.
+
+- **#151** — a `SETC` value is clipped at 95 characters where IFOX00 holds 255.
+  Silent, and it re-emerges wearing someone else's name: a substring indexing
+  past 95 reports `IFO117`, which is true of the clipped value and false of the
+  program. Oracle committed (`setc_len95`): IFOX00 answers `[AB][EF]` at rc 0
+  where as370 answers `[AB][]` at rc 8, and `run.sh` asserts that **divergence**
+  so it fails when the defect is fixed. Exposure **17 macro members, fifteen of
+  them IBM's own, and zero modules** — the longest `SETC` literal in 5,528
+  modules of source is 48 characters, so every user is in a macro body. It
+  corrects two counts, both ours: "neither corpus needs a longer value" scanned
+  open-code substring `SETC` only and never looked in a macro body, and a first
+  replacement count of 46/5 measured operand *text* to column 72 instead of the
+  value — i.e. it counted the remarks field, which is **#149** counting itself.
+  The module that led here (`BLSR3270`, no ampersand in its own source, 32 bogus
+  `IFO117`) is **not** the witness: the macro holding its table is web-mirror
+  material of unestablished maintenance level. Gate it against **IBM's object**
+  when it moves, not against as370 — before #141 this clip was silent and put
+  wrong characters in decks that already assembled, the `&SYSECT` pattern.
+- **#150** — an **in-stream** macro definition is not listed, so every statement
+  after one is numbered short by the number of cards it held. Listing-only, but
+  the statement number is what a diagnostic is addressed by. Exactly the shape
+  #141 just fixed for conditional-assembly statements, and it has the same
+  repair. Scoped by measurement: `NOLIBMAC` is the default and IFOX00 does not
+  list a library macro either, which is why `listref` case 1 compares clean.
+  It is the reason `tests/sysparm_substr.s` — the fixture for #141's named
+  real-world trigger — is checked on its deck rather than as a `listref` case.
+
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
 library and the tools on it** (#109 adoption left; #110 done; #111, #112, #113,
 #117, #118 open — the only band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
 #103), **observability** (#9, #106), **listing fidelity** (#24, #28, #91),
-**deferred** (#36).
+**deferred** (#36). `&&` folding moved from the substituter to the DC scanner
+en route to #141 (`6d235db`): the two paths had contradicted each other at `rc=0`
+since as370 existed, and the two defects cancelled, so 950 modules of deck
+byte-identity could never show it.
 
 ---
 
