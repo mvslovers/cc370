@@ -3548,7 +3548,25 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * IFOX00's in one to three bytes, eight with this as the sole
                  * cause: IEAVESVC BNGIRMOT IEAVELCR IEAVECH0 IGG019P7 IGFINTVL
                  * IGG019KG IGG019KH. */
-                s->val = expr_val_full(F[0], &rc); s->defined = 1; s->sect = cur_sect_id;
+                s->val = expr_val_full(F[0], &rc); s->defined = 1;
+                /* A relocatable EQU belongs to the section of its VALUE, not to
+                 * the section the EQU card happens to sit in.  PL/S output puts
+                 * every EQU at the END of the module, after the mapping macros
+                 * have left a DSECT current -- so `@RC00027 EQU @RC00025', a
+                 * plain CSECT label, was booked into whatever DSECT IFGRPL had
+                 * opened.  using_for() then looked for a USING covering THAT
+                 * section: either none was in range (IFO209 on a module IFOX00
+                 * assembles without a word, cc370#154, 156 modules) or the
+                 * DSECT's own USING was, and the branch silently took the wrong
+                 * base register at rc 0.  s->sect also drives the dsect_sect[]
+                 * RLD-target test, so the same mis-booking can cost an address
+                 * constant its relocation.
+                 * An absolute equate keeps cur_sect_id (its section is dead
+                 * weight -- expr_sect and using_for both skip S_ABS), `EQU *'
+                 * is unchanged because expr_sect maps `*' to cur_sect_id, and an
+                 * operand whose symbol is not yet defined falls back to
+                 * cur_sect_id exactly as before. */
+                s->sect = rc ? expr_sect(F[0]) : cur_sect_id;
                 s->len = (nf >= 2 && F[1][0]) ? (int)expr_val_full(F[1], NULL) : 1;   /* EQU value,length: 2nd operand sets the length attribute (L') */
                 s->type = (rc == 0) ? S_ABS : S_REL; }   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {

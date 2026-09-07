@@ -19,6 +19,11 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# equsect is the #154 oracle: a relocatable EQU belongs to the section of its
+# VALUE, not to the section its card sits in. The fixture equates two symbols to
+# the SAME label -- one card in the CSECT, one under a DSECT -- so IFOX00's deck
+# pins them to the same instruction (both 47F0 C00C). as370 used to take the
+# DSECT's base register for the second and say nothing.
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -26,7 +31,7 @@ fail=0
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
-         amp_fold amp_selfdef len_attr; do
+         amp_fold amp_selfdef len_attr equsect; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
