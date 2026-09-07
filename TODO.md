@@ -94,13 +94,20 @@ reading, and neither fixed:**
 - **#151** — a `SETC` value is clipped at 95 characters where IFOX00 holds 255.
   Silent, and it re-emerges wearing someone else's name: a substring indexing
   past 95 reports `IFO117`, which is true of the clipped value and false of the
-  program. `BLSR3270` is the case — **no ampersand anywhere in its source**, 32
-  bogus `IFO117`, all of them a 128-character `GBLC` translation table read
-  through two macros. It is also the correction to a claim in this file's own
-  planning: "neither corpus needs a longer value" was measured over open-code
-  substring `SETC` only and never scanned macro bodies, where the users are —
-  46 macro members and 5 modules. Wants the tree-wide gate before it moves,
-  and it moves generated text wherever a long value is in use.
+  program. Oracle committed (`setc_len95`): IFOX00 answers `[AB][EF]` at rc 0
+  where as370 answers `[AB][]` at rc 8, and `run.sh` asserts that **divergence**
+  so it fails when the defect is fixed. Exposure **17 macro members, fifteen of
+  them IBM's own, and zero modules** — the longest `SETC` literal in 5,528
+  modules of source is 48 characters, so every user is in a macro body. It
+  corrects two counts, both ours: "neither corpus needs a longer value" scanned
+  open-code substring `SETC` only and never looked in a macro body, and a first
+  replacement count of 46/5 measured operand *text* to column 72 instead of the
+  value — i.e. it counted the remarks field, which is **#149** counting itself.
+  The module that led here (`BLSR3270`, no ampersand in its own source, 32 bogus
+  `IFO117`) is **not** the witness: the macro holding its table is web-mirror
+  material of unestablished maintenance level. Gate it against **IBM's object**
+  when it moves, not against as370 — before #141 this clip was silent and put
+  wrong characters in decks that already assembled, the `&SYSECT` pattern.
 - **#150** — an **in-stream** macro definition is not listed, so every statement
   after one is numbered short by the number of cards it held. Listing-only, but
   the statement number is what a diagnostic is addressed by. Exactly the shape
