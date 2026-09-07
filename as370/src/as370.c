@@ -764,7 +764,40 @@ static long r_raw;    /* its un-reduced value (before USING subtraction); the di
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
     *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1;
     if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; r_len = l->size; sub[0] = using_for(l->loc, l->sect, d); return; }
-    const char *lp = strchr(f, '(');
+    /* The subscript list, if there is one -- NOT merely the first '('.  A
+     * displacement expression may be parenthesised for grouping:
+     *   SLL R11,24-(8*((ASCBFLG1-ASCBAFFN)-(((ASCBFLG1-ASCBAFFN)/4)*4)))
+     * has no subscript at all, and reading its grouping paren as one gave a
+     * wrong base register at rc 0 (IEAVRTI1, four statements).  The rule is
+     * positional, not lexical: a subscript follows a complete TERM, a group
+     * follows an OPERATOR.  Skip a group's whole span and keep looking at depth
+     * 0; if nothing is left the operand is one expression and takes the branch
+     * below, where x_factor handles the grouping itself.  A '(' at the very
+     * start stays a subscript -- `LA 1,(2)` has meant that here since as370
+     * existed, and this change is not the place to revisit it. */
+    const char *lp = NULL;
+    { int d0 = 0, expect = 1; const char *q = f;   /* expect: the next token would be a TERM, so an operator was the last thing seen */
+      for (; *q; q++) {
+          if (*q == ' ') continue;
+          if (*q == '\'') {                       /* C'(' must not be read as a paren; an attribute apostrophe (L'SYM) has no closing one and belongs to the term */
+              if (q > f && strchr("LTKNIS", q[-1])) continue;
+              q++; while (*q && *q != '\'') q++;
+              if (!*q) break;
+              expect = 0; continue;
+          }
+          if (*q == '(') {
+              /* A subscript follows a complete term; a group follows an
+               * operator.  '*' decides by position, which is why a character
+               * test is not enough: in `BC 15,*(RP)` it is the location counter
+               * and (RP) IS the subscript, in `24-(8*X)` it is a multiply. */
+              if (d0 == 0 && (q == f || !expect)) { lp = q; break; }
+              d0++; continue;
+          }
+          if (*q == ')') { if (d0) d0--; expect = 0; continue; }
+          if (*q == '+' || *q == '-' || *q == '/' || *q == ',') { expect = 1; continue; }
+          if (*q == '*') { expect = !expect; continue; }   /* location counter in term position, multiply after one */
+          expect = 0;
+      } }
     if (lp) {
         int reloc = 0; long v = expr_val(f, &reloc);   /* prefix before '(' (expr_val stops there) */
         if (reloc) {                                   /* SYM(len)/SYM(index): base from the symbol's USING */
@@ -774,13 +807,31 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             r_reloc = 1; r_raw = v;
             r_ibase = using_for(v, ssect, d);
         } else *d = v;                                 /* numeric displacement, e.g. 4+120(13) */
-        const char *rp = strchr(lp, ')');
+        /* The MATCHING close paren, not the first one.  A subscript may itself
+         * be parenthesised -- `LA 2,4((3),5)`, the form a macro produces when a
+         * register argument arrives as (3) -- and strchr() stopped at the inner
+         * ')', so the list read as "(3" instead of "(3),5": the index evaluated
+         * to 0 and the base was never seen at all, giving 41 20 0004 where
+         * IFOX00 has 41 23 5004.  Silently, at rc 0 (cc370#169). */
+        const char *rp = NULL;
+        { int d2 = 0; const char *q2 = lp;
+          for (; *q2; q2++) { if (*q2 == '(') d2++; else if (*q2 == ')') { if (--d2 == 0) { rp = q2; break; } } } }
         int n = rp ? (int)(rp - lp - 1) : (int)strlen(lp + 1);
         char inside[64]; if (n > 63) n = 63; memcpy(inside, lp + 1, n); inside[n] = 0;
         char *tok = inside;
-        while (1) { char *cm = strchr(tok, ','); int len = cm ? (int)(cm - tok) : (int)strlen(tok);
+        while (1) {
+            char *cm = NULL;                                       /* the separator is a TOP-LEVEL comma: (3),5 is two subscripts, not three */
+            { int d3 = 0; char *q3 = tok;
+              for (; *q3; q3++) { if (*q3 == '(') d3++; else if (*q3 == ')') { if (d3) d3--; } else if (*q3 == ',' && !d3) { cm = q3; break; } } }
+            int len = cm ? (int)(cm - tok) : (int)strlen(tok);
             char t[32]; if (len > 31) len = 31; memcpy(t, tok, len); t[len] = 0;
-            if (*nsub < 4) sub[(*nsub)++] = t[0] ? expr_val(t, NULL) : 0;   /* base/index may be a symbol (R13 EQU 13) */
+            /* eval_reg, not expr_val: a subscript may be written (3), and
+             * expr_val reads a leading '(' as a subscript of its own and returns
+             * 0.  eval_reg already strips a fully-enclosing pair for exactly this
+             * -- it was written for `LR 0,(3)` and never reached from here.  A
+             * token that merely STARTS with '(' without being enclosed by it
+             * falls through to expr_val unchanged, so nothing else moves. */
+            if (*nsub < 4) sub[(*nsub)++] = t[0] ? eval_reg(t) : 0;   /* base/index may be a symbol (R13 EQU 13) */
             if (!cm) break;
             tok = cm + 1; }
     } else {
