@@ -3947,115 +3947,112 @@ int main(int argc, char **argv) {
         if (max_sev < 4) max_sev = 4;                 /* IFOX jermsgcd.asm SEV26 / SEV69 */
         if (ncontd_lost && max_sev < 8) max_sev = 8;  /* a discarded statement is as370's own error, not IFOX00's */
     }
-    if (nunk) {   /* op that is neither a machine instruction, an assembler directive, conditional assembly, nor a resolvable macro */
-        int j; for (j = 0; j < nunk; j++) {
-            const char *s = lines[unkln[j]]; int sl = (int)strlen(s);
+    /* The statement-level diagnostics, in SOURCE order.
+     *
+     * They are recorded by ten independent category lists, and until 2026-09-07
+     * they were PRINTED that way too -- badty, nyi, badfmt, reld, addr, ovl,
+     * ovldef, ovlref, then undef.  That is not an order, it is the order the
+     * recorders happen to be declared in, and reading it as one is wrong in a
+     * way that costs real time: a module carrying any addressability or
+     * relocation error could never show an undefined symbol first, whatever the
+     * source said.  A whole class partition of the MVSBLD tree was built on
+     * "the first message" and had to be thrown away (cc370#153).
+     *
+     * The key is the lines[] index -- as370's own statement identity, which is
+     * source order for the expanded program.  The sort is stable, so several
+     * diagnostics on one statement keep the category order they had.
+     *
+     * The continuation diagnostics above are deliberately NOT merged in: they
+     * are raised while cards are being joined, before lines[] exists, so their
+     * line number is a raw card and the two keys cannot be compared.  They stay
+     * where the phase that raises them puts them, at the top. */
+    enum { DG_UNK, DG_OPERR, DG_BADTY, DG_NYI, DG_BADFMT, DG_RELD, DG_ADDR, DG_OVL, DG_OVLDEF, DG_OVLREF, DG_UNDEF };
+    struct dgref { int ln, cat, idx; };
+    { static struct dgref dg[128 * 11]; int ndg = 0, j;
+#define DG_ADD(N, ARR, CAT) do { for (j = 0; j < (N); j++) { dg[ndg].ln = (ARR); dg[ndg].cat = (CAT); dg[ndg].idx = j; ndg++; } } while (0)
+        DG_ADD(nunk,     unkln[j],        DG_UNK);
+        DG_ADD(noperr,   operr_ln[j],     DG_OPERR);
+        DG_ADD(nbadty,   badty_ln[j],     DG_BADTY);
+        DG_ADD(nnyi,     nyi_ln[j],       DG_NYI);
+        DG_ADD(nbadfmt,  badfmt_ln[j],    DG_BADFMT);
+        DG_ADD(nreld,    reld_ln[j],      DG_RELD);
+        DG_ADD(naddr,    addr_ln[j],      DG_ADDR);
+        DG_ADD(novl,     ovl_ln[j],       DG_OVL);
+        DG_ADD(novldef,  ovldef_ln[j],    DG_OVLDEF);
+        DG_ADD(novlref,  ovlref_ln[j],    DG_OVLREF);
+        DG_ADD(nundef,   undefs[j].line,  DG_UNDEF);
+#undef DG_ADD
+        /* Insertion sort: stable by construction, and ndg is at most 1408. */
+        { int a, b; for (a = 1; a < ndg; a++) { struct dgref v = dg[a];
+            for (b = a - 1; b >= 0 && dg[b].ln > v.ln; b--) dg[b + 1] = dg[b];
+            dg[b + 1] = v; } }
+        for (j = 0; j < ndg; j++) {
+            int ln = dg[j].ln, i2 = dg[j].idx;
+            const char *s = lines[ln]; int sl = (int)strlen(s);
             while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
             fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Undefined operation code in line %d - %s\n", line_org[unkln[j]], unkops[j]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (noperr) {   /* an operand its own statement's rules reject */
-        int j; for (j = 0; j < noperr; j++) {
-            const char *s2 = lines[operr_ln[j]]; int sl = (int)strlen(s2);
-            while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s2);
-            fprintf(stderr, " %s: %s in line %d\n", operr_sev[j] >= 8 ? "ERROR" : "WARNING", operr_msg[j], line_org[operr_ln[j]]);
-        }
-        /* Per entry, not a shared floor: ERR178, ERR224 and ERR236 are severity 8,
-         * ERR177 is 12 (jermsgcd.asm SEV177). Citing an IFOX error number and then
-         * reporting the wrong severity for it would be its own small lie. */
-        { int j2; for (j2 = 0; j2 < noperr; j2++) if (max_sev < operr_sev[j2]) max_sev = operr_sev[j2]; }
-    }
-    if (nbadty) {   /* a DC/DS type letter outside Assembler XF's fifteen -- IFOX00 ERR198, severity 8 */
-        int j; for (j = 0; j < nbadty; j++) {
-            const char *s2 = lines[badty_ln[j]]; int sl = (int)strlen(s2);
-            while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s2);                              /* the flagged source statement */
-            /* '?' is the recorder's marker for "no type letter at all" -- a bare
-             * DS 0, or an empty element in the operand list (a trailing comma
-             * that is not a column-72 continuation). Saying "invalid type - ?"
-             * for those would be needlessly cryptic. */
-            if (badty_ch[j] == '?') fprintf(stderr, " ERROR: DC/DS/DXD operand has no constant type in line %d\n", line_org[badty_ln[j]]);
-            else fprintf(stderr, " ERROR: Invalid type declared on DC/DS/DXD constant in line %d - %c\n", line_org[badty_ln[j]], badty_ch[j]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (nnyi) {   /* a valid Assembler XF construct as370 does not turn into storage yet */
-        int j; for (j = 0; j < nnyi; j++) {
-            const char *s2 = lines[nyi_ln[j]]; int sl = (int)strlen(s2);
-            while (sl > 0 && (s2[sl-1] == '\n' || s2[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s2);
-            fprintf(stderr, " ERROR: %s is valid Assembler XF but not implemented by as370 - no storage reserved, every later symbol in the section would move, in line %d\n", nyi_what[j], line_org[nyi_ln[j]]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (nbadfmt) {   /* RS/SI/S storage operand with an illegal index/length subscript (D(,B) / D(X,B)) */
-        int j; for (j = 0; j < nbadfmt; j++) {
-            const char *s = lines[badfmt_ln[j]]; int sl = (int)strlen(s);
-            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Illegal operand format (index/length not allowed on RS/SI/S operand) in line %d - %s\n", line_org[badfmt_ln[j]], badfmt_op[j]);
-        }
-        if (max_sev < 12) max_sev = 12;
-    }
-    if (nreld) {   /* relocatable displacement with an explicit base register (SYM(Rn)) */
-        int j; for (j = 0; j < nreld; j++) {
-            const char *s = lines[reld_ln[j]]; int sl = (int)strlen(s);
-            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Relocatable displacement in machine instruction (explicit base requires an absolute displacement) in line %d - %s\n", line_org[reld_ln[j]], reld_op[j]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (naddr) {   /* relocatable implicit-base operand whose section has no covering USING */
-        int j; for (j = 0; j < naddr; j++) {
-            const char *s = lines[addr_ln[j]]; int sl = (int)strlen(s);
-            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Addressability error - no active USING covers the operand's section (base and displacement set to 0) in line %d - %s\n", line_org[addr_ln[j]], addr_op[j]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (novl) {   /* a symbol longer than 8 characters (MVS ESD names are 8 bytes) */
-        int j; for (j = 0; j < novl; j++) {
-            const char *s = lines[ovl_ln[j]]; int sl = (int)strlen(s);
-            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Symbol longer than 8 characters (MVS external names are limited to 8) in line %d - %s\n", line_org[ovl_ln[j]], ovl_sym[j]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (novldef) {   /* over-length ordinary symbol in the name field (a local label or EQU name) */
-        int j; for (j = 0; j < novldef; j++) {
-            const char *s = lines[ovldef_ln[j]]; int sl = (int)strlen(s);
-            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Symbol longer than 8 characters in name field (name rejected; MVS symbols are limited to 8) in line %d - %s\n", line_org[ovldef_ln[j]], ovldef_sym[j]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (novlref) {   /* over-length symbol term in an operand expression */
-        int j; for (j = 0; j < novlref; j++) {
-            const char *s = lines[ovlref_ln[j]]; int sl = (int)strlen(s);
-            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Symbol longer than 8 characters in operand expression (instruction zeroed; MVS symbols are limited to 8) in line %d - %s\n", line_org[ovlref_ln[j]], ovlref_op[j]);
-        }
-        if (max_sev < 8) max_sev = 8;
-    }
-    if (nundef_seen) {   /* a symbol term that names nothing (IFO188) */
-        int j; for (j = 0; j < nundef; j++) {
-            const char *s = lines[undefs[j].line]; int sl = (int)strlen(s);
-            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
-            fprintf(stderr, " ERROR: Undefined symbol in line %d - %s\n", line_org[undefs[j].line], undefs[j].sym);
+            /* "in line N" is the input CARD (line_org).  For a statement that
+             * came out of a macro or a COPY that card is the CALL, and every
+             * statement of the expansion reports it -- all 75 of IFG0190P's said
+             * "in line 1", because the whole module is one IECPDINI call.  So
+             * name the statement too whenever it is not the card's own: it is
+             * the number the -a listing prints and the number IFOX00 addresses a
+             * diagnostic by, and without it an expansion cannot be triaged at
+             * all.  Where the two agree -- open code with no expansion ahead of
+             * it -- nothing is appended and the message is unchanged. */
+            char at[48]; int card = line_org[ln];
+            if (card == ln + 1) sprintf(at, "in line %d", card);
+            else                sprintf(at, "in line %d (statement %d)", card, ln + 1);
+            switch (dg[j].cat) {
+            case DG_UNK:
+                fprintf(stderr, " ERROR: Undefined operation code %s - %s\n", at, unkops[i2]); break;
+            case DG_OPERR:
+                fprintf(stderr, " %s: %s %s\n", operr_sev[i2] >= 8 ? "ERROR" : "WARNING", operr_msg[i2], at); break;
+            case DG_BADTY:
+                /* '?' is the recorder's marker for "no type letter at all" -- a bare
+                 * DS 0, or an empty element in the operand list (a trailing comma
+                 * that is not a column-72 continuation). Saying "invalid type - ?"
+                 * for those would be needlessly cryptic. */
+                if (badty_ch[i2] == '?') fprintf(stderr, " ERROR: DC/DS/DXD operand has no constant type %s\n", at);
+                else fprintf(stderr, " ERROR: Invalid type declared on DC/DS/DXD constant %s - %c\n", at, badty_ch[i2]);
+                break;
+            case DG_NYI:
+                fprintf(stderr, " ERROR: %s is valid Assembler XF but not implemented by as370 - no storage reserved, every later symbol in the section would move, %s\n", nyi_what[i2], at); break;
+            case DG_BADFMT:
+                fprintf(stderr, " ERROR: Illegal operand format (index/length not allowed on RS/SI/S operand) %s - %s\n", at, badfmt_op[i2]); break;
+            case DG_RELD:
+                fprintf(stderr, " ERROR: Relocatable displacement in machine instruction (explicit base requires an absolute displacement) %s - %s\n", at, reld_op[i2]); break;
+            case DG_ADDR:
+                fprintf(stderr, " ERROR: Addressability error - no active USING covers the operand's section (base and displacement set to 0) %s - %s\n", at, addr_op[i2]); break;
+            case DG_OVL:
+                fprintf(stderr, " ERROR: Symbol longer than 8 characters (MVS external names are limited to 8) %s - %s\n", at, ovl_sym[i2]); break;
+            case DG_OVLDEF:
+                fprintf(stderr, " ERROR: Symbol longer than 8 characters in name field (name rejected; MVS symbols are limited to 8) %s - %s\n", at, ovldef_sym[i2]); break;
+            case DG_OVLREF:
+                fprintf(stderr, " ERROR: Symbol longer than 8 characters in operand expression (instruction zeroed; MVS symbols are limited to 8) %s - %s\n", at, ovlref_op[i2]); break;
+            case DG_UNDEF:
+                fprintf(stderr, " ERROR: Undefined symbol %s - %s\n", at, undefs[i2].sym); break;
+            }
         }
         if (nundef_seen > nundef)
             fprintf(stderr, " ... and %d further undefined-symbol diagnostics\n", nundef_seen - nundef);
-        if (max_sev < 8) max_sev = 8;
     }
+    /* Severities, unchanged and per category: they do not depend on print order,
+     * and the operand-error floor is per entry rather than shared because
+     * ERR178/224/236 are severity 8 while ERR177 is 12 (jermsgcd.asm SEV177).
+     * Citing an IFOX error number and then reporting the wrong severity for it
+     * would be its own small lie. */
+    if (nunk     && max_sev <  8) max_sev = 8;
+    if (nbadty   && max_sev <  8) max_sev = 8;
+    if (nnyi     && max_sev <  8) max_sev = 8;
+    if (nbadfmt  && max_sev < 12) max_sev = 12;
+    if (nreld    && max_sev <  8) max_sev = 8;
+    if (naddr    && max_sev <  8) max_sev = 8;
+    if (novl     && max_sev <  8) max_sev = 8;
+    if (novldef  && max_sev <  8) max_sev = 8;
+    if (novlref  && max_sev <  8) max_sev = 8;
+    if (nundef_seen && max_sev < 8) max_sev = 8;
+    { int j2; for (j2 = 0; j2 < noperr; j2++) if (max_sev < operr_sev[j2]) max_sev = operr_sev[j2]; }
 
     if (objfn) {
         FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 16; }
