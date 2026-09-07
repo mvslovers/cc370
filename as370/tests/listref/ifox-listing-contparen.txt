@@ -1,0 +1,57 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.29 09/07/26
+T         SD  0001 000000 00000C
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.29 09/07/26
+                                      1 * Wo endet das Operandenfeld einer FORTGESETZTEN Karte (#154)?
+                                      2 *
+                                      3 * Makroaufruf: am ersten Blank AUSSERHALB von Anfuehrungszeichen,
+                                      4 * auch mitten in einer offenen Klammer.  Der Rest bis Spalte 71 ist
+                                      5 * Remark und darf nicht in die Fortsetzung gefaltet werden.
+                                      6 *
+                                      7 * AIF/SETB: der Operand IST ein Ausdruck, seine Operatoren sind
+                                      8 * durch Blanks getrennt.  Dort zaehlt die Klammertiefe -- sonst
+                                      9 * zerreisst jede fortgesetzte Bedingung.
+                                     10 *
+                                     11 * Beide Haelften stehen hier, weil jede Regel allein die andere
+                                     12 * bricht: mit Klammertiefe verschluckt MYM den Remark, ohne sie
+                                     13 * zerfaellt das AIF.
+                                     14 *
+                                     15 *   MYM  -> CL8'CC'   Remark verworfen
+                                     16 *   MYC  -> C'JA  '   Ausdruck ueber die Fortsetzung hinweg
+                                     17          MACRO
+                                     18 &L       MYM   &A
+                                     19 &L       DC    CL8'&A(3)'
+                                     20          MEND
+                                     21          MACRO
+                                     22          MYC   &X
+                                     23          AIF   ('&X' EQ 'ROT' OR                                       X
+                                                       '&X' EQ 'BLAU').JA
+                                     24          DC    C'NEIN'
+                                     25          MEXIT
+                                     26 .JA      ANOP
+                                     27          DC    C'JA  '
+                                     28          MEND
+000000                               29 T        CSECT
+                                     30          MYM   (AA,BB,                          REMARK                 X00010000
+                                                       CC)                                                      00020000
+000000 C3C3404040404040              31+         DC    CL8'CC'
+                                     32          MYC   BLAU
+000008 D1C14040                      33+         DC    C'JA  '
+000000                               34          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.29 09/07/26
+T        00001 00000000 00029  00034
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 15.29 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         34
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        57
