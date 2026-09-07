@@ -19,6 +19,12 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# rldlen is the #186 oracle: the length in an RLD flag byte belongs to ITS entry.
+# add_reloc() bails on in_dsect, but the call site wrote the width afterwards
+# into rels[nrel-1] -- the PREVIOUS, real entry. An address constant in a DSECT
+# is ordinary (IEAVELCR: 24 real calls, 138 from dummy sections), so the last
+# real entry kept the width of the last DSECT constant. One bit of one flag byte
+# in an otherwise byte-identical deck, on 173 modules.
 # attrapos is the #149 oracle and carries three cases, because the obvious fix
 # fails the third: an attribute apostrophe (L'A) is not a quote, so parse() must
 # not toggle on it -- but INSIDE a string an apostrophe can only close it, and
@@ -43,7 +49,7 @@ fail=0
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
-         amp_fold amp_selfdef len_attr equsect contparen attrapos; do
+         amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

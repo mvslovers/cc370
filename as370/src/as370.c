@@ -976,7 +976,20 @@ static int sect_esdid(int sect) {                   /* ESDID of the control sect
     int e = sect_esdid_of(sect);
     return e ? e : main_sect_esdid;
 }
-static void add_reloc(long at, const char *target, int isV) {
+/* `len' is the WIDTH of the address constant, and it is a parameter rather than
+ * something the caller pokes in afterwards.  Every call site used to read
+ *
+ *     add_reloc(lc, r, 1); rels[nrel - 1].len = blen;
+ *
+ * which is wrong whenever add_reloc adds nothing: the write then lands on the
+ * PREVIOUS entry.  It bails on `in_dsect', and an address constant inside a
+ * DSECT is ordinary -- IEAVELCR calls it 24 times for real and 138 times from
+ * dummy sections, so the last real relocation was overwritten 138 times and kept
+ * whatever width the final DSECT constant happened to have.  That is one bit of
+ * one flag byte (0x04, the low bit of length-1) in an otherwise byte-identical
+ * deck, on 173 modules, and almost always the LAST entry because the clobber
+ * target is always rels[nrel-1] (cc370#186). */
+static void add_reloc(long at, const char *target, int isV, int len) {
     if (in_dsect) return;                       /* a dummy section generates no relocations */
     struct sym *s = sym_find(target);
     /* R, the relocation ESDID, names the section whose origin the linkage editor
@@ -993,7 +1006,7 @@ static void add_reloc(long at, const char *target, int isV) {
     if (!rel && s) rel = sect_esdid_of(s->sect);
     if (!rel) rel = cur_sect_esdid;
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
-    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; rels[nrel].len = 4; nrel++;
+    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; rels[nrel].len = len; nrel++;
 }
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
@@ -2788,13 +2801,13 @@ static void emit_lit(struct lit *l) {
         int per = l->size / nv, vj;
         for (vj = 0; vj < nv; vj++) { long loc = l->loc + (long)vj * per;
             if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
-                put(loc, 0, per); add_reloc(loc, r, 1); rels[nrel - 1].len = per; }
+                put(loc, 0, per); add_reloc(loc, r, 1, per); }
             else { int rc = 0; long v = vv[vj][0] ? expr_val_full(vv[vj], &rc) : 0; put(loc, v, per);   /* leading '(' -- see the DC arm and cc370#167 */
                 char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
                 struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
                 int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
                 if (rc != 0 && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
-                if (rc != 0 && tgtreal) { add_reloc(loc, sym, 0); rels[nrel - 1].len = per; } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
+                if (rc != 0 && tgtreal) { add_reloc(loc, sym, 0, per); } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         /* Every nominal value goes through the converter. It used to be reached
          * only when the text contained a `.`, `e` or `E`, so =D'2' and =E'1' took
@@ -3283,7 +3296,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 put(lc, expr_val(F[0], 0) & 0xff, 1);
                 int rc = 0; long av = nf >= 2 ? expr_val(F[1], &rc) : 0; put(lc + 1, av, 3);
                 if (rc != 0) { char rsym[64]; reloc_sym(F[1], rsym, sizeof rsym);
-                    struct sym *es = sym_find(rsym); if (es && !dsect_sect[es->sect & 255]) { add_reloc(lc + 1, rsym, 0); rels[nrel - 1].len = 3; } }
+                    struct sym *es = sym_find(rsym); if (es && !dsect_sect[es->sect & 255]) { add_reloc(lc + 1, rsym, 0, 3); } }
                 put(lc + 4, nf >= 3 ? expr_val(F[2], 0) & 0xff : 0, 1); put(lc + 5, 0, 1);
                 put(lc + 6, nf >= 4 ? expr_val(F[3], 0) & 0xffff : 0, 2); }
             lc += 8;
@@ -3499,7 +3512,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                                     put(lc, ((long)(reg & 0xf) << 12) | (disp & 0xfff), 2);
                                 }
                                 else if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
-                                    put(lc, 0, blen); add_reloc(lc, r, 1); rels[nrel - 1].len = blen; }
+                                    put(lc, 0, blen); add_reloc(lc, r, 1, blen); }
                                 else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0;
                                     /* expr_val_full, not expr_val: a nominal value IS an
                                      * expression, and expr_val reads a LEADING '(' as a
@@ -3517,7 +3530,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                                     /* in_dsect: a DC inside a DSECT reserves storage and generates no constant at all
                                      * (sysmac/cvt.macro's own `CVTMFRTR DC A(CVTBRET)` is one), so it is not IFO158. */
                                     if ((rc != 0) && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(rsym, i);
-                                    put(lc, v, blen); if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0); rels[nrel - 1].len = blen; } }   /* AL3 address -> 3-byte relocation, etc. */
+                                    put(lc, v, blen); if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0, blen); } }   /* AL3 address -> 3-byte relocation, etc. */
                             }
                             lc += blen;
                         } }
