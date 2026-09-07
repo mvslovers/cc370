@@ -669,6 +669,18 @@ Pointers only. The reasoning lives in the issues and their PRs.
   reach — macro-generated `USING`s included, which a source count misses —
   **1,132 of 5,528 modules re-USE a live register.**
 
+  **The rc line moves by one, and the composition is the point.** `rc0` 4450 →
+  4449: `IGG019JH` converges (8 → 0, IFOX silent), `IEAVELK` gains byte-identity
+  while losing a diagnostic IFOX does give (#162's class), and three cap-hitters
+  — `IDA019R4`, `IDA019RU`, `IDA019RY` — start flagging `IFO209` where IFOX is
+  silent. Those three are not a regression: their decks went **532 → 56**, **507
+  → 8** and **490 → 24** differing bytes in the same change. They had been
+  resolving most of the module through stale or silently dropped `USING`s, wrong
+  bytes and no word; with the table correct the bulk is right and a small genuine
+  residual becomes visible. **One defect was concealing another** — the same
+  shape as #174 concealing two entries on the missing-macro list, and the reason
+  a rc count is not a deck count.
+
   **Two things this settles about #154's triage.** `IDA019R2`, offered there as
   the witness for the silent addressability class, is not in that class and is
   among these 108 — it becomes byte-identical, and it was also a cap-hitter. And
