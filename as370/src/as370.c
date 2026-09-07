@@ -806,7 +806,16 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
     const char *p = line; int i;
     lbl[0] = op[0] = opnd[0] = 0;
     g_ovl_name[0] = 0;
-    if (*p == '*') return 0;
+    /* Both comment forms, the way card_op_is() below already reads them: a card
+     * with '*' in column 1, and the macro-language '.*', which is a comment
+     * everywhere -- inside a macro definition as well as in open code (IFOX
+     * ifnx1a.asm:589 routes both into the comment edit before any operation
+     * field is scanned).  Missing '.*' here let capture_macro() take the word
+     * MEND out of a '.* MEND' prose card as the operation field and end the
+     * definition there: AMODGEN(IECDSECS) card 131 quotes a sample macro that
+     * way, so 130 of its 1672 cards survived and FORCORE/WTG/UCB/IHADCB and the
+     * whole IECDSECT tail were never generated. */
+    if (*p == '*' || (*p == '.' && p[1] == '*')) return 0;
     if (*p != ' ' && *p != '\t' && *p != '\n' && *p != 0) {
         /* ordinary symbol labels cap at 8; a variable-symbol label may carry a
          * subscript (&ARR(&IDX)) and run longer, so allow the full token there. */
