@@ -1,0 +1,54 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 00.53 09/07/26
+T         SD  0001 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 00.53 09/07/26
+                                      1 * Laenge eines SETC-Wertes (#151).
+                                      2 *
+                                      3 * as370 klemmt einen SETC-Wert bei 95 Zeichen; IFOX00 haelt 255
+                                      4 * (ifnx3a.asm:274 MAXCHAR, IFO105 darueber).  Alles zwischen 96
+                                      5 * und 255 geht still verloren.
+                                      6 *
+                                      7 * &T wird ueber drei Zuweisungen auf 128 Zeichen verkettet.  Dann
+                                      8 * zwei Teilzeichenketten, eine diesseits der Kappe und eine
+                                      9 * jenseits:
+                                     10 *
+                                     11 *   Regel A  Wert vollstaendig (255)
+                                     12 *              &X = AB   &Y = EF   K'&T = 128   ->  [AB][EF]
+                                     13 *   Regel B  Wert bei 95 geklemmt
+                                     14 *              &X = AB   &Y = leer, IFO117      ->  [AB][]
+                                     15 *
+                                     16 * Der Verlust meldet sich unter fremdem Namen: das IFO117 stimmt
+                                     17 * ueber den geklemmten Wert und luegt ueber das Programm.  Vor
+                                     18 * #141 war dieselbe Klemmung STILL und lieferte falsche Zeichen
+                                     19 * ins Deck.
+                                     20 *
+                                     21 * Eigener Code -- der Fund kam aus einem Makro, dessen Herkunft
+                                     22 * nicht feststeht, und haengt an dieser Fixture nicht.
+000000                               23 T        CSECT
+                                     24          LCLC  &T,&X,&Y
+                                     25 &T       SETC  '0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF'
+                                     26 &T       SETC  '&T.0123456789ABCDEF0123456789ABCDEF0123456789ABCD'
+                                     27 &T       SETC  '&T.EF0123456789ABCDEF0123456789ABCDEF'
+                                     28 &X       SETC  '&T'(59,2)
+                                     29 &Y       SETC  '&T'(127,2)
+                                     30 A        DC    C'[&X][&Y]'
+000000 BAC1C2BBBAC5C6BB              31+A        DC    C'[AB][EF]'
+                                     32          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 00.53 09/07/26
+A        00008 00000000 00031
+T        00001 00000000 00023
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 00.53 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         31
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        54

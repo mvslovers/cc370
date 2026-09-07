@@ -1603,6 +1603,52 @@ for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8; do
 done
 fail=$((fail + rc8fail))
 
+# A SETC value is clipped at 95 characters where IFOX00 holds 255 (#151), and
+# this test asserts the DIVERGENCE, not agreement -- it fails, correctly, the day
+# #151 is fixed, and becomes a plain byte-identity check against the oracle
+# beside it.
+#
+# &T is concatenated to 128 characters. IFOX00 keeps all of it and both
+# substrings resolve: [AB][EF], rc 0. as370 keeps 95, so the substring at 127
+# indexes past the end -- and reports IFO117, which is true of the clipped value
+# and false of the program. The message names the substring; the defect is in the
+# assignment.
+#
+# The case was found in a module that indexes a 128-character GBLC translation
+# table through two macros, but that macro is web-mirror material of unestablished
+# maintenance level, so it is NOT the witness. This fixture is our own code and
+# owes it nothing.
+lenfail=0
+./as370 tests/setc_len95.s -o /tmp/_l95$$.obj >/dev/null 2>/tmp/_l95$$.err; rcl=$?
+mine=$(python3 -c "
+d=open('/tmp/_l95$$.obj','rb').read(); t=b''
+for o in range(0,len(d)-79,80):
+    c=d[o:o+80]
+    if c[:4]==bytes((0x02,0xE3,0xE7,0xE3)): t+=c[16:16+((c[10]<<8)|c[11])]
+print(t.hex())
+")
+ref=$(python3 -c "
+d=open('tests/ref/setc_len95.obj','rb').read(); t=b''
+for o in range(0,len(d)-79,80):
+    c=d[o:o+80]
+    if c[:4]==bytes((0x02,0xE3,0xE7,0xE3)): t+=c[16:16+((c[10]<<8)|c[11])]
+print(t.hex())
+")
+if [ "$ref" != "bac1c2bbbac5c6bb" ]; then
+    echo "setc_len95: FAIL (the IFOX00 oracle is not [AB][EF] -- reference changed?)"; lenfail=1
+elif [ "$mine" = "$ref" ]; then
+    echo "setc_len95: FAIL (as370 now matches IFOX00 -- #151 is fixed; drop this test and compare the decks)"; lenfail=1
+elif [ "$mine" != "bac1c2bbbabb" ] || [ $rcl != 8 ]; then
+    echo "setc_len95: FAIL (expected the 95-char clip: [AB][] at RC 8, got $mine at RC $rcl)"; lenfail=1
+elif ! grep -q 'IFO117' /tmp/_l95$$.err; then
+    echo "setc_len95: FAIL (the clip must at least be audible -- no IFO117)"; lenfail=1
+else
+    echo "setc_len95: OK (clipped at 95 as #151 describes; IFOX00 keeps all 128)"
+fi
+rm -f /tmp/_l95$$.obj /tmp/_l95$$.err
+fail=$((fail + lenfail))
+
+# --- issue #141: variable symbols are substituted in OPEN CODE ---
 # --- issue #141: variable symbols are substituted in OPEN CODE ---------------
 # The issue's own fixture. as370 emitted BA50C1BBBA50C2BB -- the variable NAMES
 # as data -- at rc 0, where IFOX00 emits BABBBAC2C3C4BB and returns 8. Three
