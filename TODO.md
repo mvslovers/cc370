@@ -91,10 +91,14 @@ reading, and neither fixed:**
   where no deck can move; `parse()` — which decides real operands — is
   deliberately left alone and is what the issue is for.
 
-Also unfiled and worth a decision: as370 does not list macro **definition** cards
-at all, so any listing containing an in-stream macro numbers lower than IFOX00's.
-Same class as the conditional-statement listing #141 just fixed, listing-only,
-found on `tests/sysparm_substr.s`.
+- **#150** — an **in-stream** macro definition is not listed, so every statement
+  after one is numbered short by the number of cards it held. Listing-only, but
+  the statement number is what a diagnostic is addressed by. Exactly the shape
+  #141 just fixed for conditional-assembly statements, and it has the same
+  repair. Scoped by measurement: `NOLIBMAC` is the default and IFOX00 does not
+  list a library macro either, which is why `listref` case 1 compares clean.
+  It is the reason `tests/sysparm_substr.s` — the fixture for #141's named
+  real-world trigger — is checked on its deck rather than as a `listref` case.
 
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
