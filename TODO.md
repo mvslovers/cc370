@@ -709,7 +709,20 @@ Pointers only. The reasoning lives in the issues and their PRs.
 
   **+23, none lost, 50 closer, one further by three bytes. rc 0 4493 → 4526.**
   #156 falls to zero as a side effect (`IEEVMNT1`, `IFNX6B` were its whole
-  population); #155 is unmoved at 5.
+  population); #155 is unmoved at 5. `mvssrc` measured the merge and found
+  **#157 fell 23 → 2** as well, which nobody aimed at — 21 of the 23 are `BLS*`
+  moving together, so one shared macro rather than 21 operands.
+
+  **The second half, `87c66cf` (#183): `split_card()` needed the same guard.**
+  #182 called that latent and left it, which was the weaker call. The
+  substitution splitter is already field-aware, so the boundary `split_card()`
+  computes decides whether a REMARK is substituted — and IFOX00 leaves remarks
+  alone. `DC C'ADD 1 TO N'   BEMERKUNG &X ENDE` had its `&X` replaced and emitted
+  a generated statement where IFOX00 emits none. The issue records 2,030 bare `&`
+  in open-code remarks across 716 modules; each one behind a string ending in
+  `L T K N I S E` was exposed. **0 of 5,528 decks change**, deck-by-deck by
+  sha256 — which is why that test is on the listing: a deck comparison passes in
+  both directions and proves nothing.
 
 - **#154's third cause: the continuation join — five of the class, +24 in the
   tree.** `ccd061b` (#180). A continued line's operand ends at the first blank
