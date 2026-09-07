@@ -79,14 +79,10 @@ Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
 *Recently landed*.
 
 **Filed while fixing #141, both silent, both found by a gate rather than by
-reading, and neither fixed:**
+reading. #148 is now closed — see *Recently landed*; the trap it was armed with
+worked exactly as designed and the two `&&` oracles failed the moment it was
+repaired.**
 
-- **#148** — `L'` of a constant whose length comes from its value is always 1.
-  `C'ABC'` answers 1 where IFOX00 answers 3. The oracle is committed
-  (`amp_fold`, `amp_selfdef`, `len_attr`) and `run.sh` pins the difference to
-  exactly that byte, so it **fails when this is fixed** and becomes a plain
-  byte-identity check. Wants the corpus measurement first: `L'` is everywhere in
-  macro code.
 - **#149** — an attribute apostrophe opens a quote state, so an operand carrying
   `L'A` swallows the remarks field. Fixed in the substitution splitter by #141,
   where no deck can move; `parse()` — which decides real operands — is
@@ -598,6 +594,38 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **The 2026-09-07 run with `mvs38src`: six merges, 271 modules gained, not one
+  identity lost.** That last clause is the one worth quoting — the gain says the
+  work is useful, the absence of a single regression across six changes is what
+  says as370 is becoming dependable.
+
+  | PR | | gained | decks closer | further |
+  |---|---|---|---|---|
+  | #164 + #165 | `.*` comment card, IPK/PTLB zero-operand | +93 | | |
+  | #166 | diagnostics in source order + statement numbers | 0 | 0 decks changed | |
+  | #168 | address constant whose value starts with `(` | +24 | 69 | 9 |
+  | #170 | parenthesised index register, and the paren that is not a subscript | +58 | 178 | 1 |
+  | #171 | `L'` from the nominal value | +95 | 229 | 1 |
+
+  Over the tree: `as370 == IFOX00` **3,466 → 3,737 of 5,528** (62.7 % → 67.6 %),
+  recovered against IBM's own object 869 → 902, silent divergences 1,169 → 1,046.
+
+  **Three of the five were the same shape**, and it is worth naming because it
+  predicts where the next ones are: a CORRECT helper sitting beside the wrong
+  call. `expr_val_full` was written for the duplication factor and never wired
+  to nominal values (#168); `eval_reg` was written for `LR 0,(3)` and never
+  reached from the subscript loop (#170); the P/Z arm computed `L'` from the
+  scanned body while C/X/B did not (#171). Each helper's own comment named the
+  failure mode it was guarding. A sweep for the rest of that shape is the
+  current work.
+
+  **A measurement correction that cost a published number.** The card-based
+  distance measure from #168 charges a full card for a card-count difference, so
+  it scores a *corrected section length* as a regression: `IFNX4S` reached
+  exactly IFOX00's `0x1ad` and was marked +71. Distance is now the address-keyed
+  section image on both sides, and #170's row was restated from 172/6 to 178/1.
+  A deck's cards are an encoding, not the object.
 
 - **#153, the first two of sixteen** — `84cf294` (#164) and `879e86a` (#165),
   merged 2026-09-07. `parse()` did not know the `.*` comment card, so
