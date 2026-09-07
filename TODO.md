@@ -608,6 +608,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | #170 | parenthesised index register, and the paren that is not a subscript | +58 | 178 | 1 |
   | #171 | `L'` from the nominal value | +95 | 229 | 1 |
   | #175 | a relocatable `EQU` belongs to the section of its VALUE | +282 | 452 | 2 |
+  | #178 | a `USING` replaces the domain of its base register | +108 | 167 | 0 |
 
   Over the tree, as of #171: `as370 == IFOX00` **3,466 → 3,737 of 5,528**
   (62.7 % → 67.6 %), recovered against IBM's own object 869 → 902, silent
@@ -651,6 +652,31 @@ Pointers only. The reasoning lives in the issues and their PRs.
   exactly IFOX00's `0x1ad` and was marked +71. Distance is now the address-keyed
   section image on both sides, and #170's row was restated from 172/6 to 178/1.
   A deck's cards are an encoding, not the object.
+
+- **#177, the USING table — the hypothesis #154 disproved, measured and fixed.**
+  `0c2f4a6` (#178). `USING` is keyed by base register: a second `USING` on a
+  register that already has a domain **replaces** it. as370 appended, so the
+  dead entry stayed live and `using_for` kept resolving against it. An operand
+  below the new base then assembled **at rc 0** where IFOX00 gives `IFO209` and
+  zeroes the instruction — **#140** again, a third issue wearing its name.
+
+  **The 32-entry cap was a consequence, not a second defect.** Keyed by register
+  the table holds at most 16 entries, so the bound is now unreachable. It had
+  been silently dropping every `USING` past the 32nd in 31 modules; `IDA019R4`
+  alone lost 130.
+
+  **+108, none lost, 167 closer, 0 further** against `f06508f`. Instrumented
+  reach — macro-generated `USING`s included, which a source count misses —
+  **1,132 of 5,528 modules re-USE a live register.**
+
+  **Two things this settles about #154's triage.** `IDA019R2`, offered there as
+  the witness for the silent addressability class, is not in that class and is
+  among these 108 — it becomes byte-identical, and it was also a cap-hitter. And
+  the append-only table, the leading hypothesis for #154's 156 modules, was
+  correctly ruled out: it closes exactly **one** of #154's 40 residual modules
+  (`IGG019JH`). A real defect in the right neighbourhood is still not the cause
+  of the class next door — the 6-of-156 count is what separated them, and no
+  amount of plausibility would have.
 
 - **#154, 116 of 156 — and the issue stays open.** `e99e2c1` (#175). The EQU
   handler took a symbol's section from *where the card sits*
