@@ -1,0 +1,81 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 16.05 09/07/26
+T         SD  0001 000000 00001C
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 16.05 09/07/26
+                                      1 * Das Attribut-Apostroph ist kein Anfuehrungszeichen (#149).
+                                      2 *
+                                      3 * parse() kippte den Quote-Zustand an jedem Apostroph.  Nach einem
+                                      4 * L'/T'/K' war das erste Blank damit "in Anfuehrungszeichen", der
+                                      5 * Operand endete nicht, und die Bemerkung wurde mitgelesen.
+                                      6 *
+                                      7 * Drei Faelle, und jeder pruefte etwas anderes:
+                                      8 *
+                                      9 * 1  Makroaufruf -- die verschluckte Bemerkung wird Parameter.
+                                     10 *    IFOX00: DC C'XX' = 2 Bytes.  Ohne Fix 21.
+                                     11 *
+                                     12 * 2  Literal mit Bemerkung -- der Name des Literals enthielt die
+                                     13 *    Bemerkung, dasselbe Literal wurde also zweimal angelegt.
+                                     14 *    IFOX00: EIN Pooleintrag, 4 Bytes.  Ohne Fix zwei, 8 Bytes.
+                                     15 *    Das ist die Form aus libc370 @@crt0 Karte 266.
+                                     16 *
+                                     17 * 3  Gegenprobe: eine Zeichenkette, die auf ein Attributzeichen
+                                     18 *    ENDET.  Innerhalb einer Zeichenkette kann ein Apostroph sie
+                                     19 *    nur schliessen -- attr_apos() allein sieht das nicht, und
+                                     20 *    ohne das `q ||' verlor AMDPREAD seine Symbole.  Die Karte ist
+                                     21 *    dem READ ...,'S' aus AMDPREAD nachgebaut: schliesst die
+                                     22 *    Zeichenkette nicht, wird OK zu `OK  READ RECORD INTO BUFFER'.
+                                     23 *    IFOX00: DC C'OK' = 2 Bytes.
+                                     24          MACRO
+                                     25          MYM   &A,&B
+                                     26          DC    C'&B'
+                                     27          MEND
+                                     28          MACRO
+                                     29 &L       MYQ   &A,&B
+                                     30 &L       DC    C'&B'
+                                     31          MEND
+000000                               32 PD       DSECT
+000000                               33 PP       DS    CL4
+000000                               34 T        CSECT
+                            00000    35          USING T,12
+000000 1831                          36          LR    3,1
+000002 C1C2C3C4                      37 A        DC    CL4'ABCD'
+                                     38          MYM   L'A,XX          BEMERKUNG
+000006 E7E7                          39+         DC    C'XX'
+                                     40          MYM   4,YY            KONTROLLE OHNE ATTRIBUT
+000008 E8E8                          41+         DC    C'YY'
+00000A D503 3000 C018 00000 00018    42          CLC   PP-PD(L'A,3),=A(A) eye catcher?
+000010 5820 C018      00018          43          L     2,=A(A)
+                                     44 MAPD     MYQ   'S',OK  READ RECORD INTO BUFFER
+000014 D6D2                          45+MAPD     DC    C'OK'
+000016 07FE                          46          BR    14
+000018                               47          LTORG
+000018 00000002                      48                =A(A)
+000000                               49          END   T
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 16.05 09/07/26
+ 0001     0001      0C     000018
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 16.05 09/07/26
+A        00004 00000002 00037  00042 00048
+MAPD     00002 00000014 00045
+PD       00001 00000000 00032  00042
+PP       00004 00000000 00033  00042
+T        00001 00000000 00034  00035 00049
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 16.05 09/07/26
+=A(A)    00004 00000018 00048  00042 00043
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
+                                                                                                 ASM 0201 16.05 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         45
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        81

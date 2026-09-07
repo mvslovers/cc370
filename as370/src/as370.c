@@ -871,6 +871,25 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
  * SYS1.MACLIB's DCB has seven such statements, the longest 1376 characters, and
  * the corruption showed up as that macro silently taking the wrong conditional
  * branch and generating a DCB twelve bytes short (#63). */
+/* An apostrophe that opens a quoted string, or one that merely introduces an
+ * ATTRIBUTE -- the ' in L'A, T'&V, K'&SYSPARM. The card splitters used to
+ * toggle quote state on every apostrophe alike, so an operand carrying an
+ * attribute reference had an odd count, the state never closed, and the whole
+ * remarks field was swallowed into the operand (mvslovers/cc370#149). That was
+ * invisible while every field was substituted anyway; it stops being invisible
+ * the moment the remarks field must be left alone.
+ *
+ * An attribute letter stands ALONE. The character before it must not be part of
+ * a longer token, or two ordinary strings are misread: `DC C'L'` closes on its
+ * own quote, and `DC CL&A'&E'` -- SAVE's identifier card, and the one that
+ * caught this -- ends in the 'A' of the VARIABLE SYMBOL &A, where the quote
+ * opens a string. So '&' bars the reading exactly as a letter does. */
+static int attr_apos(const char *card, int i) {
+    if (i < 1 || !strchr("LTKNISE", card[i-1])) return 0;
+    if (i >= 2) { char b = card[i-2];
+        if (isalnum((unsigned char)b) || b=='@' || b=='#' || b=='$' || b=='_' || b=='&') return 0; }
+    return 1;
+}
 static int parse(const char *line, char *lbl, char *op, char *opnd) {
     const char *p = line; int i;
     lbl[0] = op[0] = opnd[0] = 0;
@@ -902,7 +921,33 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
     while (*p == ' ' || *p == '\t') p++;
     if (!*p || *p == '\n') return 1;
     i = 0; { int q = 0, d = 0; while (*p && *p != '\n') {
-        if (*p == '\'') q = !q;
+        /* An ATTRIBUTE apostrophe is not a quote (#149).  Toggling on it left the
+         * state inverted for the rest of the statement, so the first blank read
+         * as "inside a string", the operand never ended, and the remarks field
+         * was swallowed.  On a machine instruction that is invisible -- the
+         * evaluator stops at the real operand end and ignores the tail -- but on
+         * a MACRO CALL the tail becomes part of a parameter:
+         *
+         *   MYM   L'A,XX          BEMERKUNG
+         *
+         * passed `XX          BEMERKUNG' as &B, and `DC C'&B'' assembled 21
+         * bytes where IFOX00 assembles 2 (tests/attrapos.s).  split_card() has
+         * had attr_apos() since #141; parse(), which decides the operand that is
+         * actually ASSEMBLED, was left on the bare toggle.
+         *
+         * The `q ||' is not decoration and attr_apos() does not imply it: the
+         * predicate is purely lexical, so it reads the CLOSING quote of a string
+         * whose last character is an attribute letter as an attribute apostrophe.
+         * `READ MAPDECB,SF,(R3),(REG0),'S' READ RECORD INTO BUFFER' (AMDPREAD
+         * card 327) ends in 'S' preceded by the opening quote, and without the
+         * guard the string never closed, the remark joined the macro's operands,
+         * and MAPDECB was never defined. Inside a string an apostrophe can only
+         * ever close it -- 96 decks lost their identity to that omission before
+         * the gate caught it. The same guard is already spelled out at the
+         * other attribute-aware scans (`q || !(p > s && strchr("KNLT", ...))').
+         * split_card() calls attr_apos() WITHOUT it and has the same latent
+         * reading; it cannot move a deck, so it is left for #141's owner. */
+        if (*p == '\'') { if (q || !attr_apos(line, (int)(p - line))) q = !q; }
         else if (!q && *p == '(') d++;
         else if (!q && *p == ')') { if (d) d--; }
         if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
@@ -1922,25 +1967,6 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
     if (!strcmp(op, "SETC")) { char v[128]; eval_setc(c, opnd, v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
     if (!strcmp(op, "ANOP")) return 1;
     return 0;
-}
-/* An apostrophe that opens a quoted string, or one that merely introduces an
- * ATTRIBUTE -- the ' in L'A, T'&V, K'&SYSPARM. The card splitters used to
- * toggle quote state on every apostrophe alike, so an operand carrying an
- * attribute reference had an odd count, the state never closed, and the whole
- * remarks field was swallowed into the operand (mvslovers/cc370#149). That was
- * invisible while every field was substituted anyway; it stops being invisible
- * the moment the remarks field must be left alone.
- *
- * An attribute letter stands ALONE. The character before it must not be part of
- * a longer token, or two ordinary strings are misread: `DC C'L'` closes on its
- * own quote, and `DC CL&A'&E'` -- SAVE's identifier card, and the one that
- * caught this -- ends in the 'A' of the VARIABLE SYMBOL &A, where the quote
- * opens a string. So '&' bars the reading exactly as a letter does. */
-static int attr_apos(const char *card, int i) {
-    if (i < 1 || !strchr("LTKNISE", card[i-1])) return 0;
-    if (i >= 2) { char b = card[i-2];
-        if (isalnum((unsigned char)b) || b=='@' || b=='#' || b=='$' || b=='_' || b=='&') return 0; }
-    return 1;
 }
 /* Split a card (cols 1-72) into name / operation / operand / remarks, keeping
  * each field's start column. The operand stops at the first blank that is
