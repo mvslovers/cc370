@@ -25,7 +25,8 @@ fail=0
 # ones are placed behind it. Nothing else in this corpus resumes a section.
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
-         basereg basereg2 tattr_selfdef amp_subst subst_cont; do
+         basereg basereg2 tattr_selfdef amp_subst subst_cont \
+         amp_fold amp_selfdef len_attr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -1740,30 +1741,19 @@ fail=$((fail + sofail))
 # above and is what holds the pair together: repair either half alone and it
 # fails.
 #
-# amp_fold and amp_selfdef are NOT byte-identical yet, and not because of '&&':
-# L' of a C constant with no explicit length is 1 in as370 where IFOX00 gives
-# the constant's length. That is a separate defect, so this test pins the
-# difference to exactly those bytes -- every other byte must match the oracle,
-# and when L' is fixed this test fails and becomes a plain byte-identity check.
-ampfail=0
-for s in amp_fold:104 amp_selfdef:99; do
-    f=${s%%:*}; lbyte=${s##*:}
-    ./as370 "tests/$f.s" -o "/tmp/_$f.obj" >/dev/null 2>&1
-    if [ $? -ge 8 ]; then echo "$f: ASSEMBLE FAILED"; ampfail=1; continue; fi
-    nbe=$(( ($(wc -c < "tests/ref/$f.obj") / 80 - 1) * 80 ))
-    d=$(python3 -c "
-import sys
-n=int('$nbe'); k=int('$lbyte')
-a=open('/tmp/_$f.obj','rb').read()[:n]; b=open('tests/ref/$f.obj','rb').read()[:n]
-if len(a)!=len(b): print('size %d vs %d'%(len(a),len(b))); sys.exit()
-d=[i+1 for i,(x,y) in enumerate(zip(a,b)) if x!=y]
-print('' if d==[k] else 'differs at %s, expected only the L%s byte %d'%(d[:6],chr(39),k))
-")
-    if [ -n "$d" ]; then echo "$f: FAIL ($d)"; ampfail=1
-    else echo "$f: OK (== IFOX00 apart from the known L' byte $lbyte)"; fi
-    rm -f "/tmp/_$f.obj"
-done
-fail=$((fail + ampfail))
+# amp_fold and amp_selfdef were NOT byte-identical, and not because of '&&':
+# L' of a C constant with no explicit length was 1 where IFOX00 gives the
+# constant's length (#148). This test used to pin the difference to exactly
+# those two bytes -- 104 and 99 -- and to FAIL once they matched, so the defect
+# could not be fixed unnoticed. #148 is fixed, both bytes match, and the two
+# fixtures have moved into the byte-identity loop above where they belong.
+#
+# len_attr.s went with them. It is the #148 oracle proper: eight symbols whose
+# L' is read three different ways -- from an explicit length (CL7), from a
+# type's fixed implied length (F, H, A), and from the nominal value (C, X, and
+# a duplicated 3C'AB' whose L' is 2, the length of ONE constant, not the
+# field's 6). The boundary is in the deck, so a repair that fixes only the
+# first group cannot pass.
 
 # msub's destination is bounded. Substitution EXPANDS, by a factor no call site
 # can bound from its own input: a reference costs two characters to write and
