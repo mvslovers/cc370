@@ -1,0 +1,51 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.59 09/07/26
+T         SD  0001 000000 000012
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.59 09/07/26
+                                      1 * USING ist nach BASISREGISTER geschluesselt: eine zweite USING
+                                      2 * auf demselben Register ERSETZT die erste (#177).
+                                      3 *
+                                      4 * Die zweite USING steht ABSICHTLICH oberhalb von A.  Stuende sie
+                                      5 * darunter, gewaenne ohnehin die kleinere Distanz und beide Regeln
+                                      6 * lieferten dasselbe Register -- die Messung entschiede nichts.
+                                      7 *
+                                      8 *   ERSETZEN  (IFOX00)  A liegt unter der einzigen Basis
+                                      9 *                       -> IFO209, rc 8:      0000 0000
+                                     10 *   ANHAENGEN (as370)   der tote T-Eintrag traegt noch
+                                     11 *                       -> stillschweigend:   5810 C000
+                                     12 *
+                                     13 * Die beiden folgenden Faelle sind die Gegenprobe: ein Ersetzen,
+                                     14 * das zu weit greift, faellt hier durch.
+000000                               15 T        CSECT
+                            00000    16          USING T,12
+000000                               17 A        DS    F
+000004                               18 HIGH     DS    0H
+                            00004    19          USING HIGH,12
+000004 0000 0000      00000          20          L     1,A
+         *** ERROR ***
+000008 5820 C000      00004          21          L     2,HIGH
+                                     22          DROP  12
+                            00000    23          USING T,12
+00000C 5830 C000      00000          24          L     3,A
+000010 07FE                          25          BR    14
+000000                               26          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.59 09/07/26
+A        00004 00000000 00017  00020 00024
+HIGH     00002 00000004 00018  00019 00021
+T        00001 00000000 00015  00016 00023 00026
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 14.59 09/07/26
+   20  IFO209      ADDRESSABILITY ERROR- BASE AND DISPLACEMENT CANNOT BE RESOLVED AND ARE SET TO 0
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         26
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        51

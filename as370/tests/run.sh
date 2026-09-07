@@ -74,6 +74,24 @@ if [ "$nok" = "5" ] && [ "$nbad" = "0" ]; then echo "tattr_literal: OK (5/5 == I
 else echo "tattr_literal: MISMATCH ($nok ok, $nbad bad; IFOX00 has 5 ok, 0 bad)"; fail=1; fi
 rm -f /tmp/_tlit.$$
 
+# --- issue #177: USING is keyed by base register ----------------------------
+# A second USING on a register REPLACES the first. The fixture places the
+# replacement ABOVE the referenced symbol, so "replace" and "append" disagree:
+# IFOX00 cannot resolve A and gives IFO209 + 0000 0000 at rc 8, where appending
+# resolves it against the dead entry and assembles 5810 C000 in silence.
+# The other two loads are the counter-check -- a replacement that reaches too
+# far breaks them: L 2,HIGH must use the NEW domain, and L 3,A must work again
+# after DROP + re-USING. Reference: tests/listref/ifox-listing-usingkey.txt.
+./as370 tests/usingkey.s -a -o /dev/null > /tmp/_uk.$$ 2>&1
+ukbad=0
+grep -qE "^000004 0000 0000" /tmp/_uk.$$ || ukbad=1      # replaced: A unaddressable
+grep -qE "^000008 5820 C000" /tmp/_uk.$$ || ukbad=1      # the new domain resolves
+grep -qE "^00000C 5830 C000" /tmp/_uk.$$ || ukbad=1      # DROP + re-USING resolves
+grep -q "Addressability error" /tmp/_uk.$$ || ukbad=1    # and it is diagnosed
+if [ "$ukbad" = "0" ]; then echo "usingkey: OK (== IFOX00 -- USING replaces per register)"
+else echo "usingkey: MISMATCH (see /tmp/_uk.$$)"; fail=1; fi
+rm -f /tmp/_uk.$$
+
 # --- issue #12: RS/SI/S empty-index operand rejection -----------------------
 # D2(,B2) (or D2(X2,B2)) on an RS/SI/S storage operand has no index field;
 # IFOX00 rejects it (ERR216, severity 12). as370 must reject it too rather than

@@ -3156,7 +3156,23 @@ static void do_pass(int pass, char **lines, int nlines) {
                 long base = (F[0][0] == '*') ? lc : expr_val(F[0], 0);
                 int bsect = cur_sect_id;
                 if (F[0][0] != '*') { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm); if (bs) bsect = bs->sect; }
-                usings[nusing].reg = reg; usings[nusing].base = base; usings[nusing].sect = bsect; nusing++;
+                /* USING is keyed by BASE REGISTER: a second USING naming a
+                 * register that is already in a domain REPLACES it -- IFOX00
+                 * does so quietly, with no diagnostic on the replacing card
+                 * (tests/usingkey.s).  Appending left the dead entry live, and
+                 * using_for() kept resolving against it: an operand below the
+                 * new base assembled silently at rc 0 where IFOX00 gives IFO209
+                 * and zeroes the instruction.  1,132 of the 5,528 MVSBLD
+                 * modules re-USE a live register (cc370#177).
+                 * This also retires the 32-entry cap above as a live hazard --
+                 * 31 modules overflowed it and lost every further USING without
+                 * a word, IDA019R4 alone 130.  Keyed by register the table can
+                 * never exceed 16 entries, so the bound is now unreachable
+                 * rather than merely generous. */
+                { int slot = -1, q;
+                  for (q = 0; q < nusing; q++) if (usings[q].reg == reg) { slot = q; break; }
+                  if (slot < 0) slot = nusing++;
+                  usings[slot].reg = reg; usings[slot].base = base; usings[slot].sect = bsect; }
                 lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
             }
         } else if (!strcmp(op, "DROP")) {
