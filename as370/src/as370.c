@@ -3397,7 +3397,6 @@ static void do_pass(int pass, char **lines, int nlines) {
                         for (k = 0; k < cnt; k++) { if (emit_dc) put(lc, val, blen); lc += blen; }
                     }
                 } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     const char *q = strchr(p, '\''); char body[1024]; int slen = 0;
                     if (q) { const char *e = q + 1;
                         while (*e && slen < 1023) {
@@ -3406,9 +3405,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                             body[slen++] = *e++;
                         } }
                     int emit = haslen ? blen : (q ? slen : 1);   /* valueless DS nC reserves cnt*1 bytes (default C length 1) */
+                    /* L' comes from the nominal VALUE where no length modifier
+                     * gives one, so the symbol cannot be entered before the body
+                     * has been scanned -- doing so left L'C'ABC' at 1 where
+                     * IFOX00 says 3, silently, at rc 0 (cc370#148).  `emit` is
+                     * already the length of ONE constant, which is what L' is:
+                     * L' of 3C'AB' is 2, not the field's 6. */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = emit; }
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, j < slen ? mvs_a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
                 } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     const char *q = strchr(p, '\''); unsigned char by[1024]; int nb = 0;
                     if (q) { char h[2056]; int hl = 0, s0 = 0; const char *e = q + 1;
                         while (*e && *e != '\'' && hl < 2055) { if (isxdigit((unsigned char)*e)) h[hl++] = *e; e++; }
@@ -3416,9 +3421,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                         for (; s0 + 1 < hl && nb < 1024; s0 += 2) by[nb++] = (unsigned char)((hexv(h[s0]) << 4) | hexv(h[s0 + 1]));
                     }
                     int emit = haslen ? blen : (q ? nb : 1), pad = emit - nb;   /* valueless DS nX reserves cnt*1 */
+                    /* L' comes from the nominal VALUE where no length modifier
+                     * gives one, so the symbol cannot be entered before the body
+                     * has been scanned -- doing so left L'C'ABC' at 1 where
+                     * IFOX00 says 3, silently, at rc 0 (cc370#148).  `emit` is
+                     * already the length of ONE constant, which is what L' is:
+                     * L' of 3C'AB' is 2, not the field's 6. */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = emit; }
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
                 } else if (ty == 'B') {                     /* binary, byte-aligned, MSB-first */
-                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                     const char *q = strchr(p, '\''); unsigned char by[256]; int nb = 0;
                     if (q) { char bits[2056]; int bl2 = 0; const char *e = q + 1;
                         while (*e && *e != '\'' && bl2 < 2048) { if (*e == '0' || *e == '1') bits[bl2++] = *e; e++; }
@@ -3426,6 +3437,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                         while (pos < bl2 && nb < 256) { int take = (nb == 0) ? first : 8, v = 0, j; for (j = 0; j < take; j++) v = (v << 1) | (bits[pos++] - '0'); by[nb++] = (unsigned char)v; }
                     }
                     int emit = haslen ? blen : (q ? nb : 1), pad = emit - nb;   /* valueless DS nB reserves cnt*1 */
+                    /* L' comes from the nominal VALUE where no length modifier
+                     * gives one, so the symbol cannot be entered before the body
+                     * has been scanned -- doing so left L'C'ABC' at 1 where
+                     * IFOX00 says 3, silently, at rc 0 (cc370#148).  `emit` is
+                     * already the length of ONE constant, which is what L' is:
+                     * L' of 3C'AB' is 2, not the field's 6. */
+                    if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = emit; }
                     for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1); lc++; } }
                 } else if (ty == 'P' || ty == 'Z') {   /* packed / zoned decimal: no alignment, DCTABLE mask 0 */
                     int packed = (ty == 'P');
