@@ -86,6 +86,25 @@ if [ "$nok" = "5" ] && [ "$nbad" = "0" ]; then echo "tattr_literal: OK (5/5 == I
 else echo "tattr_literal: MISMATCH ($nok ok, $nbad bad; IFOX00 has 5 ok, 0 bad)"; fail=1; fi
 rm -f /tmp/_tlit.$$
 
+# --- issue #149, second half: split_card() needs the same guard -------------
+# The deck cannot see this one -- it is identical either way, which is why the
+# check is on the LISTING. split_card() feeds the field-aware substitution, and
+# the remarks field is left verbatim (#141). Without `inq ||' the closing quote
+# of a string ending in an attribute letter reads as an attribute apostrophe, the
+# operand field swallows the remark, and &X in the remark gets SUBSTITUTED --
+# as370 then emits a generated statement where IFOX00 emits none.
+# 'N' is an attribute letter, 'M' is not, so the second card is the control.
+# Reference: tests/listref/ifox-listing-attrapos_remark.txt (IFOX00, rc 0,
+# both remarks verbatim, no generated statement).
+./as370 tests/attrapos_remark.s -a -o /dev/null > /tmp/_ar.$$ 2>&1
+arbad=0
+[ "$(grep -c "BEMERKUNG &X ENDE" /tmp/_ar.$$)" = "2" ] || arbad=1   # both remarks verbatim
+grep -q "BEMERKUNG WERT ENDE" /tmp/_ar.$$ && arbad=1               # neither substituted
+grep -qE "^[0-9A-F]{6} .*[0-9]+\+" /tmp/_ar.$$ && arbad=1          # no generated statement
+if [ "$arbad" = "0" ]; then echo "attrapos_remark: OK (== IFOX00 -- remarks not substituted)"
+else echo "attrapos_remark: MISMATCH (see /tmp/_ar.$$)"; fail=1; fi
+rm -f /tmp/_ar.$$
+
 # --- issue #177: USING is keyed by base register ----------------------------
 # A second USING on a register REPLACES the first. The fixture places the
 # replacement ABOVE the referenced symbol, so "replace" and "append" disagree:

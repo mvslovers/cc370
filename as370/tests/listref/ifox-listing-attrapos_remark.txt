@@ -1,0 +1,44 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 16.25 09/07/26
+T         SD  0001 000000 000014
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 16.25 09/07/26
+                                      1 * Die Bemerkung im offenen Code wird NICHT substituiert (#141), und
+                                      2 * split_card() entscheidet, wo sie anfaengt (#149).
+                                      3 *
+                                      4 * attr_apos() ist rein lexikalisch: es liest das SCHLIESSENDE
+                                      5 * Anfuehrungszeichen einer Zeichenkette, die auf ein Attributzeichen
+                                      6 * endet, als Attribut-Apostroph.  Dann schliesst die Zeichenkette
+                                      7 * nie, das Operandenfeld verschluckt die Bemerkung -- und mit ihr
+                                      8 * wird &X ersetzt, wo IFOX00 es stehen laesst.
+                                      9 *
+                                     10 * Innerhalb einer Zeichenkette kann ein Apostroph sie nur schliessen.
+                                     11 * Das ist das `inq ||', dasselbe Waechterwort, das parse() in #149
+                                     12 * 96 Decks gekostet hat.
+                                     13 *
+                                     14 *   N  ist ein Attributzeichen  -> ohne Waechter wird &X ersetzt
+                                     15 *   M  ist keines               -> Kontrolle, bleibt stehen
+                                     16 *
+                                     17 * IFOX00 laesst beide stehen.
+                                     18          GBLC  &X
+                                     19 &X       SETC  'WERT'
+000000                               20 T        CSECT
+000000 C1C4C440F140E3D6              21          DC    C'ADD 1 TO N'   BEMERKUNG &X ENDE
+00000A C1C4C440F140E3D6              22          DC    C'ADD 1 TO M'   BEMERKUNG &X ENDE
+000000                               23          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 16.25 09/07/26
+T        00001 00000000 00020  00023
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 16.25 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         23
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        44
