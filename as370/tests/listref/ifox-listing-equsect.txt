@@ -1,0 +1,58 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.30 09/07/26
+ADDRQ     SD  0001 000000 000010
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.30 09/07/26
+                                      1 * A relocatable EQU belongs to the section of its VALUE, not to the
+                                      2 * section the EQU card happens to sit in (#154).
+                                      3 *
+                                      4 * PL/S output puts every EQU at the end of the module, after the
+                                      5 * mapping macros have left a DSECT current.  An EQU naming a CSECT
+                                      6 * label there is still a CSECT address.
+                                      7 *
+                                      8 *   Wert-Sektion   (IFOX00)  -> B TGTALIA == B TARGET  -> 47F0 C004
+                                      9 *   Karten-Sektion (as370)   -> keine USING deckt MAPDS -> 47F0 0000
+                                     10 *
+                                     11 * CTLALIA is the control: same equate, card in the CSECT itself.
+                                     12 * MOFF is the second control: an ABSOLUTE equate under the DSECT
+                                     13 * stays absolute and must keep addressing through R11.
+000000                               14 ADDRQ    CSECT
+000000 05C0                          15          BALR  12,0
+000002                               16 PSTART   DS    0H
+                            00002    17          USING PSTART,12
+                            00000    18          USING MAPDS,11
+000002 47F0 C00C      0000E          19          B     TGTALIA
+000006 47F0 C00C      0000E          20          B     CTLALIA
+00000A 5810 B010      00010          21          L     1,MOFF(,11)
+00000E                               22 TARGET   DS    0H
+00000E 07FE                          23          BR    14
+                            0000E    24 CTLALIA  EQU   TARGET
+000000                               25 MAPDS    DSECT
+000000                               26          DS    XL16
+000010                               27 MFIELD   DS    F
+                            0000E    28 TGTALIA  EQU   TARGET
+                            00010    29 MOFF     EQU   16
+000000                               30          END   ADDRQ
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.30 09/07/26
+ADDRQ    00001 00000000 00014  00030
+CTLALIA  00002 0000000E 00024  00020
+MAPDS    00001 00000000 00025  00018
+MFIELD   00004 00000010 00027
+MOFF     00001 00000010 00029  00021
+PSTART   00002 00000002 00016  00017
+TARGET   00002 0000000E 00022  00024 00028
+TGTALIA  00002 0000000E 00028  00019
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 14.30 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         30
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        58
