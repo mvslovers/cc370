@@ -19,6 +19,12 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# contparen is #154's third-cause oracle, and it carries BOTH halves of the rule
+# because each half alone breaks the other: a macro call ends its operand at the
+# first blank outside quotes even inside an open paren (so the remark is dropped),
+# while AIF/SETB operands are expressions whose operators are blank-separated and
+# must be joined across the continuation. Honouring parens everywhere swallowed
+# the remark; honouring them nowhere broke AIF and took the #63 DCB with it.
 # equsect is the #154 oracle: a relocatable EQU belongs to the section of its
 # VALUE, not to the section its card sits in. The fixture equates two symbols to
 # the SAME label -- one card in the CSECT, one under a DSECT -- so IFOX00's deck
@@ -31,7 +37,7 @@ fail=0
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
-         amp_fold amp_selfdef len_attr equsect; do
+         amp_fold amp_selfdef len_attr equsect contparen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

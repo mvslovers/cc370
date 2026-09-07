@@ -1692,6 +1692,30 @@ static void check_cont_card(const char *c, int cl, int card, int stmt, int by_co
     if (nb) note_cont(26, card, c, cl, stmt, 1);   /* its label and operation are discarded */
 }
 
+/* Conditional-assembly statements whose operand is an arithmetic or logical
+ * EXPRESSION.  Their operators are written with blanks around them --
+ * `AIF ('&A' EQ 'X' OR '&B' EQ 'Y').L` -- so a blank inside the parenthesised
+ * expression does NOT end the operand, and a continued one must be joined
+ * across it.  Every OTHER statement, machine instruction and macro call alike,
+ * ends its operand at the first blank outside quotes, parentheses included.
+ *
+ * Measured over the 5,528 MVSBLD modules by computing both rules and recording
+ * the operation wherever they disagree: AIF 3,200, SETB 1,597 and SETC 2 need
+ * the expression rule, and every one of the other 27 operations that showed up
+ * is a macro call that must cut at the blank -- XCTLTABL 57, SETLOCK 17, DEQ 8,
+ * GETMAIN, OPEN, WTO, ENQ, CALL, ACB, RPL and the rest. AGO, SETA and ACTR are
+ * here on grammar, not on measurement: same operand syntax, no instance in the
+ * corpus that separates them. */
+static int op_is_cond_expr(const char *s, int n) {
+    static const char *const ops[] = { "AIF", "AGO", "SETA", "SETB", "SETC", "ACTR" };
+    size_t k; int j;
+    for (k = 0; k < sizeof ops / sizeof *ops; k++) {
+        if ((int)strlen(ops[k]) != n) continue;
+        for (j = 0; j < n; j++) if (toupper((unsigned char)s[j]) != ops[k][j]) break;
+        if (j == n) return 1;
+    }
+    return 0;
+}
 /* join assembler continuation lines: a non-blank in column 72 continues the
  * statement on the next line starting at column 16. Operates on raw[] and on
  * every macro/COPY library read. */
@@ -1738,21 +1762,41 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
         int cont = (len > 71 && l[71] != ' ');
         i++;
         /* operand field starts after the label (col 1) and the opcode */
-        int os = 0;
+        int os = 0, ops_, ope_;
         if (acc[0] != ' ' && acc[0] != '\t') while (os < a && acc[os] != ' ' && acc[os] != '\t') os++;
         while (os < a && (acc[os] == ' ' || acc[os] == '\t')) os++;
+        ops_ = os;
         while (os < a && acc[os] != ' ' && acc[os] != '\t') os++;
+        ope_ = os;
         while (os < a && (acc[os] == ' ' || acc[os] == '\t')) os++;
+        int condexpr = op_is_cond_expr(acc + ops_, ope_ - ops_);
         while (cont && i < n) {
-            /* a continued line's operands end at the first top-level blank (outside
-             * quotes/parens); drop the trailing comment before joining the next line
-             * so e.g. `DCB &MACRF=,  FOUNDATION BLOCK` + continuation keeps the comma */
+            /* A continued line's operand ends at the first blank outside QUOTES;
+             * the rest of columns 1-71 is a remark and is dropped before the next
+             * card is joined, so `DCB &MACRF=,  FOUNDATION BLOCK` + continuation
+             * keeps the comma.  Parenthesis depth counts only for the conditional
+             * expression statements (see op_is_cond_expr), whose operators are
+             * blank-separated.
+             *
+             * The depth test used to apply to EVERY statement, so a macro call
+             * whose operand broke inside an unclosed sublist swallowed its remark:
+             *
+             *   XCTLTABL ID=(NAME,SECLOADA,,IFG0195V,             Y02134X
+             *          ,IGG03001,,IGG0290A,...
+             *
+             * joined as `...IFG0195V,   Y02134,IGG03001,...`, so the change-level
+             * tag became a sublist element, the macro generated its DC under that
+             * name, and every reference to the real one was an undefined symbol
+             * addressed through no USING -- IFO209 on a module IFOX00 assembles
+             * clean (cc370#154).  Dropping the test outright is not the fix: it
+             * breaks AIF and SETB, whose expressions legitimately contain blanks,
+             * and takes the DCB common-interface block with them (#63). */
             int j, q = 0, d = 0;
             for (j = os; j < a; j++) { char ch = acc[j];
                 if (ch == '\'') q = !q;
                 else if (!q && ch == '(') d++;
                 else if (!q && ch == ')') { if (d) d--; }
-                else if (!q && d == 0 && (ch == ' ' || ch == '\t')) { a = j; break; }
+                else if (!q && (d == 0 || !condexpr) && (ch == ' ' || ch == '\t')) { a = j; break; }
             }
             const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
             check_cont_card(c, cl, i + 1, stmt_card, 0);   /* IFO026: RFCCHK checks every continuation card, not just a comment's */

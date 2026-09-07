@@ -609,6 +609,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | #171 | `L'` from the nominal value | +95 | 229 | 1 |
   | #175 | a relocatable `EQU` belongs to the section of its VALUE | +282 | 452 | 2 |
   | #178 | a `USING` replaces the domain of its base register | +108 | 167 | 0 |
+  | #180 | where a continued operand ends depends on the statement | +24 | 90 | 5 |
 
   Over the tree, as of #171: `as370 == IFOX00` **3,466 → 3,737 of 5,528**
   (62.7 % → 67.6 %), recovered against IBM's own object 869 → 902, silent
@@ -675,6 +676,39 @@ Pointers only. The reasoning lives in the issues and their PRs.
   exactly IFOX00's `0x1ad` and was marked +71. Distance is now the address-keyed
   section image on both sides, and #170's row was restated from 172/6 to 178/1.
   A deck's cards are an encoding, not the object.
+
+- **#154's third cause: the continuation join — five of the class, +24 in the
+  tree.** `ccd061b` (#180). A continued line's operand ends at the first blank
+  outside QUOTES; the join also required it to be outside parentheses, and
+  applied that to every statement. A macro call whose operand broke inside an
+  unclosed sublist therefore carried its remark in:
+
+  ```
+  XCTLTABL ID=(NAME,SECLOADA,,IFG0195V,             Y02134X
+         ,IGG03001,,IGG0290A,...
+  ```
+
+  joined as `...IFG0195V,   Y02134,IGG03001,...`, so the change-level tag became
+  a sublist element, the macro generated its `DC` under that name, and every
+  reference to the real one was an undefined symbol addressed through no `USING`.
+
+  **Dropping the parenthesis test is not the fix, and the suite says so
+  immediately.** `AIF` and `SETB` operands are expressions whose operators are
+  blank-separated; without the test they fall apart and take the `#63` DCB
+  common-interface block with them. So the rule depends on the statement, and
+  the set was **measured, not guessed** — both rules computed over the 5,528
+  modules, the operation recorded wherever they disagree: `AIF` 3,200, `SETB`
+  1,597, `SETC` 2 need the expression rule; all 27 other operations that appear
+  are macro calls that must cut (`XCTLTABL` 57, `SETLOCK` 17, `DEQ` 8, `GETMAIN`,
+  `OPEN`, `WTO`, `ENQ`, `CALL`, `ACB`, `RPL`). `AGO`, `SETA` and `ACTR` are in on
+  grammar rather than measurement, and the comment says so.
+
+  **+24 identical, none lost, 90 closer, rc 0 4449 → 4493.** The class itself
+  moves only **42 → 37** (`IFG0194F`, `IFG0195D`, `IFG0196O`, `IFG0552B`,
+  `SECLOADA`): a contributing cause, not the dominant remaining one. Most of the
+  tree-wide gain is in modules that were never in the class — a mis-joined
+  continuation is not usually an addressability error, it is simply wrong bytes.
+  **32 of the 42 still want a fourth cause.**
 
 - **#177, the USING table — the hypothesis #154 disproved, measured and fixed.**
   `0c2f4a6` (#178). `USING` is keyed by base register: a second `USING` on a
