@@ -1993,7 +1993,19 @@ static void split_card(const char *model, int mlen, int seqcol, int *fcol, char 
     while (p < mlen && p < seqcol && model[p] == ' ') p++;
     if (p < mlen && p < seqcol) { fcol[2] = p; int q = 0, inq = 0, dep = 0;
         while (p < mlen && p < seqcol) { char ch = model[p];
-            if (ch == '\'' && !attr_apos(model, p)) inq = !inq;
+            /* `inq ||' for the same reason parse() needs it (#149): attr_apos()
+             * is purely lexical, so on its own it reads the CLOSING quote of a
+             * string whose last character is an attribute letter -- 'S', 'L',
+             * C'ADD 1 TO N' -- as an attribute apostrophe, and the string never
+             * closes.  In parse() that cost 96 decks their identity.  Here it
+             * cannot: split_card() feeds the listing image and the substitution
+             * splitter, and every field is substituted anyway, so the operand
+             * boundary it computes is not the one that gets assembled.  It is
+             * fixed regardless, because "cannot move a deck" is a claim about
+             * today's assembler and #141 is about to make substitution
+             * field-aware -- at which point this misreading stops being latent
+             * and starts deciding which field a remark belongs to. */
+            if (ch == '\'' && (inq || !attr_apos(model, p))) inq = !inq;
             else if (!inq && ch == '(') dep++; else if (!inq && ch == ')') { if (dep) dep--; }
             if (ch == ' ' && !inq && dep == 0) break;
             if (q < FLDMAX-1) { fld[2][q++] = ch; } p++; }
