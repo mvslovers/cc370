@@ -607,9 +607,34 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | #168 | address constant whose value starts with `(` | +24 | 69 | 9 |
   | #170 | parenthesised index register, and the paren that is not a subscript | +58 | 178 | 1 |
   | #171 | `L'` from the nominal value | +95 | 229 | 1 |
+  | #175 | a relocatable `EQU` belongs to the section of its VALUE | +282 | 452 | 2 |
 
-  Over the tree: `as370 == IFOX00` **3,466 → 3,737 of 5,528** (62.7 % → 67.6 %),
-  recovered against IBM's own object 869 → 902, silent divergences 1,169 → 1,046.
+  Over the tree, as of #171: `as370 == IFOX00` **3,466 → 3,737 of 5,528**
+  (62.7 % → 67.6 %), recovered against IBM's own object 869 → 902, silent
+  divergences 1,169 → 1,046.
+
+  **After #175: 4,192 of 5,528 (75.8 %).** That row's baseline is its own parent
+  — #172 and #174 already in — which the gate reproduces at **3,910 (70.7 %)**,
+  independently the figure `mvssrc` reported for the same point. The two rows do
+  not chain arithmetically from #171 because #172/#174 sit between them; every
+  number here is only readable with its baseline named, which is why each row
+  carries one.
+
+  `mvssrc` reproduced #175 exactly (+282, none lost, 452 closer, two further by
+  one byte, section lengths 0/0) and reports the merged tree at **4,196 (75.9 %)**
+  — four above the figure here, and not a disagreement: `retest.py` wants a
+  ten-minute answer, while `ifox_compare.py` re-assembles each differing module
+  with the date and time its IFOX run used. Quote whichever tool you ran, by name.
+
+  **After nine merges, none of which lost an identity** (`mvssrc`, post-#175):
+
+  | | before | after |
+  |---|---|---|
+  | `as370 == IFOX00` | 3,466 (62.7 %) | 4,196 (75.9 %) |
+  | recovered against IBM's object | 869 | 988 |
+  | silent divergence | 1,169 | 766 |
+  | as370 alone flags | 512 | 234 |
+  | hand-over list | 2,107 | 1,389 |
 
   **Three of the five were the same shape**, and it is worth naming because it
   predicts where the next ones are: a CORRECT helper sitting beside the wrong
@@ -626,6 +651,41 @@ Pointers only. The reasoning lives in the issues and their PRs.
   exactly IFOX00's `0x1ad` and was marked +71. Distance is now the address-keyed
   section image on both sides, and #170's row was restated from 172/6 to 178/1.
   A deck's cards are an encoding, not the object.
+
+- **#154, 116 of 156 — and the issue stays open.** `e99e2c1` (#175). The EQU
+  handler took a symbol's section from *where the card sits*
+  (`s->sect = cur_sect_id`). Harmless for an absolute equate; for a relocatable
+  one it mis-files the symbol, and PL/S output makes that systematic, because
+  every EQU is at the end of the module after the mapping macros have left a
+  DSECT current. `BLSCCLSE`'s `@RC00027 EQU @RC00025` — a plain CSECT label —
+  was booked into the DSECT `IFGRPL` opened, and `using_for` then hunted for a
+  USING covering *that* section. `s->sect = rc ? expr_sect(F[0]) : cur_sect_id;`
+
+  **Two symptoms, one cause, and the second is the one that matters.** With no
+  USING in range for the wrong section you get IFO209 — the diagnostic the issue
+  reports. With the wrong section's USING *in* range, the operand silently takes
+  that base register **at rc 0**. `s->sect` also drives the `dsect_sect[]`
+  RLD-target test, so the same mis-filing can cost an address constant its
+  relocation: any count derived from as370's relocation behaviour before this
+  commit may be measuring the defect rather than the program. That is **#140**
+  again, wearing this issue's name, exactly as #153 wore it.
+
+  **The hypothesis it disproves.** The leading theory was the USING table:
+  append-only, and capped at 32 with later cards silently dropped. Both are still
+  true and neither is the cause here — only 6 of the 156 modules carry ≥32 USING
+  cards, and 4 of those 6 are fixed by this change. A rekey defect may be real;
+  it wants its own issue and its own measurement, and was deliberately kept out
+  of this commit. `HEWLDIOC` (45 USING cards, #163) still does not terminate.
+
+  **40 remain and need a second root cause** — AMAPTFLE BLSUPUT BNGI3270
+  BNGIDISP BNGLOGR2 BNGT3270 BNGTDISP HEWLFSCN ICAPRTBL ICFBIF00 IDA019C1
+  IDA019ST IEAVEAT0 IEBCMAIN IEBGENR3 IEBPPAL1 IEBPPCH1 IEBUPDT2 IEFVDA IEFVEA
+  IEFVFA IEHLIST1 IEHPROG1 IEHPROG2 IFCDIP00 IFCEI145 IFCET008 IFCIOHND IFG0194C
+  IFG0194F IFG0195D IFG0196O IFG0552B IGC0001F IGG019JH IGG019MB ISTINCU7
+  ISTNSC00 ISTZGF0A SECLOADA. `IDA019R2`, offered as the class's silent witness,
+  is **not** in it (it sits in `rx-index-dropped`) and is unchanged by #175 —
+  the silent behaviour it was cited for is real and `tests/equsect.s` now pins
+  it, but that module is not an instance.
 
 - **#153, the first two of sixteen** — `84cf294` (#164) and `879e86a` (#165),
   merged 2026-09-07. `parse()` did not know the `.*` comment card, so
