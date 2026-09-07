@@ -627,15 +627,38 @@ Pointers only. The reasoning lives in the issues and their PRs.
   ten-minute answer, while `ifox_compare.py` re-assembles each differing module
   with the date and time its IFOX run used. Quote whichever tool you ran, by name.
 
-  **After nine merges, none of which lost an identity** (`mvssrc`, post-#175):
+  **After ten merges, none of which lost an identity** (`mvssrc`, post-#178):
 
   | | before | after |
   |---|---|---|
-  | `as370 == IFOX00` | 3,466 (62.7 %) | 4,196 (75.9 %) |
-  | recovered against IBM's object | 869 | 988 |
+  | `as370 == IFOX00` | 3,466 (62.7 %) | 4,304 (77.9 %) |
+  | recovered against IBM's object | 869 | 1,002 |
   | silent divergence | 1,169 | 766 |
-  | as370 alone flags | 512 | 234 |
+  | as370 alone flags | 512 | 236 |
   | hand-over list | 2,107 | 1,389 |
+
+  **The rule the day earned: any population derived from as370's own behaviour
+  is provisional until the assembler stops changing.** Three times in one day a
+  fix changed what a *measurement* said rather than what the program does, and
+  each time the earlier number was a property of the assembler, not of the
+  source:
+
+  - #174 dissolved `IHANVT` and `UCBDADVC` off the missing-macro list entirely —
+    two of its three largest entries. With operand fields no longer clipped at
+    63, the modules that appeared to need them resolve them from a library we
+    already had. Every missing-macro count taken before #174 was measuring
+    as370's truncated expansion.
+  - #175 exposed nothing new, but its own class had been mis-hypothesised for
+    exactly this reason: the reach figures for #154 were read as evidence about
+    `USING` when they were evidence about `EQU`.
+  - #178 lifted three modules (`IDA019R4`, `IDA019RU`, `IDA019RY`) out of
+    silent-wrong-bytes and into `as370 alone flags` — the count went 233 → 236
+    while the decks improved tenfold. One defect had been concealing another.
+
+  So a class list, a reach count or a hand-over list is a **snapshot of the
+  assembler**, not an inventory of the work. Re-derive it after every merge
+  before ranking anything by it, and say which binary produced it — the same
+  discipline the baseline rule already imposes on the identity figures.
 
   **Three of the five were the same shape**, and it is worth naming because it
   predicts where the next ones are: a CORRECT helper sitting beside the wrong
