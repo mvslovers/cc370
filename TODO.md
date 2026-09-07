@@ -710,6 +710,33 @@ Pointers only. The reasoning lives in the issues and their PRs.
   continuation is not usually an addressability error, it is simply wrong bytes.
   **32 of the 42 still want a fourth cause.**
 
+  **The identity count is the smaller half, and the diagnostic instrument shows
+  why.** The mis-join was inventing operations out of change-level tags — a
+  module whose only fault was a line break reported `Y02134` as an undefined
+  operation. Counting IFOX-silent modules that *carry* each message:
+
+  | | before | after |
+  |---|---|---|
+  | undefined operation code | 163 | 114 |
+  | undefined symbol | 300 | 275 |
+  | addressability | 83 | 78 |
+
+  **33 modules carried at least one of the three and now carry none; 49 lost at
+  least one class.** `mvssrc` reports the same change against the *class* files
+  (51 → 5, 170 → 135, 42 → 37) and sums the first two to 81. Both are right about
+  different questions and neither should be quoted as the other: the class files
+  count each module once, under its **dominant** diagnostic, so a module that
+  merely reclassifies still leaves its class; the figures above count every
+  module carrying the message, so a module dominated by another defect stays
+  visible. That is the same 42-against-83 distinction as the class size itself,
+  and the rule recorded above — a population derived from as370's own behaviour
+  is provisional until the assembler stops changing — applies to *these* numbers
+  as much as to the class lists.
+
+  Third time in one day the headline was the smaller half, after #174's section
+  lengths and #178's rc composition — and all three surfaced on an instrument
+  that looked like it had nothing left to prove.
+
 - **#177, the USING table — the hypothesis #154 disproved, measured and fixed.**
   `0c2f4a6` (#178). `USING` is keyed by base register: a second `USING` on a
   register that already has a domain **replaces** it. as370 appended, so the
