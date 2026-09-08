@@ -90,6 +90,15 @@ fail=0
 # read L' as their IMPLIED LENGTH, and a DS label has the right L' either way.
 #   main 4b8785f   04 02 01 01 01 01 04 01 01 01   CLC D500
 #   IFOX00, this   04 02 04 04 01 01 04 02 02 01   CLC D503
+# --- issue #173: a subscripted SET array is one table row ---------------------
+# 20,000 distinct subscripts, deliberately far above any bound: the case tells a
+# STRUCTURAL change from a raised one. At 600 a MAXLSET of 1,024 would pass it.
+# No deck to compare -- the assertion is that it assembles at all.
+#   main e5e4430   local SET-symbol table full (512)
+if ./as370 tests/setarray.s -o /dev/null >/dev/null 2>&1; then
+    echo "setarray: OK (20,000 subscripts, one row)"
+else echo "setarray: FAIL (SET table filled)"; fail=1; fi
+
 # --- issue #190: an undefined symbol is not an absolute domain ---------------
 # Its own module because IFOX00 flags the undefined symbol (rc 12) and writes no
 # deck, so the check is on the listing. An undefined symbol evaluates to 0 and
