@@ -1,0 +1,43 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 08.07 09/08/26
+LAB       LD       000000        0001
+T         SD  0001 000000 000002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.07 09/08/26
+                                      1 * ENTRY auf den Namen des Kontrollabschnitts selbst (#199).
+                                      2 *
+                                      3 * Der SD IST dieser Einsprungpunkt, IFOX00 gibt ihn allein aus.
+                                      4 * as370 setzte zusaetzlich eine LD-Eintragung ab -- und zwar als
+                                      5 * ERSTE, weil das ENTRY der CSECT-Karte vorausgeht: in IERABW
+                                      6 * stehen 104 Karten dazwischen.  Weil das ENTRY verarbeitet wird,
+                                      7 * solange der Name noch unbekannt ist, laesst sich die LD dort
+                                      8 * nicht unterdruecken; sie faellt erst bei der Ausgabe weg.
+                                      9 *
+                                     10 * LAB ist die Gegenprobe: ein ENTRY auf eine gewoehnliche Marke
+                                     11 * bekommt seine LD weiterhin.
+                                     12 *
+                                     13 *   main d398f1e   T LD, LAB LD, T SD
+                                     14 *   IFOX00, dies   LAB LD, T SD
+                                     15          ENTRY T
+                                     16          ENTRY LAB
+000000                               17 T        CSECT
+000000                               18 LAB      DS    0H
+000000 07FE                          19          BR    14
+000000                               20          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.07 09/08/26
+LAB      00002 00000000 00018  00016
+T        00001 00000000 00017  00015 00020
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 08.07 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         20
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        43

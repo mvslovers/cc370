@@ -69,6 +69,11 @@ fail=0
 # and must stay 1, so a fix that hands out L' indiscriminately fails here.
 #   main 021db88   D503 D500 D500 D503 D500
 #   IFOX00, this   D503 D503 D503 D503 D500
+# entsd is the other #199 oracle: an ENTRY naming a CONTROL SECTION gets no LD --
+# the SD already is that entry point. LAB is the control: an ENTRY on an ordinary
+# label keeps its LD, so a fix that drops LD entries generally fails there.
+#   main d398f1e   T LD, LAB LD, T SD
+#   IFOX00, this   LAB LD, T SD
 # esdself is the #199 oracle: an ESDID belongs to the ESD ENTRY, not the symbol.
 # One name can hold two entries -- a CSECT that V-cons its own name has an SD and
 # an ER -- and IFOX00 numbers them separately. The R field is the control: it must
@@ -151,7 +156,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing equlen esdself ssomit ssb1; do
+         contattr cmprule absusing equlen esdself ssomit ssb1 entsd; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

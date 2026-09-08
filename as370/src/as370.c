@@ -4017,6 +4017,17 @@ static void emit_obj(FILE *f) {
         int n = 0, cardfirst = 0;
         while (n < 3 && e < nesdord) {
             int ei = e; struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
+            /* An ENTRY naming a CONTROL SECTION gets no LD entry: the SD already
+             * is that entry point, and IFOX00 emits the SD alone. `ENTRY IERABW'
+             * standing 104 cards ahead of `IERABW CSECT' is the ordinary shape --
+             * the ENTRY is processed while the name is still unknown, so the LD
+             * cannot be suppressed where it is registered and is dropped here
+             * instead. as370 emitted LD, PC, SD where IFOX00 has PC, SD, and the
+             * spurious entry came FIRST because ENTRY precedes the CSECT card
+             * (cc370#199). An ENTRY on an ordinary label still gets its LD. */
+            if (role == ESD_LD) { int q, issect = 0;
+                for (q = 0; q < nesdord; q++) if (esdord[q].s == s && esdord[q].role == ESD_SECT) { issect = 1; break; }
+                if (issect) continue; }
             if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, sect_length(ei), 0); if (!cardfirst) cardfirst = esdord[ei].esdid; }
             else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = esdord[ei].esdid; }
             /* LD: the last field is the ESDID of the section the symbol is DEFINED
