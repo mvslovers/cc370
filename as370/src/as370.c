@@ -1097,6 +1097,14 @@ static struct macro *mac_find(const char *n) {
  * A DSECT counts as the current section; an unnamed (private) one gives "". */
 static char g_sysect[9] = "";
 
+/* Positional operands storable per macro call. Chosen from the tree rather than
+ * guessed: the most any MVSBLD module passes is 62 (the IFNX5 and IFNX6
+ * families), and 32 modules of 5,046 pass more than the 32 this used to hold. Above the
+ * bound the operand used to be dropped SILENTLY -- `pos++' ran outside the
+ * guard, so the count stayed right while &SYSLIST(k) came back empty. It is a
+ * diagnostic now, because a bound that is exceeded quietly is the defect this
+ * one was. */
+#define MAXSYSLIST 64
 struct ctx {
     struct macro *m;
     char pv[100][96];                      /* parameter values (may be sublists) */
@@ -1104,7 +1112,7 @@ struct ctx {
     char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
     int sysndx;                            /* &SYSNDX for this macro invocation */
     char sysect[9];                        /* &SYSECT, frozen at the call (see g_sysect) */
-    char syslist[32][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
+    char syslist[MAXSYSLIST][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
     char arrb[48][20]; char arrnum[48]; int narr;   /* declared SET arrays: base name + 1 if numeric (A/B) */
 };
 /* Global SET symbols (GBLA/GBLB/GBLC) are shared between open code and every
@@ -1364,6 +1372,22 @@ static long e_prim(void) {
     if ((*ep_ == 'N' || *ep_ == 'K' || *ep_ == 'L') && ep_[1] == '\'') {
         int kind = *ep_; ep_ += 2; char ref[44], v[96];
         if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); } else v[0] = 0;
+        /* N'&SYSLIST is the NUMBER OF POSITIONAL OPERANDS, and it must not be
+         * counted by rendering them.  vref() materialises the whole list as
+         * `(op1,op2,...)' and copies 95 bytes of it, so sub_count() was counting
+         * the commas in a TRUNCATED string: the answer fell with the length of
+         * the operands rather than their number.  Measured on a macro called with
+         * 13 positional operands, N' answered 10 -- while &SYSLIST(11) through
+         * (13) each returned the right text, so the elements were all there and
+         * only the count was wrong.
+         *
+         * That is what stops IFNX1K, a three-card module whose whole content is
+         * one GENOP call: JTEXT's DBV loop runs `AIF (&I LT N'&SYSLIST)' over 39
+         * entries, saw 7, and defined six of the internal opcodes out of 39
+         * (cc370#153).  Growing the buffer is not the fix -- at 39 operands the
+         * rendered list is past 500 bytes, so any fixed bound is the same defect
+         * with a larger constant. The count is held exactly, so answer from it. */
+        if (kind == 'N' && ec_ && ec_->m && !strcmp(ref, "&SYSLIST")) return ec_->nsyslist;
         return (kind == 'N') ? sub_count(v) : (long)strlen(v);
     }
     if ((*ep_ == 'X' || *ep_ == 'B' || *ep_ == 'C') && ep_[1] == '\'') {   /* self-defining term */
@@ -2134,7 +2158,9 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             if (iskw) { *eq = 0; int j; char nm[66]; snprintf(nm, sizeof nm, "&%.63s", args[k]);
                 for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c.pv[j], eq + 1, 95); c.pv[j][95] = 0; break; } }
             else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c.pv[j], args[k], 95); break; } cc2++; }
-                if (pos < 32) { scopy(c.syslist[pos], args[k], 127); } pos++; c.nsyslist = pos; }
+                if (pos < MAXSYSLIST) { scopy(c.syslist[pos], args[k], 127); }
+                else if (pos == MAXSYSLIST) note_operr("More than 64 positional macro operands - the rest are not addressable through &SYSLIST", 8, g_curln);
+                pos++; c.nsyslist = pos; }
         }
     }
     /* prescan sequence-symbol labels */
