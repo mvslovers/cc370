@@ -1,0 +1,76 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 01.11 09/08/26
+T         SD  0001 000000 000016
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 01.11 09/08/26
+                                      1 * Welches Laengenattribut bekommt ein EQU-Symbol? (#194)
+                                      2 *
+                                      3 * Es ist das L' des LINKESTEN TERMS, und nur dann, wenn dieser
+                                      4 * Term ein Symbol ist -- alles andere ergibt 1.
+                                      5 *
+                                      6 * `1+A' ist der Fall, der die Regel festlegt: es ist der linkeste
+                                      7 * TERM, nicht das erste Symbol irgendwo im Ausdruck.  Ein Ausdruck,
+                                      8 * der mit einer Zahl beginnt, bekommt 1, obwohl ein Symbol folgt.
+                                      9 * Ohne diesen Fall waeren "linkester Term" und "erstes Symbol"
+                                     10 * nicht zu unterscheiden.
+                                     11 *
+                                     12 * as370 gab der ganzen Familie 1.  Das bleibt unsichtbar, bis
+                                     13 * jemand L' liest -- und die SS-Befehle lesen es als IMPLIZITE
+                                     14 * LAENGE.  `MVC @PC00031,0(R1)' wurde D2 00 statt D2 03, ein Byte,
+                                     15 * keine Meldung, waehrend dasselbe Modul vierhundert Karten
+                                     16 * frueher `MVC @PC00031(4),0(R1)' schon richtig hatte: eine
+                                     17 * explizite Laenge fragt dieses Attribut nie.
+                                     18 *
+                                     19 *            A  H  E1 E2 E3 E4 E5 E6 E7 E8
+                                     20 *   main     04 02 01 01 01 01 04 01 01 01   und CLC -> D5 00
+                                     21 *   IFOX00   04 02 04 04 01 01 04 02 02 01   und CLC -> D5 03
+000000                               22 T        CSECT
+                            00000    23          USING T,12
+000000                               24 A        DS    CL4
+000004                               25 H        DS    H
+                            00000    26 E1       EQU   A                 auf ein Label
+                            00001    27 E2       EQU   A+1               Label plus Zahl
+                            00004    28 E3       EQU   4                 reine Zahl
+                            00006    29 E4       EQU   *                 Ortszaehler
+                            00000    30 E5       EQU   A,4               mit Laengenangabe
+                            00004    31 E6       EQU   H-A               absoluter Ausdruck
+                            00004    32 E7       EQU   H                 auf ein Halbwort-Label
+                            00001    33 E8       EQU   1+A               Zahl plus Label
+000006 04                            34          DC    AL1(L'A)
+000007 02                            35          DC    AL1(L'H)
+000008 04                            36          DC    AL1(L'E1)
+000009 04                            37          DC    AL1(L'E2)
+00000A 01                            38          DC    AL1(L'E3)
+00000B 01                            39          DC    AL1(L'E4)
+00000C 04                            40          DC    AL1(L'E5)
+00000D 02                            41          DC    AL1(L'E6)
+00000E 02                            42          DC    AL1(L'E7)
+00000F 01                            43          DC    AL1(L'E8)
+000010 D503 C000 C000 00000 00000    44          CLC   E1,E1             SS: implizite Laenge aus L'E1 -> D5 03
+000000                               45          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.11 09/08/26
+A        00004 00000000 00024  00026 00027 00030 00031 00033 00034
+E1       00004 00000000 00026  00036 00044 00044
+E2       00004 00000001 00027  00037
+E3       00001 00000004 00028  00038
+E4       00001 00000006 00029  00039
+E5       00004 00000000 00030  00040
+E6       00002 00000004 00031  00041
+E7       00002 00000004 00032  00042
+E8       00001 00000001 00033  00043
+H        00002 00000004 00025  00031 00032 00035
+T        00001 00000000 00022  00023 00045
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 01.11 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         45
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        76

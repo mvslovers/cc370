@@ -54,6 +54,15 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# equlen is the #194 oracle: L' of an EQU is the length attribute of the LEFTMOST
+# TERM, and only when that term is a symbol. `1+A' is what fixes the rule -- it
+# is the leftmost TERM, not the first symbol in the expression, so an expression
+# opening with a number gets 1 though a symbol follows. Without that case
+# "leftmost term" and "first symbol" cannot be told apart. The trailing CLC is
+# the consequence and it must name an EQU symbol, not a DS label: SS instructions
+# read L' as their IMPLIED LENGTH, and a DS label has the right L' either way.
+#   main 4b8785f   04 02 01 01 01 01 04 01 01 01   CLC D500
+#   IFOX00, this   04 02 04 04 01 01 04 02 02 01   CLC D503
 # --- issue #190: an undefined symbol is not an absolute domain ---------------
 # Its own module because IFOX00 flags the undefined symbol (rc 12) and writes no
 # deck, so the check is on the listing. An undefined symbol evaluates to 0 and
@@ -120,7 +129,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing; do
+         contattr cmprule absusing equlen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
