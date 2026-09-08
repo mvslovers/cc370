@@ -1287,11 +1287,11 @@ static void set_put(struct ctx *c, const char *n, const char *v) {
     if (!r) {
         if (*pn >= cap) { fprintf(stderr, "as370: %s SET-symbol table full (%d)\n", g ? "global" : "local", cap); exit(2); }
         r = &rows[*pn]; memset(r, 0, sizeof *r);
-        strncpy(r->name, b, 19); r->name[19] = 0; (*pn)++;
+        scopy(r->name, b, 19); (*pn)++;
     }
     char *slot = (idx < 0) ? r->val : row_elem(r, idx, 1);
     if (!slot) return;
-    strncpy(slot, v, 95); slot[95] = 0;
+    scopy(slot, v, 95);
 }
 /* release a context's array element vectors (the rows themselves are inline) */
 static void set_free(struct ctx *c) {
