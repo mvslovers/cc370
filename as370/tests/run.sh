@@ -169,6 +169,15 @@ rm -f /tmp/_au.$$
 # CCW path issues no message at all. That message gap is cc370#211, measured
 # separately -- ESD/TXT/RLD are byte-identical either way, which is what this
 # loop compares.
+# xsectrel is the #209 oracle: a difference of symbols in DIFFERENT control
+# sections is not absolute -- it takes a SIGNED PAIR of relocation entries, and
+# as370 emitted none because expr_val_full reports NET relocatability and the two
+# sections cancel. C4 is what fixes the rule at one entry per UNIT of the tally
+# rather than one per section; C2, C5 and C6 are the controls, two same-section
+# differences that must produce nothing and a cancelling term that must leave
+# exactly one.
+#   main ea6163a   RLD 3 entries
+#   IFOX00, this   RLD 6 entries, one of them flag 0F (negative)
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -177,7 +186,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar; do
+         contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
+         xsectrel; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
