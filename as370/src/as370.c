@@ -459,6 +459,29 @@ static struct lit *lit_get(const char *t) {
  * between factors is multiplication). Sets *reloc if any term is relocatable.
  * Stops at a top-level '(' (a subscript), ',' or end — so it also evaluates a
  * displacement like 4+120(13). Not re-entrant (uses parse globals). */
+/* The body of a C'..' self-defining term: EBCDIC byte values, where `&&' is one
+ * `&' and a DOUBLED apostrophe is one apostrophe. Leaves *pp on the closing quote.
+ *
+ * One function because there were THREE copies of this loop -- the operand
+ * evaluator, the SETA reader and the conditional-assembly evaluator -- and every
+ * one of them collapsed `&&' while none of them collapsed the doubled
+ * apostrophe. So `QUOTE EQU C''''' stopped at the first apostrophe of the pair
+ * and evaluated to ZERO, while `DC C''''' was right all along: the DC path has
+ * its own scanner and that one knew (cc370#238). Nine modules differed in
+ * nothing else at all.
+ *
+ * The doubling rule is one rule and it now lives in one place, which is the
+ * point -- the defect was not the missing branch, it was having three readers
+ * of one syntax to keep in step. */
+static long selfdef_cbody(const char **pp) {
+    const char *p = *pp; long v = 0;
+    while (*p) {
+        if (*p == '\'') { if (p[1] == '\'') p++; else break; }
+        else if (*p == '&' && p[1] == '&') p++;
+        v = (v << 8) | mvs_a2e((unsigned char)*p); p++;
+    }
+    *pp = p; return v;
+}
 static const char *xp_; static int xrl_;   /* xrl_ = net relocation count of the last expr_val (0 = absolute) */
 /* Per-section tally of the same terms.  xrl_ alone cannot tell (A-B) inside one
  * section, which is absolute, from (OTHER-TESTQ) across two, which is not: both
@@ -500,8 +523,7 @@ static long x_factor(int sign) {
     }
     if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
         char kind = *xp_; xp_ += 2; long v = 0;
-        if (kind == 'C') { while (*xp_ && *xp_ != '\'') { if (*xp_ == '&' && xp_[1] == '&') xp_++;   /* '&&' is one '&' (tests/amp_selfdef.s) */
-                                                        v = (v << 8) | mvs_a2e((unsigned char)*xp_); xp_++; } }
+        if (kind == 'C') v = selfdef_cbody(&xp_);
         else { int base = (kind == 'X') ? 16 : 2; while (*xp_ && *xp_ != '\'') {
                    int c = toupper((unsigned char)*xp_), dv = (c >= '0' && c <= '9') ? c - '0' : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : 0;
                    v = v * base + dv; xp_++; } }
@@ -1584,7 +1606,7 @@ static long selfdef(const char *s) {
         int kind = *s; s += 2;
         if (kind == 'X') { while (*s && *s != '\'') v = v * 16 + hexv(*s++); }
         else if (kind == 'B') { while (*s && *s != '\'') v = v * 2 + (*s++ == '1' ? 1 : 0); }
-        else { while (*s && *s != '\'') { if (*s == '&' && s[1] == '&') s++; v = (v << 8) | mvs_a2e((unsigned char)*s++); } }
+        else v = selfdef_cbody(&s);
     } else v = atol(s);
     return neg ? -v : v;
 }
@@ -1616,7 +1638,7 @@ static long e_prim(void) {
         int kind = *ep_; long v = 0; ep_ += 2;
         if (kind == 'X') { while (*ep_ && *ep_ != '\'') v = v * 16 + hexv(*ep_++); }
         else if (kind == 'B') { while (*ep_ && *ep_ != '\'') v = v * 2 + (*ep_++ == '1' ? 1 : 0); }
-        else { while (*ep_ && *ep_ != '\'') { if (*ep_ == '&' && ep_[1] == '&') ep_++; v = (v << 8) | mvs_a2e((unsigned char)*ep_++); } }   /* C': EBCDIC byte values; '&&' is one '&' */
+        else v = selfdef_cbody(&ep_);
         if (*ep_ == '\'') ep_++;
         return v;
     }

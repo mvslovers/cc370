@@ -250,6 +250,14 @@ rm -f /tmp/_au.$$
 # that passes more text through but shifts the evaluation would break.
 #   main 6dbb4bc   G4 G2 B6
 #   IFOX00, this   G4 G2 G6
+# eququote is the #238 oracle: a doubled apostrophe inside a C'..' self-defining
+# term is ONE apostrophe, and three separate readers of that term collapsed `&&'
+# while none collapsed the quote -- so `EQU C''''' was zero. Q3 is the control
+# that was always right (`DC C''''), which is why the defect survived: the path
+# people look at first works. Q4 protects the `&&' rule, Q5 the X branch, and Q6
+# proves two pairs make two bytes rather than one.
+#   main 6215f9f   00 C1 7D 50 7D 0000
+#   IFOX00, this   7D C1 7D 50 7D 7D7D
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -259,7 +267,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr equparen attre cnop aifcond; do
+         xsectrel dcattr equparen attre cnop aifcond eququote; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
