@@ -3654,8 +3654,31 @@ static void do_pass(int pass, char **lines, int nlines) {
             }
         } else if (!strcmp(op, "CNOP")) {                      /* align with NOPR (0x0700) fill */
             char F[2][FLDW]; split_fields(opnd, F, 2);
-            int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0), g = 0;
-            if (nn > 0) while ((lc % nn) != b && g++ < 64) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; }
+            int b = (int)expr_val(F[0], 0), nn = (int)expr_val(F[1], 0);
+            /* CNOP positions a HALFWORD, so an odd location counter is brought
+             * up first with a single zero byte -- and the label addresses THAT
+             * point, before the no-ops. Measured on IFOX00 across `CNOP 0,4',
+             * `2,4', `0,8' and `4,8' from odd and even counters.
+             *
+             * The old loop stepped two bytes at a time from wherever it was and
+             * gave up after 64 tries. From an odd counter it could never reach
+             * an even residue, so it emitted 64 no-ops and left the counter 128
+             * bytes further on -- silently, at rc 0, with every following
+             * address in the section wrong. `LBL CNOP 0,4' one byte into a
+             * section put the next statement at x'81' where IFOX00 has x'04'.
+             *
+             * And the label was never defined at all: every macro that aligns
+             * with `&NAME CNOP 0,4' -- LOAD, LINK, CALL and their relatives --
+             * lost the symbol the caller had written in the name field, which
+             * is 84 modules of "undefined symbol" that IFOX00 assembles without
+             * a word (cc370#231, part of #153). */
+            if (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 1; }
+            if (pass == 2) lrecs[i].loc = lc;
+            if (nn > 1 && !(b & 1) && b < nn) {
+                long need = ((long)b - lc) % nn; if (need < 0) need += nn;
+                while (need > 0) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; need -= 2; }
+            }
         } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
             if (lc > org_hwm) org_hwm = lc;
             lc = (!opnd[0] || opnd[0] == ',') ? org_hwm : expr_val(opnd, NULL);   /* bare ORG or `ORG ,` resets to the high-water mark */

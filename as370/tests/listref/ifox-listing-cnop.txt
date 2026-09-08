@@ -1,0 +1,85 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.57 09/08/26
+PG        SD  0001 000000 000034
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.57 09/08/26
+                                      1 * CNOP richtet auf ein HALBWORT aus, bevor es irgendetwas anderes tut:
+                                      2 * ein ungerader Ortszaehler wird mit EINEM Nullbyte hochgezogen. Die
+                                      3 * Marke adressiert GENAU DIESE Stelle - vor den No-ops (cc370#231).
+                                      4 *
+                                      5 * as370 zaehlte stattdessen in Zweierschritten von dort weiter, wo es
+                                      6 * gerade stand, und gab nach 64 Versuchen auf. Von einem ungeraden
+                                      7 * Zaehler aus konnte es einen geraden Rest nie erreichen: 64 No-ops,
+                                      8 * der Zaehler 128 Bytes weiter, stillschweigend bei rc 0 - und jede
+                                      9 * folgende Adresse im Abschnitt falsch. `N1 CNOP 0,4' ein Byte hinter
+                                     10 * dem Abschnittsanfang legte die naechste Anweisung auf x'81', wo
+                                     11 * IFOX00 x'04' hat.
+                                     12 *
+                                     13 * Und die Marke wurde ueberhaupt nie definiert. Jedes Makro, das mit
+                                     14 * `&NAME CNOP 0,4' ausrichtet - LOAD, LINK, CALL und Verwandte -
+                                     15 * verlor damit das Symbol aus dem Namensfeld des Aufrufers.
+                                     16 *
+                                     17 * Die A-Konstanten sind der Beweis fuer die Lage der Marke: N1 muss 2
+                                     18 * sein. 1 waere vor der Halbwortausrichtung, 4 dahinter nach den
+                                     19 * No-ops - beide falschen Regeln fallen hier auf.
+                                     20 *
+                                     21 * N2 und N6 sind die Kontrollen: der Rest stimmt schon, es darf KEIN
+                                     22 * No-op entstehen. Ein Fix, der immer eines schreibt, faellt dort auf.
+                                     23 * N3 und N4 pruefen ein anderes Vielfaches und einen Rest ungleich 0.
+                                     24 *
+                                     25 * Punktzahl:  ohne Fix N1/N2 undefiniert, Abschnitt ab x'81' zerstoert
+000000                               26 PG       CSECT
+000000 C1                            27          DC    C'A'
+000001 00
+000002 0700                          28 N1       CNOP  0,4
+000004 00000002                      29          DC    A(N1)
+000008 C2                            30          DC    C'B'
+000009 00
+00000A                               31 N2       CNOP  2,4
+00000A 0000
+00000C 0000000A                      32          DC    A(N2)
+000010 C3                            33          DC    C'C'
+000011 00
+000012 070007000700                  34 N3       CNOP  0,8
+000018 00000012                      35          DC    A(N3)
+00001C C4                            36          DC    C'D'
+00001D 00
+00001E 070007000700                  37 N4       CNOP  4,8
+000024 0000001E                      38          DC    A(N4)
+000028 C5C6                          39          DC    C'EF'
+00002A 0700                          40 N5       CNOP  0,4
+00002C 0000002A                      41          DC    A(N5)
+000030                               42 N6       CNOP  0,4
+000030 00000030                      43          DC    A(N6)
+                                     44          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 12.57 09/08/26
+ 0001     0001      0C     000004
+ 0001     0001      0C     00000C
+ 0001     0001      0C     000018
+ 0001     0001      0C     000024
+ 0001     0001      0C     00002C
+ 0001     0001      0C     000030
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.57 09/08/26
+N1       00001 00000002 00028  00029
+N2       00001 0000000A 00031  00032
+N3       00001 00000012 00034  00035
+N4       00001 0000001E 00037  00038
+N5       00001 0000002A 00040  00041
+N6       00001 00000030 00042  00043
+PG       00001 00000000 00026
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 12.57 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         44
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        85
