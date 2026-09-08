@@ -38,6 +38,15 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# contattr is the #184 oracle: join_cont() decides where the FIRST card's operand
+# ends, so an attribute apostrophe there folds the remark into the joined
+# statement. Three cases and the third is the one that earns its place -- it
+# fails only on a fix that uses attr_apos() WITHOUT the `q ||' guard, which is
+# the omission that cost 96 decks in #182. Scores against the two wrong binaries,
+# recorded so the next reader does not have to rebuild them:
+#   main 3eb1a48        DC C''    DC C'DD'  DC C'EE'
+#   attr_apos, no guard DC C'CC'  DC C'DD'  DC C''
+#   IFOX00 and this     DC C'CC'  DC C'DD'  DC C'EE'
 # rldlen is the #186 oracle: the length in an RLD flag byte belongs to ITS entry.
 # add_reloc() bails on in_dsect, but the call site wrote the width afterwards
 # into rels[nrel-1] -- the PREVIOUS, real entry. An address constant in a DSECT
@@ -68,7 +77,8 @@ fail=0
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
-         amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen; do
+         amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
+         contattr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
