@@ -278,6 +278,17 @@ rm -f /tmp/_au.$$
 # not be split, the apostrophe there belongs to the attribute.
 #   main f0e2a41   NOEQ OKSP NONE NOOR OKAT
 #   IFOX00, this   OKEQ OKSP OKNE OKOR OKAT
+# rxparen is the #247 oracle: a leading parenthesis in a machine operand is a
+# GROUP, not the index pair. as370 read it as the subscript list and lost the
+# displacement with it -- `L 15,(FIELD-BASE)(9)' came out 58F0 0000, at rc 0 and
+# silent on both sides; `LA 1,(4-1)' took the 3 for a BASE REGISTER. Two changes
+# were needed and the fixture proves both: the positional rule, and then the
+# displacement evaluation (after the first alone the registers were right and
+# every displacement was zero). R3/R6/R9 are the unparenthesised controls, and
+# RA is the sharp one -- after the location counter `(9)' IS the index, so the
+# positional rule must still tell the two apart.
+#   main 89fb177   58F0 0000 | 58F0 0000 | 58F9 0010 | 4102 0000 | 4113 0000
+#   IFOX00, this   58F9 0010 | 58F0 9010 | 58F9 0010 | 4110 0002 | 4110 0003
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -287,7 +298,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop; do
+         xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
+         rxparen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

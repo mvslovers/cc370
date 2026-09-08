@@ -936,6 +936,19 @@ static int r_reloc;   /* the displacement prefix of the last resolve() was reloc
 static int r_subempty;  /* bit k set when subscript k of the last resolve() was WRITTEN BUT EMPTY --
                          * `A(,5)' is not `A(0,5)', and an SS length field distinguishes them */
 static long r_raw;    /* its un-reduced value (before USING subtraction); the displacement IFOX prints in ADDR1 */
+/* The displacement prefix of a machine operand.
+ *
+ * expr_val's leading-'(' guard is right for a bare register operand `(R1)'
+ * and wrong for a PARENTHESISED DISPLACEMENT, which IFOX00 reads as an
+ * ordinary group: `LA 1,(4-1)' is displacement 3 and `L 15,(FIELD-BASE)(9)'
+ * is displacement 16 with 9 as the index (cc370#247). By the time this is
+ * called the subscript has already been located positionally, so there is
+ * nothing left here for that guard to protect against -- and with it the
+ * displacement came out ZERO, silently, at rc 0. */
+static long disp_val(const char *e, int *reloc) {
+    while (*e == ' ') e++;
+    return (*e == '(') ? expr_val_full(e, reloc) : expr_val(e, reloc);
+}
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
     *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1; r_subempty = 0;
     if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; r_len = l->size; sub[0] = using_for(l->loc, l->sect, d); return; }
@@ -947,9 +960,23 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
      * positional, not lexical: a subscript follows a complete TERM, a group
      * follows an OPERATOR.  Skip a group's whole span and keep looking at depth
      * 0; if nothing is left the operand is one expression and takes the branch
-     * below, where x_factor handles the grouping itself.  A '(' at the very
-     * start stays a subscript -- `LA 1,(2)` has meant that here since as370
-     * existed, and this change is not the place to revisit it. */
+     * below, where x_factor handles the grouping itself.
+     *
+     * A '(' at the very START is a GROUP, not a subscript -- the operand begins
+     * where an operator would leave off, so the same positional rule already
+     * decides it and the old exception for `q == f' was simply wrong. Measured
+     * on IFOX00 (cc370#247):
+     *
+     *   LA 1,(2)                 4110 0002   displacement 2, NOT base 2
+     *   LA 1,(4-1)               4110 0003
+     *   L  15,(FIELD-BASE)(9)    58F9 0010   the SECOND group is the subscript
+     *   L  15,(FIELD-BASE)(,9)   58F0 9010
+     *
+     * as370 read the leading group as the subscript list, so the displacement
+     * was lost with it: `L 15,(FIELD-BASE)(9)' came out 58F0 0000 -- base 0,
+     * displacement 0, at rc 0 and silent on both sides. `LA 1,(4-1)' was worse,
+     * taking 3 for a BASE REGISTER. 68 modules, and most reach it through a
+     * macro rather than writing it. */
     const char *lp = NULL;
     { int d0 = 0, expect = 1; const char *q = f;   /* expect: the next token would be a TERM, so an operator was the last thing seen */
       for (; *q; q++) {
@@ -965,7 +992,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
                * operator.  '*' decides by position, which is why a character
                * test is not enough: in `BC 15,*(RP)` it is the location counter
                * and (RP) IS the subscript, in `24-(8*X)` it is a multiply. */
-              if (d0 == 0 && (q == f || !expect)) { lp = q; break; }
+              if (d0 == 0 && !expect) { lp = q; break; }
               d0++; continue;
           }
           if (*q == ')') { if (d0) d0--; expect = 0; continue; }
@@ -974,7 +1001,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
           expect = 0;
       } }
     if (lp) {
-        int reloc = 0; long v = expr_val(f, &reloc);   /* prefix before '(' (expr_val stops there) */
+        int reloc = 0; long v = disp_val(f, &reloc);   /* prefix before '(' (the evaluator stops there) */
         if (reloc) {                                   /* SYM(len)/SYM(index): base from the symbol's USING */
             char nm[64]; int nn = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && nn < 63) nm[nn++] = *e++; nm[nn] = 0;
             struct sym *s = sym_find(nm); int ssect = expr_sect(f);
@@ -1021,7 +1048,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             if (!cm) break;
             tok = cm + 1; }
     } else {
-        int reloc = 0; long v = expr_val(f, &reloc);
+        int reloc = 0; long v = disp_val(f, &reloc);
         if (reloc) {                                   /* relocatable: address via USING (of the symbol's section) */
             char nm[64]; int n = 0; const char *e = f; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0;
             struct sym *s = sym_find(nm); int ssect = expr_sect(f);
