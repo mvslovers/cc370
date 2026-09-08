@@ -1,0 +1,55 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 02.06 09/08/26
+T         SD  0001 000000 000028
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 02.06 09/08/26
+                                      1 * Der erste Index eines SS-Operanden 1 ist die LAENGE (#203).
+                                      2 *
+                                      3 * Das Format ist D1(L1,B1), also steht in sub[0] die Laenge und
+                                      4 * nie eine Basis.  Der Rueckfall auf sub[0] reichte sie als
+                                      5 * Basisregister an die Maschine weiter: `CLC FLCPICOD(2),X' kam
+                                      6 * mit B1=2 heraus, wo IFOX00 B1=0 schreibt -- es adressierte
+                                      7 * R2+0x8E statt absolut 0x8E, und das ist in AHL* und AMD* der
+                                      8 * tiefe Speicher.  Dasselbe gilt fuer Operand 2 eines SS mit ZWEI
+                                      9 * Laengen, wo der einzige Index ebenfalls eine Laenge ist.
+                                     10 *
+                                     11 * sub[0] ist ueberladen, und es unterscheidet `ns', nicht der
+                                     12 * Wert: ohne geschriebene Klammerliste legt resolve() dort die
+                                     13 * aus einer USING gewaehlte Basis ab.  Den Rueckfall ganz zu
+                                     14 * streichen verliert die -- `CLC B(2),B' fiel von B1=12 auf 0,
+                                     15 * und die Suite sagte das im ersten Lauf.
+                                     16 *
+                                     17 *   main 4907207   D501208E D501508E D501C000 F922C004 F922308E
+                                     18 *   IFOX00, dies   D501008E D501508E D501C000 F922C004 F922008E
+000000                               19 T        CSECT
+                            00000    20          USING T,12
+                            0008E    21 LOW      EQU   142               absolute Adresse im tiefen Speicher
+000000                               22 B        DS    CL4
+000004                               23 P        DS    PL3
+000007 00
+000008 D501 008E C000 0008E 00000    24          CLC   LOW(2),B          Laenge explizit, keine Basis
+00000E D501 508E C000 0008E 00000    25          CLC   LOW(2,5),B        Laenge und Basis explizit
+000014 D501 C000 C000 00000 00000    26          CLC   B(2),B            keine Liste: Basis aus USING
+00001A F922 C004 C004 00004 00004    27          CP    P(3),P(3)         zwei Laengen, relokierbar
+000020 F922 008E 008E 0008E 0008E    28          CP    LOW(3),LOW(3)     zwei Laengen, absolut
+000026 07FE                          29          BR    14
+000000                               30          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 02.06 09/08/26
+B        00004 00000000 00022  00024 00025 00026 00026
+LOW      00001 0000008E 00021  00024 00025 00028 00028
+P        00003 00000004 00023  00027 00027
+T        00001 00000000 00019  00020 00030
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 02.06 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         30
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        55

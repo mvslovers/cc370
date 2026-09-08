@@ -54,6 +54,13 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# ssb1 is the #203 oracle: the first subscript of an SS operand 1 is the LENGTH,
+# so the base is never sub[0] there -- nor for operand 2 of a two-length SS. But
+# sub[0] is OVERLOADED and `ns' is what distinguishes: with no list written,
+# resolve() leaves the USING-chosen base in sub[0], so case 3 is the control that
+# fails on a fix which suppresses the fallback outright.
+#   main 4907207   D501208E D501508E D501C000 F922C004 F922308E
+#   IFOX00, this   D501008E D501508E D501C000 F922C004 F922008E
 # ssomit is the #201 oracle: an SS operand's IMPLIED length, by two routes. An
 # omitted length is not a length of zero -- `CLC DA-D(,5)' writes the subscript
 # list for its base and leaves the length field empty -- and an ABSOLUTE prefix
@@ -144,7 +151,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing equlen esdself ssomit; do
+         contattr cmprule absusing equlen esdself ssomit ssb1; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
