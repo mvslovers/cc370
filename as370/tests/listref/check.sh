@@ -276,7 +276,7 @@ import sys
 ref  = open(sys.argv[1]).read().split("\n")
 mine = open(sys.argv[2]).read().split("\n")
 HDR = ("SYMBOL   TYPE", "  LOC  OBJECT", "POS.ID")
-KNOWN = ("ORG", "DSECT")          # cc370#227, asserted below
+KNOWN = ()                        # cc370#227 fixed; ORG/DSECT now match here too
 def norm(lines):
     out = []
     for l in lines:
@@ -306,8 +306,72 @@ if missing:
     print(f"#227 no longer diverges on {missing} -- fixed? update this case")
 sys.exit(0 if ok else 1)
 PYE
-[ $? = 0 ] && echo "listref equlist: EQU value in ADDR2 column-exact to IFOX00 (ORG/DSECT diverge, #227)" \
+[ $? = 0 ] && echo "listref equlist: EQU value in ADDR2 column-exact to IFOX00" \
            || { echo "listref equlist: MISMATCH"; fail=1; }
 rm -f "$OUT6"
+
+# --- case 7: orglist -- every statement that moves or replaces the counter ---
+# ORG (three forms, and one inside a DSECT), a NEW control section, a RESUMED
+# one, and a DSECT opened twice. The resumed cases are the point: without them
+# "the section's origin" and "the section's own counter" give the same answer.
+#
+# CM1 is asserted to DIVERGE: as370 has no COM support at all -- no ESD entry,
+# no counter from zero (#229) -- and the three cards after it inherit that. The
+# case fails if it stops diverging, which is how #229 gets its gate for free.
+REF7=tests/listref/ifox-listing-orglist.txt
+OUT7=/tmp/as370-listref-og.$$
+ASMDATE=09/07/26 ASMTIME=12.00 ./as370 tests/listref/orglist.s -a="$OUT7" >/dev/null 2>&1
+python3 - "$REF7" "$OUT7" <<'PYO'
+import sys
+ref  = open(sys.argv[1]).read().split("\n")
+mine = open(sys.argv[2]).read().split("\n")
+HDR = ("SYMBOL   TYPE", "  LOC  OBJECT", "POS.ID")
+def norm(lines):
+    out = []
+    for l in lines:
+        l = l.replace("\f", "").rstrip()
+        if "CROSS-REFERENCE" in l:         break
+        if l == "":                        continue
+        if l.strip() == "*** ERROR ***":   continue
+        out.append(l)
+    return out
+R, M = norm(ref), norm(mine)
+# Drop the CM1 ESD line from the reference rather than skipping it in place:
+# leaving it in shifts every later line by one, and every comparison after it
+# then reports a difference that is really an alignment artefact.
+cm_esd = [l for l in R if " CM  " in l and not l[40:].startswith("CM1")]
+R = [l for l in R if l not in cm_esd]
+# Everything from the COM statement onward is in #229's shadow: as370 has no
+# COM support, so that section's counter and every counter after it are wrong.
+# Keyed on the source text, not a statement number -- the comment block at the
+# head of the fixture would renumber every case that used one.
+def com_at(lines):
+    for i, l in enumerate(lines):
+        if l[40:].startswith("CM1      COM"): return i
+    return len(lines)
+cut = min(com_at(R), com_at(M))
+ok, seen229 = True, False
+if cm_esd and not any(" CM  " in l and "COM" not in l[40:] for l in M):
+    seen229 = True                              # the missing CM1 ESD entry
+for i in range(max(len(R), len(M))):
+    r = R[i] if i < len(R) else "<none>"
+    m = M[i] if i < len(M) else "<none>"
+    if any(r.startswith(p) for p in HDR):
+        if r[:90] != m[:90]: ok = False; print(f"DIFF hdr {i}:\n  ref |{r}|\n  mine|{m}|")
+        continue
+    if i >= cut:
+        if r != m: seen229 = True
+        continue
+    if r != m:
+        ok = False
+        print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
+if not seen229:
+    ok = False
+    print("#229 no longer diverges -- COM implemented? update this case")
+sys.exit(0 if ok else 1)
+PYO
+[ $? = 0 ] && echo "listref orglist: ORG/CSECT/DSECT counters column-exact to IFOX00 (COM diverges, #229)" \
+           || { echo "listref orglist: MISMATCH"; fail=1; }
+rm -f "$OUT7"
 
 exit $fail

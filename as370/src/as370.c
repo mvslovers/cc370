@@ -3559,7 +3559,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             lc = sect_base(cur_sect_id) + (cur_sect_id < MAXSECT ? sect_rel[cur_sect_id] : 0);
             if (!first_ctl_sect) first_ctl_sect = cur_sect_id;   /* IFOX FSTCSECT: the first section that is not a DSECT (nor COM) */
             if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }   /* relative origin; assign_origins() makes it absolute */
-            if (pass == 2) cur_sect_esdid = s->esdid;
+            if (pass == 2) { cur_sect_esdid = s->esdid; lrecs[i].loc = lc; }   /* the listing shows the section's OWN counter, not the one it left (#227) */
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             /* A DSECT is just another section with its own counter -- the save
              * and restore this used to do by hand for the enclosing control
@@ -3574,6 +3574,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
             if (++s->opened == 1 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;   /* a DSECT is never chained, so it takes no slot in sect_ord */
             lc = (cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;   /* sect_base is 0 for a DSECT in either pass */
+            if (pass == 2) lrecs[i].loc = lc;                           /* its own counter, from zero on the first opening (#227) */
             if (pass == 1) { s->val = 0; s->defined = 1; }
         } else if (!strcmp(op, "ISEQ")) {
             /* Input sequence checking.  Measured against IFOX00 (cc370#128): it
@@ -3658,6 +3659,11 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
             if (lc > org_hwm) org_hwm = lc;
             lc = (!opnd[0] || opnd[0] == ',') ? org_hwm : expr_val(opnd, NULL);   /* bare ORG or `ORG ,` resets to the high-water mark */
+            /* LOC keeps the counter on the way IN -- lrecs was stamped with it
+             * before the statement ran -- and IFOX00 puts the NEW counter in
+             * ADDR2, for all three forms: `ORG *-4', a bare ORG, and `ORG expr',
+             * inside a dummy section as well (#227). */
+            if (pass == 2) { lrecs[i].a2 = lc; lrecs[i].hasa2 = 1; }
             if (!in_dsect) { if (org_hwm > modlen) modlen = org_hwm; note_sect_lc(org_hwm); }
         } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
             { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }
@@ -4403,7 +4409,7 @@ static void a_src_section(char **lines, int nl) {
              * PREFL lead on #201), both from reading that column as the value.
              * ORG and LTORG do move the counter and keep LOC. */
             else if (!strcmp(op, "EQU")) { show_equ = 1; }
-            else if (!strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }
+            else if (!strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }   /* ORG's ADDR2 is set at the statement, above */
         }
         long loc = lrecs[i].loc; int len = lrecs[i].len;
         if (is_instr) {                                /* a halfword-alignment pad prints as its own object line */
