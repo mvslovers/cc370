@@ -3286,8 +3286,34 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * and so may carry an explicit base. */
                     int len1 = (ns  >= 1 && !(se1 & 1) ? (int)sub[0]  : (l1 ? l1 : 1));
                     int len2 = (ns2 >= 1 && !(se2 & 1) ? (int)sub2[0] : (l2 ? l2 : 1));
-                    int b1 = (ns  >= 2 ? (int)sub[1]  : (ib1 >= 0 ? ib1 : (int)sub[0]));
-                    int b2 = (ns2 >= 2 ? (int)sub2[1] : (ib2 >= 0 ? ib2 : (int)sub2[0]));
+                    /* The base is NEVER the first subscript of an SS operand 1: the
+                     * format is D1(L1,B1), so sub[0] is the LENGTH. Falling back to it
+                     * handed the length to the machine as a base register --
+                     * `CLC FLCPICOD(2),X' came out with B1=2 where IFOX00 writes B1=0,
+                     * addressing R2+0x8E instead of absolute 0x8E, which in AHL* and
+                     * AMD* is low storage (cc370#203). Same for operand 2 of a
+                     * TWO-length SS, where the sole subscript is likewise a length:
+                     * `AP LOW(3),LOW(3)' gave B1=B2=3.
+                     *
+                     * A one-length SS keeps sub2[0] as its base -- there the format IS
+                     * D2(B2) -- which is why only that half of the fallback survives.
+                     *
+                     * sub[0] is OVERLOADED and the distinction is `ns', not its value:
+                     * with no subscript list written, resolve() leaves the base it
+                     * picked from a USING in sub[0], so suppressing the fallback
+                     * outright loses it. `CLC B,B' went from B1=12 to B1=0 and the
+                     * suite said so on the first run.
+                     *
+                     * #191 established that an absolute operand takes a base only from
+                     * an absolute USING, and its fixture asserts exactly that with a
+                     * relocatable `USING *,15' left unused. That control is written on
+                     * an RX operand and never reached this path. */
+                    int b1 = (ns  >= 2) ? (int)sub[1]
+                           : (ns  == 1) ? (ib1 >= 0 ? ib1 : 0)          /* the sole subscript is the LENGTH */
+                           : (ib1 >= 0 ? ib1 : (int)sub[0]);            /* no list: sub[0] IS the resolved base */
+                    int b2 = (ns2 >= 2) ? (int)sub2[1]
+                           : (twol && ns2 == 1) ? (ib2 >= 0 ? ib2 : 0)  /* two-length: the sole subscript is a LENGTH */
+                           : (ib2 >= 0 ? ib2 : (int)sub2[0]);
                     /* explicit base + relocatable displacement on either operand -> IFO228.
                      * Operand 1 D1(L1,B1) always carries a length, so its explicit base is
                      * the 2nd subscript (ns>=2). Operand 2 is D2(B2) for a one-length SS
