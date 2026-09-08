@@ -1207,6 +1207,8 @@ static const char *g_genimg;   /* image for the single line the next mexp_line e
 static int g_ca_slot = -1;
 static int g_mcall_slot = -1;  /* the macro CALL line's slot, for a diagnostic raised inside the body */
 static void note_operr(const char *msg, int sev, int line);   /* fwd: eval_setc raises IFO115/116/117 */
+static void note_mnote(int sev, const char *text, int line);  /* fwd: the macro expander raises MNOTE */
+static int mnote_split(const char *opnd, char *text, int textsz, char *image, int imagesz, int *comment);
 /* source-file line number each expanded line derives from (for diagnostics): an
  * open-code statement -> its own line; a macro/COPY-generated line -> the line of
  * the call/COPY in the input file. g_curorg is the line currently being expanded. */
@@ -2413,7 +2415,29 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         strncpy(bb, m->body[pc], 1023); bb[1023] = 0; parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
-        if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
+        if (!strcmp(bo, "MNOTE")) {
+            /* Substitute first: the whole point of an MNOTE is to name the
+             * caller's parameter, and `MNOTE 8,'BAD OPTION &OPT'' is the usual
+             * shape. Then emit it as a generated listing line -- LF_NOASM so the
+             * core never tries to assemble the rendered text, LF_GEN so it
+             * carries the '+' every other generated card does. */
+            char mex[1024]; msub(c, m->body[pc], mex, sizeof mex);
+            char mb[1024], ml[32], mo[16], mod[1024];
+            strncpy(mb, mex, 1023); mb[1023] = 0; parse(mb, ml, mo, mod);
+            char mtext[256], mimg[256]; int mcom = 0;
+            int msev = mnote_split(mod, mtext, sizeof mtext, mimg, sizeof mimg, &mcom);
+            if (*nout < MAXLINES) {
+                /* lines[] keeps the SUBSTITUTED MNOTE statement so the stderr
+                 * card print shows what the macro actually wrote; gcard carries
+                 * the rendered image the listing column wants. */
+                lflags[*nout] = LF_GEN | LF_NOASM; gcard[*nout] = strdup(mimg);
+                line_org[*nout] = g_curorg; out[*nout] = strdup(mex);
+                note_mnote(msev, mtext, *nout);
+                (*nout)++;
+            }
+            pc++; continue;
+        }
+        if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "ACTR")) { pc++; continue; }
         { g_ca_slot = g_mcall_slot;                          /* a substring error in the body points at the call */
           int isca = set_stmt(c, bl, bo, bod); g_ca_slot = -1;
           if (isca) { pc++; continue; } }                     /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
@@ -2515,6 +2539,20 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * setc_open.s has the DC at statement 23 where as370 used to put it at 20.
      * It is listed only in OPEN CODE: NOMLOGIC is the default and IFOX00 lists
      * none of the 70 conditional statements inside tstlist's SAVE and RETURN. */
+    /* MNOTE in open code: the same statement, listed without the '+' that marks
+     * a generated card. IFOX00 numbers it and flags it exactly as it does one
+     * from a macro body (cc370#39). */
+    if (op[0] && !strcmp(op, "MNOTE")) {
+        char mtext[256], mimg[256]; int mcom = 0;
+        int msev = mnote_split(opnd, mtext, sizeof mtext, mimg, sizeof mimg, &mcom);
+        if (*nout < MAXLINES) {
+            lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM);
+            gcard[*nout] = strdup(mimg); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf);
+            note_mnote(msev, mtext, *nout);
+            (*nout)++;
+        }
+        return;
+    }
     if (op[0] && is_ca_op(op)) {
         int slot = -1;
         if (g_genlevel == 0 && *nout < MAXLINES) {
@@ -2738,6 +2776,58 @@ static void note_operr(const char *msg, int sev, int line) {
     if (line < 0) return;
     mark_flagged(line);
     if (noperr < 128) { scopy(operr_msg[noperr], msg, 95); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
+}
+/* MNOTE: the macro writer's own diagnostic, and the only one a macro can raise
+ * about its caller. as370 skipped the statement outright -- no listing line, no
+ * message, no severity -- so the IBM convention `IHBERMAC -> MNOTE 8/12 ->
+ * MEXIT' deleted the statement and reported nothing at all: a macro-argument
+ * error assembled to silence at rc 0 (cc370#39).
+ *
+ * Three forms, and IFOX00 treats them differently -- measured, not assumed:
+ *
+ *   MNOTE 8,'text'    severity 8, FLAGGED, listed as "    8,text"
+ *   MNOTE *,'text'    a comment: severity 0, NOT flagged, listed as "*,text"
+ *   MNOTE 'text'      no severity: 0, NOT flagged, listed as "text"
+ *
+ * The severity-bearing form is the only one that reaches the diagnostics page
+ * (IFO197) and the return code; the other two are printed and cost nothing. */
+static char mnote_txt[128][80]; static int mnote_ln[128]; static int mnote_sev[128];
+static int nmnote, nmnote_seen;
+static void note_mnote(int sev, const char *text, int line) {
+    if (line < 0) return;
+    if (sev > 0) mark_flagged(line);          /* `*' and the bare form are not flagged */
+    nmnote_seen++;
+    if (nmnote < 128) { scopy(mnote_txt[nmnote], text, 79); mnote_sev[nmnote] = sev; mnote_ln[nmnote] = line; nmnote++; }
+}
+/* Split an MNOTE operand into severity and text, and render the listing image.
+ * Returns the severity; *comment is set for the `*' form. The text loses its
+ * surrounding apostrophes and a doubled '' becomes one, exactly as IFOX00
+ * prints it. */
+static int mnote_split(const char *opnd, char *text, int textsz, char *image, int imagesz, int *comment) {
+    const char *p = opnd; int sev = 0, hassev = 0;
+    *comment = 0;
+    while (*p == ' ') p++;
+    if (*p == '*' && (p[1] == ',' || p[1] == 0)) { *comment = 1; p += p[1] ? 2 : 1; }
+    else if (isdigit((unsigned char)*p)) {
+        while (isdigit((unsigned char)*p)) sev = sev * 10 + (*p++ - '0');
+        hassev = 1;
+        while (*p == ' ') p++;
+        if (*p == ',') p++;
+    }
+    else if (*p == ',') p++;                  /* `MNOTE ,'text'' -- no severity */
+    while (*p == ' ') p++;
+    int n = 0;
+    if (*p == '\'') { p++;
+        while (*p && n < textsz - 1) {
+            if (*p == '\'') { if (p[1] == '\'') { text[n++] = '\''; p += 2; continue; } break; }
+            text[n++] = *p++;
+        }
+    } else while (*p && n < textsz - 1) text[n++] = *p++;
+    text[n] = 0;
+    if (*comment)      snprintf(image, (size_t)imagesz, "*,%s", text);
+    else if (hassev)   snprintf(image, (size_t)imagesz, "    %d,%s", sev, text);
+    else               snprintf(image, (size_t)imagesz, "%s", text);
+    return *comment ? 0 : sev;
 }
 /* IFOX00 IFO158 (severity 8, jermsgcd.asm SEV158): a symbol defined in a DSECT
  * is an offset into a dummy section, and a dummy section has no ESDID -- there
@@ -4670,7 +4760,7 @@ int main(int argc, char **argv) {
      * are raised while cards are being joined, before lines[] exists, so their
      * line number is a raw card and the two keys cannot be compared.  They stay
      * where the phase that raises them puts them, at the top. */
-    enum { DG_UNK, DG_OPERR, DG_BADTY, DG_NYI, DG_BADFMT, DG_RELD, DG_ADDR, DG_OVL, DG_OVLDEF, DG_OVLREF, DG_UNDEF };
+    enum { DG_UNK, DG_OPERR, DG_BADTY, DG_NYI, DG_BADFMT, DG_RELD, DG_ADDR, DG_OVL, DG_OVLDEF, DG_OVLREF, DG_UNDEF, DG_MNOTE };
     struct dgref { int ln, cat, idx; };
     { static struct dgref dg[128 * 11]; int ndg = 0, j;
 #define DG_ADD(N, ARR, CAT) do { for (j = 0; j < (N); j++) { dg[ndg].ln = (ARR); dg[ndg].cat = (CAT); dg[ndg].idx = j; ndg++; } } while (0)
@@ -4685,6 +4775,7 @@ int main(int argc, char **argv) {
         DG_ADD(novldef,  ovldef_ln[j],    DG_OVLDEF);
         DG_ADD(novlref,  ovlref_ln[j],    DG_OVLREF);
         DG_ADD(nundef,   undefs[j].line,  DG_UNDEF);
+        DG_ADD(nmnote,   mnote_ln[j],     DG_MNOTE);
 #undef DG_ADD
         /* Insertion sort: stable by construction, and ndg is at most 1408. */
         { int a, b; for (a = 1; a < ndg; a++) { struct dgref v = dg[a];
@@ -4736,6 +4827,13 @@ int main(int argc, char **argv) {
                 fprintf(stderr, " ERROR: Symbol longer than 8 characters in operand expression (instruction zeroed; MVS symbols are limited to 8) %s - %s\n", at, ovlref_op[i2]); break;
             case DG_UNDEF:
                 fprintf(stderr, " ERROR: Undefined symbol %s - %s\n", at, undefs[i2].sym); break;
+            case DG_MNOTE:
+                /* The macro's own words, verbatim. A severity-bearing MNOTE is
+                 * an error or a warning by its number; the comment and bare
+                 * forms cost nothing and are printed as notes. */
+                fprintf(stderr, " %s: MNOTE %s - %s\n",
+                        mnote_sev[i2] >= 8 ? "ERROR" : mnote_sev[i2] > 0 ? "WARNING" : "NOTE",
+                        at, mnote_txt[i2]); break;
             }
         }
         if (nundef_seen > nundef)
@@ -4757,6 +4855,11 @@ int main(int argc, char **argv) {
     if (novlref  && max_sev <  8) max_sev = 8;
     if (nundef_seen && max_sev < 8) max_sev = 8;
     { int j2; for (j2 = 0; j2 < noperr; j2++) if (max_sev < operr_sev[j2]) max_sev = operr_sev[j2]; }
+    /* An MNOTE severity is the macro writer's judgement and goes straight into
+     * the return code -- which is the whole point of #39: the IBM convention is
+     * MNOTE 8/12 followed by MEXIT, so the severity is the ONLY trace the error
+     * leaves. Per entry, like the operand errors, because they differ. */
+    { int j2; for (j2 = 0; j2 < nmnote; j2++) if (max_sev < mnote_sev[j2]) max_sev = mnote_sev[j2]; }
 
     if (objfn) {
         FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 16; }
