@@ -786,12 +786,23 @@ static int expr_sect(const char *f) {
         if (*p == '+') { if (!expect) sign = 1; expect = 1; p++; continue; }
         if (*p == '-') { if (!expect) sign = -1; expect = 1; p++; continue; }
         if (*p == '/') { p++; expect = 1; continue; }
+        if (*p == ',') { p++; sign = 1; expect = 1; continue; }     /* multi-value term separator */
         if (*p == '*' && !expect) { p++; expect = 1; continue; }   /* binary multiply */
         if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } continue; }
         if (*p == ')') { p++; continue; }
         int csect = -1;
         if (*p == '*') { csect = cur_sect_id; p++; }               /* location counter term */
         else { char nm[64]; int n = 0; while (*p && !strchr("+-*/(), ", *p) && n < 63) nm[n++] = *p++; nm[n] = 0;
+            /* A character this walk neither consumes above nor accepts into a
+             * name leaves p where it was, and the loop never ends. `,' is exactly
+             * that: it stops the name scan and had no branch of its own, so the
+             * token came back empty forever. HEWLDIOC is the one module in 5,528
+             * that gets a bare comma here -- through resolve(), an ordinary
+             * machine-operand path -- which is why it has never assembled and was
+             * written off as a module that "never terminates within any alarm".
+             * reloc_sym walks the same syntax and has carried this guard since it
+             * was written (cc370#215). */
+            if (!n) { p++; continue; }                             /* unhandled char: advance to guarantee progress */
             if (nm[0] && !isdigit((unsigned char)nm[0])) { struct sym *s = sym_find(nm); if (s && s->type != S_ABS) csect = s->sect; } }
         if (csect >= 0) { int f2 = -1; for (k = 0; k < nt; k++) if (tsect[k] == csect) { f2 = k; break; }
             if (f2 < 0 && nt < 8) { f2 = nt; tsect[nt] = csect; tsign[nt] = 0; nt++; }
