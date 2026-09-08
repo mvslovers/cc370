@@ -268,6 +268,16 @@ rm -f /tmp/_au.$$
 # length path would fail there rather than in the tree.
 #   main 7bb7796   B1-BA emit nothing at all; C1-C5 correct
 #   IFOX00, this   0012 8743 0010 F0 E9 A0 1110 00100003 10C120 (2 reserved) FF
+# relop is the #243 oracle: blanks around a comparison operator are OPTIONAL and
+# IBM's macros omit them -- AMODGEN(SYSEVENT) maps its whole mnemonic table with
+# `AIF ('&EVENT'EQ'USERRDY').EOK'. The tokenizer did not end the operator token
+# at the OPENING quote of its right operand, so EQ'USERRDY' became one token,
+# no comparison was made and the AIF fell through. Q2 is the control that was
+# always right (the same condition WITH blanks), so a fixture built from it
+# passes on both binaries; Q5 is the control in the other direction -- L'FLD must
+# not be split, the apostrophe there belongs to the attribute.
+#   main f0e2a41   NOEQ OKSP NONE NOOR OKAT
+#   IFOX00, this   OKEQ OKSP OKNE OKOR OKAT
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -277,7 +287,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr equparen attre cnop aifcond eququote bitlen; do
+         xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
