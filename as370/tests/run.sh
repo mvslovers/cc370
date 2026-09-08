@@ -319,6 +319,14 @@ rm -f /tmp/_au.$$
 # The two-operand RR instructions at the end are the controls that must not move.
 #   main 48a07c0   048E 0488 0487 048E
 #   IFOX00, this   0480 0480 0480 0480
+# dcvlist is the #253 oracle: one operand may carry a LIST of values and each is
+# a constant of its own, so `DC H'6,0,17,6,0'' is five halfwords. The fixed-point
+# arm read the body with a single strtol and emitted the duplication factor's
+# worth of the FIRST value. V3 and V4 are the controls that separate the two
+# levels: 3H'7' multiplies the LIST, and X'1234',X'5678' is two OPERANDS -- a fix
+# that split at the top level rather than inside the body fails there.
+#   main 7c32f60   0006 | 0007 | 000700070007 | 12345678 | one fullword
+#   IFOX00, this   0006000000110006 0000 | ... | 00000001 00000002 00000003
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -329,7 +337,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
-         rxparen lenattr contrem spmrr; do
+         rxparen lenattr contrem spmrr dcvlist; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

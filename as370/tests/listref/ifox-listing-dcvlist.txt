@@ -1,0 +1,68 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 18.35 09/08/26
+DCVLIST   SD  0001 000000 000030
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 18.35 09/08/26
+                                      1 * Ein Operand darf eine LISTE von Werten tragen, und jeder davon ist
+                                      2 * eine eigene Konstante: DC H'6,0,17,6,0' sind fuenf Halbworte.
+                                      3 * as370 las den Rumpf mit einem einzigen strtol und erzeugte den
+                                      4 * Wiederholungsfaktor mal den ERSTEN Wert - aus einer fuenfstelligen
+                                      5 * Tabelle wurde ein Halbwort, und jedes Symbol danach lag acht Bytes
+                                      6 * zu frueh, stillschweigend bei rc 0 (cc370#253).
+                                      7 *
+                                      8 * Die Adresstypen ein paar Zeilen darueber haben ihre Liste immer
+                                      9 * geteilt; hier tut es der Festkomma-Zweig auch.
+                                     10 *
+                                     11 * V1 und V5 sind die Faelle. Die Kontrollen sind die drei Formen, die
+                                     12 * schon vorher stimmten, und jede schliesst eine andere falsche
+                                     13 * Verallgemeinerung aus:
+                                     14 *
+                                     15 *   V2  H'7'            ein einzelner Wert - unveraendert
+                                     16 *   V3  3H'7'           Wiederholungsfaktor multipliziert die LISTE,
+                                     17 *                       nicht den ersten Wert; hier ist die Liste
+                                     18 *                       einelementig, also muss dreimal 0007 stehen
+                                     19 *   V4  X'1234',X'5678' zwei getrennte OPERANDEN, nicht eine Liste -
+                                     20 *                       ein Fix, der auf oberster Ebene teilt statt
+                                     21 *                       im Rumpf, faellt hier auf
+                                     22 *   V7  C'AB'           der Zeichenzweig hat seinen eigenen Leser
+                                     23 *
+                                     24 * V5 zeigt ausserdem, dass die Ausrichtung erhalten bleibt: F beginnt
+                                     25 * auf dem Vollwort, also stehen zwei Fuellbytes vor dem ersten Wert.
+                                     26 *
+                                     27 * Punktzahl:  ohne Fix V1 = 0006, V5 = ein Vollwort
+                                     28 *             mit Fix  V1 = fuenf Halbworte, V5 = drei Vollworte
+000000                               29 DCVLIST  CSECT
+000000 0006000000110006              30 V1       DC    H'6,0,17,6,0'
+00000A 0007                          31 V2       DC    H'7'
+00000C 000700070007                  32 V3       DC    3H'7'
+000012 12345678                      33 V4       DC    X'1234',X'5678'
+000016 0000
+000018 0000000100000002              34 V5       DC    F'1,2,3'
+000024 00000009                      35 V6       DC    F'9'
+000028 C1C2                          36 V7       DC    C'AB'
+00002A FFFF0000FFFE                  37 V8       DC    H'-1,0,-2'
+                                     38          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 18.35 09/08/26
+DCVLIST  00001 00000000 00029
+V1       00002 00000000 00030
+V2       00002 0000000A 00031
+V3       00002 0000000C 00032
+V4       00002 00000012 00033
+V5       00004 00000018 00034
+V6       00004 00000024 00035
+V7       00002 00000028 00036
+V8       00002 0000002A 00037
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 18.35 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         38
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        68

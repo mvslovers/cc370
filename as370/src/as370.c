@@ -4352,8 +4352,28 @@ static void do_pass(int pass, char **lines, int nlines) {
                             lc += blen;
                         } }
                     } else {
-                        const char *q = strchr(p, '\''); if (q) val = strtol(q + 1, NULL, 10);
-                        for (k = 0; k < cnt; k++) { if (emit_dc) put(lc, val, blen); lc += blen; }
+                        /* One operand may carry a LIST of nominal values, and each is a
+                         * constant of its own: `DC H'6,0,17,6,0'' is five halfwords.
+                         * as370 read the body with a single strtol and emitted the
+                         * duplication factor's worth of the FIRST value -- so a
+                         * five-element table came out as one halfword and every symbol
+                         * after it was eight bytes early, silently at rc 0 (cc370#253).
+                         * The address types a few lines up have always split their list;
+                         * this is the fixed-point arm doing the same. */
+                        const char *q = strchr(p, '\'');
+                        if (!q) { for (k = 0; k < cnt; k++) { if (emit_dc) put(lc, 0, blen); lc += blen; } }
+                        else {
+                            char body[1024]; int bn = 0; const char *e = q + 1;
+                            while (*e && *e != '\'' && bn < 1023) body[bn++] = *e++;
+                            body[bn] = 0;
+                            static char fv[512][FLDW]; int nv = split_fields(body, fv, 512), vi;
+                            if (nv < 1) { nv = 1; fv[0][0] = 0; }
+                            for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
+                                val = fv[vi][0] ? strtol(fv[vi], NULL, 10) : 0;
+                                if (emit_dc) put(lc, val, blen);
+                                lc += blen;
+                            }
+                        }
                     }
                 } else if (ty == 'C') {                     /* EBCDIC characters; '' -> one quote */
                     const char *q = strchr(p, '\''); char body[1024]; int slen = 0;
