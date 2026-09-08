@@ -4390,12 +4390,20 @@ static void a_src_section(char **lines, int nl) {
         int noasm = (lflags[i] & LF_NOASM) != 0;
         const struct opc *o = noasm ? NULL : op_find(op);
         int is_instr = (o != NULL);
-        int show_loc = 0, show_obj = 0;
+        int show_loc = 0, show_obj = 0, show_equ = 0;
         if (!noasm) {
             if (is_instr) { show_loc = show_obj = 1; }
             else if (!strcmp(op, "DC") || !strcmp(op, "DS") || !strcmp(op, "CCW") || !strcmp(op, "CNOP")) { show_loc = show_obj = 1; }
             else if (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") || !strcmp(op, "COM")) { show_loc = 1; }
-            else if (!strcmp(op, "EQU") || !strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }
+            /* An EQU does not sit at the location counter -- it names a value --
+             * and IFOX00 lists it that way: LOC blank, the symbol's value in
+             * ADDR2. as370 printed the location counter in LOC instead, which is
+             * a number that has nothing to do with the statement. It cost two
+             * withdrawn findings in two sessions on one day (cc370#224 and the
+             * PREFL lead on #201), both from reading that column as the value.
+             * ORG and LTORG do move the counter and keep LOC. */
+            else if (!strcmp(op, "EQU")) { show_equ = 1; }
+            else if (!strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }
         }
         long loc = lrecs[i].loc; int len = lrecs[i].len;
         if (is_instr) {                                /* a halfword-alignment pad prints as its own object line */
@@ -4407,6 +4415,8 @@ static void a_src_section(char **lines, int nl) {
         if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex); if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
         if (!noasm && lrecs[i].hasa1) { char b[16]; sprintf(b, "%05lX", lrecs[i].a1 & 0xfffffL); memcpy(ln + 22, b, 5); }
         if (!noasm && lrecs[i].hasa2) { char b[16]; sprintf(b, "%05lX", lrecs[i].a2 & 0xfffffL); memcpy(ln + 28, b, 5); }
+        if (show_equ && lbl[0]) { struct sym *s = sym_find(lbl);
+            if (s && s->defined) { char b[16]; sprintf(b, "%05lX", s->val & 0xfffffL); memcpy(ln + 28, b, 5); } }
         { char sn[12]; int dl = sprintf(sn, "%d", stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
         { const char *s = gcard[i] ? gcard[i] : lines[i]; int sl = (int)strlen(s);
           while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
