@@ -10,7 +10,11 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-06, second pass — five PRs merged
+*Last reconciled against the tracker: 2026-09-08 — five PRs merged that day
+(#212, #214, #216 carrying two commits, #219), and six issues filed (#209, #210,
+#211, #215, #217, #218). `as370 == IFOX00` stands at **4,753 of 5,528 (86.0 %)**
+and every one of the 5,528 modules produces a deck for the first time. Before
+that, 2026-09-06, second pass — five PRs merged
 that day (#116, #119, #120, #121 for #109; #122, #123, #124 for #110). `#110` is
 functionally complete and accepted by its consumer; `#109`'s readers are in and
 only the as370/ld370/ar370 adoption is left. #117 and #118 remain open defects
@@ -66,7 +70,7 @@ this file that is a joint plan rather than our own ranking:**
 | | Issue | Why here |
 |---|---|---|
 | A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
-| B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. **It is larger than the five, and #165 proved how**: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. Same shape suspected and unscoped in `dc_split` (`:643`), `EQU` (`:3413`) and `SYM+(expr)` (`:761`). |
+| B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. **It is larger than the five, and #165 proved how**: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. **`dc_split` is now measured and closed** (#218): it read every apostrophe as a string quote, so `DC AL1(L'FLD),X'FF'` dropped the `X'FF'` — at rc 0, and **IFOX00 assembles the same statement at rc 0 with no diagnostics either**, which is the cleanest argument in this file for why the deck is the instrument. `EQU` (`:3413`) and `SYM+(expr)` (`:761`) remain suspected and unscoped. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
 | D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. |
 
@@ -93,8 +97,18 @@ repaired.**
   `attr_apos()` is not the fix: stateless, it misreads the closing quote of
   `C'E'` and moves 10 of 399 sampled modules *away* from IFOX. Gate it on quote
   state, and use IFOX's letter set `T L I S N K` (`ifnx1a.asm:4862`), not
-  `LTKNISE`. `dc_split` (`as370.c:643`) has the same blindness on the DC path,
-  and there it is silent: 4 modules, 72 cards, wrong bytes at rc 0.
+  `LTKNISE`. `dc_split` had the same blindness on the DC path and is **fixed**
+  (#218, +2, none lost) — silent there in the strongest sense: `as370` dropped
+  every constant after the apostrophe at rc 0, and IFOX00 assembles the same
+  statement at rc 0 with no diagnostics, so only a byte comparison could see it.
+
+  **The three letter sets in as370 are not all one bug, and the oracle says so.**
+  `dc_split` took `KNLT`, deliberately: IFOX00 reads `S'` and `I'` in an ordinary
+  expression as an opening quote and answers `IFO035 QUOTES NOT PAIRED`
+  (measured). So the narrow set is right for a `DC` operand and the wide one for
+  a card scan, where conditional assembly also passes — they differ **by
+  context**. What remains wrong is the `E`: IFOX's own set is `T L I S N K`
+  (`ifnx1a.asm:4862`) and `attr_apos` carries `LTKNISE`.
 
 - **#151** — a `SETC` value is clipped at 95 characters where IFOX00 holds 255.
   Silent, and it re-emerges wearing someone else's name: a substring indexing
@@ -303,8 +317,15 @@ nine copies. In one of them (`note_operr`) the cap can also mis-state the severi
 
 `parse()`'s operand tokenizer toggles string state on every apostrophe with no
 attribute-operator exception, so `L'SYM` opens a string that never closes and the
-trailing comment is absorbed. Historically harmless, and every *other* scanner in
-as370 already special-cases it.
+trailing comment is absorbed. Fixed for `parse()` itself in #182.
+
+**"Every *other* scanner in as370 already special-cases it" was written here and
+was false.** `dc_split` did not, and it dropped constants silently until #218.
+Six readers of the same apostrophe now exist; three carry `KNLT`, one `LTKNIS`,
+one `LTKNISE`, and one decides at the opening quote and skips to the close.
+Before treating any of that as neglect, note that IFOX00 itself answers `IFO035`
+for `S'` in an ordinary expression — so some of the asymmetry is correct, and
+only an oracle separates the two cases.
 
 **The lockstep is the point.** #32's `has_overlong_term` was deliberately written
 to mirror the buggy tokenization, and #34 disclosed the false negative that
@@ -594,6 +615,69 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-08 — five merges, +10 identities, none lost, and every module in the
+  corpus produces a deck for the first time.**
+
+  | PR | | gained | note |
+  |---|---|---|---|
+  | #212 | `scopy` in `set_put` | 0 | `main` had been red since #208 on a gcc-only `-Wstringop-truncation` |
+  | #214 | a CCW data address written as `*` is relocatable | +7 | |
+  | #216 | `expr_sect` never terminates on a comma (#215) | 0 | `HEWLDIOC` assembles for the first time |
+  | #216 | a cross-section difference needs a signed pair (#209) | +1 | |
+  | #219 | the attribute apostrophe is not a quote in `dc_split` (#218) | +2 | |
+
+  The `gained` column is `retest.py` on this host, each PR against its own
+  parent. Standing after them, from `mvssrc`'s `ifox_compare.py`: **4,753 of
+  5,528 (86.0 %)**, hand-over 853, thirty-five merges without a lost identity —
+  `retest.py` reads 4,745 for the same tree, which is the ten-minute answer and
+  not a disagreement. Name the tool with the number.
+
+  **The relocation dictionary is now correct on every module whose bytes are
+  correct.** Before #209 there was exactly one exception in the tree, and that
+  was the whole class — right value, right image, a loader that would not
+  relocate it, invisible to anything that rebuilds the image.
+
+  **A lost deck is a regression and the identity line cannot show it.** #209's
+  first gate read `+1 gained, LOST 0` and, on a different line, `deck NOW
+  MISSING: 2`. The identity figure was correct and meaningless: with no deck
+  there is nothing to compare, so every other line silently excluded those
+  modules. `retest.py`'s hint said a vanished deck is *usually* the worker's
+  alarm — true twice running, which is exactly what makes a hint get followed
+  instead of the procedure it recommends. Timing the two alone took thirty
+  seconds: 0 s on `main`, never on the candidate. A hang.
+
+  **An alarm cannot tell slow from broken — it reports where measurement
+  stopped.** `HEWLDIOC` was recorded in both runbooks as a module that "does not
+  terminate in 300 s and never will within any alarm". The 300 s was measured;
+  *never* was a conclusion. It had been hung on `main` for eleven months in a
+  walk with no progress guard, reachable from an ordinary machine-operand path,
+  and it now assembles in 0 s to within 4 bytes of IFOX00 out of 5,056. Writing
+  a measurement limit down as a property of the thing measured is what stops it
+  being a question.
+
+  **A difference class is not a cause class.** A sweep of every deck's relocation
+  dictionary gave 78 modules and 410 missing entries, read as a small fix with
+  twenty times the reach of the one-module case in hand. Split by what each
+  module *already* disagreed about — 43 with undefined symbols, 28 with a wrong
+  TXT image — **390 of the 410 were downstream**, and the genuine class was 7
+  modules and 20 entries. The entry comparison cannot tell a missing relocation
+  from a missing *symbol* and reports both identically.
+
+  **"Lexical" is a property of the text you are reading, not of the construct.**
+  #218's source scan found the construct in two modules; **neither of the two
+  gainers was one of them.** The operand reached them through a macro. The
+  characters really were on a card — just not on a card anyone was scanning.
+
+  **Two paths over the same term, one right — four times in one week.** The SS
+  implied length (#201), `tgtreal` on the `DC` path against the CCW path (#210),
+  and `reloc_sym` against `expr_sect` twice, once for a dropped relocation and
+  once for the hang (#215). It is a class of *place*, not a class of bug:
+  wherever two walks read the same syntax and only one has been maintained. A
+  source pass, since the consequence is indistinguishable from any other wrong
+  byte until you know which construct to look for. **And it generates false
+  positives that only an oracle kills** — six readers of the attribute apostrophe
+  carry three different letter sets, and the asymmetry is correct.
 
 - **The 2026-09-07 run with `mvs38src`: six merges, 271 modules gained, not one
   identity lost.** That last clause is the one worth quoting — the gain says the
