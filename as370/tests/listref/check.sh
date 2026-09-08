@@ -259,4 +259,55 @@ PYX
            || { echo "listref setc_open: MISMATCH"; fail=1; }
 rm -f "$OUT5"
 
+# --- case 6: equlist -- EQU / ORG / DSECT in the LOC and ADDR2 columns -------
+# The first listref case with an EQU in it, which is how #226 went unnoticed:
+# the suite has been column-exact since it was written and simply never saw one.
+#
+# Two lines are EXPECTED to differ and are asserted rather than tolerated -- ORG
+# and DSECT list the incoming location counter where IFOX00 lists their own
+# (#227). The check fails if either stops differing, so fixing #227 breaks this
+# case loudly and asks for the expectation to be updated. That is the point:
+# a divergence nobody has to look at is a divergence nobody will fix.
+REF6=tests/listref/ifox-listing-equlist.txt
+OUT6=/tmp/as370-listref-eq.$$
+ASMDATE=09/07/26 ASMTIME=12.00 ./as370 tests/listref/equlist.s -a="$OUT6" >/dev/null 2>&1
+python3 - "$REF6" "$OUT6" <<'PYE'
+import sys
+ref  = open(sys.argv[1]).read().split("\n")
+mine = open(sys.argv[2]).read().split("\n")
+HDR = ("SYMBOL   TYPE", "  LOC  OBJECT", "POS.ID")
+KNOWN = ("ORG", "DSECT")          # cc370#227, asserted below
+def norm(lines):
+    out = []
+    for l in lines:
+        l = l.replace("\f", "").rstrip()
+        if "CROSS-REFERENCE" in l:         break
+        if l == "":                        continue
+        if l.strip() == "*** ERROR ***":   continue
+        out.append(l)
+    return out
+R, M = norm(ref), norm(mine)
+ok, seen = True, set()
+for i in range(max(len(R), len(M))):
+    r = R[i] if i < len(R) else "<none>"
+    m = M[i] if i < len(M) else "<none>"
+    hdr = any(r.startswith(p) for p in HDR)
+    rc, mc = (r[:90], m[:90]) if hdr else (r, m)
+    known = next((k for k in KNOWN if f"   {k}" in r or f" {k}" == r[-len(k)-1:]), None)
+    if known and rc != mc:
+        seen.add(known)                    # the #227 divergence, expected
+        continue
+    if rc != mc:
+        ok = False
+        print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
+missing = [k for k in KNOWN if k not in seen]
+if missing:
+    ok = False
+    print(f"#227 no longer diverges on {missing} -- fixed? update this case")
+sys.exit(0 if ok else 1)
+PYE
+[ $? = 0 ] && echo "listref equlist: EQU value in ADDR2 column-exact to IFOX00 (ORG/DSECT diverge, #227)" \
+           || { echo "listref equlist: MISMATCH"; fail=1; }
+rm -f "$OUT6"
+
 exit $fail

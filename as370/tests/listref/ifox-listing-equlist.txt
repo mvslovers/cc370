@@ -1,0 +1,61 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.27 09/08/26
+EQULIST   SD  0001 000000 00000F
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.27 09/08/26
+                                      1 * Ein EQU steht nicht am Ortszaehler - es benennt einen WERT. IFOX00
+                                      2 * listet es so: LOC bleibt leer, der Wert des Symbols steht in ADDR2
+                                      3 * (Spalten 29-33). as370 druckte stattdessen den Ortszaehler in LOC,
+                                      4 * eine Zahl, die mit der Anweisung nichts zu tun hat (cc370#226).
+                                      5 *
+                                      6 * Das hat an einem Tag zwei Befunde gekostet, in zwei Sitzungen, beide
+                                      7 * aus dem Lesen dieser Spalte als Wert: cc370#224 und die PREFL-Spur
+                                      8 * an #201. DL unten ist genau die PREFL-Form - eine Differenz in einer
+                                      9 * DSECT, deren Ortszaehler an dieser Karte zufaellig anders steht als
+                                     10 * der Wert.
+                                     11 *
+                                     12 * E3 ist absolut, E1/E2 relocierbar, E4 eine Differenz im selben
+                                     13 * Abschnitt. ORG und LTORG behalten LOC, denn sie bewegen den Zaehler
+                                     14 * wirklich - hier steht ein ORG als Gegenprobe.
+000000                               15 EQULIST  CSECT
+000000                               16 A1       DS    CL7
+000007                               17 A2       DS    CL3
+                            00000    18 E1       EQU   A1
+                            00004    19 E2       EQU   A1+4
+                            00008    20 E3       EQU   8
+                            00007    21 E4       EQU   A2-A1
+00000A 07                            22          DC    AL1(E4)
+00000B                               23          DS    CL4
+00000F                      0000D    24          ORG   *-2
+00000D                               25          DS    CL2
+000000                               26 DMAP     DSECT
+000000                               27 D1       DS    CL4
+000004                               28 D2       DS    CL2
+                            00004    29 DL       EQU   D2-DMAP
+                                     30          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.27 09/08/26
+A1       00007 00000000 00016  00018 00019 00021
+A2       00003 00000007 00017  00021
+DL       00002 00000004 00029
+DMAP     00001 00000000 00026  00029
+D1       00004 00000000 00027
+D2       00002 00000004 00028  00029
+EQULIST  00001 00000000 00015
+E1       00007 00000000 00018
+E2       00007 00000004 00019
+E3       00001 00000008 00020
+E4       00003 00000007 00021  00022
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 12.27 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         30
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        61
