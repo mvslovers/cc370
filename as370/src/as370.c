@@ -1112,9 +1112,18 @@ static char g_sysect[9] = "";
  * The number is deliberately modest and the bound is now written ONCE. It was
  * written twice -- the array said 256 and the check said 256 independently --
  * which is how a capacity limit drifts: raising one and not the other changes
- * nothing and looks like it did. This lives in `struct ctx', a stack frame that
- * mexp_macro already carries at ~92 KB with no recursion guard, so it is not the
- * place to be generous. */
+ * nothing and looks like it did.
+ *
+ * Be sparing here for a reason that is a PRODUCT, not an absence. Nesting IS
+ * bounded -- mexp_line's macro lookup is guarded by `depth <= 40' (and COPY the
+ * same) -- so this is not unguarded recursion; an earlier version of this
+ * comment said it was, which came from grepping for `depth >' and concluding
+ * from a miss. What matters is that `struct ctx' rides a stack frame of about
+ * 124 KB together with mexp_macro's seqn/seqi pair, and 40 levels of that is
+ * ~5 MB. So every per-context table here multiplies by 40, and the raise from
+ * 256 to 512 alone spent about 1.2 MB of headroom. The next module that wants
+ * 1,024 cannot be served by doubling again -- see cc370#196, which moves ctx and
+ * the seq pair off the stack. */
 #define MAXLSET 512
 #define MAXSYSLIST 64
 struct ctx {
