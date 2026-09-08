@@ -3590,8 +3590,20 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (pass == 2) { char F[4][FLDW]; int nf = split_fields(opnd, F, 4);
                 put(lc, expr_val(F[0], 0) & 0xff, 1);
                 int rc = 0; long av = nf >= 2 ? expr_val(F[1], &rc) : 0; put(lc + 1, av, 3);
+                /* The data address is relocatable, so it needs an RLD entry -- and
+                 * `*' is a relocatable target like any label.  This used to demand a
+                 * SYMBOL: reloc_sym returns "*" for the location counter, sym_find
+                 * has nothing to find, and the entry was dropped.  A channel program
+                 * that reads into its own CCW string writes `CCW cmd,*,flags,n', which
+                 * is ordinary rather than exotic -- the loader then never relocated the
+                 * address, so it was right only while the module sat at the origin the
+                 * assembler gave it.  The DC path has always taken the location counter
+                 * (its `tgtreal' below); this is the same predicate, missing here. */
                 if (rc != 0) { char rsym[64]; reloc_sym(F[1], rsym, sizeof rsym);
-                    struct sym *es = sym_find(rsym); if (es && !dsect_sect[es->sect & 255]) { add_reloc(lc + 1, rsym, 0, 3); } }
+                    struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
+                    int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255]
+                                                   : (es && !dsect_sect[es->sect & 255]);
+                    if (tgtreal) { add_reloc(lc + 1, rsym, 0, 3); } }
                 put(lc + 4, nf >= 3 ? expr_val(F[2], 0) & 0xff : 0, 1); put(lc + 5, 0, 1);
                 put(lc + 6, nf >= 4 ? expr_val(F[3], 0) & 0xffff : 0, 2); }
             lc += 8;
