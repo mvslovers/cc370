@@ -1851,7 +1851,17 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
              * and takes the DCB common-interface block with them (#63). */
             int j, q = 0, d = 0;
             for (j = os; j < a; j++) { char ch = acc[j];
-                if (ch == '\'') q = !q;
+                /* An ATTRIBUTE apostrophe is not a quote here either (#184), and
+                 * inside a string an apostrophe can only close one -- the same
+                 * pair of rules parse() needed in #182 and split_card() in #183.
+                 * Without the first, `MYM L'A,BB,   REMARK' continued onto a
+                 * second card folded the remark into the joined statement and the
+                 * trailing parameter resolved to nothing: IFOX00 assembles
+                 * DC C'CC', as370 assembled DC C'' (tests/contattr.s). Without
+                 * the second, the closing quote of a string ending in an
+                 * attribute letter reads as an attribute and the string never
+                 * closes -- that is the omission that cost 96 decks in #182. */
+                if (ch == '\'') { if (q || !attr_apos(acc, j)) q = !q; }
                 else if (!q && ch == '(') d++;
                 else if (!q && ch == ')') { if (d) d--; }
                 else if (!q && (d == 0 || !condexpr) && (ch == ' ' || ch == '\t')) { a = j; break; }

@@ -1,0 +1,55 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 22.46 09/07/26
+T         SD  0001 000000 00000A
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 22.46 09/07/26
+                                      1 * Fortgesetzte Anweisung: das Attribut-Apostroph (#184).
+                                      2 *
+                                      3 * join_cont() entscheidet, wo der Operand der ERSTEN Karte endet.
+                                      4 * Kippt der Quote-Zustand am L', gilt das Blank davor als in
+                                      5 * Anfuehrungszeichen, der Operand endet nicht, und die Bemerkung
+                                      6 * wird in die zusammengefaltete Anweisung uebernommen.
+                                      7 *
+                                      8 * Drei Faelle, und der dritte ist der wichtige:
+                                      9 *
+                                     10 *   1  L'A  -> ohne Fix wird &C leer:      DC C''  statt DC C'CC'
+                                     11 *   2  4    -> Kontrolle ohne Attribut:    DC C'DD'
+                                     12 *   3  'S'  -> die Zeichenkette endet auf ein Attributzeichen.
+                                     13 *      attr_apos() ist rein lexikalisch und liest das
+                                     14 *      SCHLIESSENDE Anfuehrungszeichen als Attribut; ohne das
+                                     15 *      `q ||' schliesst die Kette nie.  Genau diese Auslassung
+                                     16 *      kostete in #182 sechsundneunzig Decks.
+                                     17 *      IFOX00: DC C'EE'
+                                     18          MACRO
+                                     19 &L       MYM   &A,&B,&C
+                                     20 &L       DC    C'&C'
+                                     21          MEND
+000000                               22 T        CSECT
+000000 C1C2C3C4                      23 A        DC    CL4'ABCD'
+                                     24          MYM   L'A,BB,                    BEMERKUNG                    X00010000
+                                                       CC                                                       00020000
+000004 C3C3                          25+         DC    C'CC'
+                                     26          MYM   4,BB,                      BEMERKUNG                    X00030000
+                                                       DD                                                       00040000
+000006 C4C4                          27+         DC    C'DD'
+                                     28          MYM   'S',BB,                    BEMERKUNG                    X00050000
+                                                       EE                                                       00060000
+000008 C5C5                          29+         DC    C'EE'
+000000                               30          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 22.46 09/07/26
+A        00004 00000000 00023
+T        00001 00000000 00022  00030
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 22.46 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         30
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        55
