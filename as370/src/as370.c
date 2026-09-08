@@ -1104,12 +1104,24 @@ static char g_sysect[9] = "";
  * guard, so the count stayed right while &SYSLIST(k) came back empty. It is a
  * diagnostic now, because a bound that is exceeded quietly is the defect this
  * one was. */
+/* Local SET symbols per macro context. 256 was too small by a little: IFCEOAK1
+ * needs 295, IFCEXXXF 303, IFCSXXXG 288 -- and the ones that reach these numbers
+ * only reach them once N'&SYSLIST stops cutting their loops short, so the old
+ * bound had been hidden behind that defect.
+ *
+ * The number is deliberately modest and the bound is now written ONCE. It was
+ * written twice -- the array said 256 and the check said 256 independently --
+ * which is how a capacity limit drifts: raising one and not the other changes
+ * nothing and looks like it did. This lives in `struct ctx', a stack frame that
+ * mexp_macro already carries at ~92 KB with no recursion guard, so it is not the
+ * place to be generous. */
+#define MAXLSET 512
 #define MAXSYSLIST 64
 struct ctx {
     struct macro *m;
     char pv[100][96];                      /* parameter values (may be sublists) */
     const char *namepval;
-    char sn[256][20], sv[256][96]; int nset;  /* local SET symbols */
+    char sn[MAXLSET][20], sv[MAXLSET][96]; int nset;  /* local SET symbols */
     int sysndx;                            /* &SYSNDX for this macro invocation */
     char sysect[9];                        /* &SYSECT, frozen at the call (see g_sysect) */
     char syslist[MAXSYSLIST][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
@@ -1126,7 +1138,14 @@ struct ctx {
  * module. The bound is now far out of reach AND fatal if it is ever reached: a
  * silently dropped variable symbol cannot be debugged from the object deck. */
 #define MAXGBL  1024                   /* distinct names declared GBLA/GBLB/GBLC */
-#define MAXGSET 4096                   /* global SET symbols actually assigned */
+/* Global SET symbols actually assigned. 4,096 was too small: IFCE0155 needs
+ * 6,757 and IFCEE155 5,646, and they reach those numbers only once the &SYSLIST
+ * count stops cutting their macros short -- so this bound was concealed behind
+ * that one and surfaced as fourteen modules losing their deck entirely
+ * (cc370#173). This table is static rather than on the stack, so the margin
+ * costs address space and nothing else; the lookup is a linear scan, but it
+ * scales with what a module actually assigns, not with the bound. */
+#define MAXGSET 32768
 static char g_gbl[MAXGBL][20]; static int g_ngbl;
 static char g_sn[MAXGSET][20], g_sv[MAXGSET][96]; static int g_nset;
 static void base_of(const char *n, char *b) { int i = 0; while (n[i] && n[i] != '(' && i < 19) { b[i] = n[i]; i++; } b[i] = 0; }
@@ -1148,7 +1167,7 @@ static void set_put(struct ctx *c, const char *n, const char *v) {
     }
     char *e = set_find(c, n);
     if (e) { strncpy(e, v, 95); e[95] = 0; return; }
-    if (c->nset >= 256) { fprintf(stderr, "as370: local SET-symbol table full (256)\n"); exit(2); }
+    if (c->nset >= MAXLSET) { fprintf(stderr, "as370: local SET-symbol table full (%d)\n", MAXLSET); exit(2); }
     strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
     strncpy(c->sv[c->nset], v, 95); c->sv[c->nset][95] = 0; c->nset++;
 }
