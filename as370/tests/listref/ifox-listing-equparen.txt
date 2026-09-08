@@ -1,0 +1,83 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.59 09/08/26
+P8        SD  0001 000000 000011
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.59 09/08/26
+                                      1 * L' eines EQU ist die Laengenangabe des LINKESTEN TERMS (cc370#194).
+                                      2 * Eine Gruppierungsklammer verbirgt diesen Term aber nicht: IFOX00 gibt
+                                      3 * (A+4) die Laenge von A. as370 pruefte direkt auf einen Buchstaben,
+                                      4 * fand die Klammer und lieferte 1 (cc370#221).
+                                      5 *
+                                      6 * Die Regel ist mit dem Orakel festgenagelt, nicht geraten:
+                                      7 *
+                                      8 *   F1 (S1+4)      7   Klammer wird uebersprungen
+                                      9 *   F3 ((S1))      7   auch mehrere
+                                     10 *   F4 (S1)+4      7   die Klammer schliesst vor dem Rest
+                                     11 *   F5 (S2+1)      3   anderes Symbol, andere Laenge
+                                     12 *
+                                     13 * Drei Kontrollen, die 1 bleiben MUESSEN, und jede schliesst eine
+                                     14 * andere falsche Regel aus:
+                                     15 *
+                                     16 *   F2 (4+S1)      1   linkester Term ist die Zahl - wer nur "erstes
+                                     17 *                      Symbol im Ausdruck" sucht, faellt hier auf
+                                     18 *   F6 (X'04'+S1)  1   selbstdefinierender Term, kein Symbol
+                                     19 *   F7 ( S1+4)     1   NUR die Klammer wird uebersprungen, nicht das
+                                     20 *                      Leerzeichen dahinter. IFOX00 meldet dafuer
+                                     21 *                      IFO234 (rc 8), as370 schweigt - eine
+                                     22 *                      Meldungsluecke, die hier bewusst nicht
+                                     23 *                      mitbehoben wird. Die Bytes sind gleich.
+                                     24 *
+                                     25 * Punktzahl:  ohne Fix 7x 01
+                                     26 *             mit Fix  07 01 07 07 03 01 01.
+000000                               27 P8       CSECT
+000000                               28 S1       DS    CL7
+000007                               29 S2       DS    CL3
+                            00004    30 F1       EQU   (S1+4)
+                            00004    31 F2       EQU   (4+S1)
+                            00000    32 F3       EQU   ((S1))
+                            00004    33 F4       EQU   (S1)+4
+                            00008    34 F5       EQU   (S2+1)
+                            00004    35 F6       EQU   (X'04'+S1)
+                            00000    36 F7       EQU   ( S1+4)
+         *** ERROR ***
+00000A 07                            37 M1       DC    AL1(L'F1)
+00000B 01                            38 M2       DC    AL1(L'F2)
+00000C 07                            39 M3       DC    AL1(L'F3)
+00000D 07                            40 M4       DC    AL1(L'F4)
+00000E 03                            41 M5       DC    AL1(L'F5)
+00000F 01                            42 M6       DC    AL1(L'F6)
+000010 01                            43 M7       DC    AL1(L'F7)
+                                     44          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.59 09/08/26
+F1       00007 00000004 00030  00037
+F2       00001 00000004 00031  00038
+F3       00007 00000000 00032  00039
+F4       00007 00000004 00033  00040
+F5       00003 00000008 00034  00041
+F6       00001 00000004 00035  00042
+F7       00001 00000000 00036  00043
+M1       00001 0000000A 00037
+M2       00001 0000000B 00038
+M3       00001 0000000C 00039
+M4       00001 0000000D 00040
+M5       00001 0000000E 00041
+M6       00001 0000000F 00042
+M7       00001 00000010 00043
+P8       00001 00000000 00027
+S1       00007 00000000 00028  00030 00031 00032 00033 00035
+S2       00003 00000007 00029  00034
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 10.59 09/08/26
+   36  IFO234      PREMATURE END OF EXPRESSION NEAR OPERAND COLUMN 2
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         44
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        83
