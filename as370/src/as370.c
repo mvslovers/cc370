@@ -473,6 +473,32 @@ static struct lit *lit_get(const char *t) {
  * The doubling rule is one rule and it now lives in one place, which is the
  * point -- the defect was not the missing branch, it was having three readers
  * of one syntax to keep in step. */
+/* Append the low N bits of V, most significant first, to a bit string.
+ *
+ * A length modifier may be given in BITS -- `DC AL.12(1)' is a twelve-bit
+ * field. as370's length parse read `L' and then expected digits, so `.' ended
+ * it with a length of ZERO: the constant emitted nothing and moved the location
+ * counter by nothing, silently at rc 0, and every symbol after it was early by
+ * what was never reserved. That is the mechanism behind cc370#205 -- one
+ * control section per module short, both assemblers quiet (cc370#240).
+ *
+ * The rules, measured on IFOX00 rather than assumed:
+ *   consecutive bit operands in one statement PACK contiguously, duplication
+ *   factor included; the run is padded ON THE RIGHT to a byte boundary when a
+ *   non-bit operand interrupts it or the statement ends; every statement starts
+ *   on a byte boundary. `DC AL.3(5)' is A0, `DC AL.12(1),AL2(3)' is 0010 0003,
+ *   and `DC 3AL.4(1)' is 1110. */
+static void bits_put(unsigned char *buf, int bufsz, int *nbits, unsigned long v, int n) {
+    int k;
+    for (k = n - 1; k >= 0; k--) {
+        int idx = *nbits >> 3, off = 7 - (*nbits & 7);
+        if (idx < bufsz) {
+            if (off == 7) buf[idx] = 0;
+            if ((v >> k) & 1UL) buf[idx] |= (unsigned char)(1 << off);
+            (*nbits)++;
+        }
+    }
+}
 static long selfdef_cbody(const char **pp) {
     const char *p = *pp; long v = 0;
     while (*p) {
@@ -3842,6 +3868,9 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
             static char ops[256][1024]; int nops = dc_split(opnd, ops, 256), oi;
             int emit_dc = (pass == 2 && !strcmp(op, "DC"));
+            /* One bit run per statement, flushed when a non-bit operand
+             * interrupts it or the statement ends (cc370#240). */
+            static unsigned char bitbuf[8192]; int bitn = 0;
             for (oi = 0; oi < nops; oi++) {
                 const char *p = ops[oi]; int cnt = 0, hascnt = 0, k;
                 while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
@@ -3914,8 +3943,24 @@ static void do_pass(int pass, char **lines, int nlines) {
                 }
                 if (!hascnt) cnt = 1;
                 int ty = *p ? toupper((unsigned char)*p++) : 0;
-                int blen = 0, haslen = 0;            /* explicit length modifier Ln or L(expr) */
-                if (*p == 'L') { p++; haslen = 1;
+                int blen = 0, haslen = 0, bitlen = 0;   /* explicit length modifier Ln, L(expr) or L.n (bits) */
+                if (*p == 'L' && p[1] == '.') { p += 2;   /* a length in BITS */
+                    haslen = 1;
+                    if (*p == '(') { const char *st = p + 1, *q = st; int d = 1, qt = 0;
+                        for (; *q; q++) {
+                            if (*q == '\'') { qt = !qt; continue; }
+                            if (qt) continue;
+                            if (*q == '(') d++;
+                            else if (*q == ')' && --d == 0) break;
+                        }
+                        char ex2[256]; int en2 = (int)(q - st); if (en2 > 255) en2 = 255;
+                        memcpy(ex2, st, (size_t)en2); ex2[en2] = 0;
+                        bitlen = (int)expr_val_full(ex2, NULL);
+                        p = *q ? q + 1 : q; }
+                    else while (isdigit((unsigned char)*p)) bitlen = bitlen * 10 + (*p++ - '0');
+                    if (bitlen < 1) bitlen = 1;
+                }
+                else if (*p == 'L') { p++; haslen = 1;
                     /* Two defects lived on this line, and the comment on the
                      * duplication factor above named the second one and left it.
                      * strchr(')') took the FIRST close paren, so L((*-CSECT)/20)
@@ -3938,6 +3983,46 @@ static void do_pass(int pass, char **lines, int nlines) {
                         p = *q ? q + 1 : q; }
                     else while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
+                /* A bit field joins the run and does not move the location
+                 * counter; anything else flushes the run first. The values are
+                 * taken by type -- a paren list for the address constants, the
+                 * quoted body otherwise -- and each is truncated to its width,
+                 * most significant bit first (cc370#240). */
+                if (bitlen > 0) {
+                    if (setlbl) { struct sym *s0 = sym_get(lbl); s0->val = lc; s0->defined = 1; s0->sect = cur_sect_id; s0->len = (bitlen + 7) / 8; }
+                    int rep;
+                    if (*p == '(') {
+                        const char *lp2 = p, *rp2 = strrchr(p, ')');
+                        char in2[512]; int n2 = (rp2 && rp2 > lp2) ? (int)(rp2 - lp2 - 1) : 0;
+                        if (n2 > 511) n2 = 511;
+                        if (n2 > 0) memcpy(in2, lp2 + 1, (size_t)n2);
+                        in2[n2 > 0 ? n2 : 0] = 0;
+                        static char vv2[64][FLDW]; int nv2 = split_fields(in2, vv2, 64), vj2;
+                        if (nv2 < 1) { nv2 = 1; vv2[0][0] = 0; }
+                        for (rep = 0; rep < cnt; rep++)
+                            for (vj2 = 0; vj2 < nv2; vj2++)
+                                bits_put(bitbuf, (int)sizeof bitbuf, &bitn,
+                                         (unsigned long)(vv2[vj2][0] ? expr_val_full(vv2[vj2], NULL) : 0), bitlen);
+                    } else if (*p == '\'') {
+                        const char *b2 = p + 1; unsigned long v2 = 0;
+                        if (ty == 'B')      { while (*b2 && *b2 != '\'') v2 = v2 * 2 + (*b2++ == '1' ? 1 : 0); }
+                        else if (ty == 'X') { while (*b2 && *b2 != '\'') { int c2 = toupper((unsigned char)*b2++);
+                                                  v2 = v2 * 16 + (unsigned long)((c2 >= '0' && c2 <= '9') ? c2 - '0' : (c2 >= 'A' && c2 <= 'F') ? c2 - 'A' + 10 : 0); } }
+                        else if (ty == 'C') { while (*b2 && *b2 != '\'') v2 = (v2 << 8) | mvs_a2e((unsigned char)*b2++); }
+                        else                { char nb2[64]; int k2 = 0;
+                                              while (*b2 && *b2 != '\'' && k2 < 63) nb2[k2++] = *b2++;
+                                              nb2[k2] = 0; v2 = (unsigned long)strtol(nb2, NULL, 10); }
+                        for (rep = 0; rep < cnt; rep++) bits_put(bitbuf, (int)sizeof bitbuf, &bitn, v2, bitlen);
+                    } else {
+                        for (rep = 0; rep < cnt; rep++) bits_put(bitbuf, (int)sizeof bitbuf, &bitn, 0UL, bitlen);   /* DS: reserve only */
+                    }
+                    continue;
+                }
+                if (bitn > 0) {   /* a non-bit operand ends the run: pad right to a byte */
+                    int nb2 = (bitn + 7) / 8, z2;
+                    for (z2 = 0; z2 < nb2; z2++) { if (emit_dc) put(lc, bitbuf[z2], 1); lc++; }
+                    bitn = 0;
+                }
                 if (ty == 'E' || ty == 'D' || ty == 'L') {
                     /* Floating point. DCTABLE (ifnx5d.asm:1164): E 4 bytes on a
                      * fullword, D 8 and L 16 on a doubleword; a length modifier
@@ -4196,6 +4281,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * the statement is now flagged, which is the whole point. */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
                 }
+            }
+            if (bitn > 0) {   /* the statement ends the run */
+                int nb3 = (bitn + 7) / 8, z3;
+                for (z3 = 0; z3 < nb3; z3++) { if (emit_dc) put(lc, bitbuf[z3], 1); lc++; }
+                bitn = 0;
             }
             if (!in_dsect) { if (lc > modlen) modlen = lc; note_sect_lc(lc); }   /* a DS reserves space that extends the section length even though it writes no TXT */
         } else if (!strcmp(op, "CXD")) {

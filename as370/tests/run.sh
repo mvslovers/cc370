@@ -258,6 +258,16 @@ rm -f /tmp/_au.$$
 # proves two pairs make two bytes rather than one.
 #   main 6215f9f   00 C1 7D 50 7D 0000
 #   IFOX00, this   7D C1 7D 50 7D 7D7D
+# bitlen is the #240 oracle: a length modifier may be given in BITS, and as370's
+# parse ended at the '.' with a length of zero -- the constant reserved nothing
+# and every symbol after it was early, which is the mechanism behind #205. B1-BA
+# pin the rules (packing, right padding, the duplication factor, and a non-bit
+# operand flushing the run mid-statement); C1-C5 are the controls WITHOUT a bit
+# modifier, which must come out byte for byte unchanged. The second half is what
+# the 4831 identical modules depend on, and a fix that touched the ordinary
+# length path would fail there rather than in the tree.
+#   main 7bb7796   B1-BA emit nothing at all; C1-C5 correct
+#   IFOX00, this   0012 8743 0010 F0 E9 A0 1110 00100003 10C120 (2 reserved) FF
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -267,7 +277,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr equparen attre cnop aifcond eququote; do
+         xsectrel dcattr equparen attre cnop aifcond eququote bitlen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
