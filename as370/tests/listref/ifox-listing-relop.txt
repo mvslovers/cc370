@@ -1,0 +1,97 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 16.10 09/08/26
+RELOP     SD  0001 000000 000018
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 16.10 09/08/26
+                                      1 * Leerzeichen um einen Vergleichsoperator sind OPTIONAL, und IBMs
+                                      2 * Makros lassen sie routinemaessig weg. AMODGEN(SYSEVENT) bildet seine
+                                      3 * ganze Mnemonik-Tabelle so ab:
+                                      4 *
+                                      5 *     AIF   ('&EVENT'EQ'USERRDY').EOK
+                                      6 *
+                                      7 * as370s Tokenizer beendete das Operator-Token nicht am OEFFNENDEN
+                                      8 * Anfuehrungszeichen des rechten Operanden - es klebte zu einem Token
+                                      9 * EQ'USERRDY' zusammen, das kein Vergleichsoperator ist. Also wurde der
+                                     10 * Vergleich nie durchgefuehrt und das AIF fiel durch (cc370#243).
+                                     11 *
+                                     12 * Fuer SYSEVENT hiess das: die Kette lief an ihrem Treffer vorbei bis
+                                     13 * zu einer spaeteren Mnemonik UND ueberging ENTRY=BRANCH. Code 53 und
+                                     14 * ein SVC, wo IFOX00 Code 4 und ein BALR hat.
+                                     15 *
+                                     16 * Q2 ist die Kontrolle, die immer richtig war: dieselbe Bedingung MIT
+                                     17 * Leerzeichen. Eine Fixture nur daraus besteht auf beiden Binaries.
+                                     18 * Q3 prueft NE, Q4 einen Operator vor einer Klammer-Gruppe, und Q5 ist
+                                     19 * die Kontrolle in die Gegenrichtung: K'&E darf nicht zerlegt werden,
+                                     20 * das Apostroph gehoert dort zum Attribut, nicht zu einem Operator.
+                                     21 * (L'SYM in derselben Stellung ist auf BEIDEN Binaries falsch und hat
+                                     22 * mit dieser Aenderung nichts zu tun - cc370#244.)
+                                     23 *
+                                     24 * Punktzahl:  ohne Fix NOEQ OKSP NONE NOOR OKAT
+                                     25 *             mit Fix  OKEQ OKSP OKNE OKOR OKAT
+                                     26          MACRO
+                                     27          QAA   &E
+                                     28          AIF   ('&E'EQ'USERRDY').A
+                                     29          DC    C'NOEQ'
+                                     30          MEXIT
+                                     31 .A       DC    C'OKEQ'
+                                     32          MEND
+                                     33          MACRO
+                                     34          QBB   &E
+                                     35          AIF   ('&E' EQ 'USERRDY').B
+                                     36          DC    C'NOSP'
+                                     37          MEXIT
+                                     38 .B       DC    C'OKSP'
+                                     39          MEND
+                                     40          MACRO
+                                     41          QCC   &E
+                                     42          AIF   ('&E'NE'ZZZ').C
+                                     43          DC    C'NONE'
+                                     44          MEXIT
+                                     45 .C       DC    C'OKNE'
+                                     46          MEND
+                                     47          MACRO
+                                     48          QDD   &E
+                                     49          AIF   ('&E'EQ'USERRDY' OR '&E'EQ'X').D
+                                     50          DC    C'NOOR'
+                                     51          MEXIT
+                                     52 .D       DC    C'OKOR'
+                                     53          MEND
+                                     54          MACRO
+                                     55          QEE   &E
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 16.10 09/08/26
+                                     56          AIF   (K'&E EQ 3).E
+                                     57          DC    C'NOAT'
+                                     58          MEXIT
+                                     59 .E       DC    C'OKAT'
+                                     60          MEND
+000000                               61 RELOP    CSECT
+000000                               62 FLD      DS    F
+                                     63          QAA   USERRDY
+000004 D6D2C5D8                      64+         DC    C'OKEQ'
+                                     65          QBB   USERRDY
+000008 D6D2E2D7                      66+         DC    C'OKSP'
+                                     67          QCC   USERRDY
+00000C D6D2D5C5                      68+         DC    C'OKNE'
+                                     69          QDD   USERRDY
+000010 D6D2D6D9                      70+         DC    C'OKOR'
+                                     71          QEE   ABC
+000014 D6D2C1E3                      72+         DC    C'OKAT'
+                                     73          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 16.10 09/08/26
+FLD      00004 00000000 00062
+RELOP    00001 00000000 00061
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 16.10 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         68
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        97

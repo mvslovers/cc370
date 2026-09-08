@@ -1934,6 +1934,12 @@ static int cnd_bool(struct ctx *c, const char *t) {           /* a single boolea
     if (t[0] == '(') { int L = (int)strlen(t); if (L >= 2 && t[L - 1] == ')') { char in[128]; int n = L - 2 > 127 ? 127 : L - 2; memcpy(in, t + 1, n); in[n] = 0; return eval_cond(c, in); } }
     return eval_seta(c, t) != 0;                               /* SETB var / arithmetic: nonzero = true */
 }
+/* The relational operators, as a token. Named separately from is_relop()
+ * below because the TOKENIZER needs it and that one is defined after. */
+static int is_relop_tok(const char *t) {
+    return !strcmp(t, "EQ") || !strcmp(t, "NE") || !strcmp(t, "LT")
+        || !strcmp(t, "GT") || !strcmp(t, "LE") || !strcmp(t, "GE");
+}
 static int eval_cond(struct ctx *c, const char *cond) {
     /* Sized for a full 255-character operand rather than for the shortest
      * condition anyone happened to write: a six-term AND is 23 tokens and the
@@ -1949,7 +1955,25 @@ static int eval_cond(struct ctx *c, const char *cond) {
         while (*p && (q || d || *p != ' ')) {
             if (!q && d == 0 && closed && isalpha((unsigned char)*p)) break;  /* a relop/keyword abutting a closing quote ('A'NE'B', after a col-72 join) is its own token */
             closed = 0;
-            if (*p == '\'') { if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) { int wq = q; q = !q; if (wq && !q) closed = 1; } }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
+            if (*p == '\'') {
+                /* A relational or logical operator abutting the OPENING quote of
+                 * its right operand ends the operator token, exactly as one
+                 * abutting `(' already did. Blanks around a relop are optional and
+                 * IBM's macros routinely omit them -- AMODGEN(SYSEVENT) maps its
+                 * whole mnemonic table with `AIF ('&EVENT'EQ'USERRDY').EOK' --
+                 * and without this the operator and the operand glued into one
+                 * token `EQ'USERRDY'', which is no relop, so the comparison was
+                 * never made and the AIF fell through. SYSEVENT then walked past
+                 * its match to a later mnemonic AND ignored ENTRY=BRANCH: code 53
+                 * and an SVC where IFOX00 has code 4 and a BALR (cc370#243).
+                 *
+                 * The mirror of the `closed' rule two lines down, which handles the
+                 * operator abutting a CLOSING quote. Both halves are needed: one
+                 * ends the left operand, this ends the operator. */
+                if (!q && oi > 0) { o[oi] = 0;
+                    if (is_relop_tok(o) || !strcmp(o, "AND") || !strcmp(o, "OR") || !strcmp(o, "NOT")) break; }
+                if (q || !(oi > 0 && strchr("KNLT", o[oi - 1]))) { int wq = q; q = !q; if (wq && !q) closed = 1; }
+            }  /* K'/N'/L'/T' apostrophe is an attribute, not a string quote */
             else if (!q && *p == '(') {
                 if (d == 0 && oi > 0) { o[oi] = 0;                       /* a logical operator abutting '(' (NOT(..)/AND(..)/OR(..)) is its own token, not a subscript */
                     if (!strcmp(o, "NOT") || !strcmp(o, "AND") || !strcmp(o, "OR")) break; }
