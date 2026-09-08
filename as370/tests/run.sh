@@ -310,6 +310,15 @@ rm -f /tmp/_au.$$
 # sample8/9 ARE that case, and all five failed the first, over-broad attempt.
 #   main 8ced9c4   0008 0012 40  (twice; the parameter gone, length still 18)
 #   IFOX00, this   0008 0012 C'PROBLEM NUMBER' / C'SHORT'
+# spmrr is the #252 oracle: split_fields fills only as many fields as the
+# operand has, into a stack array the next statement reuses -- so an unwritten
+# slot holds the PREVIOUS statement's text. SPM has one operand and the RR
+# emitter reads two, so it took R2 from whatever RR came before it. SPM ALONE
+# encodes correctly, which is why nothing found it: it needs a preceding RR, and
+# `SR GRx,GRx' before `SPM GRx' is the standard way to clear the program mask.
+# The two-operand RR instructions at the end are the controls that must not move.
+#   main 48a07c0   048E 0488 0487 048E
+#   IFOX00, this   0480 0480 0480 0480
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -320,7 +329,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
-         rxparen lenattr contrem; do
+         rxparen lenattr contrem spmrr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

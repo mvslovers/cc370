@@ -1,0 +1,64 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 18.12 09/08/26
+SPMRR     SD  0001 000000 000016
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 18.12 09/08/26
+                                      1 * split_fields fuellt nur so viele Felder, wie der Operand hergibt.
+                                      2 * Das Ziel ist ein Stapelfeld, das die naechste Anweisung wieder
+                                      3 * benutzt - ein nicht beschriebener Platz haelt also den Text der
+                                      4 * VORIGEN Anweisung an derselben Adresse. Ein Aufrufer, der ein Feld
+                                      5 * liest, ohne die Zahl zu pruefen, bekommt ihn (cc370#252).
+                                      6 *
+                                      7 * SPM hat einen Operanden, der RR-Emitter liest zwei. Also nahm SPM
+                                      8 * sein R2-Feld aus der vorhergehenden RR-Anweisung:
+                                      9 *
+                                     10 *   SR  GR8,GR8   1B88      dann SPM GR8 -> 0488 statt 0480
+                                     11 *   LR  3,7       1837      dann SPM GR8 -> 0487
+                                     12 *   BCR 15,14     07FE      dann SPM GR8 -> 048E
+                                     13 *
+                                     14 * Der Operand ist in allen drei Faellen derselbe. SPM ALLEIN codiert
+                                     15 * richtig - deshalb hat es niemand gefunden: es braucht eine RR-
+                                     16 * Anweisung davor, und `SR GRx,GRx' vor `SPM GRx' ist die uebliche
+                                     17 * Art, die Programmmaske zu loeschen. Real steht die Undichtigkeit
+                                     18 * also immer bereit.
+                                     19 *
+                                     20 * Behoben in split_fields und nicht an der Aufrufstelle: jeder
+                                     21 * Verbraucher einer zu kurzen Operandenliste hat dieselbe Bloesse,
+                                     22 * und aufgefallen waere nur diese eine.
+                                     23 *
+                                     24 * Kontrollen: die zweiwertigen RR-Anweisungen selbst duerfen sich
+                                     25 * nicht bewegen, und BCR/BR lesen nur ein Feld und taten es schon
+                                     26 * immer richtig.
+                                     27 *
+                                     28 * Punktzahl:  ohne Fix 048E 0488 0487 048E, mit Fix viermal 0480
+000000                               29 SPMRR    CSECT
+                            00008    30 GR8      EQU   8
+000000 0480                          31          SPM   GR8
+000002 1B88                          32          SR    GR8,GR8
+000004 0480                          33          SPM   GR8
+000006 1837                          34          LR    3,7
+000008 0480                          35          SPM   GR8
+00000A 07FE                          36          BCR   15,14
+00000C 0480                          37          SPM   GR8
+00000E 1B88                          38          SR    GR8,GR8
+000010 1837                          39          LR    3,7
+000012 07FE                          40          BR    14
+000014 07FE                          41          BCR   15,14
+                                     42          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 18.12 09/08/26
+GR8      00001 00000008 00030  00031 00032 00032 00033 00035 00037 00038 00038
+SPMRR    00001 00000000 00029
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 18.12 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         42
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        64

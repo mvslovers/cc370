@@ -692,6 +692,21 @@ static int split_fields(const char *s, char f[][FLDW], int max) {
             start = p + 1;
         }
     }
+    /* Empty every field the operand did not fill.
+     *
+     * The destination is a stack array reused by the next statement, so an
+     * unwritten slot holds the PREVIOUS statement's text at the same address --
+     * and a caller that reads a field without checking the count gets it. `SPM
+     * R8' is one operand and the RR emitter reads two, so it took its R2 field
+     * from whatever RR instruction came before: `SR GR8,GR8' then `SPM GR8'
+     * emitted 0488 instead of 0480, and that pair is the standard idiom for
+     * clearing the program mask, so real code always supplies the leak.
+     *
+     * Fixed here rather than at the call site because every consumer of a
+     * shorter-than-expected operand list has the same exposure, and only this
+     * one was ever going to be noticed -- SPM alone encodes correctly, which is
+     * why nothing found it for a year (cc370#252). */
+    { int k; for (k = n; k < max; k++) f[k][0] = 0; }
     return n;
 }
 
