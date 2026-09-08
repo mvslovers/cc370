@@ -1,0 +1,62 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.55 09/08/26
+EQUQ      SD  0001 000000 000007
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.55 09/08/26
+                                      1 * Der C'..'-Selbstdefinitionsterm hatte DREI Leser - den Operanden-
+                                      2 * Auswerter, den SETA-Leser und den Auswerter der bedingten
+                                      3 * Assemblierung - und alle drei fassten `&&' zu einem `&' zusammen,
+                                      4 * keiner den doppelten Apostroph. `QUOTE EQU C''''' brach also am
+                                      5 * ersten Apostroph des Paares ab und ergab NULL (cc370#238).
+                                      6 *
+                                      7 * `DC C'''' war die ganze Zeit richtig: der DC-Zweig hat seinen
+                                      8 * eigenen Scanner, und der kannte die Regel. Genau das ist der Punkt -
+                                      9 * der Fehler war nicht der fehlende Zweig, sondern drei Leser
+                                     10 * derselben Syntax, die man im Gleichschritt halten muss. Jetzt ist es
+                                     11 * eine Funktion.
+                                     12 *
+                                     13 * Q1 ist der Fall. Die Kontrollen:
+                                     14 *
+                                     15 *   Q2  EQU C'A'      gewoehnliches Zeichen - war immer richtig
+                                     16 *   Q3  DC  C''''     der Pfad, der es schon konnte
+                                     17 *   Q4  EQU C'&&'     die &&-Regel muss ueberleben
+                                     18 *   Q5  EQU X'7D'     der X-Zweig bleibt unberuehrt
+                                     19 *   Q6  EQU C''''''   zwei Paare ergeben zwei Bytes, nicht eines
+                                     20 *
+                                     21 * Punktzahl:  ohne Fix 00 C1 7D 50 7D 0000
+                                     22 *             mit Fix  7D C1 7D 50 7D 7D7D
+000000                               23 EQUQ     CSECT
+                            0007D    24 Q1       EQU   C''''
+                            000C1    25 Q2       EQU   C'A'
+                            00050    26 Q4       EQU   C'&&'
+                            0007D    27 Q5       EQU   X'7D'
+                            07D7D    28 Q6       EQU   C''''''
+000000 7D                            29          DC    AL1(Q1)
+000001 C1                            30          DC    AL1(Q2)
+000002 7D                            31 Q3       DC    C''''
+000003 50                            32          DC    AL1(Q4)
+000004 7D                            33          DC    AL1(Q5)
+000005 7D7D                          34          DC    AL2(Q6)
+                                     35          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.55 09/08/26
+EQUQ     00001 00000000 00023
+Q1       00001 0000007D 00024  00029
+Q2       00001 000000C1 00025  00030
+Q3       00001 00000002 00031
+Q4       00001 00000050 00026  00032
+Q5       00001 0000007D 00027  00033
+Q6       00001 00007D7D 00028  00034
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 14.55 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         35
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        62
