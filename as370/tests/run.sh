@@ -54,6 +54,14 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# ssomit is the #201 oracle: an SS operand's IMPLIED length, by two routes. An
+# omitted length is not a length of zero -- `CLC DA-D(,5)' writes the subscript
+# list for its base and leaves the length field empty -- and an ABSOLUTE prefix
+# still has a length attribute, which is the form with no parentheses at all.
+# The last case is the control: a purely numeric prefix has no length attribute
+# and must stay 1, so a fix that hands out L' indiscriminately fails here.
+#   main 021db88   D503 D500 D500 D503 D500
+#   IFOX00, this   D503 D503 D503 D503 D500
 # esdself is the #199 oracle: an ESDID belongs to the ESD ENTRY, not the symbol.
 # One name can hold two entries -- a CSECT that V-cons its own name has an SD and
 # an ER -- and IFOX00 numbers them separately. The R field is the control: it must
@@ -136,7 +144,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing equlen esdself; do
+         contattr cmprule absusing equlen esdself ssomit; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
