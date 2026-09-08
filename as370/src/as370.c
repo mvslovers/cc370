@@ -664,7 +664,22 @@ static int dc_split(const char *s, char f[][1024], int max) {
     for (;; p++) {
         char c = *p;
         if (inq) { if (c == '\'') { if (p[1] == '\'') { p++; continue; } inq = 0; } }
-        else if (c == '\'') inq = 1;
+        /* The apostrophe of L'/K'/N'/T' is an attribute, not a string quote, and
+         * this splitter took every one of them for a quote. After an odd number
+         * the walk believes it is inside a string, so the next top-level comma
+         * stops separating: `DC AL1(L'FLD),X'FF'' lost the X'FF' entirely, at
+         * rc 0 with no message. split_fields and the DC value splitter have both
+         * carried this test since they were written; dc_split, the third reader
+         * of the same syntax, never got it (cc370#218).
+         *
+         * The test belongs to the OPENING quote only -- inside a string an
+         * apostrophe always closes, which is why the `inq' arm runs first. A
+         * genuine string ending in one of the letters (`DC C'L'') would
+         * otherwise never close. And the set is KNLT, not attr_apos's LTKNISE:
+         * IFOX00 reads `S'' and `I'' in an ordinary expression as a quote and
+         * says IFO035, so the wider set is right for a card scan and wrong
+         * here. */
+        else if (c == '\'') { if (!(p > s && strchr("KNLT", p[-1]))) inq = 1; }
         else if (c == '(') depth++;
         else if (c == ')') depth--;
         if ((c == ',' && depth == 0 && !inq) || c == 0) {

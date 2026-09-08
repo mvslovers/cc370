@@ -178,6 +178,16 @@ rm -f /tmp/_au.$$
 # exactly one.
 #   main ea6163a   RLD 3 entries
 #   IFOX00, this   RLD 6 entries, one of them flag 0F (negative)
+# dcattr is the #218 oracle: dc_split took every apostrophe for a string quote,
+# so an odd number of L'/K'/N'/T' attributes left it "inside a string" and the
+# next top-level comma stopped separating -- `DC AL1(L'FLD),X'FF'' lost the
+# X'FF' silently, at rc 0. G3 is the case that is right WITHOUT the fix (a
+# leading X'FF' restores the parity), so a fixture built only from it proves
+# nothing. G6 is the sharp control: a genuine string ending in L, which a fix
+# that tests the CLOSING quote turns into an attribute and loses everything
+# after.
+#   main c4a0f19   07 | 0700 | FF07 | 07 | C1FF | D3FF
+#   IFOX00, this   07FF | 0707 | FF07 | 07 | C1FF | D3FF
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -187,7 +197,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel; do
+         xsectrel dcattr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

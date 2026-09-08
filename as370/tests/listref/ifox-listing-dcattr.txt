@@ -1,0 +1,62 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.41 09/08/26
+P6        SD  0001 000000 000012
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.41 09/08/26
+                                      1 * dc_split zerlegt den DC-Operanden an Kommas der obersten Ebene und
+                                      2 * hielt JEDEN Apostroph fuer einen Zeichenkettenbeginn. Der Apostroph
+                                      3 * von L'/K'/N'/T' ist aber ein Attribut, kein Anfuehrungszeichen: nach
+                                      4 * einer ungeraden Zahl davon steht der Splitter "in einer Zeichen-
+                                      5 * kette", und das naechste Komma trennt nicht mehr (cc370#218).
+                                      6 *
+                                      7 * G1 verliert dadurch X'FF' vollstaendig - stillschweigend, rc 0, ohne
+                                      8 * eine einzige Meldung. G2 verschmilzt beide Konstanten und meldet ein
+                                      9 * undefiniertes Symbol namens AL1.
+                                     10 *
+                                     11 * G3 ist die Kontrolle, die auch OHNE Fix stimmt: das fuehrende X'FF'
+                                     12 * stellt die Paritaet wieder her, also faellt der Fehler dort nicht
+                                     13 * auf. Eine Fixture nur aus G3 waere ein Nicht-Test.
+                                     14 *
+                                     15 * G5 und G6 sind die Kontrollen in die Gegenrichtung. G6 ist die
+                                     16 * scharfe: eine echte Zeichenkette, die auf L endet. Wer den
+                                     17 * Attributtest auf das SCHLIESSENDE Anfuehrungszeichen anwendet,
+                                     18 * macht daraus ein Attribut und verliert wieder alles danach - die
+                                     19 * Regel gilt nur beim OEFFNENDEN, also nur ausserhalb einer
+                                     20 * Zeichenkette.
+                                     21 *
+                                     22 * split_fields und der Wertesplitter im DC-Zweig tragen genau diesen
+                                     23 * Test seit jeher; dc_split, der dritte Leser derselben Syntax, nie.
+                                     24 *
+                                     25 * Punktzahl:  ohne Fix 8 Bytes ab FLD+0, mit Fix 11.
+000000                               26 P6       CSECT
+000000                               27 FLD      DS    CL7
+000007 07FF                          28 G1       DC    AL1(L'FLD),X'FF'
+000009 0707                          29 G2       DC    AL1(L'FLD),AL1(L'FLD)
+00000B FF07                          30 G3       DC    X'FF',AL1(L'FLD)
+00000D 07                            31 G4       DC    AL1(L'FLD)
+00000E C1FF                          32 G5       DC    C'A',X'FF'
+000010 D3FF                          33 G6       DC    C'L',X'FF'
+                                     34          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.41 09/08/26
+FLD      00007 00000000 00027  00028 00029 00029 00030 00031
+G1       00001 00000007 00028
+G2       00001 00000009 00029
+G3       00001 0000000B 00030
+G4       00001 0000000D 00031
+G5       00001 0000000E 00032
+G6       00001 00000010 00033
+P6       00001 00000000 00026
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 10.41 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         34
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        62
