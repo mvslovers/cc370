@@ -1,0 +1,56 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.15 09/08/26
+PB        SD  0001 000000 00000D
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.15 09/08/26
+                                      1 * attr_apos trug ein E, das IFOX00s eigene Menge nicht kennt: dort
+                                      2 * sind es T L I S N K (ifnx1a.asm:4862). E ist in Assembler XF kein
+                                      3 * Attribut - wohl aber ein KONSTANTENTYP (cc370#223).
+                                      4 *
+                                      5 * Also oeffnet DC E'1.0' hier gar keine Zeichenkette. Erst das
+                                      6 * SCHLIESSENDE Anfuehrungszeichen schaltet den Zustand ein, der
+                                      7 * Operand endet nicht mehr am Leerzeichen, und die Bemerkung wandert
+                                      8 * in ihn hinein. Ein Komma darin macht daraus eine zweite Konstante,
+                                      9 * und die Anweisung wird abgelehnt: rc 8, wo IFOX00 rc 0 liefert -
+                                     10 * bei identischen Bytes. Ein Fehlalarm, kein uebersehener Fehler.
+                                     11 *
+                                     12 * Beide Haelften sind noetig, und die Kontrollen zeigen es:
+                                     13 *
+                                     14 *   N1  E + Komma in der Bemerkung   der Fehler
+                                     15 *   N3  E ohne Komma                 wird angenommen
+                                     16 *   N2  F mit demselben Kommatext    wird angenommen
+                                     17 *   N4  C mit demselben Kommatext    wird angenommen
+                                     18 *
+                                     19 * L bleibt draussen: L steht in IFOX00s Menge UND ist der Typ fuer
+                                     20 * erweiterte Gleitkommazahlen, laesst sich also nicht streichen. Es
+                                     21 * hat eine eigene Ursache, reproduziert ganz ohne Bemerkung und ist
+                                     22 * cc370#224. Eine Karte davon hier haette diese Fixture unbrauchbar
+                                     23 * gemacht, weil ihr Deck dann bewusst von IFOX00 abwiche.
+                                     24 *
+                                     25 * Punktzahl: ohne Fix rc 8, mit Fix rc 0; Bytes so wie so gleich.
+000000                               26 PB       CSECT
+000000 41100000                      27 N1       DC    E'1.0'                  SET 1,2 AND 3
+000004 00000002                      28 N2       DC    F'2'                    SET 1,2 AND 3
+000008 41300000                      29 N3       DC    E'3.0'                  PLAIN REMARK
+00000C C1                            30 N4       DC    C'A'                    SET 1,2 AND 3
+                                     31          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.15 09/08/26
+N1       00004 00000000 00027
+N2       00004 00000004 00028
+N3       00004 00000008 00029
+N4       00001 0000000C 00030
+PB       00001 00000000 00026
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 12.15 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         31
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        56

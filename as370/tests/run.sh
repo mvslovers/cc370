@@ -197,6 +197,16 @@ rm -f /tmp/_au.$$
 # agree, which is what this loop compares.
 #   main 4373df2   01 01 01 01 01 01 01
 #   IFOX00, this   07 01 07 07 03 01 01
+# attre is the #223 oracle: attr_apos carried an E that IFOX00's own set (T L I
+# S N K, ifnx1a.asm:4862) does not. E is a constant TYPE, so `DC E'1.0'' opened
+# no string, the closing quote toggled the state on, and the remark joined the
+# operand -- a comma in it then made a second constant and the statement was
+# rejected. Note where this one fails without the fix: at the RC gate above, not
+# at the byte compare, because as370 returned 8 where IFOX00 returns 0 with the
+# same bytes. N2/N3/N4 are the controls, the same remark on an F and a C type
+# and the same E constant with no comma; all three were accepted either way.
+#   main 1e4fa80   rc 8, "Invalid type declared on DC/DS/DXD constant"
+#   IFOX00, this   rc 0, no diagnostics
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -206,7 +216,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr equparen; do
+         xsectrel dcattr equparen attre; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
