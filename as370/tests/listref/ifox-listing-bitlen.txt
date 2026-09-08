@@ -1,0 +1,81 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.37 09/08/26
+BITLEN    SD  0001 000000 000020
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.37 09/08/26
+                                      1 * Ein Laengenmodifikator darf in BITS angegeben werden: DC AL.12(1)
+                                      2 * ist ein Zwoelf-Bit-Feld. as370s Laengenauswertung las L und erwartete
+                                      3 * Ziffern, also beendete der Punkt sie mit der Laenge NULL - die
+                                      4 * Konstante erzeugte nichts und bewegte den Ortszaehler nicht,
+                                      5 * stillschweigend bei rc 0. Jedes Symbol dahinter lag um genau das zu
+                                      6 * frueh, was nie reserviert wurde: ein Kontrollabschnitt je Modul zu
+                                      7 * kurz, beide Assembler stumm (cc370#240, die Ursache hinter #205).
+                                      8 *
+                                      9 * Die Regeln sind am Orakel festgenagelt, nicht angenommen:
+                                     10 *
+                                     11 *   B1  AL.12(1),AL.4(2)   0012    12+4 fuellen zwei Bytes genau
+                                     12 *   B2  BL.1'1',FL.7'7',   8743    zusammenhaengend gepackt
+                                     13 *   B3  AL.12(1)           0010    rechts auf zwei Bytes aufgefuellt
+                                     14 *   B4  XL.4'F'            F0      rechts auf ein Byte
+                                     15 *   B6  AL.3(5)            A0      der Wert steht links im Feld
+                                     16 *   B7  3AL.4(1)           1110    der Wiederholungsfaktor packt mit
+                                     17 *   B8  AL.12(1),AL2(3)    00100003  ein Nicht-Bit-Operand spuelt
+                                     18 *   B9  AL.4(1),C'A',      10C120  und zwar mitten im Satz
+                                     19 *   BA  DS AL.12,AL.4      2 Bytes reserviert, nichts erzeugt
+                                     20 *
+                                     21 * KONTROLLEN OHNE BITMODIFIKATOR - sie muessen Byte fuer Byte gleich
+                                     22 * bleiben, denn an ihnen haengen die 4831 identischen Module:
+                                     23 *
+                                     24 *   C1  AL1(1)   C2  XL1'F'   C3  AL2(1)   C4  CL3'AB'   C5  F'7'
+                                     25 *
+                                     26 * Punktzahl:  ohne Fix erzeugen B1-BA nichts, C1-C5 unveraendert
+000000                               27 BITLEN   CSECT
+000000 0012                          28 B1       DC    AL.12(1),AL.4(2)
+000002 8743                          29 B2       DC    BL.1'1',FL.7'7',AL.4(4),FL.4'3'
+000004 0010                          30 B3       DC    AL.12(1)
+000006 F0                            31 B4       DC    XL.4'F'
+000007 E9                            32 B5       DC    C'Z'
+000008 A0                            33 B6       DC    AL.3(5)
+000009 1110                          34 B7       DC    3AL.4(1)
+00000B 00100003                      35 B8       DC    AL.12(1),AL2(3)
+00000F 10C120                        36 B9       DC    AL.4(1),C'A',AL.4(2)
+000012                               37 BA       DS    AL.12,AL.4
+000014 FF                            38 BB       DC    X'FF'
+000015 01                            39 C1       DC    AL1(1)
+000016 0F                            40 C2       DC    XL1'F'
+000017 0001                          41 C3       DC    AL2(1)
+000019 C1C240                        42 C4       DC    CL3'AB'
+00001C 00000007                      43 C5       DC    F'7'
+                                     44          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.37 09/08/26
+BA       00002 00000012 00037
+BB       00001 00000014 00038
+BITLEN   00001 00000000 00027
+B1       00002 00000000 00028
+B2       00001 00000002 00029
+B3       00002 00000004 00030
+B4       00001 00000006 00031
+B5       00001 00000007 00032
+B6       00001 00000008 00033
+B7       00001 00000009 00034
+B8       00002 0000000B 00035
+B9       00001 0000000F 00036
+C1       00001 00000015 00039
+C2       00001 00000016 00040
+C3       00002 00000017 00041
+C4       00003 00000019 00042
+C5       00004 0000001C 00043
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 15.37 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         44
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        81
