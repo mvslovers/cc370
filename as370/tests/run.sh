@@ -38,6 +38,14 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# cmprule is the #153 oracle: a character comparison orders by LENGTH first, so a
+# shorter string is less than a longer one whatever the characters are. Six cases
+# separate that from strcmp AND from "arithmetic when both are numbers" -- the
+# letter cases D and F do the separating, because on numbers alone arithmetic and
+# length-first agree. G and H are equal-length controls where content decides and
+# nothing should move. Scores:
+#   main 3b5b3ff   AN BN CJ DN EJ FJ GJ HN
+#   IFOX00, this   AJ BJ CN DJ EJ FN GJ HN
 # contattr is the #184 oracle: join_cont() decides where the FIRST card's operand
 # ends, so an attribute apostrophe there folds the remark into the joined
 # statement. Three cases and the third is the one that earns its place -- it
@@ -78,7 +86,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr; do
+         contattr cmprule; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

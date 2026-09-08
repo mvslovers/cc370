@@ -1,0 +1,70 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 23.04 09/07/26
+T         SD  0001 000000 000010
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 23.04 09/07/26
+                                      1 * Ein ZEICHENvergleich ordnet zuerst nach LAENGE (#153).
+                                      2 *
+                                      3 * Eine kuerzere Zeichenkette ist kleiner als eine laengere,
+                                      4 * gleich welche Zeichen darin stehen.  strcmp() liest dagegen von
+                                      5 * links und macht '2' groesser als '11' -- eine Schleife
+                                      6 *
+                                      7 *   AIF   ('&AA' LE '&DD').NEXT
+                                      8 *
+                                      9 * mit einem SETA-Zaehler endet dann nach dem ersten Durchlauf.
+                                     10 * Genau so baut IEECDCM seine Bildschirmtabellen: as370 erzeugte
+                                     11 * DCMMSG1 und hoerte auf, DCMMSG8 und DCMSEC9 blieben undefiniert.
+                                     12 *
+                                     13 * Die Buchstabenfaelle stehen daneben, weil Zahlen allein die
+                                     14 * Regel nicht festlegen: bei ihnen liefert "arithmetisch" dasselbe
+                                     15 * wie "nach Laenge", bei D und F nicht mehr.
+                                     16 *
+                                     17 *   A 2 LE 11    J      D B  LE AB   J
+                                     18 *   B 9 LE 10    J      E A  LE AB   J
+                                     19 *   C 10 LE 9    N      F AB LE B    N
+                                     20 *
+                                     21 * Und die Gegenprobe bei gleicher Laenge, wo der Inhalt zaehlt:
+                                     22 *
+                                     23 *   G AB LE AC   J      H AC LE AB   N
+                                     24          MACRO
+                                     25          TC    &X,&Y,&E
+                                     26          AIF   ('&X' LE '&Y').JA
+                                     27          DC    C'&E.N'
+                                     28          MEXIT
+                                     29 .JA      ANOP
+                                     30          DC    C'&E.J'
+                                     31          MEND
+000000                               32 T        CSECT
+                                     33          TC    2,11,A
+000000 C1D1                          34+         DC    C'AJ'
+                                     35          TC    9,10,B
+000002 C2D1                          36+         DC    C'BJ'
+                                     37          TC    10,9,C
+000004 C3D5                          38+         DC    C'CN'
+                                     39          TC    B,AB,D
+000006 C4D1                          40+         DC    C'DJ'
+                                     41          TC    A,AB,E
+000008 C5D1                          42+         DC    C'EJ'
+                                     43          TC    AB,B,F
+00000A C6D5                          44+         DC    C'FN'
+                                     45          TC    AB,AC,G
+00000C C7D1                          46+         DC    C'GJ'
+                                     47          TC    AC,AB,H
+00000E C8D5                          48+         DC    C'HN'
+000000                               49          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 23.04 09/07/26
+T        00001 00000000 00032  00049
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 23.04 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         41
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        70

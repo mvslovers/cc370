@@ -1579,7 +1579,24 @@ static int rel_apply(const char *rel, int cmp) {
 }
 static int eval_comp(struct ctx *c, const char *L, const char *rel, const char *R) {
     int cmp;
-    if (term_is_str(L) || term_is_str(R)) { char ls[128], rs[128]; term_str(c, L, ls); term_str(c, R, rs); cmp = strcmp(ls, rs); }
+    if (term_is_str(L) || term_is_str(R)) { char ls[128], rs[128]; term_str(c, L, ls); term_str(c, R, rs);
+        /* A CHARACTER comparison orders by LENGTH first and only then by
+         * content: a shorter string is less than a longer one whatever the
+         * characters are.  strcmp() instead reads them left to right, so it makes
+         * '2' GREATER than '11' -- and a macro counting with SETA and testing
+         * `AIF ('&AA' LE '&DD')' then stops after one iteration.
+         *
+         * That is IEECDCM building its screen control tables: as370 generated
+         * DCMMSG1 and stopped, so DCMMSG8, DCMSEC9 and DCMMSG11 were undefined
+         * symbols in every module that maps a console (cc370#153).  Measured
+         * against IFOX00 -- '2' LE '11' true, '9' LE '10' true, '10' LE '9'
+         * false, and the same by length for letters: 'B' LE 'AB' true,
+         * 'AB' LE 'B' false (tests/cmprule.s).  Equivalent to padding the shorter
+         * operand on the LEFT with blanks, which is how the manuals put it;
+         * length-first is the same order and does not depend on blank being the
+         * lowest character in the set. */
+        size_t ll = strlen(ls), rl = strlen(rs);
+        cmp = (ll < rl) ? -1 : (ll > rl) ? 1 : strcmp(ls, rs); }
     else { long lv = eval_seta(c, L), rv = eval_seta(c, R); cmp = (lv < rv) ? -1 : (lv > rv) ? 1 : 0; }
     return rel_apply(rel, cmp);
 }
