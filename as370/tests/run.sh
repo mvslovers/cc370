@@ -54,6 +54,13 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# esdself is the #199 oracle: an ESDID belongs to the ESD ENTRY, not the symbol.
+# One name can hold two entries -- a CSECT that V-cons its own name has an SD and
+# an ER -- and IFOX00 numbers them separately. The R field is the control: it must
+# still take the ER (2) and not the SD (1), because a V-con names an external even
+# when that name is also defined here. P must take the SD.
+#   main 789eb19   SD=2 ER=3 EXTA=4   P=0002
+#   IFOX00, this   SD=1 ER=2 EXTA=3   P=0001, R=0002
 # equlen is the #194 oracle: L' of an EQU is the length attribute of the LEFTMOST
 # TERM, and only when that term is a symbol. `1+A' is what fixes the rule -- it
 # is the leftmost TERM, not the first symbol in the expression, so an expression
@@ -129,7 +136,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing equlen; do
+         contattr cmprule absusing equlen esdself; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

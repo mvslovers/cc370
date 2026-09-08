@@ -1,0 +1,62 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 01.30 09/08/26
+T         SD  0001 000000 000018
+T         ER  0002
+EXTA      ER  0003
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 01.30 09/08/26
+                                      1 * Eine ESDID gehoert zum ESD-EINTRAG, nicht zum Symbol (#199).
+                                      2 *
+                                      3 * Ein Name kann zwei Eintraege haben: ein Kontrollabschnitt, der
+                                      4 * seinen eigenen Namen als V-Kon fuehrt, hat ein SD UND ein ER.
+                                      5 * IFOX00 numeriert beide getrennt.
+                                      6 *
+                                      7 * as370 hielt die Nummer am Symbol, also ueberschrieb die ER-
+                                      8 * Vergabe die des SD.  Im RLD-Feld R faellt das nicht auf -- dort
+                                      9 * ist die ER-Nummer ohnehin richtig, sie stimmte also zufaellig --
+                                     10 * wohl aber in P, das den Abschnitt nennt, in dem die Adress-
+                                     11 * konstante STEHT: jeder RLD-Eintrag des Moduls sagte P=0x0074,
+                                     12 * wo IFOX00 P=0x0001 sagt.  Und weil eine ESD-Karte EINE Anfangs-
+                                     13 * nummer traegt und die Eintraege ihr der Reihe nach folgen,
+                                     14 * verschob der ueberschriebene Wert die ganze erste Karte.
+                                     15 *
+                                     16 *   main     SD=2 ER=3 EXTA=4   und P=0002
+                                     17 *   IFOX00   SD=1 ER=2 EXTA=3   und P=0001
+                                     18 *
+                                     19 * Die zweite Zeile ist die Gegenprobe: R nimmt weiterhin das ER
+                                     20 * (2), nicht das SD (1), denn eine V-Kon nennt ein EXTERNES
+                                     21 * Symbol -- auch wenn es hier zugleich definiert ist.
+000000                               22 T        CSECT
+                            00000    23          USING T,12
+000000 5810 C010      00010          24          L     1,=V(T)
+000004 5820 C014      00014          25          L     2,=V(EXTA)
+000008 07FE                          26          BR    14
+000010                               27          LTORG
+000010 00000000                      28                =V(T)
+000014 00000000                      29                =V(EXTA)
+000000                               30          END   T
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 01.30 09/08/26
+ 0001     0002      1C     000010
+ 0001     0003      1C     000014
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.30 09/08/26
+T        00001 00000000 00022  00023 00030
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.30 09/08/26
+=V(T)    00004 00000010 00028  00024
+=V(EXTA) 00004 00000014 00029  00025
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
+                                                                                                 ASM 0201 01.30 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         28
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        62
