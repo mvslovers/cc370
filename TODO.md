@@ -639,6 +639,30 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | as370 alone flags | 512 | 236 |
   | hand-over list | 2,107 | 1,389 |
 
+  **When a mechanism class does not empty, check first whether the survivors were
+  ever in the mechanism.** #190 was 54 modules whose only divergence was an RX
+  base register; #191 closed 52 of them and gained 5 more that the survey's "at
+  most 8 differing addresses" bound had excluded — the first time one of these
+  bounds has been given a number rather than merely flagged. The two survivors
+  turned out never to have had the `B → 0` pattern at all: they are `ifox_base=10`
+  against as370's 14 and 15, a base-register *choice* between two live USINGs
+  rather than a missing base, and they want their own issue. #186's residue is the
+  same shape from the other side — `AMDPRPJB`/`AMDPRPMS` sit in it with `xor 0x00`,
+  so their divergence was never in the flag byte. A residue defined by "what the
+  fix did not move" is a membership rule, not a class, and reads as one to whoever
+  picks it up.
+
+  **Self-contradiction proves an assembler wrong; it cannot say what right is.**
+  At `IEAVELCR` (#187) those were the same question, because the correct behaviour
+  was "do what you already do everywhere else" — 23 identical `VL3` cards at
+  length 3 and one at 4. At #190 there was no such uniform behaviour to point at:
+  as370 had *no* absolute-domain resolution, so nothing internally consistent
+  existed to copy. The oracle was needed twice and changed the answer both times —
+  whether a self-defining term resolves (it does), and `defined and absolute`
+  against `not relocatable`, which was worth **52 identities in the wrong
+  direction**. Use the internal-consistency shortcut only where the assembler
+  already does the right thing somewhere.
+
   **The artefact that reports success.** Three times in one day, in three
   different tools, an instrument said "fine" because it could not see the thing
   it was measuring — and each was caught by a number looking slightly wrong

@@ -16,6 +16,22 @@
 # comment what that binary scores. If you cannot make it score differently, the
 # fixture is not testing the change.
 #
+# TWO SHARPER FORMS OF THE SAME RULE, both learned the expensive way:
+#
+#   Make it fail for exactly ONE of the hypotheses you are choosing between.
+#   cmprule.s (#153) began as the macro loop alone: as370 one entry, IFOX eleven.
+#   That proves as370 wrong and leaves BOTH candidate rules standing, because on
+#   decimals "arithmetic" and "length-first" agree. Only the letter cases
+#   ('B' LE 'AB') separate them. A fixture that fails correctly and cannot tell
+#   the candidates apart is still a coin toss with a passing test either way.
+#
+#   Carry a CONTROL that can fail and constrains the fix in a direction the
+#   target case does not. absusing.s (#190) keeps a relocatable `USING *,15' in
+#   force over the whole CSECT, measured never to be used for the absolute
+#   operand -- before and after the absolute USING is dropped. The target case
+#   says what must resolve; the control says what must NOT, and only the control
+#   would catch a fix that resolves absolute operands through any USING at all.
+#
 # And do not trust this suite alone for an as370 change. 743 corpus modules and
 # every reference deck here stayed green through a version of #149 that cost 96
 # identities on the 5,528-module tree, because not one of them contains a string
