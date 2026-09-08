@@ -2241,24 +2241,40 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
 /* expand a macro invocation, interpreting conditional assembly */
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
     g_genlevel++;   /* lines emitted during this expansion are macro-generated */
-    struct ctx c; memset(&c, 0, sizeof c); c.m = m; c.namepval = lbl; c.sysndx = ++g_sysndx;
-    scopy(c.sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
+    /* ctx and the sequence-symbol table live on the HEAP, not on this frame.
+     * Measured: sizeof(struct ctx) is 78,240 and seqn/seqi add 49,152, so a level
+     * costs 127,392 bytes -- and mexp_macro is reached only through mexp_line's
+     * `depth <= 40' guard, so the worst case was 4.86 MB of stack. That coupled
+     * every per-context table to the nesting depth: #195 raised MAXLSET from 256
+     * to 512 for a measured need of 303 and spent ~1.2 MB of headroom doing it,
+     * and #173's three survivors need it past 512 and could not have it
+     * (cc370#196). On the heap the two are independent again.
+     *
+     * There is exactly one exit path -- no return statement in this function --
+     * so one free at the end covers it. The table-full paths call exit(2), where
+     * leaking is the process ending. */
+    struct ctx *c = calloc(1, sizeof *c);
+    char (*seqn)[20] = malloc(2048 * 20);
+    int *seqi = malloc(2048 * sizeof *seqi);
+    if (!c || !seqn || !seqi) { fprintf(stderr, "as370: out of memory expanding macro %s\n", m->name); exit(2); }
+    c->m = m; c->namepval = lbl; c->sysndx = ++g_sysndx;
+    scopy(c->sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
     int k;
-    for (k = 0; k < m->nparm; k++) { strncpy(c.pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c.pv[k][95] = 0; }
+    for (k = 0; k < m->nparm; k++) { strncpy(c->pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c->pv[k][95] = 0; }
     if (opnd[0]) { char args[100][FLDW]; int na = split_fields(opnd, args, 100), pos = 0;
         for (k = 0; k < na; k++) {
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
             if (iskw) { *eq = 0; int j; char nm[66]; snprintf(nm, sizeof nm, "&%.63s", args[k]);
-                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c.pv[j], eq + 1, 95); c.pv[j][95] = 0; break; } }
-            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c.pv[j], args[k], 95); break; } cc2++; }
-                if (pos < MAXSYSLIST) { scopy(c.syslist[pos], args[k], 127); }
+                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c->pv[j], eq + 1, 95); c->pv[j][95] = 0; break; } }
+            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c->pv[j], args[k], 95); break; } cc2++; }
+                if (pos < MAXSYSLIST) { scopy(c->syslist[pos], args[k], 127); }
                 else if (pos == MAXSYSLIST) note_operr("More than 64 positional macro operands - the rest are not addressable through &SYSLIST", 8, g_curln);
-                pos++; c.nsyslist = pos; }
+                pos++; c->nsyslist = pos; }
         }
     }
     /* prescan sequence-symbol labels */
-    char seqn[2048][20]; int seqi[2048], nseq = 0;   /* stack-local (mexp_macro recurses for nested macros); big enough for DCBD/CVT/IKJTCB */
+    int nseq = 0;   /* stack-local (mexp_macro recurses for nested macros); big enough for DCBD/CVT/IKJTCB */
     for (k = 0; k < m->nbody; k++) if (m->body[k][0] == '.' && m->body[k][1] != '*') {
         char sl[20]; int j = 0; const char *q = m->body[k]; while (*q && !isspace((unsigned char)*q) && j < 19) sl[j++] = *q++; sl[j] = 0;
         if (nseq < 2048) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
@@ -2273,19 +2289,20 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
         if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "MNOTE") || !strcmp(bo, "ACTR")) { pc++; continue; }
         { g_ca_slot = g_mcall_slot;                          /* a substring error in the body points at the call */
-          int isca = set_stmt(&c, bl, bo, bod); g_ca_slot = -1;
+          int isca = set_stmt(c, bl, bo, bod); g_ca_slot = -1;
           if (isca) { pc++; continue; } }                     /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
         if (!strcmp(bo, "AIF")) { char cond[512], seq[20]; aif_split(bod, cond, seq);
-            if (eval_cond(&c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
+            if (eval_cond(c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
-        char ex[1024]; msub(&c, m->body[pc], ex, sizeof ex);
-        char gimg[256]; render_model(&c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
+        char ex[1024]; msub(c, m->body[pc], ex, sizeof ex);
+        char gimg[256]; render_model(c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
     g_genlevel--;
+    free(c); free(seqn); free(seqi);
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
  * pass and every COPY'd block, so a GBLC/SETC in PDPTOP reaches an AIF in
