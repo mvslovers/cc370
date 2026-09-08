@@ -639,6 +639,54 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | as370 alone flags | 512 | 236 |
   | hand-over list | 2,107 | 1,389 |
 
+  **The artefact that reports success.** Three times in one day, in three
+  different tools, an instrument said "fine" because it could not see the thing
+  it was measuring — and each was caught by a number looking slightly wrong
+  rather than by a check:
+
+  - a fixture that passed on **both** binaries (`rldlen.s` with an A-con instead
+    of a V-con in the DSECT) — a non-test, indistinguishable from a passing one;
+  - `rebuild_classes.py` collecting into a `defaultdict`, so a class with no
+    members was never rewritten and kept its last non-empty contents — **the one
+    file it never refreshed was the one where a fix had succeeded completely**;
+  - a `no-as370-deck` count reading `10 -> 10` while one module lost a deck to a
+    timeout race and another gained one for real.
+
+  The shared shape is worth more than any of the three defects: **an instrument
+  that cannot observe the change reports success**, and success is the reading
+  nobody investigates. So make a fixture fail before you trust it passing, seed
+  every class before writing class files, and treat a count that did not move as
+  a claim to check rather than a result.
+
+  **The named trap: two builds at once.** Three times in one day, between the two
+  sessions and in both directions, a figure came back plausible and wrong because
+  it was measured with one binary against state written by another. Both
+  instruments take a binary **and** read stored state, and nothing in their
+  output says which commit each half came from:
+
+  - `ifox_compare.py` re-assembles the differing modules with the binary on its
+    command line while comparing decks stored under `ifox-run/as370/` — a step
+    that copies the gate output there was never written down. It reported **+11**
+    for #182 where the truth is **+23**.
+  - The same shape here: an `alarm 20` run compared against an `alarm 120` run to
+    check for a timeout race, with the two runs made by **different binaries**.
+    Twenty modules appeared to move; it was #182's own effect, and the real
+    answer to the timeout question was 0.
+  - And a deck count that moved on a change altering nothing, which turned out to
+    be `IFCEE155` racing a 20-second alarm — while in the same run `IFNX1A`
+    gained a deck for real, the two cancelling to `10 -> 10`.
+
+  So: **name the binary and the stored state separately on every figure**, and
+  treat a deck that appears or disappears as a timeout until proved otherwise —
+  `IFCEE155` and `IFNX1A` were indistinguishable in the gate table, both `rc 142`
+  with no deck, and one was an artefact while the other was the largest
+  behavioural change in the merge (240 s to 0.06 s).
+
+  The cheap standing control is to **gate a merged binary against itself**: a
+  byte-identical deck set and `+0 / 0 lost / 0 closer / 0 further`. It needs no
+  no-op PR to come along, and it would have caught the alarm race in one run
+  rather than thirteen merges.
+
   **The rule the day earned: any population derived from as370's own behaviour
   is provisional until the assembler stops changing.** Three times in one day a
   fix changed what a *measurement* said rather than what the program does, and
