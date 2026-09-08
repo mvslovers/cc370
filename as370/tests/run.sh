@@ -38,6 +38,24 @@ MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
 # one assembly): origins stack, each section keeps its own ESD length, and each
 # section's TXT card carries its own ESDID.
 fail=0
+# --- issue #190: an undefined symbol is not an absolute domain ---------------
+# Its own module because IFOX00 flags the undefined symbol (rc 12) and writes no
+# deck, so the check is on the listing. An undefined symbol evaluates to 0 and
+# non-relocatable exactly like an absolute one; taking that for an absolute USING
+# gives every absolute operand in the module a base, and cost 52 identities.
+#   over-broad   58605010      IFOX00 and this   58600010
+./as370 tests/absundef.s -a -o /dev/null > /tmp/_au.$$ 2>&1
+if grep -qE "^0000[0-9A-F]{2} 5860 0010" /tmp/_au.$$; then
+    echo "absundef: OK (== IFOX00 -- undefined symbol gets no base)"
+else echo "absundef: MISMATCH (see /tmp/_au.$$)"; fail=1; fi
+rm -f /tmp/_au.$$
+
+# absusing is the #190 oracle: an ABSOLUTE operand is addressed through an
+# ABSOLUTE using, and only through one. The `USING *,15' over the whole CSECT is
+# the control that matters -- IFOX00 never uses R15 for the absolute operand,
+# before or after the absolute USING is dropped, so the two kinds do not mix.
+#   main 6e578f4   4110 0100   5830 0100   4140 0100
+#   IFOX00, this   4110 2100   5830 2100   4140 0100
 # cmprule is the #153 oracle: a character comparison orders by LENGTH first, so a
 # shorter string is less than a longer one whatever the characters are. Six cases
 # separate that from strcmp AND from "arithmetic when both are numbers" -- the
@@ -86,7 +104,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule; do
+         contattr cmprule absusing; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

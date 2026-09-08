@@ -1,0 +1,43 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 23.26 09/07/26
+T         SD  0001 000000 000006
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 23.26 09/07/26
+                                      1 * Ein UNDEFINIERTES Symbol ist keine absolute Domaene (#190).
+                                      2 *
+                                      3 * Es wertet zu 0 und nicht-relokierbar aus, genau wie ein
+                                      4 * absolutes Symbol.  Nimmt man das fuer eine absolute USING,
+                                      5 * bekommt jeder absolute Operand des Moduls eine Basis:
+                                      6 * IFFAAA01 bildet GSPCB aus einem Makro ab, das wir nicht haben,
+                                      7 * und `L 6,16' adressierte dann R5+16 statt absolut 16 -- den
+                                      8 * CVT-Zeiger.  52 Decks verloren daran ihre Identitaet.
+                                      9 *
+                                     10 * IFOX00 meldet das undefinierte Symbol (rc 12) und setzt den
+                                     11 * Operanden mit Basis 0 ab:  5860 0010, nicht 5860 5010.
+                                     12 * Darum ein eigenes Modul: bei rc 12 wird kein Deck geschrieben,
+                                     13 * die Pruefung laeuft ueber das Listing.
+000000                               14 T        CSECT
+000000                               15          USING UNDEF,5
+         *** ERROR ***
+000000 5860 0010      00010          16          L     6,16
+000004 07FE                          17          BR    14
+000000                               18          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 23.26 09/07/26
+T        00001 00000000 00014  00018
+UNDEF    ****UNDEFINED****     00015
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 23.26 09/07/26
+   15  IFO188      UNDEF IS AN UNDEFINED SYMBOL
+   15  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 6
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS   12
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         18
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        43

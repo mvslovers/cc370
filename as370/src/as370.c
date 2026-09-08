@@ -134,7 +134,7 @@ static int  txl_revisit;   /* a put() wrote below the high-water mark -> overlap
 static long lc, modlen;
 static long org_hwm;          /* highest lc reached in the current section (for ORG with no operand) */
 static int  in_dsect; static long main_lc; static int main_sect_id;   /* DSECT: dummy section, own counter, no TXT; main_* save the control section on first DSECT entry */
-struct uent { int reg; long base; int sect; };   /* active USING ranges */
+struct uent { int reg; long base; int sect; int isabs; };   /* active USING ranges; isabs = the base operand was ABSOLUTE */
 static struct uent usings[32]; static int nusing;
 static int  cur_sect_id, g_sectid;            /* section identity for USING resolution */
 /* Per-section content high-water mark.
@@ -703,6 +703,30 @@ static int using_for(long val, int sect, long *disp) {
     if (best >= 0) { *disp = bd; return usings[best].reg; }
     *disp = val; return 0;
 }
+/* An ABSOLUTE operand is addressed through an ABSOLUTE USING, and only through
+ * one.  `ISDACVT EQU 0' with its fields as absolute EQUs is how a dummy section
+ * was written before DSECT, and `USING ISDACVT,2' then makes register 2 the base
+ * for those offsets.  as370 registered such a USING and never consulted it, so
+ * it emitted the bare displacement with base 0 -- one nibble, no diagnostic, and
+ * a deck that assembles cleanly while addressing absolute storage where IFOX00
+ * addresses R2+256 (cc370#190).
+ *
+ * The two kinds do not mix, which is measured and not assumed: in
+ * tests/absusing.s a relocatable `USING *,15' is in force over the whole CSECT
+ * and IFOX00 still does not use R15 for the absolute operand, before or after
+ * the absolute USING is dropped. So this scans isabs entries only, and a
+ * relocatable operand keeps using_for() untouched. Tie-break mirrors using_for:
+ * smallest displacement, highest-numbered register (#138). */
+static int using_for_abs(long val, long *disp) {
+    int i, best = -1; long bd = 0;
+    for (i = 0; i < nusing; i++) {
+        if (!usings[i].isabs) continue;
+        long dd = val - usings[i].base;
+        if (dd >= 0 && dd < 4096 && (best < 0 || dd < bd || (dd == bd && usings[i].reg > usings[best].reg))) { best = i; bd = dd; }
+    }
+    if (best >= 0) { *disp = bd; return usings[best].reg; }
+    *disp = val; return 0;
+}
 /* base address that register reg currently addresses via USING (0 if none); used
  * to recover the listing's effective address ADDR = displacement + base. Returns
  * the first matching USING -- which is what using_for picked for a symbolic
@@ -854,7 +878,14 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             r_len = s ? s->len : 0;
             r_reloc = 1; r_raw = v;
             *sym = 1; sub[0] = using_for(v, ssect, d);
-        } else { *d = v; *sym = 0; sub[0] = 0; }       /* absolute: displacement value, base 0 */
+        } else {   /* absolute: a base only if an ABSOLUTE USING covers it, else the bare displacement */
+            int ab = using_for_abs(v, d);
+            /* *sym tells the caller how to read sub[0] -- base when set, INDEX
+             * when clear.  Setting it only for ab != 0 keeps the ordinary
+             * absolute operand on exactly its old path: with no absolute USING
+             * in force the caller computed b = 0 already, so nothing moves. */
+            *sym = (ab != 0); sub[0] = ab;
+        }
     }
 }
 
@@ -3275,9 +3306,23 @@ static void do_pass(int pass, char **lines, int nlines) {
             char F[4][FLDW]; split_fields(opnd, F, 4);
             if (pass == 2 && nusing < 32) {
                 int reg = (int)expr_val(F[1], 0);
-                long base = (F[0][0] == '*') ? lc : expr_val(F[0], 0);
-                int bsect = cur_sect_id;
-                if (F[0][0] != '*') { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm); if (bs) bsect = bs->sect; }
+                int brel = 0;
+                long base = (F[0][0] == '*') ? lc : expr_val(F[0], &brel);
+                int isabs = 0, bsect = cur_sect_id;
+                if (F[0][0] != '*') { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm);
+                    if (bs) bsect = bs->sect;
+                    /* An ABSOLUTE domain -- `GSPCB EQU 0' with its fields as
+                     * absolute EQUs, the pre-DSECT way of mapping a control
+                     * block.  The base symbol must be DEFINED and absolute, not
+                     * merely non-relocatable: an UNDEFINED symbol also evaluates
+                     * to 0 and non-relocatable, and taking that for an absolute
+                     * domain made every absolute operand in the module pick up a
+                     * base.  IFFAAA01 maps GSPCB from a macro we do not have, so
+                     * `USING GSPCB,R2WRK' names nothing at all -- and `L R4WRK,16'
+                     * then addressed R2+16 where IFOX00 reads absolute 16, the
+                     * CVT pointer. 52 decks lost their identity to that before
+                     * the gate caught it. */
+                    isabs = !brel && bs && bs->defined && bs->type == S_ABS; }
                 /* USING is keyed by BASE REGISTER: a second USING naming a
                  * register that is already in a domain REPLACES it -- IFOX00
                  * does so quietly, with no diagnostic on the replacing card
@@ -3294,7 +3339,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 { int slot = -1, q;
                   for (q = 0; q < nusing; q++) if (usings[q].reg == reg) { slot = q; break; }
                   if (slot < 0) slot = nusing++;
-                  usings[slot].reg = reg; usings[slot].base = base; usings[slot].sect = bsect; }
+                  usings[slot].reg = reg; usings[slot].base = base; usings[slot].sect = bsect; usings[slot].isabs = isabs; }
                 lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
             }
         } else if (!strcmp(op, "DROP")) {

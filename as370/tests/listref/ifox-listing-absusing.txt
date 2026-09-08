@@ -1,0 +1,57 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 23.26 09/07/26
+T         SD  0001 000000 00000E
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 23.26 09/07/26
+                                      1 * Eine USING auf einem ABSOLUTEN Symbol (#190).
+                                      2 *
+                                      3 * `DUM EQU 0' mit den Feldern als absolute EQU ist die alte Art,
+                                      4 * eine Dummy-Sektion zu schreiben; `USING DUM,2' macht Register 2
+                                      5 * zur Basis fuer diese Abstaende.  as370 trug eine solche USING
+                                      6 * ein und fragte sie nie ab -- es setzte die blanke Distanz mit
+                                      7 * Basis 0 ab.  Ein Halbbyte, keine Meldung, und ein Deck, das
+                                      8 * sauber assembliert und absoluten Speicher adressiert, wo IFOX00
+                                      9 * R2+256 adressiert.
+                                     10 *
+                                     11 * Die dritte Zeile ist die Gegenprobe nach DROP, die vierte die
+                                     12 * wichtigere: die beiden Arten MISCHEN NICHT.  `USING *,15' steht
+                                     13 * ueber dem ganzen CSECT, und IFOX00 nimmt R15 trotzdem nie fuer
+                                     14 * den absoluten Operanden -- weder vor noch nach dem DROP.
+                                     15 *
+                                     16 * Der Fall, an dem die zu weite Fassung scheitert, steht in
+                                     17 * tests/absundef.s -- er braucht ein eigenes Modul, weil IFOX00
+                                     18 * das undefinierte Symbol mit rc 12 meldet und dann kein Deck
+                                     19 * schreibt.
+                                     20 *
+                                     21 *   LA 1,FLD   unter USING DUM,2   4110 2100
+                                     22 *   L  3,FLD   unter USING DUM,2   5830 2100
+                                     23 *   LA 4,FLD   nach DROP 2         4140 0100   nicht 4140 F100
+000000                               24 T        CSECT
+                            00000    25          USING *,15
+                            00000    26 DUM      EQU   0
+                            00100    27 FLD      EQU   DUM+256
+                            00000    28          USING DUM,2
+000000 4110 2100      00100          29          LA    1,FLD
+000004 5830 2100      00100          30          L     3,FLD
+                                     31          DROP  2
+000008 4140 0100      00100          32          LA    4,FLD
+00000C 07FE                          33          BR    14
+000000                               34          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 23.26 09/07/26
+DUM      00001 00000000 00026  00027 00028
+FLD      00001 00000100 00027  00029 00030 00032
+T        00001 00000000 00024  00034
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 23.26 09/07/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         34
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        57
