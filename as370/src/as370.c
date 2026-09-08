@@ -488,6 +488,32 @@ static struct lit *lit_get(const char *t) {
  *   non-bit operand interrupts it or the statement ends; every statement starts
  *   on a byte boundary. `DC AL.3(5)' is A0, `DC AL.12(1),AL2(3)' is 0010 0003,
  *   and `DC 3AL.4(1)' is 1110. */
+/* A nominal fixed-point value with a SCALE modifier: the value multiplied by
+ * two to the power of the scale, rounded to nearest.
+ *
+ * `DC FS3'1.25'' is 1.25 x 8 = 10, and `DC FS28'6.2832'' -- the FORTRAN-syntax
+ * scientific routines' definition of two pi -- is x'6487FCB9'. as370 read the
+ * nominal value with strtol, which stops at the decimal point and knows nothing
+ * of the modifier, so it stored 1 and 6 (cc370#217).
+ *
+ * Rounding is to NEAREST and away from zero, measured on ten values chosen to
+ * separate it from truncation: `FS2'1.2'' is 4.8 and IFOX00 writes 5.
+ *
+ * Only reached when a scale modifier is present. Without one the integer path
+ * is untouched, which is the property the tree gate should show and does. */
+static long scaled_fixed(const char *t, int scale) {
+    /* No <math.h>: pow() and floor() would want -lm on the CI's Linux leg while
+     * linking silently on this host, which is the portability trap this project
+     * keeps meeting from the other side. Doubling in a loop and truncating
+     * toward zero after a half-step gives the same answer for every value the
+     * oracle was asked. */
+    double f = 1.0; int k;
+    while (*t == ' ') t++;
+    if (scale >= 0) { for (k = 0; k < scale && k < 64; k++) f *= 2.0; }
+    else            { for (k = 0; k < -scale && k < 64; k++) f /= 2.0; }
+    double d = strtod(t, NULL) * f;
+    return (long)(d >= 0 ? d + 0.5 : d - 0.5);
+}
 static void bits_put(unsigned char *buf, int bufsz, int *nbits, unsigned long v, int n) {
     int k;
     for (k = n - 1; k >= 0; k--) {
@@ -4118,6 +4144,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (!hascnt) cnt = 1;
                 int ty = *p ? toupper((unsigned char)*p++) : 0;
                 int blen = 0, haslen = 0, bitlen = 0;   /* explicit length modifier Ln, L(expr) or L.n (bits) */
+                int scale = 0, hasscale = 0;            /* scale modifier Sn, before or after the length */
+                /* Sn may stand either side of Ln: FS28 has no length, FL4S3 does.
+                 * Parsed on both sides rather than in a loop so the length block
+                 * below is untouched (cc370#217). */
+                if (*p == 'S') { p++; int sneg = 0;
+                    if (*p == '-') { sneg = 1; p++; } else if (*p == '+') p++;
+                    while (isdigit((unsigned char)*p)) scale = scale * 10 + (*p++ - '0');
+                    if (sneg) scale = -scale;
+                    hasscale = 1; }
                 if (*p == 'L' && p[1] == '.') { p += 2;   /* a length in BITS */
                     haslen = 1;
                     if (*p == '(') { const char *st = p + 1, *q = st; int d = 1, qt = 0;
@@ -4156,6 +4191,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                         blen = (int)expr_val_full(ex, NULL); if (blen < 0) blen = 0;
                         p = *q ? q + 1 : q; }
                     else while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
+                if (!hasscale && *p == 'S') { p++; int sneg2 = 0;
+                    if (*p == '-') { sneg2 = 1; p++; } else if (*p == '+') p++;
+                    while (isdigit((unsigned char)*p)) scale = scale * 10 + (*p++ - '0');
+                    if (sneg2) scale = -scale;
+                    hasscale = 1; }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
                 /* A bit field joins the run and does not move the location
                  * counter; anything else flushes the run first. The values are
@@ -4369,7 +4409,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                             static char fv[512][FLDW]; int nv = split_fields(body, fv, 512), vi;
                             if (nv < 1) { nv = 1; fv[0][0] = 0; }
                             for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
-                                val = fv[vi][0] ? strtol(fv[vi], NULL, 10) : 0;
+                                val = fv[vi][0] ? (hasscale ? scaled_fixed(fv[vi], scale) : strtol(fv[vi], NULL, 10)) : 0;
                                 if (emit_dc) put(lc, val, blen);
                                 lc += blen;
                             }
