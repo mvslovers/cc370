@@ -1170,6 +1170,19 @@ static char g_sysect[9] = "";
  * guard, so the count stayed right while &SYSLIST(k) came back empty. It is a
  * diagnostic now, because a bound that is exceeded quietly is the defect this
  * one was. */
+/* A subscripted SET symbol is ONE row holding a vector of elements, not one row
+ * per assigned subscript. `GBLC &ITEM(3000)' used to cost up to 3,000 rows in a
+ * linearly scanned table: measured on IFCE0155, 6,739 of its 6,757 global rows
+ * were array elements and only 18 were plain symbols, and set_find walked that
+ * table 91,000 times for 98 million string comparisons. The same storage is why
+ * `LCLB &SW(4000)' filled a 512-row local table at the 513th assigned subscript
+ * (cc370#173).
+ *
+ * Elements are allocated on ASSIGNMENT, never on declaration -- GBL/LCL of an
+ * array records the base name and creates no row, which is what makes declaring
+ * &SW(4000) free. `eset' distinguishes an element that was assigned the empty
+ * string from one never assigned, which the declared default depends on. */
+struct setrow { char name[20]; char val[96]; char (*elem)[96]; unsigned char *eset; int nelem; };
 /* Local SET symbols per macro context. 256 was too small by a little: IFCEOAK1
  * needs 295, IFCEXXXF 303, IFCSXXXG 288 -- and the ones that reach these numbers
  * only reach them once N'&SYSLIST stops cutting their loops short, so the old
@@ -1196,7 +1209,7 @@ struct ctx {
     struct macro *m;
     char pv[100][96];                      /* parameter values (may be sublists) */
     const char *namepval;
-    char sn[MAXLSET][20], sv[MAXLSET][96]; int nset;  /* local SET symbols */
+    struct setrow sr[MAXLSET]; int nset;   /* local SET symbols, arrays one row each */
     int sysndx;                            /* &SYSNDX for this macro invocation */
     char sysect[9];                        /* &SYSECT, frozen at the call (see g_sysect) */
     char syslist[MAXSYSLIST][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
@@ -1222,29 +1235,67 @@ struct ctx {
  * scales with what a module actually assigns, not with the bound. */
 #define MAXGSET 32768
 static char g_gbl[MAXGBL][20]; static int g_ngbl;
-static char g_sn[MAXGSET][20], g_sv[MAXGSET][96]; static int g_nset;
+static struct setrow g_sr[MAXGSET]; static int g_nset;
 static void base_of(const char *n, char *b) { int i = 0; while (n[i] && n[i] != '(' && i < 19) { b[i] = n[i]; i++; } b[i] = 0; }
 static int is_global(const char *n) { char b[20]; base_of(n, b); int i; for (i = 0; i < g_ngbl; i++) if (!strcmp(g_gbl[i], b)) return 1; return 0; }
 static void mark_global(const char *n) { char b[20]; base_of(n, b); if (is_global(b)) return;
     if (g_ngbl >= MAXGBL) { fprintf(stderr, "as370: global variable-symbol table full (%d)\n", MAXGBL); exit(2); }
     scopy(g_gbl[g_ngbl], b, 19); g_ngbl++; }
-static char *set_find(struct ctx *c, const char *n) {
-    if (is_global(n)) { int i; for (i = 0; i < g_nset; i++) if (!strcmp(g_sn[i], n)) return g_sv[i]; return NULL; }
-    int i; for (i = 0; i < c->nset; i++) if (!strcmp(c->sn[i], n)) return c->sv[i];
+/* split a canonical name into base + 1-based subscript (-1 when unsubscripted) */
+static long set_split(const char *n, char *base) {
+    const char *lp = strchr(n, '(');
+    int b = lp ? (int)(lp - n) : (int)strlen(n);
+    if (b > 19) b = 19;
+    memcpy(base, n, (size_t)b); base[b] = 0;
+    return lp ? atol(lp + 1) : -1;
+}
+static struct setrow *row_find(struct setrow *rows, int n, const char *base) {
+    int i; for (i = 0; i < n; i++) if (!strcmp(rows[i].name, base)) return &rows[i];
     return NULL;
 }
-static void set_put(struct ctx *c, const char *n, const char *v) {
-    if (is_global(n)) {
-        int i; for (i = 0; i < g_nset; i++) if (!strcmp(g_sn[i], n)) { strncpy(g_sv[i], v, 95); g_sv[i][95] = 0; return; }
-        if (g_nset >= MAXGSET) { fprintf(stderr, "as370: global SET-symbol table full (%d)\n", MAXGSET); exit(2); }
-        strncpy(g_sn[g_nset], n, 19); g_sn[g_nset][19] = 0; strncpy(g_sv[g_nset], v, 95); g_sv[g_nset][95] = 0; g_nset++;
-        return;
+/* element slot of a subscripted row; grows on assignment, NULL when never set */
+static char *row_elem(struct setrow *r, long idx, int create) {
+    if (idx < 1 || idx > 1000000L) return NULL;
+    if (idx > r->nelem) {
+        if (!create) return NULL;
+        long cap = idx < 64 ? 64 : idx;
+        char (*ne)[96] = realloc(r->elem, (size_t)cap * 96);
+        unsigned char *ns = realloc(r->eset, (size_t)cap);
+        if (!ne || !ns) { fprintf(stderr, "as370: out of memory growing &%s to %ld elements\n", r->name, cap); exit(2); }
+        memset(ne + r->nelem, 0, (size_t)(cap - r->nelem) * 96);
+        memset(ns + r->nelem, 0, (size_t)(cap - r->nelem));
+        r->elem = ne; r->eset = ns; r->nelem = (int)cap;
     }
-    char *e = set_find(c, n);
-    if (e) { strncpy(e, v, 95); e[95] = 0; return; }
-    if (c->nset >= MAXLSET) { fprintf(stderr, "as370: local SET-symbol table full (%d)\n", MAXLSET); exit(2); }
-    strncpy(c->sn[c->nset], n, 19); c->sn[c->nset][19] = 0;
-    strncpy(c->sv[c->nset], v, 95); c->sv[c->nset][95] = 0; c->nset++;
+    if (!create && !r->eset[idx - 1]) return NULL;
+    if (create) r->eset[idx - 1] = 1;
+    return r->elem[idx - 1];
+}
+static char *set_find(struct ctx *c, const char *n) {
+    char b[20]; long idx = set_split(n, b);
+    int g = is_global(n);
+    struct setrow *r = row_find(g ? g_sr : c->sr, g ? g_nset : c->nset, b);
+    if (!r) return NULL;
+    if (idx < 0) return r->elem ? NULL : r->val;
+    return row_elem(r, idx, 0);
+}
+static void set_put(struct ctx *c, const char *n, const char *v) {
+    char b[20]; long idx = set_split(n, b);
+    int g = is_global(n);
+    struct setrow *rows = g ? g_sr : c->sr;
+    int *pn = g ? &g_nset : &c->nset, cap = g ? MAXGSET : MAXLSET;
+    struct setrow *r = row_find(rows, *pn, b);
+    if (!r) {
+        if (*pn >= cap) { fprintf(stderr, "as370: %s SET-symbol table full (%d)\n", g ? "global" : "local", cap); exit(2); }
+        r = &rows[*pn]; memset(r, 0, sizeof *r);
+        strncpy(r->name, b, 19); r->name[19] = 0; (*pn)++;
+    }
+    char *slot = (idx < 0) ? r->val : row_elem(r, idx, 1);
+    if (!slot) return;
+    strncpy(slot, v, 95); slot[95] = 0;
+}
+/* release a context's array element vectors (the rows themselves are inline) */
+static void set_free(struct ctx *c) {
+    int i; for (i = 0; i < c->nset; i++) { free(c->sr[i].elem); free(c->sr[i].eset); }
 }
 /* sublist value "(a,b,c)" -> element count / 1-based element. Commas and the
  * closing paren are recognised only at top level, outside 'quotes' (so a
@@ -2302,7 +2353,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         pc++;
     }
     g_genlevel--;
-    free(c); free(seqn); free(seqi);
+    set_free(c); free(c); free(seqn); free(seqi);
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
  * pass and every COPY'd block, so a GBLC/SETC in PDPTOP reaches an AIF in
