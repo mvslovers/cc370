@@ -1,0 +1,80 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 18.00 09/08/26
+CONTREM   SD  0001 000000 00001F
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 18.00 09/08/26
+                                      1 * Eine Fortsetzungskarte setzt nur fort, was noch nicht fertig ist.
+                                      2 * Endet der Operand schon auf der ersten Karte, so setzt die naechste
+                                      3 * die BEMERKUNG fort und traegt nichts zur Anweisung bei - IFOX00
+                                      4 * verbraucht sie und verwirft ihren Text.
+                                      5 *
+                                      6 * as370 kuerzte den Puffer am Operandenende und haengte die naechste
+                                      7 * Karte trotzdem an. Harmlos, solange der Operand auf einem Literal
+                                      8 * endet - der Text landete dahinter als Bemerkung. Zerstoerend, wenn
+                                      9 * er auf einer VARIABLEN endet, denn dann verlaengert die Fortsetzung
+                                     10 * deren NAMEN: AMACLIB(IKJIDENT) schreibt `...,C&TYPNAM PARAMETER TYPE
+                                     11 * MESSA' plus `GE SEGMENT', verbunden zu `&TYPNAMGE' - eine
+                                     12 * undefinierte Variable, die zu nichts wird. Das Laengenfeld sagte
+                                     13 * weiter 18 und die Daten waren ein Leerzeichen (cc370#250).
+                                     14 *
+                                     15 * C1 ist der Fall. C2 zeigt, dass es NICHT am Wert liegt: 'SHORT'
+                                     16 * laesst die Karte weit vor Spalte 72 enden und geht genauso verloren.
+                                     17 *
+                                     18 * Die Kontrollen sind der eigentliche Inhalt, denn die erste Fassung
+                                     19 * dieses Fixes liess fuenf davon durchfallen:
+                                     20 *
+                                     21 *   C3  Operand endet auf KOMMA - die Fortsetzung gehoert dazu.
+                                     22 *       Diese Kontrolle steht NICHT hier, sondern ist die ganze
+                                     23 *       uebrige Suite: dcb, contattr, contparen, dc_types und
+                                     24 *       sample8/9 sind genau dieser Fall, und alle fuenf sind an
+                                     25 *       der ersten, zu breiten Fassung dieses Fixes gescheitert.
+                                     26 *   C4  Bedingter Ausdruck ueber zwei Karten - dort bricht der Scan
+                                     27 *       gar nicht ab, also darf auch nichts entschieden werden
+                                     28 *   C6  Bemerkung ohne Variable - war schon immer richtig
+                                     29 *
+                                     30 * Punktzahl:  ohne Fix C1/C2 verlieren die Variable
+                                     31 *             mit Fix  beide ersetzen, C3-C6 unveraendert
+                                     32          MACRO
+                                     33          SEG   &T
+                                     34          DC    AL2(8),AL2(18),C&T PARAMETER TYPE MESSA                 *
+                                                       GE SEGMENT
+                                     35          MEND
+                                     36          MACRO
+                                     37          CND   &T
+                                     38          AIF   ('&T' EQ 'X' AND '&T' NE 'Y'                            *
+                                                       AND '&T' NE 'Z').OK
+                                     39          DC    C'NO'
+                                     40          MEXIT
+                                     41 .OK      DC    C'OK'
+                                     42          MEND
+000000                               43 CONTREM  CSECT
+                                     44 C1       SEG   'PROBLEM NUMBER'
+000000 00080012D7D9D6C2              45+         DC    AL2(8),AL2(18),C'PROBLEM NUMBER' PARAMETER TYPE MESSA   *
+000008 D3C5D440D5E4D4C2                +                             GE SEGMENT
+                                     46 C2       SEG   'SHORT'
+000012 00080012E2C8D6D9              47+         DC    AL2(8),AL2(18),C'SHORT' PARAMETER TYPE MESSA            *
+00001A E3                              +                    GE SEGMENT
+                                     48 C4       CND   X
+00001B D6D2                          49+         DC    C'OK'
+00001D E7E8                          50 C6       DC    C'XY' REMARK TEXT HERE                                  *
+                                                       MORE REMARK
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 18.00 09/08/26
+                                     51          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 18.00 09/08/26
+CONTREM  00001 00000000 00043
+C6       00002 0000001D 00050
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 18.00 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         51
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        80

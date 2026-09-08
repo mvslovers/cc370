@@ -2247,6 +2247,20 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
         ope_ = os;
         while (os < a && (acc[os] == ' ' || acc[os] == '\t')) os++;
         int condexpr = op_is_cond_expr(acc + ops_, ope_ - ops_);
+        /* Once the operand has ENDED, the cards that follow continue the REMARK
+         * and contribute nothing to the statement. IFOX00 consumes them and
+         * discards their text: `DC C'XY' REMARK' with a continued remark
+         * assembles to exactly `DC C'XY''.
+         *
+         * as370 truncated the accumulator at the operand end and then appended
+         * the next card anyway. Harmless while the operand ended on a literal --
+         * the text landed past it as a remark -- and destructive when it ended
+         * on a VARIABLE SYMBOL, because the continuation extended the NAME:
+         * AMACLIB(IKJIDENT) writes `...,C&TYPNAM PARAMETER TYPE MESSA' plus
+         * `GE SEGMENT', which joined as `&TYPNAMGE' -- an undefined variable
+         * that substituted to nothing. The length field still said 18 and the
+         * data was one blank (cc370#250). */
+        int opnd_ended = 0;
         while (cont && i < n) {
             /* A continued line's operand ends at the first blank outside QUOTES;
              * the rest of columns 1-71 is a remark and is dropped before the next
@@ -2268,7 +2282,7 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
              * clean (cc370#154).  Dropping the test outright is not the fix: it
              * breaks AIF and SETB, whose expressions legitimately contain blanks,
              * and takes the DCB common-interface block with them (#63). */
-            int j, q = 0, d = 0;
+            int j, q = 0, d = 0, broke = 0;
             for (j = os; j < a; j++) { char ch = acc[j];
                 /* An ATTRIBUTE apostrophe is not a quote here either (#184), and
                  * inside a string an apostrophe can only close one -- the same
@@ -2283,11 +2297,20 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
                 if (ch == '\'') { if (q || !attr_apos(acc, j)) q = !q; }
                 else if (!q && ch == '(') d++;
                 else if (!q && ch == ')') { if (d) d--; }
-                else if (!q && (d == 0 || !condexpr) && (ch == ' ' || ch == '\t')) { a = j; break; }
+                else if (!q && (d == 0 || !condexpr) && (ch == ' ' || ch == '\t')) { a = j; broke = 1; break; }
             }
+            /* A blank ends the operand FIELD; whether the STATEMENT continues is a
+             * different question, and the answer is the last character before it.
+             * An operand broken mid-list ends on a comma and the next card carries
+             * the rest -- `DSORG=PS,MACRF=(GM),' + `DDNAME=SYSIN'. A complete one
+             * does not, and then the next card continues the REMARK and belongs to
+             * no statement. Conflating the two drops the continuation of every
+             * DCB, GETMAIN and continued DC in the suite. */
+            if (broke) { int t2 = a; while (t2 > os && (acc[t2-1] == ' ' || acc[t2-1] == '\t')) t2--;
+              if (t2 > os && acc[t2-1] != ',') opnd_ended = 1; }
             const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
             check_cont_card(c, cl, i + 1, stmt_card, 0);   /* IFO026: RFCCHK checks every continuation card, not just a comment's */
-            for (; s < e && a < 8190; s++) acc[a++] = c[s];
+            if (!opnd_ended) { for (; s < e && a < 8190; s++) acc[a++] = c[s]; }
             cont = (cl > 71 && c[71] != ' ');
             i++;
         }

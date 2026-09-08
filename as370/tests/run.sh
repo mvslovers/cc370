@@ -298,6 +298,18 @@ rm -f /tmp/_au.$$
 # L7 is the same question without a variable, which needs its own read.
 #   main 9ac48ad   N4 N2 N7 Y1 Y1 YK NLIT
 #   IFOX00, this   Y4 Y2 Y7 Y1 Y1 YK YLIT
+# contrem is the #250 oracle: a continuation card continues only what is not
+# yet finished. Once the operand has ENDED, the next card continues the REMARK
+# and belongs to no statement -- IFOX00 consumes it and discards its text.
+# as370 truncated at the operand end and appended the card anyway: harmless on a
+# literal, destructive on a VARIABLE, because the continuation extended the NAME
+# (`&TYPNAM' + `GE' = `&TYPNAMGE', undefined, substituted to nothing).
+# C2 rules out the obvious reading -- 'SHORT' leaves the card far short of the
+# margin and is lost just the same, so it is the continuation and not the width.
+# The comma control is not here: dcb, contattr, contparen, dc_types and
+# sample8/9 ARE that case, and all five failed the first, over-broad attempt.
+#   main 8ced9c4   0008 0012 40  (twice; the parameter gone, length still 18)
+#   IFOX00, this   0008 0012 C'PROBLEM NUMBER' / C'SHORT'
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -308,7 +320,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
-         rxparen lenattr; do
+         rxparen lenattr contrem; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
