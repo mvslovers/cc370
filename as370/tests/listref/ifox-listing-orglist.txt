@@ -1,0 +1,77 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.40 09/08/26
+PD        SD  0001 000000 000018
+PDB       SD  0002 000018 000006
+CM1       CM  0003 000000 000005
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.40 09/08/26
+                                      1 * Jede Anweisung, die den Ortszaehler VERSCHIEBT oder ERSETZT, listete
+                                      2 * bei as370 den Wert, den er beim Eintritt hatte - lrecs[].loc wird
+                                      3 * gestempelt, bevor die Anweisung laeuft (cc370#227). Fuer eine
+                                      4 * Instruktion oder ein DC ist das genau richtig; fuer diese hier nicht.
+                                      5 *
+                                      6 * ORG:    IFOX00 behaelt in LOC den Zaehler VORHER und setzt den neuen
+                                      7 *         in ADDR2. Alle drei Formen stehen hier: ORG *-4, blankes ORG
+                                      8 *         (Hochwassermarke) und ORG PD+20 - dazu eines in einer DSECT.
+                                      9 * CSECT:  der eigene Zaehler des Abschnitts. PDB ist neu (000018, sein
+                                     10 *         Ursprung), PD danach FORTGESETZT (000015, wo es aufhoerte) -
+                                     11 *         ohne den fortgesetzten Fall waeren "Ursprung" und "eigener
+                                     12 *         Zaehler" nicht zu unterscheiden.
+                                     13 * DSECT:  von null bei der ersten Oeffnung, fortgesetzt danach.
+                                     14 *
+                                     15 * CM1 weicht bewusst ab und der Pruefer BEHAUPTET das: as370 kennt COM
+                                     16 * nicht - kein ESD-Eintrag, kein Zaehler ab null (cc370#229). Wird das
+                                     17 * behoben, faellt dieser Fall auf und verlangt die Anpassung. Auch die
+                                     18 * drei Karten danach haengen daran.
+000000                               19 PD       CSECT
+000000                               20 P1       DS    CL10
+00000A                      00006    21          ORG   *-4
+000006                               22 P2       DS    CL2
+000008                      0000A    23          ORG
+00000A                               24 P3       DS    CL2
+00000C                      00014    25          ORG   PD+20
+000014                               26 P4       DS    CL1
+000018                               27 PDB      CSECT
+000018                               28 Q1       DS    CL6
+000015                               29 PD       CSECT
+000015                               30 P5       DS    CL1
+000000                               31 DM1      DSECT
+000000                               32 R1       DS    CL4
+000004                      00002    33          ORG   *-2
+000002                               34 R2       DS    CL2
+000004                               35 DM1      DSECT
+000004                               36 R3       DS    CL3
+000000                               37 CM1      COM
+000000                               38 S1       DS    CL5
+000016                               39 PD       CSECT
+000018                               40          LTORG
+                                     41          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.40 09/08/26
+CM1      00001 00000000 00037
+DM1      00001 00000000 00031  00035
+PD       00001 00000000 00019  00025 00029 00039
+PDB      00001 00000018 00027
+P1       00010 00000000 00020
+P2       00002 00000006 00022
+P3       00002 0000000A 00024
+P4       00001 00000014 00026
+P5       00001 00000015 00030
+Q1       00006 00000018 00028
+R1       00004 00000000 00032
+R2       00002 00000002 00034
+R3       00003 00000004 00036
+S1       00005 00000000 00038
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 12.40 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         41
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                        77
