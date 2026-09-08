@@ -121,7 +121,7 @@ static struct lit lits[MAXLIT];
 static int nlit;
 static int litpool = 0;   /* current literal pool (LTORG/END index); literals dedup only within a pool */
 
-struct reloc { long addr; int pos, rel, isV, len; };
+struct reloc { long addr; int pos, rel, isV, len, neg; };
 static struct reloc rels[MAXREL];
 static int nrel;
 
@@ -778,8 +778,21 @@ static int equ_len_of(const char *e) {
  * the result is in TAPEIOB's section, not IOBSENS0's. Falls back to cur_sect_id.
  * Sums the sign of each relocatable (non-absolute) symbol term per section and
  * returns the section with a net positive count. */
-static int expr_sect(const char *f) {
-    int tsect[8]; long tsign[8]; int nt = 0, k;
+/* Every section the expression names, with its NET signed term count.
+ *
+ * `A-B' where A and B live in different control sections is not absolute: its
+ * value depends on where the linkage editor puts each of them, and IFOX00 says
+ * so with a SIGNED PAIR of relocation entries -- negative for the subtracted
+ * section, positive for the added one (cc370#209). Measured: `A(B1+B2)' with
+ * both terms in one section gets TWO positive entries, so the rule is one entry
+ * per UNIT of the tally, not one per section; `A(A1-B1+B1)' gets one, because
+ * B cancels; and a difference INSIDE one section gets none, which is the case
+ * that makes the whole construct absolute.
+ *
+ * expr_sect() itself only ever wanted one section out of this, and threw the
+ * tally away. It is the same walk, with the result kept. */
+static int expr_sect_terms(const char *f, int *tsect, long *tsign, int max) {
+    int nt = 0, k;
     const char *p = f; int sign = 1, expect = 1;
     while (*p) {
         if (*p == ' ') { p++; continue; }
@@ -794,21 +807,25 @@ static int expr_sect(const char *f) {
         if (*p == '*') { csect = cur_sect_id; p++; }               /* location counter term */
         else { char nm[64]; int n = 0; while (*p && !strchr("+-*/(), ", *p) && n < 63) nm[n++] = *p++; nm[n] = 0;
             /* A character this walk neither consumes above nor accepts into a
-             * name leaves p where it was, and the loop never ends. `,' is exactly
-             * that: it stops the name scan and had no branch of its own, so the
-             * token came back empty forever. HEWLDIOC is the one module in 5,528
-             * that gets a bare comma here -- through resolve(), an ordinary
-             * machine-operand path -- which is why it has never assembled and was
-             * written off as a module that "never terminates within any alarm".
-             * reloc_sym walks the same syntax and has carried this guard since it
-             * was written (cc370#215). */
+             * name leaves p where it was, and the loop never ends. `,' was
+             * exactly that (cc370#215): HEWLDIOC reaches it through resolve() on
+             * an ordinary machine operand and has never assembled. A DC nominal
+             * value carries commas routinely, so the caller added below reaches
+             * it far more often -- which is how a single-module curiosity turned
+             * into an immediate hang and got found. reloc_sym walks the same
+             * syntax and has carried this advance since it was written. */
             if (!n) { p++; continue; }                             /* unhandled char: advance to guarantee progress */
             if (nm[0] && !isdigit((unsigned char)nm[0])) { struct sym *s = sym_find(nm); if (s && s->type != S_ABS) csect = s->sect; } }
         if (csect >= 0) { int f2 = -1; for (k = 0; k < nt; k++) if (tsect[k] == csect) { f2 = k; break; }
-            if (f2 < 0 && nt < 8) { f2 = nt; tsect[nt] = csect; tsign[nt] = 0; nt++; }
+            if (f2 < 0 && nt < max) { f2 = nt; tsect[nt] = csect; tsign[nt] = 0; nt++; }
             if (f2 >= 0) tsign[f2] += sign; }
         sign = 1; expect = 0;
     }
+    return nt;
+}
+static int expr_sect(const char *f) {
+    int tsect[8]; long tsign[8]; int k;
+    int nt = expr_sect_terms(f, tsect, tsign, 8);
     for (k = 0; k < nt; k++) if (tsign[k] > 0) return tsect[k];     /* net +relocatable term */
     for (k = 0; k < nt; k++) if (tsign[k] != 0) return tsect[k];
     return cur_sect_id;
@@ -1114,7 +1131,23 @@ static void add_reloc(long at, const char *target, int isV, int len) {
     if (!rel && s) rel = sect_esdid_of(s->sect);
     if (!rel) rel = cur_sect_esdid;
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
-    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV; rels[nrel].len = len; nrel++;
+    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = isV;
+    rels[nrel].len = len; rels[nrel].neg = 0; nrel++;
+}
+/* One relocation against a SECTION rather than a symbol, with a direction.
+ *
+ * add_reloc() resolves R from the target's name, which is what an ordinary
+ * address constant wants. A cross-section difference has no single target: each
+ * section named in the expression is relocated in its own direction, so the
+ * caller has section ids and a sign, not a name (cc370#209). */
+static void add_reloc_sect(long at, int sect, int len, int neg) {
+    if (in_dsect) return;                       /* a dummy section generates no relocations */
+    if (dsect_sect[sect & 255]) return;         /* nor does a term that lives in one */
+    int rel = sect_esdid_of(sect);
+    if (!rel) rel = cur_sect_esdid;
+    if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
+    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = 0;
+    rels[nrel].len = len; rels[nrel].neg = neg; nrel++;
 }
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS) ? 6 : 4; }
 
@@ -3848,7 +3881,26 @@ static void do_pass(int pass, char **lines, int nlines) {
                                     /* in_dsect: a DC inside a DSECT reserves storage and generates no constant at all
                                      * (sysmac/cvt.macro's own `CVTMFRTR DC A(CVTBRET)` is one), so it is not IFO158. */
                                     if ((rc != 0) && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(rsym, i);
-                                    put(lc, v, blen); if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0, blen); } }   /* AL3 address -> 3-byte relocation, etc. */
+                                    put(lc, v, blen);
+                                    /* A difference of symbols in DIFFERENT control sections is not
+                                     * absolute, and expr_val_full reports NET relocatability -- so
+                                     * the two sections cancel and rc reads 0, which is exactly the
+                                     * state that needs a SIGNED PAIR of entries (cc370#209). The
+                                     * per-section tally decides: one entry per unit, negative where
+                                     * the tally is. It is taken only when every named section is a
+                                     * real defined section of this module, so an external reference
+                                     * or an undefined symbol keeps the symbol-resolved path below.
+                                     * A single section at net +1 IS that path, bit for bit. */
+                                    { int ts[8]; long tg[8]; int nt = expr_sect_terms(vals[vj], ts, tg, 8);
+                                      int q, nz = 0, simple = 1, allreal = 1;
+                                      for (q = 0; q < nt; q++) { if (!tg[q]) continue; nz++;
+                                          if (tg[q] != 1) simple = 0;
+                                          if (!sect_esdid_of(ts[q]) || dsect_sect[ts[q] & 255]) allreal = 0; }
+                                      if (nz && !(nz == 1 && simple) && allreal) {
+                                          for (q = 0; q < nt; q++) { long t = tg[q], u;
+                                              for (u = 0; u < (t < 0 ? -t : t); u++)
+                                                  add_reloc_sect(lc, ts[q], blen, t < 0); }
+                                      } else if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0, blen); } } }   /* AL3 address -> 3-byte relocation, etc. */
                             }
                             lc += blen;
                         } }
@@ -4173,11 +4225,11 @@ static void emit_obj(FILE *f) {
             if (off + need > 72) break;                        /* card full -> flush */
             if (reuse) {
                 c[prevflag] |= 0x01;                           /* predecessor: next omits R/P */
-                c[off] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2); cbe(c, off + 1, rels[k].addr, 3);
+                c[off] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0); cbe(c, off + 1, rels[k].addr, 3);
                 prevflag = off; off += 4;
             } else {
                 cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
-                c[off + 4] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2); cbe(c, off + 5, rels[k].addr, 3);
+                c[off + 4] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0); cbe(c, off + 5, rels[k].addr, 3);
                 prevflag = off + 4; off += 8; pr = rels[k].rel; pp = rels[k].pos;
             }
             k++;
@@ -4251,7 +4303,7 @@ static void a_rld_section(void) {
         rels[b2 + 1] = t; } }
     a_newpage("RELOCATION DICTIONARY", "POS.ID   REL.ID   FLAGS   ADDRESS");
     for (k = 0; k < nrel; k++) {
-        int flag = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2);
+        int flag = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0);
         memset(ln, ' ', 120); ln[120] = 0;
         snprintf(b, sizeof b, "%04X", rels[k].pos); memcpy(ln + 1, b, 4);     /* POS.ID col 2 */
         snprintf(b, sizeof b, "%04X", rels[k].rel); memcpy(ln + 10, b, 4);    /* REL.ID col 11 */

@@ -1,0 +1,76 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.03 09/08/26
+XSECTA    SD  0001 000000 000020
+XSECTB    SD  0002 000020 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.03 09/08/26
+                                      1 * Eine Differenz von Symbolen aus VERSCHIEDENEN Kontrollabschnitten
+                                      2 * ist nicht absolut: ihr Wert haengt davon ab, wohin der Binder die
+                                      3 * beiden Abschnitte legt. IFOX00 schreibt dafuer ein VORZEICHEN-
+                                      4 * BEHAFTETES PAAR - negativ fuer den subtrahierten Abschnitt, positiv
+                                      5 * fuer den addierten. as370 hielt den Ausdruck fuer absolut, weil
+                                      6 * expr_val_full die NETTO-Relocierbarkeit meldet und sich die beiden
+                                      7 * Abschnitte gerade aufheben (cc370#209).
+                                      8 *
+                                      9 * C4 legt die Regel fest: zwei Terme desselben Abschnitts ergeben
+                                     10 * ZWEI Eintraege, also einer je EINHEIT der Summe, nicht einer je
+                                     11 * Abschnitt. Ohne diesen Fall waeren "je Abschnitt" und "je Term"
+                                     12 * nicht zu unterscheiden.
+                                     13 *
+                                     14 * Drei Kontrollen in die Gegenrichtung: C2 und C6 sind Differenzen
+                                     15 * INNERHALB eines Abschnitts und erzeugen gar nichts - genau der
+                                     16 * Fall, der den Ausdruck wirklich absolut macht -, und bei C5 hebt
+                                     17 * sich XSECTB auf, so dass nur ein Eintrag bleibt. Ein Fix, der
+                                     18 * jeden genannten Abschnitt relociert, faellt an allen dreien auf.
+                                     19 *
+                                     20 * Punktzahl:  ohne Fix 3 RLD-Eintraege, mit Fix 6.
+000000                               21 XSECTA   CSECT
+000000                               22 A1       DS    F
+000004                               23 A2       DS    F
+000020                               24 XSECTB   CSECT
+000020                               25 B1       DS    F
+000024                               26 B2       DS    F
+000008                               27 XSECTA   CSECT
+000008 00000020                      28 C1       DC    A(B1-A1)
+00000C 00000004                      29 C2       DC    A(A2-A1)
+000010 00000020                      30 C3       DC    A(B1)
+000014 00000044                      31 C4       DC    A(B1+B2)
+000018 00000000                      32 C5       DC    A(A1-B1+B1)
+00001C 00000004                      33 C6       DC    A(B2-B1)
+                                     34          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 10.03 09/08/26
+ 0001     0001      0E     000008
+ 0001     0001      0C     000018
+ 0001     0002      0C     000008
+ 0001     0002      0C     000010
+ 0001     0002      0C     000014
+ 0001     0002      0C     000014
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.03 09/08/26
+A1       00004 00000000 00022  00028 00029 00032
+A2       00004 00000004 00023  00029
+B1       00004 00000020 00025  00028 00030 00031 00032 00032 00033
+B2       00004 00000024 00026  00031 00033
+C1       00004 00000008 00028
+C2       00004 0000000C 00029
+C3       00004 00000010 00030
+C4       00004 00000014 00031
+C5       00004 00000018 00032
+C6       00004 0000001C 00033
+XSECTA   00001 00000000 00021  00027
+XSECTB   00001 00000020 00024
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 10.03 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         34
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        76
