@@ -207,6 +207,14 @@ rm -f /tmp/_au.$$
 # and the same E constant with no comma; all three were accepted either way.
 #   main 1e4fa80   rc 8, "Invalid type declared on DC/DS/DXD constant"
 #   IFOX00, this   rc 0, no diagnostics
+# cnop is the #231 oracle: CNOP aligns to a HALFWORD first, and the label
+# addresses that point -- before the no-ops. The A-cons prove where: N1 must be
+# 2, where 1 is before the halfword pad and 4 is after the no-ops, so both wrong
+# rules fail here. N2 and N6 are the controls whose residue already matches and
+# must produce NO no-op. Without the fix the label is undefined and the section
+# is destroyed from the first CNOP on an odd counter: 64 no-ops, 128 bytes, rc 0.
+#   main 6c3d966   N1/N2 undefined, next statement at x'81' (IFOX00: x'04')
+#   IFOX00, this   labels at 2 / 0A / 12 / 1E / 2A / 30, deck identical
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -216,7 +224,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr equparen attre; do
+         xsectrel dcattr equparen attre cnop; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
