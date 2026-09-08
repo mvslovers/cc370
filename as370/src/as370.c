@@ -1887,7 +1887,13 @@ static int cnd_bool(struct ctx *c, const char *t) {           /* a single boolea
     return eval_seta(c, t) != 0;                               /* SETB var / arithmetic: nonzero = true */
 }
 static int eval_cond(struct ctx *c, const char *cond) {
-    char toks[32][96]; int nt = 0; const char *p = cond;
+    /* Sized for a full 255-character operand rather than for the shortest
+     * condition anyone happened to write: a six-term AND is 23 tokens and the
+     * old 32 was within one comparison of silently dropping factors. Dropping is
+     * what it did -- `if (nt < 31) nt++' kept overwriting the last slot, so a
+     * long condition evaluated on its first thirty-one tokens and no one was
+     * told (cc370#236, the same shape as the 126-character cut in aif_split). */
+    char toks[96][256]; int nt = 0, tovf = 0; const char *p = cond;
     while (*p) {
         while (*p == ' ') p++;
         if (!*p) break;
@@ -1901,10 +1907,12 @@ static int eval_cond(struct ctx *c, const char *cond) {
                     if (!strcmp(o, "NOT") || !strcmp(o, "AND") || !strcmp(o, "OR")) break; }
                 d++;
             } else if (!q && *p == ')') d--;
-            if (oi < 95) o[oi++] = *p;
+            if (oi < 255) o[oi++] = *p; else tovf = 1;
             p++; }
-        o[oi] = 0; if (nt < 31) nt++;
+        o[oi] = 0; if (nt < 95) nt++; else tovf = 1;
     }
+    /* Loud, because the alternative is a branch taken on half a condition. */
+    if (tovf) fprintf(stderr, "as370: conditional expression too complex (over 95 terms or a 255-character term) - %.60s\n", cond);
     /* factors joined by AND/OR, left to right; a factor is [NOT] (comparison | bool) */
     int i = 0, acc = 0, first = 1; char conn[4] = "";
     while (i < nt) {
@@ -1922,14 +1930,22 @@ static int eval_cond(struct ctx *c, const char *cond) {
     return acc;
 }
 /* split "(cond)seqsym" -> cond (no outer parens), seqsym */
-static void aif_split(const char *opnd, char *cond, char *seq) {
+/* The condition is bounded by the CALLER's buffer, not by a number written here.
+ * It used to be cut at 126 characters, silently, while both call sites passed a
+ * 512-byte buffer -- so an AIF whose condition ran past 126 was evaluated on a
+ * fragment ending mid-term, and branched on whatever that fragment happened to
+ * mean. IKJIDENT's is 153: six `NE' terms over three cards, and the tail that
+ * decides it was thrown away, so EVERY call took the error path, MNOTE'd and
+ * MEXIT'ed. 612 of those MNOTEs across the corpus, and until #39 not one of them
+ * was audible -- the macro simply generated nothing (cc370#236). */
+static void aif_split(const char *opnd, char *cond, int condsz, char *seq, int seqsz) {
     cond[0] = seq[0] = 0; const char *p = opnd; if (*p != '(') return;
     int d = 0, q = 0; const char *cs = p + 1;
     for (; *p; p++) { if (*p == '\'') { if (q || p == opnd || !strchr("KNLT", p[-1])) q = !q; }  /* K'/N'/L'/T' attribute apostrophe */
         else if (!q && *p == '(') { d++; if (d == 1) cs = p + 1; }
         else if (!q && *p == ')') { if (--d == 0) {
-            int L = (int)(p - cs); if (L > 126) L = 126; memcpy(cond, cs, L); cond[L] = 0;
-            const char *s = p + 1; int si = 0; while (*s && !isspace((unsigned char)*s) && si < 18) seq[si++] = *s++;  /* sequence symbol only */
+            int L = (int)(p - cs); if (L > condsz - 1) L = condsz - 1; memcpy(cond, cs, L); cond[L] = 0;
+            const char *s = p + 1; int si = 0; while (*s && !isspace((unsigned char)*s) && si < seqsz - 2) seq[si++] = *s++;  /* sequence symbol only */
             seq[si] = 0; return; } } }
 }
 
@@ -2441,7 +2457,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         { g_ca_slot = g_mcall_slot;                          /* a substring error in the body points at the call */
           int isca = set_stmt(c, bl, bo, bod); g_ca_slot = -1;
           if (isca) { pc++; continue; } }                     /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
-        if (!strcmp(bo, "AIF")) { char cond[512], seq[20]; aif_split(bod, cond, seq);
+        if (!strcmp(bo, "AIF")) { char cond[512], seq[20]; aif_split(bod, cond, sizeof cond, seq, sizeof seq);
             if (eval_cond(c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
@@ -2694,7 +2710,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
         if (org) g_curorg = org[pc];   /* track the input-file line of the statement being expanded (inherited by macro/COPY output) */
         char buf[1024], lbl[32], op[16], opnd[1024]; strncpy(buf, arr[pc], 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
         if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
-        if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, seq);
+        if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, sizeof cond, seq, sizeof seq);
             if (eval_cond(&g_opc, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
         if (!strcmp(op, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], opnd)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
