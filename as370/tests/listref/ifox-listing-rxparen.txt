@@ -1,0 +1,85 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 17.27 09/08/26
+RXPAREN   SD  0001 000000 000028
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 17.27 09/08/26
+                                      1 * Eine fuehrende Klammer in einem Maschinenoperanden ist eine
+                                      2 * GRUPPE, kein Indexpaar. as370 las sie als Indexliste und verlor die
+                                      3 * Distanz mit ihr: `L 15,(FIELD-BASE)(9)' kam als 58F0 0000 heraus -
+                                      4 * Basis 0, Distanz 0, bei rc 0 und auf beiden Seiten stumm. Bei
+                                      5 * `LA 1,(4-1)' war es schlimmer: die 3 wurde als BASISREGISTER
+                                      6 * genommen (cc370#247).
+                                      7 *
+                                      8 * Zwei Stellen mussten sich aendern, und das ist der Punkt: erst die
+                                      9 * POSITIONSREGEL (eine Klammer am Anfang steht dort, wo ein Operator
+                                     10 * stuende, ist also eine Gruppe), dann die AUSWERTUNG der Distanz -
+                                     11 * expr_val liest eine fuehrende Klammer selbst wieder als Index und
+                                     12 * liefert 0. Nach der ersten Aenderung allein stimmten die Register
+                                     13 * und alle Distanzen waren null.
+                                     14 *
+                                     15 * Gemessen an IFOX00:
+                                     16 *
+                                     17 *   R1  L  15,(FIELD-BASE)(9)    58F9 0010  zweite Gruppe indiziert
+                                     18 *   R2  L  15,(FIELD-BASE)(,9)   58F0 9010   Komma macht 9 zur Basis
+                                     19 *   R4  LA 1,(2)                 4110 0002   Distanz 2, NICHT Basis 2
+                                     20 *   R5  LA 1,(4-1)               4110 0003
+                                     21 *   R7  LA 1,(FIELD-BASE)        4110 0010
+                                     22 *   R8  L  15,(FIELD-BASE)(2,9)  58F2 9010   beide Gruppen
+                                     23 *
+                                     24 * Kontrollen, die sich NICHT bewegen duerfen:
+                                     25 *
+                                     26 *   R3  L  15,FIELD-BASE(9)      ohne Klammer, war immer richtig
+                                     27 *   R6  LA 1,4-1                 dasselbe ohne Klammer
+                                     28 *   R9  LA 1,2(3)                gewoehnlicher Index
+                                     29 *   RA  BC 15,*(9)               nach dem Ortszaehler IST (9) der
+                                     30 *                                Index - die Positionsregel muss das
+                                     31 *                                weiterhin unterscheiden, sonst faellt
+                                     32 *                                sie hier auf. Die zweite USING ist
+                                     33 *                                nur dafuer da, damit dieser Fall
+                                     34 *                                adressierbar ist und die Fixture
+                                     35 *                                ohne Diagnose durchlaeuft.
+000000                               36 BASE     DSECT
+000000                               37          DS    CL16
+000010                               38 FIELD    DS    F
+000000                               39 RXPAREN  CSECT
+                            00000    40          USING BASE,9
+                            00000    41          USING RXPAREN,10
+000000 58F9 0010      00010          42 R1       L     15,(FIELD-BASE)(9)
+000004 58F0 9010      00010          43 R2       L     15,(FIELD-BASE)(,9)
+000008 58F9 0010      00010          44 R3       L     15,FIELD-BASE(9)
+00000C 4110 0002      00002          45 R4       LA    1,(2)
+000010 4110 0003      00003          46 R5       LA    1,(4-1)
+000014 4110 0003      00003          47 R6       LA    1,4-1
+000018 4110 0010      00010          48 R7       LA    1,(FIELD-BASE)
+00001C 58F2 9010      00010          49 R8       L     15,(FIELD-BASE)(2,9)
+000020 4113 0002      00002          50 R9       LA    1,2(3)
+000024 47F9 A024      00024          51 RA       BC    15,*(9)
+                                     52          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 17.27 09/08/26
+BASE     00001 00000000 00036  00040 00042 00043 00044 00048 00049
+FIELD    00004 00000010 00038  00042 00043 00044 00048 00049
+RA       00004 00000024 00051
+RXPAREN  00001 00000000 00039  00041
+R1       00004 00000000 00042
+R2       00004 00000004 00043
+R3       00004 00000008 00044
+R4       00004 0000000C 00045
+R5       00004 00000010 00046
+R6       00004 00000014 00047
+R7       00004 00000018 00048
+R8       00004 0000001C 00049
+R9       00004 00000020 00050
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 17.27 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         52
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        85
