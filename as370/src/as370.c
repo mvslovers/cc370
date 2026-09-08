@@ -96,8 +96,18 @@ static int nsym;
 #define FLDW 256
 
 enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
-struct esdent { struct sym *s; int role; };
+struct esdent { struct sym *s; int role;  int esdid; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
+/* An ESDID belongs to the ESD ENTRY, not to the symbol. One name can hold two
+ * entries -- a control section that is also V-conned by name has both an SD and
+ * an ER -- and IFOX00 numbers them separately: HMASMDC2 is SD id 1 and ER id
+ * 0x74 in the same deck. as370 kept the id on struct sym, so the ER assignment
+ * overwrote the SD's. That is invisible in the RLD's R field, which wants the ER
+ * anyway and was right by accident, and wrong in P, which names the section the
+ * adcon SITS IN: every RLD entry in the module said P=0x74 where IFOX00 says
+ * P=0x0001. And because an ESD card carries ONE starting id with its entries
+ * following by position, the clobbered value shifted the whole first card
+ * (cc370#199). */
 
 struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int sect; int defln; int psect; };
 /* `sect` is where the literal was first REFERENCED -- it drives USING
@@ -1061,7 +1071,15 @@ static void add_reloc(long at, const char *target, int isV, int len) {
      * section, and keep the old fallback for a target whose section does not
      * resolve to an ESD entry at all -- an unset id, or a DSECT symbol reaching
      * a call site that does not filter them. */
-    int rel = (s && s->esdid) ? s->esdid : 0;
+    /* A V-con names an EXTERNAL, so it relocates against the ER entry even when
+     * the symbol is also defined here as a control section. HMASMDC2 V-cons its
+     * own CSECT name: IFOX00 puts the ER's id (0x74) in R and the SD's (1) in P,
+     * and the two are different entries for one name. For an ordinary external
+     * the symbol has only an ER, so this returns exactly what s->esdid holds and
+     * nothing moves. */
+    int rel = 0;
+    if (s && isV) { int q; for (q = 0; q < nesdord; q++) if (esdord[q].s == s && esdord[q].role == ESD_ER) { rel = esdord[q].esdid; break; } }
+    if (!rel) rel = (s && s->esdid) ? s->esdid : 0;
     if (!rel && s) rel = sect_esdid_of(s->sect);
     if (!rel) rel = cur_sect_esdid;
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
@@ -3944,8 +3962,8 @@ static void emit_obj(FILE *f) {
         int n = 0, cardfirst = 0;
         while (n < 3 && e < nesdord) {
             int ei = e; struct sym *s = esdord[e].s; int role = esdord[e].role, slot = 16 + n * 16; e++;
-            if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, sect_length(ei), 0); if (!cardfirst) cardfirst = s->esdid; }
-            else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = s->esdid; }
+            if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, sect_length(ei), 0); if (!cardfirst) cardfirst = esdord[ei].esdid; }
+            else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = esdord[ei].esdid; }
             /* LD: the last field is the ESDID of the section the symbol is DEFINED
              * IN, not the module's first section -- which is what it used to be,
              * so every entry in a second or later CSECT named the wrong one
@@ -4318,8 +4336,13 @@ int main(int argc, char **argv) {
 
     prescan_literals(lines, nl);   /* the END pool has to be known before pass 1 lays the first control section out (#68) */
     do_pass(1, lines, nl);
-    { int k, id = 0; for (k = 0; k < nesdord; k++)            /* SD/PC sections and ER refs get an ESDID; LD entries do not */
-        if (esdord[k].role == ESD_SECT || esdord[k].role == ESD_ER) esdord[k].s->esdid = ++id; }
+    { int k, id = 0; for (k = 0; k < nesdord; k++) {         /* SD/PC sections and ER refs get an ESDID; LD entries do not */
+        if (esdord[k].role != ESD_SECT && esdord[k].role != ESD_ER) continue;
+        esdord[k].esdid = ++id;
+        /* FIRST entry wins for the symbol's own id: a section's SD is registered
+         * before any ER for the same name, and s->esdid feeds cur_sect_esdid and
+         * so the RLD's P. Last-wins put the ER's id there. */
+        if (!esdord[k].s->esdid) esdord[k].s->esdid = esdord[k].esdid; } }
     { int k; main_sect_esdid = 0;            /* the content section: first named SD, else first section */
       for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT && esdord[k].s->type == S_SD) { main_sect_esdid = esdord[k].s->esdid; break; }
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
