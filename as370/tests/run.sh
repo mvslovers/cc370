@@ -157,6 +157,18 @@ rm -f /tmp/_au.$$
 # the SAME label -- one card in the CSECT, one under a DSECT -- so IFOX00's deck
 # pins them to the same instruction (both 47F0 C00C). as370 used to take the
 # DSECT's base register for the second and say nothing.
+# ccwstar is the #210 oracle: a CCW's data address is relocatable when it is
+# written as the location counter `*', exactly as when it names a label. K1 and
+# K2 are the same construct twice, so the fixture is self-proving before IFOX00
+# is asked; K4 is the control in the other direction -- a CCW whose target is in
+# a DSECT gets NO entry, so a fix that drops the DSECT guard fails there.
+#   main d81edda   RLD at 09, 19
+#   IFOX00, this   RLD at 09, 11, 19
+# The rc differs and the deck does not: IFOX00 returns 8 because it diagnoses K4
+# (IFO158, name in a DSECT used in a relocatable address constant) and as370's
+# CCW path issues no message at all. That message gap is cc370#211, measured
+# separately -- ESD/TXT/RLD are byte-identical either way, which is what this
+# loop compares.
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -165,7 +177,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing equlen esdself ssomit ssb1 entsd; do
+         contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

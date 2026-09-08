@@ -1,0 +1,61 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.25 09/08/26
+CCWSTAR   SD  0001 000000 000028
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.25 09/08/26
+                                      1 * Die Datenadresse eines CCW ist relocierbar - auch dann, wenn
+                                      2 * sie als Ortszaehler `*' geschrieben ist. as370 verlangte hier
+                                      3 * ein SYMBOL, und sym_find("*") findet nichts: der RLD-Eintrag
+                                      4 * fiel weg (cc370#210).
+                                      5 *
+                                      6 * K1 und K2 sind DASSELBE Konstrukt, zweimal geschrieben - K1
+                                      7 * nennt seine eigene Marke, K2 den Ortszaehler. Beide muessen
+                                      8 * genau einen 3-Byte-Eintrag erzeugen; die Fixture beweist sich
+                                      9 * also selbst, bevor IFOX00 ueberhaupt gefragt wird.
+                                     10 *
+                                     11 * K4 ist die Kontrolle in die Gegenrichtung: ein CCW im CSECT,
+                                     12 * dessen Ziel in einer DSECT liegt, erzeugt KEINEN Eintrag. Ein
+                                     13 * Fix, der nur `if (rc)' prueft, relociert K4 mit - und faellt
+                                     14 * hier auf.
+                                     15 *
+                                     16 * Punktzahl:  ohne Fix 2 RLD-Eintraege, mit Fix 3.
+000000                               17 CCWSTAR  CSECT
+000000                               18 BUF      DS    CL8
+000008 0200000870000001              19 K1       CCW   X'02',K1,X'70',1
+000010 0200001070000001              20 K2       CCW   X'02',*,X'70',1
+000018 0200000070000001              21 K3       CCW   X'02',BUF,X'70',1
+000020 0200000070000001              22 K4       CCW   X'02',DFLD,X'70',1
+         *** ERROR ***
+000000                               23 DMAP     DSECT
+000000                               24 DFLD     DS    CL8
+                                     25          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 09.25 09/08/26
+ 0001     0001      08     000009
+ 0001     0001      08     000011
+ 0001     0001      08     000019
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.25 09/08/26
+BUF      00008 00000000 00018  00021
+CCWSTAR  00001 00000000 00017
+DFLD     00008 00000000 00024  00022
+DMAP     00001 00000000 00023
+K1       00008 00000008 00019  00019
+K2       00008 00000010 00020
+K3       00008 00000018 00021
+K4       00008 00000020 00022
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 09.25 09/08/26
+   22  IFO158      NAME OF STATEMENT IN DSECT USED IN RELOCATABLE ADDRESS CONSTANT
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         25
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        61
