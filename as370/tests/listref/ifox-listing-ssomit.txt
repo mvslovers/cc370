@@ -1,0 +1,57 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 01.48 09/08/26
+T         SD  0001 000000 000026
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 01.48 09/08/26
+                                      1 * Die IMPLIZITE Laenge eines SS-Operanden, zwei Wege (#201).
+                                      2 *
+                                      3 * Eine WEGGELASSENE Laenge ist keine Laenge null.  `CLC DA-D(,5)'
+                                      4 * schreibt die Klammerliste fuer die Basis und laesst das
+                                      5 * Laengenfeld leer; IFOX00 nimmt dann die implizite Laenge, als
+                                      6 * stuende gar keine Liste da.  as370 las das leere Feld als 0.
+                                      7 *
+                                      8 * Und ein ABSOLUTER Praefix hat trotzdem ein Laengenattribut.
+                                      9 * `PSAAOLD-PSA' ist eine Differenz in EINER Dummy-Sektion, also
+                                     10 * absolut -- as370 setzte r_len dort nie, und der Operand ging mit
+                                     11 * Laengenbyte 0 hinaus.  Das ist die Form aus IGC121; die mit
+                                     12 * Klammer die aus IEDAYO.
+                                     13 *
+                                     14 * Die letzte Zeile ist die Gegenprobe: ein rein numerischer
+                                     15 * Praefix hat kein Laengenattribut und muss 1 bleiben.
+                                     16 *
+                                     17 *   main 021db88   D503 D500 D500 D503 D500
+                                     18 *   IFOX00, dies   D503 D503 D503 D503 D500
+000000                               19 D        DSECT
+000000                               20 DA       DS    CL4
+000004                               21 DB       DS    CL4
+000000                               22 T        CSECT
+                            00000    23          USING T,12
+000000 1851                          24          LR    5,1
+000002                               25 B        DS    CL4
+000006 D503 5000 C002 00000 00002    26          CLC   DA-D(4,5),B       Laenge und Basis explizit
+00000C D503 5000 C002 00000 00002    27          CLC   DA-D(,5),B        Laenge weggelassen, Basis explizit
+000012 D503 0000 C002 00000 00002    28          CLC   DA-D,B            gar keine Klammer, absolut
+000018 D503 C002 C002 00002 00002    29          CLC   B,B               beides impliziert, relokierbar
+00001E D500 5008 C002 00008 00002    30          CLC   8(,5),B           numerischer Praefix, bleibt 1
+000024 07FE                          31          BR    14
+000000                               32          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.48 09/08/26
+B        00004 00000002 00025  00026 00027 00028 00029 00029 00030
+D        00001 00000000 00019  00026 00027 00028
+DA       00004 00000000 00020  00026 00027 00028
+DB       00004 00000004 00021
+T        00001 00000000 00022  00023 00032
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 01.48 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         32
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        57

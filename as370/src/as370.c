@@ -834,9 +834,11 @@ static void reloc_sym(const char *expr, char *out, int outsz) {
 static int r_ibase;   /* implied base reg from USING when a paren operand's prefix is relocatable, else -1 */
 static int r_len;     /* length attribute L' of the symbol resolved by the last resolve() call (for SS implicit length) */
 static int r_reloc;   /* the displacement prefix of the last resolve() was relocatable (a symbol) */
+static int r_subempty;  /* bit k set when subscript k of the last resolve() was WRITTEN BUT EMPTY --
+                         * `A(,5)' is not `A(0,5)', and an SS length field distinguishes them */
 static long r_raw;    /* its un-reduced value (before USING subtraction); the displacement IFOX prints in ADDR1 */
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
-    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1;
+    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1; r_subempty = 0;
     if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; r_len = l->size; sub[0] = using_for(l->loc, l->sect, d); return; }
     /* The subscript list, if there is one -- NOT merely the first '('.  A
      * displacement expression may be parenthesised for grouping:
@@ -880,7 +882,18 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             r_len = s ? s->len : 0;
             r_reloc = 1; r_raw = v;
             r_ibase = using_for(v, ssect, d);
-        } else *d = v;                                 /* numeric displacement, e.g. 4+120(13) */
+        } else {
+            *d = v;                                    /* numeric displacement, e.g. 4+120(13) */
+            /* An ABSOLUTE displacement still has a length attribute, and an SS
+             * operand with an omitted length needs it. `PRFTIC-IEDQPRF(,R5)' is a
+             * difference of two symbols in one dummy section, so the prefix is
+             * absolute and this branch runs -- but IFOX00 takes L' of the leading
+             * term exactly as it would for a relocatable one. Leaving r_len at 0
+             * sent every such operand out with a length byte of 0 (cc370#201).
+             * equ_len_of() is the same leftmost-term rule #194 measured, and it
+             * answers 1 for a genuinely numeric prefix like `4+120(13)'. */
+            r_len = equ_len_of(f);
+        }
         /* The MATCHING close paren, not the first one.  A subscript may itself
          * be parenthesised -- `LA 2,4((3),5)`, the form a macro produces when a
          * register argument arrives as (3) -- and strchr() stopped at the inner
@@ -905,7 +918,7 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
              * -- it was written for `LR 0,(3)` and never reached from here.  A
              * token that merely STARTS with '(' without being enclosed by it
              * falls through to expr_val unchanged, so nothing else moves. */
-            if (*nsub < 4) sub[(*nsub)++] = t[0] ? eval_reg(t) : 0;   /* base/index may be a symbol (R13 EQU 13) */
+            if (*nsub < 4) { if (!t[0]) r_subempty |= 1 << *nsub; sub[(*nsub)++] = t[0] ? eval_reg(t) : 0; }   /* base/index may be a symbol (R13 EQU 13) */
             if (!cm) break;
             tok = cm + 1; }
     } else {
@@ -917,6 +930,13 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
             r_reloc = 1; r_raw = v;
             *sym = 1; sub[0] = using_for(v, ssect, d);
         } else {   /* absolute: a base only if an ABSOLUTE USING covers it, else the bare displacement */
+            /* Same as the subscripted case below: an absolute displacement still
+             * has a length attribute, and an SS operand written with no subscript
+             * at all reads it. `CLC PSAAOLD-PSA,...' in IGC121 is a difference in
+             * one dummy section, so it lands here rather than in the relocatable
+             * branch, and leaving r_len at 0 gave it a length byte of 0 where
+             * IFOX00 has 3 (cc370#201). */
+            r_len = equ_len_of(f);
             int ab = using_for_abs(v, d);
             /* *sym tells the caller how to read sub[0] -- base when set, INDEX
              * when clear.  Setting it only for ab != 0 keeps the ordinary
@@ -3244,8 +3264,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                         lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
-                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc, ao1 = r_addrok; long raw1 = r_raw;
-                    resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc, ao2 = r_addrok; long raw2 = r_raw;
+                case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc, ao1 = r_addrok, se1 = r_subempty; long raw1 = r_raw;
+                    resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc, ao2 = r_addrok, se2 = r_subempty; long raw2 = r_raw;
                     int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
                     /* SRP is the third shape in the X'Fx' group and neither predicate
                      * covers it: one length in the HIGH nibble, and an IMMEDIATE -- the
@@ -3255,8 +3275,17 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * IFOX00 emits F0 70: the length reaches the machine as the rounding
                      * digit and vice versa, and I3 was never parsed at all (#64). */
                     int srp = (o->op == 0xF0);
-                    int len1 = (ns  >= 1 ? (int)sub[0]  : (l1 ? l1 : 1));
-                    int len2 = (ns2 >= 1 ? (int)sub2[0] : (l2 ? l2 : 1));
+                    /* An OMITTED length is not a length of zero. `MVC A(,5),B' writes
+                     * the subscript list for its base and leaves the length field
+                     * empty, and IFOX00 then uses the IMPLIED length -- L' of the
+                     * operand's leading symbol -- exactly as if no list were written.
+                     * as370 read the empty field as sub[0] == 0 and emitted a length
+                     * byte of 0, so `MVC PRFTIC-IEDQPRF(,R5),INVLDTIC' came out D2 00
+                     * where IFOX00 has D2 03 (cc370#201). The form appears where the
+                     * displacement is a DSECT-relative difference, which is absolute
+                     * and so may carry an explicit base. */
+                    int len1 = (ns  >= 1 && !(se1 & 1) ? (int)sub[0]  : (l1 ? l1 : 1));
+                    int len2 = (ns2 >= 1 && !(se2 & 1) ? (int)sub2[0] : (l2 ? l2 : 1));
                     int b1 = (ns  >= 2 ? (int)sub[1]  : (ib1 >= 0 ? ib1 : (int)sub[0]));
                     int b2 = (ns2 >= 2 ? (int)sub2[1] : (ib2 >= 0 ? ib2 : (int)sub2[0]));
                     /* explicit base + relocatable displacement on either operand -> IFO228.
