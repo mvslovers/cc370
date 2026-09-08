@@ -99,6 +99,32 @@ if ./as370 tests/setarray.s -o /dev/null >/dev/null 2>&1; then
     echo "setarray: OK (20,000 subscripts, one row)"
 else echo "setarray: FAIL (SET table filled)"; fail=1; fi
 
+# --- issue #39: MNOTE is the macro's own diagnostic --------------------------
+# Its own module because as370 now returns 12, so the generic deck loop (which
+# requires rc < 8) would report ASSEMBLE FAILED on a correct binary. The deck is
+# a single `DC C'X'' and proves nothing; the claim is entirely about what was
+# SAID and what the return code became.
+#
+# The two lower forms are the controls: `MNOTE *,'..'' and `MNOTE '..'' are
+# printed and cost nothing -- neither the flagged count nor the RC may move for
+# them. A fix that counts every MNOTE gets 6 flagged instead of 4 and fails here.
+#   main 80c3ba2   rc 0, nothing printed at all
+#   IFOX00, this   rc 12, 4 statements flagged
+./as370 tests/mnote.s -o /dev/null > /tmp/_mn.$$ 2>&1; mnrc=$?
+mnok=1
+[ "$mnrc" = 12 ] || mnok=0
+grep -q "4 Statements Flagged" /tmp/_mn.$$ || mnok=0
+grep -q "ERROR: MNOTE .* - EIGHT FROM A MACRO" /tmp/_mn.$$ || mnok=0
+grep -q "WARNING: MNOTE .* - FOUR FROM A MACRO" /tmp/_mn.$$ || mnok=0
+grep -q "NOTE: MNOTE .* - COMMENT FORM" /tmp/_mn.$$ || mnok=0
+grep -q "NOTE: MNOTE .* - NO SEVERITY GIVEN" /tmp/_mn.$$ || mnok=0
+grep -q "ERROR: MNOTE .* - TWELVE WITH A 'QUOTE' INSIDE" /tmp/_mn.$$ || mnok=0
+grep -q "WARNING: MNOTE .* - FOUR IN OPEN CODE" /tmp/_mn.$$ || mnok=0
+if [ $mnok = 1 ]; then
+    echo "mnote: OK (rc 12, 4 flagged; the * and bare forms cost nothing)"
+else echo "mnote: MISMATCH (rc $mnrc, see /tmp/_mn.$$)"; fail=1; fi
+rm -f /tmp/_mn.$$
+
 # --- issue #190: an undefined symbol is not an absolute domain ---------------
 # Its own module because IFOX00 flags the undefined symbol (rc 12) and writes no
 # deck, so the check is on the listing. An undefined symbol evaluates to 0 and
