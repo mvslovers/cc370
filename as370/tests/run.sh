@@ -289,6 +289,15 @@ rm -f /tmp/_au.$$
 # positional rule must still tell the two apart.
 #   main 89fb177   58F0 0000 | 58F0 0000 | 58F9 0010 | 4102 0000 | 4113 0000
 #   IFOX00, this   58F9 0010 | 58F0 9010 | 58F9 0010 | 4110 0002 | 4110 0003
+# lenattr is the #244 oracle: L' asks for the LENGTH ATTRIBUTE of the symbol and
+# K' for the number of characters in the value; as370 answered both with strlen.
+# SYS1.AMACLIB(ENQ) computes `&LEN SETA L'&P(&RN)' and writes it straight into
+# the object one line later, so twelve modules differed in nothing else. L6 is
+# the control that K' must NOT move, and L4/L5 pin the default of 1 for a symbol
+# whose length is not resolvable -- an EQU to an absolute, and an unknown name.
+# L7 is the same question without a variable, which needs its own read.
+#   main 9ac48ad   N4 N2 N7 Y1 Y1 YK NLIT
+#   IFOX00, this   Y4 Y2 Y7 Y1 Y1 YK YLIT
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -299,7 +308,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
-         rxparen; do
+         rxparen lenattr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

@@ -1,0 +1,95 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 17.39 09/08/26
+LENATTR   SD  0001 000000 00001D
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 17.39 09/08/26
+                                      1 * L' fragt nach der LAENGENANGABE des Symbols, K' nach der ZAHL DER
+                                      2 * ZEICHEN im Wert. as370 beantwortete beide mit strlen, also lieferte
+                                      3 * L' die Breite des Textes: L'&P mit &P = MINOR ergab 5, wo
+                                      4 * `MINOR DC CL8'..'' die Antwort 8 verlangt (cc370#244).
+                                      5 *
+                                      6 * SYS1.AMACLIB(ENQ) Zeile 169 rechnet `&LEN SETA L'&P(&RN)' und legt
+                                      7 * das Ergebnis in Zeile 170 als `DC AL1(&LEN)' direkt ins Objekt -
+                                      8 * ohne Verzweigung dazwischen. Zwoelf Module unterschieden sich in
+                                      9 * nichts anderem.
+                                     10 *
+                                     11 * Die bedingte Assemblierung laeuft waehrend der Makro-Expansion, also
+                                     12 * VOR beiden Durchgaengen: eine Symboltabelle gibt es dort nicht.
+                                     13 * IFOX00 verschraenkt beides und hat die Antwort einfach. Statt die
+                                     14 * Phasen umzustellen liest ein Vorablauf die Rohkarten einmal und
+                                     15 * merkt sich, welche Laengenangabe eine Marke auf DC/DS traegt.
+                                     16 *
+                                     17 * Er sieht nur offenen Code - eine im Makro erzeugte Marke steht nicht
+                                     18 * darin -, deshalb antwortet ein unbekanntes Symbol mit 1, dem Wert,
+                                     19 * den auch IFOX00 fuer ein unaufloesbares gibt.
+                                     20 *
+                                     21 * L1 bis L3 sind die Faelle. Die Kontrollen:
+                                     22 *
+                                     23 *   L4  L'EQ4      1, obwohl EQU 4 - IFOX00 meldet dazu IFO120
+                                     24 *   L5  L'NODEF    1, unbekannt - IFOX00 meldet IFO080
+                                     25 *   L6  K'&E       unveraendert die Zeichenzahl, nicht die Laenge
+                                     26 *   L7  L'FW       dasselbe ohne Variable, direkt als Symbol
+                                     27 *
+                                     28 * Punktzahl:  ohne Fix N4 N2 N7 Y1 Y1 YK NLIT
+                                     29 *             mit Fix  Y4 Y2 Y7 Y1 Y1 YK YLIT
+                                     30          MACRO
+                                     31          QL    &E,&T
+                                     32          AIF   (L'&E EQ &T).A
+                                     33          DC    C'N&T'
+                                     34          MEXIT
+                                     35 .A       DC    C'Y&T'
+                                     36          MEND
+                                     37          MACRO
+                                     38          QK    &E
+                                     39          AIF   (K'&E EQ 5).B
+                                     40          DC    C'NK'
+                                     41          MEXIT
+                                     42 .B       DC    C'YK'
+                                     43          MEND
+000000                               44 LENATTR  CSECT
+000000                               45 FW       DS    F
+000004                               46 HW       DS    H
+000006                               47 CH       DS    CL7
+                            00004    48 EQ4      EQU   4
+                                     49          QL    FW,4
+00000D E8F4                          50+         DC    C'Y4'
+                                     51          QL    HW,2
+00000F E8F2                          52+         DC    C'Y2'
+                                     53          QL    CH,7
+000011 E8F7                          54+         DC    C'Y7'
+                                     55          QL    EQ4,1
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 17.39 09/08/26
+         *** ERROR ***
+000013 E8F1                          56+         DC    C'Y1'
+                                     57          QL    NODEF,1
+         *** ERROR ***
+000015 E8F1                          58+         DC    C'Y1'
+                                     59          QK    MINOR
+000017 E8D2                          60+         DC    C'YK'
+                                     61          AIF   (L'FW EQ 4).C
+000019 E8D3C9E3                      62 .C       DC    C'YLIT'
+                                     63 .D       ANOP
+                                     64          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 17.39 09/08/26
+CH       00007 00000006 00047
+EQ4      00001 00000004 00048
+FW       00004 00000000 00045
+HW       00002 00000004 00046
+LENATTR  00001 00000000 00044
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 17.39 09/08/26
+   55  IFO120      ILLEGAL LENGTH ATTRIBUTE REFERENCE
+   57  IFO080      ATTRIBUTE REFERENCE TO UNDEFINED SYMBOL
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     2
+HIGHEST SEVERITY WAS    4
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         60
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        95
