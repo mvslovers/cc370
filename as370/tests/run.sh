@@ -188,6 +188,15 @@ rm -f /tmp/_au.$$
 # after.
 #   main c4a0f19   07 | 0700 | FF07 | 07 | C1FF | D3FF
 #   IFOX00, this   07FF | 0707 | FF07 | 07 | C1FF | D3FF
+# equparen is the #221 oracle: a grouping parenthesis does not hide the leftmost
+# term, so L' of `EQU (A+4)' is L'A. Three controls must stay 1 and each rules
+# out a different wrong rule: `(4+S1)' (leftmost TERM, not first symbol),
+# `(X'04'+S1)' (a self-defining term is not a symbol), and `( S1+4)' -- only the
+# parenthesis is skipped, not the blank behind it. IFOX00 answers IFO234 for
+# that last one and as370 says nothing, a message gap left alone here; the bytes
+# agree, which is what this loop compares.
+#   main 4373df2   01 01 01 01 01 01 01
+#   IFOX00, this   07 01 07 07 03 01 01
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -197,7 +206,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr; do
+         xsectrel dcattr equparen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

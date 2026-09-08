@@ -780,6 +780,14 @@ static long using_base_of(int reg) {
 static int equ_len_of(const char *e) {
     while (*e == ' ') e++;
     if (*e == '+' || *e == '-') e++;               /* a signed leading term is still that term */
+    /* A grouping parenthesis does not hide the leftmost term: IFOX00 gives
+     * `E EQU (A+4)' the length of A, and `E EQU ((A))' and `E EQU (A)+4' the
+     * same, so the openers are skipped rather than treated as a term of their
+     * own (cc370#221).  Only the parenthesis is skipped and not the blank
+     * behind it -- `E EQU ( A+4)' is IFO234 PREMATURE END OF EXPRESSION on
+     * IFOX00 and its length attribute is 1, which is what falling through to
+     * the test below already produces. */
+    while (*e == '(') e++;
     if (!(isalpha((unsigned char)*e) || *e=='@' || *e=='#' || *e=='$' || *e=='_')) return 1;
     char nm[64]; int n = 0;
     while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++;
