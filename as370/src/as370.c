@@ -1025,7 +1025,15 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
  * caught this -- ends in the 'A' of the VARIABLE SYMBOL &A, where the quote
  * opens a string. So '&' bars the reading exactly as a letter does. */
 static int attr_apos(const char *card, int i) {
-    if (i < 1 || !strchr("LTKNISE", card[i-1])) return 0;
+    /* The set is IFOX00's own -- `T L I S N K' at ifnx1a.asm:4862 -- and it does
+     * NOT contain E. Assembler XF has no E' attribute, but E IS a constant type,
+     * so `DC E'1.0'' opened no string here: the closing quote then toggled the
+     * state on instead of off, the operand never ended at a blank, and the
+     * REMARK became part of it. A comma anywhere in that remark split it into a
+     * second constant and the statement was rejected -- rc 8 and IFOX00 assembles
+     * the same card at rc 0 with the same bytes, which is a false positive rather
+     * than a missed error (cc370#223). */
+    if (i < 1 || !strchr("LTKNIS", card[i-1])) return 0;
     if (i >= 2) { char b = card[i-2];
         if (isalnum((unsigned char)b) || b=='@' || b=='#' || b=='$' || b=='_' || b=='&') return 0; }
     return 1;
