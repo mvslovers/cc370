@@ -241,6 +241,15 @@ rm -f /tmp/_au.$$
 # is destroyed from the first CNOP on an odd counter: 64 no-ops, 128 bytes, rc 0.
 #   main 6c3d966   N1/N2 undefined, next statement at x'81' (IFOX00: x'04')
 #   IFOX00, this   labels at 2 / 0A / 12 / 1E / 2A / 30, deck identical
+# aifcond is the #236 oracle: an AIF condition was cut at 126 characters while
+# both call sites passed a 512-byte buffer, so a long one branched on a fragment
+# ending mid-term. G6 is the case -- six terms, 137 characters joined. G4 is the
+# control BELOW the threshold: four terms, 91 characters, correct on both
+# binaries, so a fixture built only from it proves nothing. G2 is the control in
+# the other direction, a condition that is TRUE and must stay true, which a fix
+# that passes more text through but shifts the evaluation would break.
+#   main 6dbb4bc   G4 G2 B6
+#   IFOX00, this   G4 G2 G6
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -250,7 +259,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
-         xsectrel dcattr equparen attre cnop; do
+         xsectrel dcattr equparen attre cnop aifcond; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
