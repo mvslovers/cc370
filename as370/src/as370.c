@@ -1282,6 +1282,7 @@ static const char *g_genimg;   /* image for the single line the next mexp_line e
 static int g_ca_slot = -1;
 static int g_mcall_slot = -1;  /* the macro CALL line's slot, for a diagnostic raised inside the body */
 static void note_operr(const char *msg, int sev, int line);   /* fwd: eval_setc raises IFO115/116/117 */
+static int prelen_of(const char *nm);                         /* fwd: L' in conditional assembly (#244) */
 static void note_mnote(int sev, const char *text, int line);  /* fwd: the macro expander raises MNOTE */
 static int mnote_split(const char *opnd, char *text, int textsz, char *image, int imagesz, int *comment);
 /* source-file line number each expanded line derives from (for diagnostics): an
@@ -1668,7 +1669,11 @@ static long e_prim(void) {
     if (*ep_ == '(') { ep_++; long v = e_expr(); e_sp(); if (*ep_ == ')') ep_++; return v; }
     if ((*ep_ == 'N' || *ep_ == 'K' || *ep_ == 'L') && ep_[1] == '\'') {
         int kind = *ep_; ep_ += 2; char ref[44], v[96];
-        if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); } else v[0] = 0;
+        if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); }
+        else if (kind == 'L') { int ln = 0;   /* L'SYM names the symbol directly, not through a variable */
+            while (*ep_ && !strchr("+-*/(), ", *ep_) && ln < 95) v[ln++] = *ep_++;
+            v[ln] = 0; }
+        else v[0] = 0;
         /* N'&SYSLIST is the NUMBER OF POSITIONAL OPERANDS, and it must not be
          * counted by rendering them.  vref() materialises the whole list as
          * `(op1,op2,...)' and copies 95 bytes of it, so sub_count() was counting
@@ -1685,6 +1690,11 @@ static long e_prim(void) {
          * rendered list is past 500 bytes, so any fixed bound is the same defect
          * with a larger constant. The count is held exactly, so answer from it. */
         if (kind == 'N' && ec_ && ec_->m && !strcmp(ref, "&SYSLIST")) return ec_->nsyslist;
+        /* K' is the COUNT OF CHARACTERS in the value and strlen is right for it.
+         * L' is the LENGTH ATTRIBUTE OF THE SYMBOL the value names, which is a
+         * different question and needs the pre-scan above (#244). An unknown
+         * symbol answers 1, as IFOX00 does for one it cannot resolve. */
+        if (kind == 'L') { int pl = prelen_of(v); return pl ? pl : 1; }
         return (kind == 'N') ? sub_count(v) : (long)strlen(v);
     }
     if ((*ep_ == 'X' || *ep_ == 'B' || *ep_ == 'C') && ep_[1] == '\'') {   /* self-defining term */
@@ -2818,9 +2828,84 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
     }
     free(seqn); free(seqi);
 }
+/* Length attributes read from the RAW source, before expansion.
+ *
+ * Conditional assembly runs while macros are expanded, and that is BEFORE
+ * either assembly pass -- so when an `AIF' or `SETA' asks for L'SYM there is no
+ * symbol table to ask. as370 answered with strlen of the variable's VALUE,
+ * which is K' rather than L': `&LEN SETA L'&P(&RN)' in SYS1.AMACLIB(ENQ) gave 5
+ * for an RNAME of MINOR where `MINOR DC CL8'..'' makes it 8, and line 170 puts
+ * that straight into the object as `DC AL1(&LEN)'. Twelve modules differ in
+ * nothing else (cc370#244).
+ *
+ * IFOX00 interleaves generation and assembly, so its answer simply exists.
+ * Rather than reorder as370's phases, this walks the source cards once and
+ * records what a length attribute would be for every label on a DC or DS. It
+ * sees only open code -- a label generated inside an expansion is not here --
+ * which is why an unknown symbol answers 1, the value IFOX00 gives for one it
+ * cannot resolve either.
+ *
+ * Deliberately narrow: a length is recorded only where it is EXPLICIT or the
+ * type fixes it, or where a quoted C/X body can be counted. Anything else is
+ * left out so L' falls back to 1 instead of to a guess. */
+struct prelen { char name[9]; int len; };
+static struct prelen prelens[8192]; static int nprelen;
+static int prelen_of(const char *nm) {
+    int i; for (i = 0; i < nprelen; i++) if (!strcmp(prelens[i].name, nm)) return prelens[i].len;
+    return 0;
+}
+/* the length attribute a DC/DS operand would carry, or 0 for "do not record" */
+static int dc_len_attr(const char *opnd) {
+    const char *p = opnd; int n = 0;
+    while (*p == ' ') p++;
+    while (isdigit((unsigned char)*p)) p++;                 /* duplication factor */
+    if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } }
+    int ty = *p ? toupper((unsigned char)*p++) : 0;
+    if (!ty) return 0;
+    if (*p == 'L') { p++;
+        if (*p == '.' || *p == '(') return 0;               /* bits, or an expression: not resolved here */
+        while (isdigit((unsigned char)*p)) n = n * 10 + (*p++ - '0');
+        return n > 0 ? n : 0; }
+    switch (ty) {
+    case 'A': case 'V': case 'F': case 'E': return 4;
+    case 'Y': case 'H': case 'S': return 2;
+    case 'D': return 8;
+    case 'C': case 'X': case 'B': {
+        const char *q = strchr(p, '\'');
+        if (!q) return 0;
+        int cnt = 0; const char *e = q + 1;
+        while (*e) {
+            if (*e == '\'') { if (e[1] == '\'') { cnt++; e += 2; continue; } break; }
+            if (*e == '&' && e[1] == '&') { cnt++; e += 2; continue; }
+            cnt++; e++;
+        }
+        if (!*e) return 0;
+        if (ty == 'C') return cnt ? cnt : 0;
+        if (ty == 'X') return cnt ? (cnt + 1) / 2 : 0;
+        return cnt ? (cnt + 7) / 8 : 0;
+    }
+    default: return 0;
+    }
+}
+static void prescan_lengths(char **in, int nin) {
+    int i; nprelen = 0;
+    for (i = 0; i < nin && nprelen < 8192; i++) {
+        char buf[1024], lbl[32], op[16], opnd[1024];
+        scopy(buf, in[i], 1023);
+        parse(buf, lbl, op, opnd);
+        if (!lbl[0] || !op[0]) continue;
+        if (strcmp(op, "DC") && strcmp(op, "DS") && strcmp(op, "DXD")) continue;
+        if (strlen(lbl) > 8) continue;
+        int L = dc_len_attr(opnd);
+        if (L <= 0) continue;
+        if (prelen_of(lbl)) continue;                       /* the FIRST definition wins, as the assembler's would */
+        scopy(prelens[nprelen].name, lbl, 8); prelens[nprelen].len = L; nprelen++;
+    }
+}
 /* macro pass: capture MACRO/MEND defs, expand calls -> flat open code */
 static int macro_pass(char **in, int nin, char **out, int *raw_org) {
     int nout = 0;
+    prescan_lengths(in, nin);   /* L' in conditional assembly has no symbol table otherwise (#244) */
     mexp_block(in, nin, out, &nout, 0, raw_org);
     return nout;
 }
