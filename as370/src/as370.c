@@ -735,6 +735,34 @@ static long using_base_of(int reg) {
     int i; for (i = 0; i < nusing; i++) if (usings[i].reg == reg) return usings[i].base;
     return 0;
 }
+/* Length attribute an EQU takes from its VALUE when no second operand gives one.
+ * It is the L' of the LEFTMOST TERM, and only when that term is a symbol --
+ * everything else is 1.  Measured against IFOX00 (tests/equlen.s):
+ *
+ *   E EQU A     -> L'A      E EQU A+1  -> L'A     E EQU H-A -> L'H
+ *   E EQU 4     -> 1        E EQU *    -> 1       E EQU 1+A -> 1
+ *
+ * `1+A' is the case that fixes the rule: it is the leftmost TERM, not the first
+ * symbol anywhere in the expression, so an expression opening with a number
+ * gets 1 even though a symbol follows.
+ *
+ * as370 defaulted the whole family to 1, which is invisible until something
+ * reads L' -- and the SS instructions read it as their IMPLIED LENGTH. `MVC
+ * @PC00031,0(R1)' assembled as D2 00 where IFOX00 has D2 03, one byte, no
+ * diagnostic; the same module's `MVC @PC00031(4),0(R1)' four hundred cards
+ * earlier was already right, because an explicit length never consults this
+ * (cc370#194). */
+static int equ_len_of(const char *e) {
+    while (*e == ' ') e++;
+    if (*e == '+' || *e == '-') e++;               /* a signed leading term is still that term */
+    if (!(isalpha((unsigned char)*e) || *e=='@' || *e=='#' || *e=='$' || *e=='_')) return 1;
+    char nm[64]; int n = 0;
+    while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++;
+    nm[n] = 0;
+    if (*e == '\'') return 1;                      /* X'..'/C'..' -- a self-defining term, not a symbol */
+    struct sym *s = sym_find(nm);
+    return (s && s->defined) ? s->len : 1;
+}
 /* section of a relocatable expression = section of its NET-relocatable term.
  * e.g. IOBSENS0-IOBSTDRD+TAPEIOB: the two IOB fields cancel (same section), so
  * the result is in TAPEIOB's section, not IOBSENS0's. Falls back to cur_sect_id.
@@ -3795,7 +3823,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * operand whose symbol is not yet defined falls back to
                  * cur_sect_id exactly as before. */
                 s->sect = rc ? expr_sect(F[0]) : cur_sect_id;
-                s->len = (nf >= 2 && F[1][0]) ? (int)expr_val_full(F[1], NULL) : 1;   /* EQU value,length: 2nd operand sets the length attribute (L') */
+                s->len = (nf >= 2 && F[1][0]) ? (int)expr_val_full(F[1], NULL) : equ_len_of(F[0]);   /* EQU value,length: 2nd operand sets the length attribute (L') */
                 s->type = (rc == 0) ? S_ABS : S_REL; }   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
