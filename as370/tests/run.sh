@@ -327,6 +327,17 @@ rm -f /tmp/_au.$$
 # that split at the top level rather than inside the body fails there.
 #   main 7c32f60   0006 | 0007 | 000700070007 | 12345678 | one fullword
 #   IFOX00, this   0006000000110006 0000 | ... | 00000001 00000002 00000003
+# scale is the #217 oracle: a scale modifier multiplies the nominal value by two
+# to the power of the scale, so `DC FS3'1.25'' is 10. as370 read the value with
+# strtol, which stops at the decimal point and knows nothing of the modifier.
+# The corpus case is `DC FS28'6.2832'' -- two pi in the FORTRAN-syntax scientific
+# routines -- x'6487FCB9' against x'00000006'. K3 is the control that separates
+# rounding from truncation: 1.2 x 4 is 4.8 and IFOX00 writes 5, where 1.3 x 4
+# would agree either way. K5/K6 have no modifier and must not move at all -- the
+# scale path is entered only when one is present, which is what the tree gate
+# then shows.
+#   main daf53cc   00000006 0000000A 00000001 00000001
+#   IFOX00, this   6487FCB9 0000000A 00000005 00000005
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -337,7 +348,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
-         rxparen lenattr contrem spmrr dcvlist; do
+         rxparen lenattr contrem spmrr dcvlist scale; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

@@ -1,0 +1,72 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 18.46 09/08/26
+SCALE     SD  0001 000000 000030
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 18.46 09/08/26
+                                      1 * Ein SKALIERUNGSMODIFIKATOR multipliziert den Nennwert mit zwei hoch
+                                      2 * der Skala: DC FS3'1.25' ist 1,25 x 8 = 10. as370 las den Nennwert
+                                      3 * mit strtol, das am Dezimalpunkt aufhoert und den Modifikator nicht
+                                      4 * kennt - es speicherte 1 (cc370#217).
+                                      5 *
+                                      6 * Der Fall aus dem Korpus ist DC FS28'6.2832', die Definition von
+                                      7 * zwei Pi in den wissenschaftlichen Routinen mit FORTRAN-Syntax:
+                                      8 * x'6487FCB9' gegen x'00000006'.
+                                      9 *
+                                     10 * Gerundet wird zur NAECHSTEN Zahl, vom Null weg. K3 ist die
+                                     11 * Kontrolle, die das von Abschneiden trennt: 1,2 x 4 ist 4,8, und
+                                     12 * IFOX00 schreibt 5. Ohne diesen Fall waeren beide Regeln gleich
+                                     13 * wahrscheinlich, denn 1,3 x 4 = 5,2 ergibt so wie so 5.
+                                     14 *
+                                     15 * K5 und K6 sind die Kontrollen ohne Modifikator - sie muessen Byte
+                                     16 * fuer Byte gleich bleiben, denn an ihnen haengt der ganze Baum. Der
+                                     17 * Skalenpfad wird nur betreten, wenn ein Modifikator dasteht.
+                                     18 * K7 prueft die Skala null, die den Wert unveraendert laesst.
+                                     19 *
+                                     20 * Punktzahl:  ohne Fix 00000006 0000000A 00000001 00000001 ...
+                                     21 *             mit Fix  6487FCB9 0000000A 00000005 00000005 ...
+000000                               22 SCALE    CSECT
+000000 6487FCB9                      23 K1       DC    FS28'6.2832'
+000004 0000000A                      24 K2       DC    FS3'1.25'
+000008 00000005                      25 K3       DC    FS2'1.2'
+00000C 00000005                      26 K4       DC    FS2'1.3'
+000010 0000000A                      27 K5       DC    F'10'
+000014 0007                          28 K6       DC    H'7'
+000016 0000
+000018 00000007                      29 K7       DC    FS0'7'
+00001C FFFFFFF6                      30 K8       DC    FS3'-1.25'
+000020 0018                          31 K9       DC    HS4'1.5'
+000022 0666                          32 KA       DC    HS14'0.1'
+000024 F99A                          33 KB       DC    HS14'-0.1'
+000026 0000
+000028 40000000                      34 KC       DC    FS31'0.5'
+00002C 00000080                      35 KD       DC    FS8'0.5'
+                                     36          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 18.46 09/08/26
+KA       00002 00000022 00032
+KB       00002 00000024 00033
+KC       00004 00000028 00034
+KD       00004 0000002C 00035
+K1       00004 00000000 00023
+K2       00004 00000004 00024
+K3       00004 00000008 00025
+K4       00004 0000000C 00026
+K5       00004 00000010 00027
+K6       00002 00000014 00028
+K7       00004 00000018 00029
+K8       00004 0000001C 00030
+K9       00002 00000020 00031
+SCALE    00001 00000000 00022
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 18.46 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         36
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        72
