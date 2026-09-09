@@ -3024,8 +3024,19 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         if (nseq < 2048) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
     }
     if (m->endlbl[0] && nseq < 2048) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
-    int pc = 0, guard = 0;
-    while (pc < m->nbody && guard++ < 100000) {
+    /* ACTR bounds the conditional-assembly LOOPS, which is what actually runs
+     * away, and IFOX00's default is 4096. as370 had no ACTR at all and a flat
+     * 100,000-STATEMENT guard instead, so a macro that raises its own counter
+     * was cut off in the middle with nothing said: IFCSXXXF's ITEMSORT sets
+     * `ACTR 200000' to heapsort a 624-entry table, hit the guard three times,
+     * and left the table half-sorted with &ITEMITR and &ITEMMDX never assigned.
+     * ITEMFIND's binary search then failed on names that are in the table, and
+     * the module came out at rc 20 against IFOX00's 0 (cc370#336).
+     *
+     * The statement guard stays as a backstop against a body with no branches
+     * at all, but well above where ACTR now decides. */
+    int pc = 0; long guard = 0, actr = 4096;
+    while (pc < m->nbody && guard++ < 20000000) {
         char bb[STMTSZ], bl[32], bo[16], bod[STMTSZ];
         if (m->body[pc][0] == '*' || (m->body[pc][0] == '.' && m->body[pc][1] == '*')) { pc++; continue; }  /* macro comment */
         scopy(bb, m->body[pc], STMTSZ - 1); parse(bb, bl, bo, bod);
@@ -3053,14 +3064,22 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             }
             pc++; continue;
         }
-        if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT") || !strcmp(bo, "ACTR")) { pc++; continue; }
+        if (!strcmp(bo, "ACTR")) {   /* the conditional-assembly loop counter, and it is not decoration */
+            long v = bod[0] ? expr_val_full(bod, NULL) : 0;
+            if (v > 0) actr = v;
+            pc++; continue; }
+        if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT")) { pc++; continue; }
         { g_ca_slot = g_mcall_slot;                          /* a substring error in the body points at the call */
           int isca = set_stmt(c, bl, bo, bod); g_ca_slot = -1;
           if (isca) { pc++; continue; } }                     /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
         if (!strcmp(bo, "AIF")) { char cond[512], seq[20]; aif_split(bod, cond, sizeof cond, seq, sizeof seq);
-            if (eval_cond(c, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
+            if (eval_cond(c, cond)) {
+                if (--actr < 0) { note_operr("The ACTR limit has been exceeded - conditional assembly terminated (IFOX00 IFO118)", 8, g_mcall_slot); break; }
+                int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
-        if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
+        if (!strcmp(bo, "AGO")) {
+            if (--actr < 0) { note_operr("The ACTR limit has been exceeded - conditional assembly terminated (IFOX00 IFO118)", 8, g_mcall_slot); break; }
+            int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
         /* Substitute only as far as the REMARK.
          *
