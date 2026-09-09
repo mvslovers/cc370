@@ -2128,8 +2128,19 @@ deck_eq() {
 # var_opcode pins the operation-field rule -- '&O' holding 'DC' is substituted
 # and assembles, '&P' holding a MACRO NAME is substituted and then REJECTED,
 # because macro calls are already resolved when substitution runs.
+# kwundef is the #162 oracle and returns 8 by design: a keyword the prototype
+# does not declare is IFO092 KEYWORD PARAMETER <name> UNDEFINED IN MACRO
+# DEFINITION, severity 8, one message per keyword -- and the expansion goes ahead.
+# Going ahead is the point, not a leniency: the 118 modules this reaches already
+# have decks byte-identical to IFOX00's, because MODID emits nothing for an
+# operand it does not know and neither do we. Refusing the call would turn 115
+# identities into differences; the divergence is the RETURN CODE, which a byte
+# comparison cannot see.
+# C3 carries TWO undeclared keywords in ONE statement: two messages, one flagged
+# statement. That separates the message count from the statement count, and
+# without it the counting rule is not tested at all.
 rc8fail=0
-for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8; do
+for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8 kwundef:2:8; do
     f8=${s8%%:*}; rest8=${s8#*:}; nf8=${rest8%%:*}; rc8=${rest8##*:}
     ./as370 "tests/$f8.s" -o "/tmp/_$f8$$.obj" >/dev/null 2>"/tmp/_$f8$$.err"; got8=$?
     if [ $got8 != $rc8 ]; then

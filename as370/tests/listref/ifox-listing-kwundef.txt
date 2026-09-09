@@ -1,0 +1,70 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 01.49 09/09/26
+T         SD  0001 000000 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 01.49 09/09/26
+                                      1 * Ein Schluesselwort, das der Prototyp nicht kennt (#162).
+                                      2 *
+                                      3 * IFOX00: IFO092 KEYWORD PARAMETER <name> UNDEFINED IN MACRO
+                                      4 * DEFINITION, Schweregrad 8, EINE Meldung je Schluesselwort -- und
+                                      5 * die Expansion laeuft trotzdem.
+                                      6 *
+                                      7 * Dass sie trotzdem laeuft, ist der Kern und keine Nachsicht: die 118
+                                      8 * Module, die das im Baum erreicht, haben bereits Decks, die byte-
+                                      9 * identisch zu IFOX00s sind, weil MODID fuer einen unbekannten
+                                     10 * Operanden nichts erzeugt und as370 ebenso wenig. Ein Ablehnen des
+                                     11 * Aufrufs machte aus 115 Identitaeten Abweichungen. Die Divergenz ist
+                                     12 * der RUECKGABECODE, den ein reiner Byte-Vergleich nicht sieht.
+                                     13 *
+                                     14 * Die Ursache liegt nicht bei uns: SYS1.AMACLIB(MODID) auf dem Ziel
+                                     15 * ist ein aelterer Wartungsstand als die Quelle, die es ruft.
+                                     16 *
+                                     17 *   C1  nur deklarierte Schluesselwoerter -- keine Meldung
+                                     18 *   C2  eines unbekannt -- eine Meldung
+                                     19 *   C3  ZWEI unbekannte in EINER Anweisung -- zwei Meldungen, aber
+                                     20 *       nur EINE markierte Anweisung. Das trennt die Meldungszahl
+                                     21 *       von der Anweisungszahl, und nur so ist die Zaehlregel
+                                     22 *       ueberhaupt geprueft.
+                                     23 *   C4  positional PLUS deklariertes Schluesselwort -- keine Meldung
+                                     24 *
+                                     25 * Alle vier erzeugen ihr DC: der Deck ist byte-identisch, nur rc 8
+                                     26 * trennt vorher und nachher.
+                                     27          MACRO
+                                     28 &L       MYM   &A=,&B=
+                                     29 &L       DC    AL1(1)
+                                     30          MEND
+000000                               31 T        CSECT
+                                     32 C1       MYM   A=1,B=2
+000000 01                            33+C1       DC    AL1(1)
+                                     34 C2       MYM   A=1,ZZ=2
+         *** ERROR ***
+000001 01                            35+C2       DC    AL1(1)
+                                     36 C3       MYM   ZZ=2,YY=3
+         *** ERROR ***
+000002 01                            37+C3       DC    AL1(1)
+                                     38 C4       MYM   1,A=2
+000003 01                            39+C4       DC    AL1(1)
+                                     40          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 01.49 09/09/26
+C1       00001 00000000 00033
+C2       00001 00000001 00035
+C3       00001 00000002 00037
+C4       00001 00000003 00039
+T        00001 00000000 00031
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 01.49 09/09/26
+   34  IFO092      KEYWORD PARAMETER ZZ UNDEFINED IN MACRO DEFINITION
+   36  IFO092      KEYWORD PARAMETER YY UNDEFINED IN MACRO DEFINITION
+   36  IFO092      KEYWORD PARAMETER ZZ UNDEFINED IN MACRO DEFINITION
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     2
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         36
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        70

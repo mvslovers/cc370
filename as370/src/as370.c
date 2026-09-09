@@ -103,6 +103,7 @@ static int nsym;
  * 256, 300 and 400 (flagged).  as370 kept parameter values in 96 bytes,
  * prototype defaults in 40 and &SYSLIST elements in 128, and cut to fit
  * without a word (cc370#153). */
+#define MAXPARM 256   /* macro prototype parameters; IDACB2 declares 127 */
 #define VALSZ 256
 /* A DC address-constant value list: the text inside the parentheses, and the
  * values split out of it.  The two are DERIVED from one another -- the
@@ -1365,7 +1366,13 @@ static int line_org[MAXLINES];
 static int g_curorg;
 struct macro {
     char namep[20], name[16];
-    char pname[100][20], pdef[100][VALSZ]; int pkey[100]; int nparm;   /* DCB has ~96 keyword params */
+    /* A macro prototype's parameters.  SYS1.MACLIB(IDACB2) declares 127 and
+     * DCB 96, so 100 was reachable -- and reaching it is not quiet any more:
+     * a parameter past the cap was dropped, so every CALL passing that
+     * keyword then looked undeclared and raised IFO092 against a macro that
+     * declares it perfectly well.  27 modules did exactly that the moment
+     * #162's diagnostic went in (cc370#292). */
+    char pname[MAXPARM][20], pdef[MAXPARM][VALSZ]; int pkey[MAXPARM]; int nparm;
     char *body[4096]; int nbody;
     char *bodyseq[4096];           /* cols 73-80 of each body card, for the listing's SOURCE column (NULL if unknown) */
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
@@ -2583,9 +2590,9 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
         pp[oi] = 0; }
     struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
     scopy(m->namep, pl, sizeof m->namep - 1); scopy(m->name, po, sizeof m->name - 1);
-    if (pp[0]) { char flds[100][FLDW]; int nf = split_fields(pp, flds, 100), k;
+    if (pp[0]) { static char flds[MAXPARM][FLDW]; int nf = split_fields(pp, flds, MAXPARM), k;
         if (g_fld_clipped) note_operr("parameter in macro prototype or macro instruction exceeds 255 characters (IFOX00 IFO042)", 8, g_curln);
-        for (k = 0; k < nf && k < 100; k++) { char *eq = strchr(flds[k], '=');
+        for (k = 0; k < nf && k < MAXPARM; k++) { char *eq = strchr(flds[k], '=');
             if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, VALSZ - 1); m->pkey[k] = 1; }
             else scopy(m->pname[k], flds[k], 19);
             m->nparm++; } }
@@ -2751,8 +2758,31 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         for (k = 0; k < na; k++) {
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
-            if (iskw) { *eq = 0; int j; char nm[66]; snprintf(nm, sizeof nm, "&%.63s", args[k]);
-                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { scopy(c->pv[j], eq + 1, VALSZ - 1); break; } }
+            if (iskw) { *eq = 0; int j, kwhit = 0; char nm[66]; snprintf(nm, sizeof nm, "&%.63s", args[k]);
+                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { scopy(c->pv[j], eq + 1, VALSZ - 1); kwhit = 1; break; }
+                /* A keyword the prototype does not declare is IFOX00 IFO092
+                 * KEYWORD PARAMETER <name> UNDEFINED IN MACRO DEFINITION, severity
+                 * 8, ONE message per keyword -- and the expansion goes ahead
+                 * anyway (tests/kwundef.s: all four calls generate their DC and
+                 * IFOX00 counts two flagged STATEMENTS for three messages).
+                 *
+                 * Generating anyway is the whole point and not a leniency: the 118
+                 * modules this reaches already have decks byte-identical to
+                 * IFOX00's, because MODID emits nothing for an operand it does not
+                 * know and neither do we. Refusing the call would turn 115
+                 * identities into differences. The divergence is the RETURN CODE,
+                 * which as370 could not see while it only compared bytes.
+                 *
+                 * The cause is not ours: SYS1.AMACLIB(MODID) on the target is an
+                 * older maintenance level than the source that calls it, and its
+                 * own comments name the PTF that added `PTF=' (cc370#162). */
+                if (!kwhit) { char msg[128];
+                    snprintf(msg, sizeof msg, "keyword parameter %.40s is not declared in the macro prototype (IFOX00 IFO092)", args[k]);
+                    /* note_operr's third argument is a lines[] SLOT, not a source
+                     * line, and g_curln is neither during an expansion. The call
+                     * line is what IFOX00 attributes it to, and g_mcall_slot is
+                     * kept for exactly that. */
+                    note_operr(msg, 8, g_mcall_slot); } }
             else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c->pv[j], args[k], VALSZ - 1); break; } cc2++; }
                 if (pos < MAXSYSLIST) { scopy(c->syslist[pos], args[k], VALSZ - 1); }
                 else if (pos == MAXSYSLIST) note_operr("More than 255 positional macro operands - the rest are not addressable through &SYSLIST", 8, g_curln);
