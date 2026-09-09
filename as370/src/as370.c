@@ -3810,7 +3810,16 @@ static void assign_origins(void) {
     for (k = 0; k < nsym; k++) {
         struct sym *s = &syms[k];
         if (!s->defined || s->sect <= 0 || s->sect >= MAXSECT) continue;
-        if (is_dsect_id(s->sect) || s->type == S_ABS || s->type == S_ER) continue;
+        /* A DEFINITION outranks a lingering ER type, the way a section outranks
+         * an ER of the same name (#281).  Every S_ER assignment is guarded by
+         * `if (!s->defined)', so the type is only ever set while the symbol is
+         * still undefined -- and it is never taken back when the definition
+         * arrives.  `DC V(B)' ahead of B's own label leaves B carrying S_ER for
+         * good, so its LD entry was emitted with the section-relative value and
+         * no origin: IKJEGCVT's IKJEGIST reads 000000 against IFOX00's 0017A8.
+         * Every TXT card in those modules is already identical; one LD address
+         * is the whole divergence (cc370#285). */
+        if (is_dsect_id(s->sect) || s->type == S_ABS) continue;
         s->val += sect_org[s->sect];
     }
     for (k = 0; k < nlit; k++)

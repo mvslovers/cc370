@@ -496,6 +496,17 @@ rm -f /tmp/_au.$$
 # external that never becomes a section and whose ER must not move.
 #   main 69f65dd   B's TXT under the ER's id
 #   IFOX00, this   under the SD's
+# ldentry is the #285 oracle: a DEFINITION outranks a lingering ER type. The
+# sibling of #281 one level down -- there the ER won the section's ESDID, here it
+# wins the symbol's TYPE. Every S_ER assignment is guarded by `if (!s->defined)',
+# so the type is only ever set while the symbol is undefined, and it is never
+# taken back when the definition arrives; assign_origins skipped such symbols, so
+# the LD entry carried the section-relative value with no origin added.
+# B sits in a LATER section -- only then do offset and origin separate at all --
+# and the two numbers are deliberately different (24 against 16), so the result
+# says WHICH of them is missing. D is an ENTRY with no V() ahead of it.
+#   main 2c01e89   LD B 000018
+#   IFOX00, this   LD B 000028
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -508,7 +519,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
-         substrcat usingexpr orglen sectlen esdvsect; do
+         substrcat usingexpr orglen sectlen esdvsect ldentry; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
