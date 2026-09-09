@@ -1566,7 +1566,19 @@ struct setrow { char name[20]; char val[VALSZ]; char (*elem)[VALSZ]; unsigned ch
 #define MAXSYSLIST 255
 struct ctx {
     struct macro *m;
-    char pv[100][VALSZ];                      /* parameter values (may be sublists) */
+    /* MAXPARM, not 100. The prototype table beside it is MAXPARM wide and its
+     * own comment names the module that needs it -- IDACB2 declares 127 -- but
+     * the VALUES were 100, and capture_macro's default loop plus the positional
+     * and keyword binding all index this by the parameter number. Every
+     * expansion of IDACB2 therefore wrote 27 entries, 6,912 bytes, past the end
+     * of the array and into the rest of the context.
+     *
+     * It changed no output, which is why it survived: what follows absorbed it
+     * harmlessly. It was found by adding an unrelated field after pv[] -- 70
+     * modules then assembled differently, and the field itself turned out to be
+     * innocent. A silent out-of-bounds write is not a latent bug, it is a bug
+     * whose symptom is currently somewhere else (cc370#334). */
+    char pv[MAXPARM][VALSZ];                  /* parameter values (may be sublists) */
     const char *namepval;
     struct setrow sr[MAXLSET]; int nset;   /* local SET symbols, arrays one row each */
     int sysndx;                            /* &SYSNDX for this macro invocation */
