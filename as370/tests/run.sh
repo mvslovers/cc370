@@ -484,6 +484,18 @@ rm -f /tmp/_au.$$
 # the control.
 #   main 2a1505c   T1 len 000008  T2 at 000008
 #   IFOX00, this   T1 len 00000C  T2 at 000010
+# esdvsect is the #281 oracle: a CSECT whose name already has an ER from V().
+# s->esdid feeds cur_sect_esdid and so the ESDID on the TXT card, and the
+# assignment took the FIRST entry, resting on "a section's SD is registered
+# before any ER for the same name". That stops being true the moment the name is
+# REFERENCED first: `DC V(B)' ahead of `B CSECT' registers B's ER first, and B's
+# whole TXT was filed under it. The ESD itself was right the whole time -- both
+# entries present, right types, lengths and origin -- so only the TXT card named
+# the wrong section, and no comparison of one section's bytes could see it.
+# C is the control in the usual order, CSECT first and V() after; EXT is a real
+# external that never becomes a section and whose ER must not move.
+#   main 69f65dd   B's TXT under the ER's id
+#   IFOX00, this   under the SD's
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -496,7 +508,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
-         substrcat usingexpr orglen sectlen; do
+         substrcat usingexpr orglen sectlen esdvsect; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
