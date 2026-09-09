@@ -93,6 +93,11 @@ static int nsym;
  * erms.asm:114 ERR105 for a generated field. as370 clamped every field at 63
  * regardless of the caller's array, silently, and then evaluated the truncated
  * text as if it were the whole operand. */
+/* A statement buffer. join_cont builds a joined statement into acc[8192], so
+ * anything that later holds one has to be that big: every smaller bound on
+ * this path is a silent truncation of a statement the joiner assembled
+ * correctly (cc370#153). */
+#define STMTSZ 8192
 #define FLDW 256
 
 enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
@@ -1118,9 +1123,9 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
  * the first blank that is NOT inside a quoted string (so DC C'A B' works); the
  * trailing comment is dropped.
  *
- * BUFFER CONTRACT -- the caller must provide lbl[32], op[16], opnd[1024].
+ * BUFFER CONTRACT -- the caller must provide lbl[32], op[16], opnd[STMTSZ].
  * parse writes up to 30 characters of label (a variable symbol with a subscript
- * runs past the ordinary 8), 8 of opcode, and 1023 of operand. Two callers used
+ * runs past the ordinary 8), 8 of opcode, and STMTSZ-1 of operand. Two callers used
  * to pass opnd[128], which is fine for one 80-column card and NOT fine for a
  * continued statement: continuations are folded before a macro library is read,
  * so a macro body carrying a multi-card statement overflowed the stack.
@@ -1215,7 +1220,7 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
         else if (!q && *p == '(') d++;
         else if (!q && *p == ')') { if (d) d--; }
         if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
-        if (i < 1023) opnd[i++] = *p;
+        if (i < STMTSZ - 1) opnd[i++] = *p;
         p++;
     } }
     opnd[i] = 0;
@@ -1398,7 +1403,12 @@ struct setrow { char name[20]; char val[96]; char (*elem)[96]; unsigned char *es
  * 1,024 cannot be served by doubling again -- see cc370#196, which moves ctx and
  * the seq pair off the stack. */
 #define MAXLSET 512
-#define MAXSYSLIST 64
+/* &SYSLIST positions a macro call can carry.  IFOX00 has no such limit -- a
+ * macro call's operand field is bounded by the statement and nothing else --
+ * and 64 was not enough for the corpus: JTEXT's `DBV' call carries 86
+ * positional operands and AMACLIB(IDACB2) 82.  Past this the diagnostic
+ * below still fires, so the bound stays visible rather than silent. */
+#define MAXSYSLIST 255
 struct ctx {
     struct macro *m;
     char pv[100][96];                      /* parameter values (may be sublists) */
@@ -1557,10 +1567,19 @@ static void vref(struct ctx *c, const char *ref, char *out) {
     if (!strcmp(nm, "SYSTIME")) { scopy(out, g_systime, 5); return; }   /* assembly time "HH.MM" */
     char amp[26]; snprintf(amp, sizeof amp, "&%s", nm);
     const char *base = NULL; int k, is_param = 0;
-    char slbuf[1024];
+    /* &SYSLIST is materialised as one synthetic sublist string, so its buffer
+     * bounds the whole operand list and not one element.  At 1024 it held about
+     * 61 operands of ordinary width, and the 62nd onwards simply were not there:
+     * `&SYSLIST(62)' read empty, K' of it was 0, and a macro looping over
+     * N'&SYSLIST generated nothing for the tail while reporting no error at all.
+     * JTEXT's `DBV' call carries 86 and lost 24 of them that way (cc370#153). */
+    char slbuf[STMTSZ];
     if (!strcmp(nm, "SYSLIST")) {                 /* positional operands as a synthetic sublist */
-        int o = 0; slbuf[o++] = '(';
-        for (k = 0; k < c->nsyslist; k++) { if (k) slbuf[o++] = ','; const char *v = c->syslist[k]; while (*v && o < 1022) slbuf[o++] = *v++; }
+        int o = 0, lim = STMTSZ - 3, cut = 0; slbuf[o++] = '(';
+        for (k = 0; k < c->nsyslist; k++) { if (k) slbuf[o++] = ','; const char *v = c->syslist[k];
+            while (*v && o < lim) slbuf[o++] = *v++;
+            if (*v) { cut = 1; break; } }
+        if (cut) note_operr("&SYSLIST is longer than the operand buffer - the tail is not addressable", 8, g_curln);
         slbuf[o++] = ')'; slbuf[o] = 0; base = slbuf; is_param = 1;
     }
     else if (c->m && c->m->namep[0] && !strcmp(amp, c->m->namep)) { base = c->namepval ? c->namepval : ""; is_param = 1; }
@@ -1598,7 +1617,11 @@ static void vref(struct ctx *c, const char *ref, char *out) {
              * XF defines two levels for &SYSLIST and one for a named parameter;
              * the loop simply follows however many subscripts are written, which
              * degrades to the previous behaviour for a single one. */
-            char cur[1024]; scopy(cur, base ? base : "", sizeof cur - 1);
+            /* the subscripted value is copied here before each level is peeled,
+             * so this bounds the WHOLE sublist too, not one element: at 1024 the
+             * 86th operand of a &SYSLIST that had survived every earlier bound
+             * was still cut to its first character (cc370#153). */
+            char cur[STMTSZ]; scopy(cur, base ? base : "", sizeof cur - 1);
             const char *t = idxs;
             for (;;) {
                 const char *e2 = t; int dd = 0, qq = 0;
@@ -1943,7 +1966,7 @@ static void prescan_symtypes(char **in, int n) {
     int i, depth = 0;
     nstypes = 0;
     for (i = 0; i < n; i++) {
-        char lbl[32], op[16], opnd[1024];
+        char lbl[32], op[16], opnd[STMTSZ];
         if (card_op_is(in[i], "MACRO")) { depth++; continue; }
         if (card_op_is(in[i], "MEND")) { if (depth) depth--; continue; }
         if (depth) continue;                       /* a macro body is not open code */
@@ -2496,7 +2519,7 @@ static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[
 static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12]) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
     char pb[4096], pl[32], po[16], pp[4096]; strncpy(pb, in[i], 4095); pb[4095] = 0; parse(pb, pl, po, pp);
-    { const char *p = pb;                 /* re-extract the full prototype operand (parse caps at 1023; DCB's list is longer) */
+    { const char *p = pb;                 /* re-extract the full prototype operand (parse caps at STMTSZ-1; DCB's list is longer) */
         if (*p && !isspace((unsigned char)*p)) while (*p && !isspace((unsigned char)*p)) p++;   /* skip label */
         while (*p == ' ' || *p == '\t') p++;
         while (*p && !isspace((unsigned char)*p)) p++;                                          /* skip opcode */
@@ -2513,7 +2536,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
             if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
             else scopy(m->pname[k], flds[k], 19);
             m->nparm++; } }
-    while (++i < nin) { char bb[1024], bl[32], bo[16], bd[1024]; strncpy(bb, in[i], 1023); bb[1023] = 0; parse(bb, bl, bo, bd);
+    while (++i < nin) { char bb[STMTSZ], bl[32], bo[16], bd[STMTSZ]; scopy(bb, in[i], STMTSZ - 1); parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') scopy(m->endlbl, bl, sizeof m->endlbl - 1); break; }
         if (m->nbody < 4096) { m->bodyseq[m->nbody] = (inseq ? strdup(inseq[i]) : NULL); m->body[m->nbody++] = strdup(in[i]); } }
     *ip = i; return m;
@@ -2522,7 +2545,7 @@ static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
     static char *buf[4096]; static char seqbuf[4096][12];
     int n = lib_readlines(name, buf, 4096, seqbuf, 1); if (n < 0) return NULL;   /* a macro: stops at MEND */
-    int i = 0; for (; i < n; i++) { char b[1024], l[32], o[16], od[1024]; strncpy(b, buf[i], 1023); b[1023] = 0;
+    int i = 0; for (; i < n; i++) { char b[STMTSZ], l[32], o[16], od[STMTSZ]; scopy(b, buf[i], STMTSZ - 1);
         if (!parse(b, l, o, od) || !o[0]) continue;
         if (strcmp(o, "MACRO")) return NULL;
         break; }
@@ -2658,12 +2681,16 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     struct ctx *c = calloc(1, sizeof *c);
     char (*seqn)[20] = malloc(2048 * 20);
     int *seqi = malloc(2048 * sizeof *seqi);
-    if (!c || !seqn || !seqi) { fprintf(stderr, "as370: out of memory expanding macro %s\n", m->name); exit(2); }
+    /* the split operand list: MAXSYSLIST x FLDW is 64 KB, too much for a frame
+     * of a function that recurses once per nested macro, so it goes beside the
+     * context and is freed on the same single exit path */
+    char (*args)[FLDW] = malloc((size_t)MAXSYSLIST * FLDW);
+    if (!c || !seqn || !seqi || !args) { fprintf(stderr, "as370: out of memory expanding macro %s\n", m->name); exit(2); }
     c->m = m; c->namepval = lbl; c->sysndx = ++g_sysndx;
     scopy(c->sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
     int k;
     for (k = 0; k < m->nparm; k++) { strncpy(c->pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c->pv[k][95] = 0; }
-    if (opnd[0]) { char args[100][FLDW]; int na = split_fields(opnd, args, 100), pos = 0;
+    if (opnd[0]) { int na = split_fields(opnd, args, MAXSYSLIST), pos = 0;
         for (k = 0; k < na; k++) {
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
@@ -2671,7 +2698,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
                 for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c->pv[j], eq + 1, 95); c->pv[j][95] = 0; break; } }
             else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c->pv[j], args[k], 95); break; } cc2++; }
                 if (pos < MAXSYSLIST) { scopy(c->syslist[pos], args[k], 127); }
-                else if (pos == MAXSYSLIST) note_operr("More than 64 positional macro operands - the rest are not addressable through &SYSLIST", 8, g_curln);
+                else if (pos == MAXSYSLIST) note_operr("More than 255 positional macro operands - the rest are not addressable through &SYSLIST", 8, g_curln);
                 pos++; c->nsyslist = pos; }
         }
     }
@@ -2684,9 +2711,9 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     if (m->endlbl[0] && nseq < 2048) { strcpy(seqn[nseq], m->endlbl); seqi[nseq] = m->nbody; nseq++; }
     int pc = 0, guard = 0;
     while (pc < m->nbody && guard++ < 100000) {
-        char bb[1024], bl[32], bo[16], bod[1024];
+        char bb[STMTSZ], bl[32], bo[16], bod[STMTSZ];
         if (m->body[pc][0] == '*' || (m->body[pc][0] == '.' && m->body[pc][1] == '*')) { pc++; continue; }  /* macro comment */
-        strncpy(bb, m->body[pc], 1023); bb[1023] = 0; parse(bb, bl, bo, bod);
+        scopy(bb, m->body[pc], STMTSZ - 1); parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
         if (!strcmp(bo, "MNOTE")) {
@@ -2695,9 +2722,9 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
              * shape. Then emit it as a generated listing line -- LF_NOASM so the
              * core never tries to assemble the rendered text, LF_GEN so it
              * carries the '+' every other generated card does. */
-            char mex[1024]; msub(c, m->body[pc], mex, sizeof mex);
-            char mb[1024], ml[32], mo[16], mod[1024];
-            strncpy(mb, mex, 1023); mb[1023] = 0; parse(mb, ml, mo, mod);
+            char mex[STMTSZ]; msub(c, m->body[pc], mex, sizeof mex);
+            char mb[STMTSZ], ml[32], mo[16], mod[STMTSZ];
+            scopy(mb, mex, STMTSZ - 1); parse(mb, ml, mo, mod);
             char mtext[256], mimg[256]; int mcom = 0;
             int msev = mnote_split(mod, mtext, sizeof mtext, mimg, sizeof mimg, &mcom);
             if (*nout < MAXLINES) {
@@ -2720,13 +2747,13 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
-        char ex[1024]; msub(c, m->body[pc], ex, sizeof ex);
+        char ex[STMTSZ]; msub(c, m->body[pc], ex, sizeof ex);
         char gimg[256]; render_model(c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
     g_genlevel--;
-    set_free(c); free(c); free(seqn); free(seqi);
+    set_free(c); free(c); free(seqn); free(seqi); free(args);
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
  * pass and every COPY'd block, so a GBLC/SETC in PDPTOP reaches an AIF in
@@ -2740,17 +2767,18 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
  * substituted length) or a bare DC emits them. Only these two context-free
  * globals are touched; all other & references pass through for the normal macro
  * machinery. Idempotent: an already-expanded line has no &SYS* left to match. */
-static void sysvar_sub(const char *src, char *dst) {
-    int di = 0; const char *s = src;
-    while (*s && di < 1022) {
-        if (*s == '&' && s[1] == '&') { dst[di++] = '&'; if (di < 1022) dst[di++] = '&'; s += 2; continue; }
+static void sysvar_sub(const char *src, char *dst, size_t dstsz) {
+    int di = 0, lim = (int)dstsz - 2; const char *s = src;
+    if (lim < 0) lim = 0;
+    while (*s && di < lim) {
+        if (*s == '&' && s[1] == '&') { dst[di++] = '&'; if (di < lim) dst[di++] = '&'; s += 2; continue; }
         if (*s == '&') {
             const char *p = s + 1; char nm[12]; int i = 0;
             while (*p && isalpha((unsigned char)*p) && i < 10) nm[i++] = *p++;
             nm[i] = 0;
             if (!strcmp(nm, "SYSDATE") || !strcmp(nm, "SYSTIME")) {
                 const char *v = nm[3] == 'D' ? g_sysdate : g_systime;
-                while (*v && di < 1022) dst[di++] = *v++;
+                while (*v && di < lim) dst[di++] = *v++;
                 s = p; if (*s == '.') s++;   /* swallow the concatenation dot */
                 continue;
             }
@@ -2800,9 +2828,9 @@ static int has_varsym(const char *card) {
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
     struct ctx *opc = &g_opc;   /* shared open-code context */
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
-    char sysbuf[1024]; sysvar_sub(line, sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
-    char buf[1024], lbl[32], op[16], opnd[1024];
-    strncpy(buf, sysbuf, 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
+    char sysbuf[STMTSZ]; sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
+    char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
+    scopy(buf, sysbuf, STMTSZ - 1); parse(buf, lbl, op, opnd);
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`.
@@ -2915,7 +2943,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
          * which the called macro -- not knowing &OUTM -- would mis-parse). Inside a
          * macro the enclosing expansion has already substituted them. The card-level
          * substitution above has already done it when it ran. */
-        char aopnd[1024];
+        char aopnd[STMTSZ];
         if (subst || g_genlevel > 0) { strncpy(aopnd, opnd, sizeof aopnd - 1); aopnd[sizeof aopnd - 1] = 0; }
         else msub(opc, opnd, aopnd, sizeof aopnd);
         int savecall = g_mcall_slot; g_mcall_slot = *nout - 1;   /* the call line just appended */
@@ -2942,7 +2970,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     lflags[*nout] = (unsigned char)(g_genlevel > 0 || subst ? LF_GEN : 0);
     gcard[*nout] = img ? strdup(img) : NULL;
     line_org[*nout] = g_curorg;
-    if (lbl[0] == '.') { char r[1100]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
+    if (lbl[0] == '.') { char r[STMTSZ + 32]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(sysbuf);
 }
 /* expand a line array as open code, honoring AIF/AGO/sequence-symbol branching.
@@ -2954,7 +2982,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
     int nseq = 0, k, mdef = 0;
     if (!seqn || !seqi) { free(seqn); free(seqi); return; }
     for (k = 0; k < n; k++) {                          /* prescan sequence-symbol labels (skip MACRO..MEND bodies) */
-        char sb[1024], sl[32], so[16], sd[1024]; strncpy(sb, arr[k], 1023); sb[1023] = 0; parse(sb, sl, so, sd);
+        char sb[STMTSZ], sl[32], so[16], sd[STMTSZ]; scopy(sb, arr[k], STMTSZ - 1); parse(sb, sl, so, sd);
         if (!strcmp(so, "MACRO")) { mdef++; continue; }
         if (!strcmp(so, "MEND")) { if (mdef) mdef--; continue; }
         if (mdef) continue;
@@ -2966,7 +2994,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
     int pc = 0, guard = 0;
     while (pc < n && guard++ < 4000000) {
         if (org) g_curorg = org[pc];   /* track the input-file line of the statement being expanded (inherited by macro/COPY output) */
-        char buf[1024], lbl[32], op[16], opnd[1024]; strncpy(buf, arr[pc], 1023); buf[1023] = 0; parse(buf, lbl, op, opnd);
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ]; scopy(buf, arr[pc], STMTSZ - 1); parse(buf, lbl, op, opnd);
         if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
         if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, sizeof cond, seq, sizeof seq);
             if (eval_cond(&g_opc, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
@@ -3039,8 +3067,8 @@ static int dc_len_attr(const char *opnd) {
 static void prescan_lengths(char **in, int nin) {
     int i; nprelen = 0;
     for (i = 0; i < nin && nprelen < 8192; i++) {
-        char buf[1024], lbl[32], op[16], opnd[1024];
-        scopy(buf, in[i], 1023);
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
+        scopy(buf, in[i], STMTSZ - 1);
         parse(buf, lbl, op, opnd);
         if (!lbl[0] || !op[0]) continue;
         if (strcmp(op, "DC") && strcmp(op, "DS") && strcmp(op, "DXD")) continue;
@@ -3678,7 +3706,7 @@ static void prescan_literals(char **lines, int nlines) {
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;
         g_curln = i;                        /* line context for a diagnostic raised inside sym_get (=V externals) */
-        char buf[1024], lbl[32], op[16], opnd[1024];
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (!parse(buf, lbl, op, opnd)) continue;
         if (!op[0]) continue;
@@ -3755,7 +3783,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         g_curln = i;                          /* line context for diagnostics raised inside sym_get/lit_get */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
-        char buf[1024], lbl[32], op[16], opnd[1024];
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
         if (!parse(buf, lbl, op, opnd)) continue;
@@ -4970,7 +4998,7 @@ static void a_src_section(char **lines, int nl) {
     int stmt = 0;
     for (i = 0; i < nl; i++) {
         stmt++;
-        char buf[1024], lbl[32], op[16], opnd[1024];
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         parse(buf, lbl, op, opnd);
         int gen   = (lflags[i] & LF_GEN) != 0;

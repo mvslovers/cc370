@@ -1,0 +1,82 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 20.47 09/08/26
+TSTLONG   SD  0001 000000 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 20.47 09/08/26
+                                      1 * Drei stille Deckel auf der Laenge EINER Anweisung (#153).
+                                      2 *
+                                      3 * join_cont baut eine fortgesetzte Anweisung in acc[8192]; alles
+                                      4 * dahinter deckelte bei etwa 1024, und zwar OHNE jede Diagnose:
+                                      5 *   - sysvar_sub schnitt JEDE Quellzeile bei 1022 ab,
+                                      6 *   - parse() den Operanden bei 1023,
+                                      7 *   - und &SYSLIST wird als EINE synthetische Sublist gebaut, deren
+                                      8 *     Puffer die GANZE Liste begrenzte statt eines Elements: bei
+                                      9 *     gewoehnlicher Operandenbreite war nach etwa 61 Schluss.
+                                     10 * Dazu ein vierter, ausgesprochener Deckel: MAXSYSLIST stand auf 64,
+                                     11 * eine Grenze, die IFOX00 nicht hat.
+                                     12 *
+                                     13 * Der Aufruf traegt 86 positionale Operanden -- die Zahl aus dem
+                                     14 * DBV-Aufruf in JTEXT -- und ist mit Absicht ueber 1022 Zeichen lang,
+                                     15 * damit er alle vier zugleich prueft. &SYSLIST(70) liegt hinter der
+                                     16 * 64er-Grenze, &SYSLIST(86) hinter dem Puffer.
+                                     17 *
+                                     18 * Vorher: rc 8 mit 'More than 64', und das DC bekam leere Werte.
+                                     19 * IFOX00 und jetzt: X'4D58' -- 77 und 88.
+                                     20 *
+                                     21 * T2 ist die Kontrolle: derselbe Aufruf mit vier Operanden war schon
+                                     22 * vorher richtig und darf sich nicht bewegen.
+                                     23          MACRO
+                                     24 &N       SLTAIL &Z
+                                     25 &N       DC    AL1(&SYSLIST(70),&SYSLIST(86))
+                                     26          MEND
+                                     27          MACRO
+                                     28 &N       SLSHRT &Z
+                                     29 &N       DC    AL1(&SYSLIST(2),&SYSLIST(4))
+                                     30          MEND
+000000                               31 TSTLONG  CSECT
+                                     32 T1       SLTAIL 1+0+0+0+0+0,2+0+0+0+0+0,3+0+0+0+0+0,                   X
+                                                       4+0+0+0+0+0,5+0+0+0+0+0,6+0+0+0+0+0,7+0+0+0+0+0,        X
+                                                       8+0+0+0+0+0,9+0+0+0+0+0,1+0+0+0+0+0,2+0+0+0+0+0,        X
+                                                       3+0+0+0+0+0,4+0+0+0+0+0,5+0+0+0+0+0,6+0+0+0+0+0,        X
+                                                       7+0+0+0+0+0,8+0+0+0+0+0,9+0+0+0+0+0,1+0+0+0+0+0,        X
+                                                       2+0+0+0+0+0,3+0+0+0+0+0,4+0+0+0+0+0,5+0+0+0+0+0,        X
+                                                       6+0+0+0+0+0,7+0+0+0+0+0,8+0+0+0+0+0,9+0+0+0+0+0,        X
+                                                       1+0+0+0+0+0,2+0+0+0+0+0,3+0+0+0+0+0,4+0+0+0+0+0,        X
+                                                       5+0+0+0+0+0,6+0+0+0+0+0,7+0+0+0+0+0,8+0+0+0+0+0,        X
+                                                       9+0+0+0+0+0,1+0+0+0+0+0,2+0+0+0+0+0,3+0+0+0+0+0,        X
+                                                       4+0+0+0+0+0,5+0+0+0+0+0,6+0+0+0+0+0,7+0+0+0+0+0,        X
+                                                       8+0+0+0+0+0,9+0+0+0+0+0,1+0+0+0+0+0,2+0+0+0+0+0,        X
+                                                       3+0+0+0+0+0,4+0+0+0+0+0,5+0+0+0+0+0,6+0+0+0+0+0,        X
+                                                       7+0+0+0+0+0,8+0+0+0+0+0,9+0+0+0+0+0,1+0+0+0+0+0,        X
+                                                       2+0+0+0+0+0,3+0+0+0+0+0,4+0+0+0+0+0,5+0+0+0+0+0,        X
+                                                       6+0+0+0+0+0,7+0+0+0+0+0,8+0+0+0+0+0,9+0+0+0+0+0,        X
+                                                       1+0+0+0+0+0,2+0+0+0+0+0,3+0+0+0+0+0,4+0+0+0+0+0,        X
+                                                       5+0+0+0+0+0,6+0+0+0+0+0,77+0+0+0+0+0,8+0+0+0+0+0,       X
+                                                       9+0+0+0+0+0,1+0+0+0+0+0,2+0+0+0+0+0,3+0+0+0+0+0,        X
+                                                       4+0+0+0+0+0,5+0+0+0+0+0,6+0+0+0+0+0,7+0+0+0+0+0,        X
+                                                       8+0+0+0+0+0,9+0+0+0+0+0,1+0+0+0+0+0,2+0+0+0+0+0,        X
+                                                       3+0+0+0+0+0,4+0+0+0+0+0,88+0+0+0+0+0
+000000 4D58                          33+T1       DC    AL1(77+0+0+0+0+0,88+0+0+0+0+0)
+                                     34 T2       SLSHRT 1,44+0,3,55+0
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 20.47 09/08/26
+000002 2C37                          35+T2       DC    AL1(44+0,55+0)
+                                     36          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 20.47 09/08/26
+TSTLONG  00001 00000000 00031
+T1       00001 00000000 00033
+T2       00001 00000002 00035
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 20.47 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         55
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        82
