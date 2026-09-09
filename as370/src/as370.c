@@ -4240,6 +4240,15 @@ static void do_pass(int pass, char **lines, int nlines) {
              * ADDR2, for all three forms: `ORG *-4', a bare ORG, and `ORG expr',
              * inside a dummy section as well (#227). */
             if (pass == 2) { lrecs[i].a2 = lc; lrecs[i].hasa2 = 1; }
+            /* The counter the ORG SETS extends the section too, not only the one
+             * it left behind.  `ORG *+200' as a maintenance area at the end of a
+             * CSECT reserves the space without emitting one byte of TXT, and
+             * as370 tracked the high-water mark from DS/DC alone -- so the
+             * section stayed 200 bytes short and the NEXT section moved forward
+             * by the same 200.  Two wrong ESD entries and every reference into
+             * the second section wrong with them, at rc 0 (cc370#279).
+             * A backward ORG cannot shrink anything: sect_lc_of only raises. */
+            if (lc > org_hwm) org_hwm = lc;
             if (!in_dsect) { if (org_hwm > modlen) modlen = org_hwm; note_sect_lc(org_hwm); }
         } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
             { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }

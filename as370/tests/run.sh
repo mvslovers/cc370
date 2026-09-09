@@ -460,6 +460,16 @@ rm -f /tmp/_au.$$
 # bare `*' and C5 a symbol expression, both of which were always right.
 #   main 0e097a8   F008 F00C 0000(IFO209) D000 C000
 #   IFOX00, this   F000 F004 E00C         D000 C000
+# orglen is the #279 oracle: the counter an ORG SETS extends the section, not
+# only the one it left behind. `ORG *+200' as a maintenance area at the end of a
+# CSECT reserves the space and emits no TXT at all, and as370 tracked the section
+# high-water mark from DS/DC alone -- so the section stayed 200 bytes short and
+# the NEXT section moved forward by the same 200. Two wrong ESD entries and every
+# reference into the second section wrong with them, at rc 0. IEHINITT carries it.
+# T3 is a BACKWARD ORG, which must not shrink anything; T4 is the bare ORG, which
+# already returned to the high-water mark and must stay where it was.
+#   main 2a1505c   T1 len 000001  T2 at 000008
+#   IFOX00, this   T1 len 0000C9  T2 at 0000D0
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -472,7 +482,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
-         substrcat usingexpr; do
+         substrcat usingexpr orglen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

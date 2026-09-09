@@ -1,0 +1,62 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 22.11 09/08/26
+T1        SD  0001 000000 0000C9
+T2        SD  0002 0000D0 000001
+T3        SD  0003 0000D8 000010
+T4        SD  0004 0000E8 000042
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 22.11 09/08/26
+                                      1 * Ein ORG, der den Ortszaehler ueber den Inhalt hinausschiebt,
+                                      2 * verlaengert die Sektion (#279).
+                                      3 *
+                                      4 * Gefunden ueber den dritten Zeugen: IBMs ausgeliefertes Objekt und
+                                      5 * IFOX00 sind sich einig, as370 weicht ab -- IEHINITT.
+                                      6 *
+                                      7 * `ORG *+200' als Wartungsbereich am Ende eines CSECT reserviert
+                                      8 * Platz, ohne ein einziges Byte TXT zu erzeugen. as370 fuehrte den
+                                      9 * Sektions-Hochstand nur aus DS/DC nach, also blieb die Sektion 200
+                                     10 * Bytes zu kurz -- und die FOLGENDE Sektion ruecke um dieselben 200
+                                     11 * Bytes nach vorn. Beide ESD-Eintraege sind dann falsch, und jeder
+                                     12 * Adressverweis in die zweite Sektion ebenso, bei rc 0.
+                                     13 *
+                                     14 *   T1 endet auf ORG *+200 -- Laenge muss 201 sein, nicht 1
+                                     15 *   T2 liegt dahinter -- der Ursprung zeigt es im ESD
+                                     16 *   T3 ist die Kontrolle: ein ORG RUECKWAERTS und dann Daten, die
+                                     17 *      den alten Hochstand nicht ueberschreiten; die Laenge darf
+                                     18 *      sich davon nicht bewegen.
+                                     19 *   T4 prueft den blossen ORG: er kehrt zum Hochstand zurueck, und
+                                     20 *      der schliesst die per ORG erreichte Stelle ein.
+000000                               21 T1       CSECT
+000000 01                            22          DC    X'01'
+000001                      000C9    23          ORG   *+200
+0000D0                               24 T2       CSECT
+0000D0 02                            25          DC    X'02'
+0000D8                               26 T3       CSECT
+0000D8 0000000000000000              27          DC    XL16'03'
+0000E8                      000E0    28          ORG   *-8
+0000E0 00000004                      29          DC    XL4'04'
+0000E8                               30 T4       CSECT
+0000E8 05                            31          DC    X'05'
+0000E9                      00129    32          ORG   *+64
+000129                      00129    33          ORG
+000129 06                            34          DC    X'06'
+                                     35          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 22.11 09/08/26
+T1       00001 00000000 00021
+T2       00001 000000D0 00024
+T3       00001 000000D8 00026
+T4       00001 000000E8 00030
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 22.11 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         35
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         9
+TOTAL RECORDS PRINTED                        62
