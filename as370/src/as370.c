@@ -1993,6 +1993,29 @@ static const char *type_attr(struct ctx *c, const char *p, char *out) {
         }
         v[k] = 0;
     }
+    /* A SUBLIST answers with the type attribute of its FIRST ELEMENT, and does
+     * not descend further: a first element that is itself a sublist gives 'U'.
+     * Measured, because the boundary is not guessable (cc370#260):
+     *
+     *   (3) N   (3,4) N   (FLD) C   (FLD,3) C   (3,FLD) N
+     *   (,3) O  (X'0A') N (NODEF) U ((1,2),3) U
+     *
+     * as370 answered 'U' for every sublist, so APVTMACS(HEXCNVT)'s
+     * `AIF (T'&OUT NE 'N').ERROR4' took the error path on a call as ordinary as
+     * `HEXCNVT (3),(2),4' -- six AMDPR* modules, and IFOX00 assembles all six
+     * without a word. */
+    if (v[0] == '(') {
+        char el[96]; int d = 0, k = 0; const char *e = v + 1;
+        while (*e && k < (int)sizeof el - 1) {
+            if (*e == '(') d++;
+            else if (*e == ')') { if (!d) break; d--; }
+            else if (*e == ',' && !d) break;
+            el[k++] = *e++;
+        }
+        el[k] = 0;
+        if (el[0] == '(') { strcpy(out, "U"); return p; }   /* a nested sublist is not descended into */
+        scopy(v, el, 95);
+    }
     if (!v[0]) strcpy(out, "O");
     else if (is_selfdef(v)) strcpy(out, "N");
     else { char t = styp_find(v); out[0] = t ? t : 'U'; out[1] = 0; }
