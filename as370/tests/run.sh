@@ -556,6 +556,24 @@ rm -f /tmp/_au.$$
 # Same root as #295: the boundaries belong to the model card, not to the result.
 #   main 30654d5   K'&C = 0, &D empty
 #   IFOX00, this   K'&C = 1, &D = MVM22
+# align is the #323 oracle: IFO220 ALIGNMENT ERROR, a warning IFOX00 issues and
+# as370 did not. It is about the ADDRESS, not the encoding -- the instruction
+# assembles unchanged -- which is why all fourteen modules carrying it had a
+# byte-identical deck and disagreed only on the return code.
+# The fixture is half negatives, and they are the half that matters:
+#   4  L 4,7(,9)   explicit base -- the runtime address is not known here and
+#                  IFOX00 does not check it, however odd the displacement.
+#   5  IC 5,ODDF   an instruction with no alignment requirement at all.
+#   6  BXLE 6,8,LOOP  a BRANCH TARGET rather than a data reference. This one is
+#                  in the fixture because the first version of the rule got it
+#                  wrong and the gate said so: BXH and BXLE in the table cost 95
+#                  modules and 188 diagnostics, and every one of the 95 was one
+#                  of those two mnemonics and nothing else.
+# IGC017 in the corpus is exactly the pair -- one symbol operand, one explicit
+# base, both odd, and only the symbol flagged. Without it the rule "the address
+# is odd" over-predicts and still looks right on the other thirteen modules.
+#   7ef4000        silent, rc 0
+#   IFOX00, this   statements 13 and 17 flagged, rc 4, deck unchanged
 # pool is the NEGATIVE control for #317, and it is in the corpus because it
 # reproduced nothing. Sixteen modules had a literal pool N bytes short with every
 # later displacement exactly N lower, and the obvious reading was alignment
@@ -629,7 +647,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup pool contsev; do
+         litdup pool contsev align; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -1732,6 +1750,23 @@ else
     echo "contsev: OK (IFOX00's severity 0 by default, still 8 under --strict-cont, still reported)"
 fi
 rm -f /tmp/_cs.$$
+
+# The deck is in the loop above and cannot show any of this: what IFO220 changes
+# is the return code and nothing else. Two flagged, and the two controls silent.
+./as370 tests/align.s -o /dev/null >/tmp/_al.$$ 2>&1; rcA=$?
+nal=$(grep -c 'IFO220' /tmp/_al.$$ || true)
+if [ $rcA != 4 ]; then
+    echo "align: rc $rcA, expected 4"; cat /tmp/_al.$$; fail=1
+elif [ "$nal" != 2 ]; then
+    echo "align: $nal IFO220 diagnostics, expected exactly 2 -- the controls must stay silent (#323)"; grep 'IFO220' /tmp/_al.$$; fail=1
+elif grep -q "7(,9)" /tmp/_al.$$; then
+    echo "align: the explicit-base operand was flagged; IFOX00 does not check it"; fail=1
+elif grep -qE "Alignment error - BX(H|LE)" /tmp/_al.$$; then
+    echo "align: a branch target was flagged; that cost 95 modules once already"; fail=1
+else
+    echo "align: OK (two symbol operands flagged, explicit base and IC silent, == IFOX00)"
+fi
+rm -f /tmp/_al.$$
 
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
