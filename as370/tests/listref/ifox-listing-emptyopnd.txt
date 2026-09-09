@@ -1,0 +1,59 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 03.32 09/09/26
+T         SD  0001 000000 000003
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 03.32 09/09/26
+                                      1 * Ein Operand, der zu nichts substituiert, bleibt leer (#295).
+                                      2 *
+                                      3 * as370 substituierte die ganze Karte und parste sie neu -- und
+                                      4 * parse() kann `INNER          REMARK HERE' (ein verschwundener
+                                      5 * Operand) nicht von einer so geschriebenen Karte unterscheiden. Also
+                                      6 * las es das erste Wort der BEMERKUNG als Operanden.
+                                      7 *
+                                      8 * Gefunden ueber BLSCAMOD: BLSCAMMM ruft
+                                      9 *   BLSCAMM1 &DYRB(2)         COUNT FLAGS1 ENTRIES
+                                     10 * mit einem &DYRB, das keine Sublist ist -- &DYRB(2) ist null, und das
+                                     11 * zaehlende Makro bekam die Zeichenkette COUNT. Ein Element statt
+                                     12 * keinem, eine Schleife, die nicht laufen darf, und eine MNOTE eines
+                                     13 * Makros, das sich ueber Eingaben beschwert, die wir erfunden haben.
+                                     14 *
+                                     15 *   C1  &P(2) auf einem &P, das keine Sublist ist -> leer, K' = 0
+                                     16 *   C2  ein ungesetztes Schluesselwort -> leer, K' = 0
+                                     17 *   C3  Kontrolle: &P(1) liefert AL, K' = 2 -- war immer richtig
+                                     18 *
+                                     19 * K' und nicht der Text, damit der DECK die Antwort traegt: vorher
+                                     20 * 6,6,2 (K'REMARK, K'SECOND), nachher 0,0,2.
+                                     21          MACRO
+                                     22          INNER &A
+                                     23          LCLA  &K
+                                     24 &K       SETA  K'&A
+                                     25          DC    AL1(&K)
+                                     26          MEND
+                                     27          MACRO
+                                     28          OUTER &P=AL,&Q=
+                                     29          INNER &P(2)         REMARK HERE
+                                     30          INNER &Q            SECOND REMARK
+                                     31          INNER &P(1)         THIRD REMARK
+                                     32          MEND
+000000                               33 T        CSECT
+                                     34          OUTER
+000000 00                            35+         DC    AL1(0)
+000001 00                            36+         DC    AL1(0)
+000002 02                            37+         DC    AL1(2)
+                                     38          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 03.32 09/09/26
+T        00001 00000000 00033
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 03.32 09/09/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         35
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        59

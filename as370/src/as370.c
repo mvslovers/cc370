@@ -2834,7 +2834,29 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             pc++; continue; }
         if (!strcmp(bo, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], bod)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         /* model statement (or nested macro call) */
-        char ex[STMTSZ]; msub(c, m->body[pc], ex, sizeof ex);
+        /* Substitute only as far as the REMARK.
+         *
+         * An operand that substitutes to NOTHING has to leave an EMPTY operand.
+         * as370 substituted the whole card and re-parsed it, and parse() cannot
+         * tell `INNER          REMARK HERE' -- an operand that vanished -- from a
+         * card written that way, so it read the remark's first word as the
+         * operand. BLSCAMMM calls `BLSCAMM1 &DYRB(2)         COUNT FLAGS1 ENTRIES'
+         * with &DYRB not a sublist, so &DYRB(2) is null and the counting macro was
+         * handed the string COUNT: one element instead of none, a loop that should
+         * not run, and an MNOTE from a macro complaining about input we invented
+         * (cc370#295).
+         *
+         * The remark is not lost: `ex' is the semantic text and the listing image
+         * comes from render_model() below, which is column-preserved and reads the
+         * body card whole. Cutting here costs nothing the listing needs. */
+        char ex[STMTSZ];
+        { const char *bc = m->body[pc]; int bl = rawlen(bc);
+          int fcol[4]; static char fld[4][FLDMAX];
+          split_card(bc, bl, bl, fcol, fld);
+          int keep = (fcol[3] > 0 && fcol[3] < bl) ? fcol[3] : bl;
+          char cut[STMTSZ]; if (keep > STMTSZ - 1) keep = STMTSZ - 1;
+          memcpy(cut, bc, (size_t)keep); cut[keep] = 0;
+          msub(c, cut, ex, sizeof ex); }
         char gimg[256]; render_model(c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
         mexp_line(ex, out, nout, depth + 1);
         pc++;
