@@ -378,6 +378,20 @@ rm -f /tmp/_au.$$
 # which applies before content and must not move.
 #   main d208259   N1 N2 Y3 Y4 N5 Y6 Y7
 #   IFOX00, this   Y1 Y2 Y3 Y4 Y5 Y6 Y7
+# usingmul is the #154 oracle: ONE USING may name up to 16 base registers, and
+# they are assigned BY POSITION -- `USING D,11,12,10' gives 11 to D, 12 to
+# D+4096, 10 to D+8192. as370 read the first register and dropped the rest, so a
+# control block wider than 4096 bytes lost every field past the first range:
+# IFO209 and a zeroed instruction, on 40 of the residual modules. BLSUPUT is the
+# shape -- `USING BLSUPRAB,RB,RC', fields at x'E38' and x'28A' right through RB
+# and the one at x'1144' gone.
+# The registers here DESCEND, so an assignment sorted by register number gives
+# HIGH the 11 and fails; and EDGE at D+4092 takes the 11 only because the ranges
+# ASCEND -- were all three based at D, the #138 tie-break would hand it the 12.
+# The last two cases are the counter-check on #177: keying by base register has
+# to hold across a multi-register USING, for DROP and for replacement alike.
+#   main acb4ebe   B01C  ....  ....  BFFC  9000  C01C   rc 8, two IFO209
+#   IFOX00, this   B01C  C000  A000  BFFC  9000  C01C   rc 0
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -389,7 +403,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
-         sublist logop collate; do
+         sublist logop collate usingmul; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

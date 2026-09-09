@@ -4041,9 +4041,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                 for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;
                     struct sym *s = sym_get(extsym[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1; esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
-            char F[4][FLDW]; split_fields(opnd, F, 4);
-            if (pass == 2 && nusing < 32) {
-                int reg = (int)expr_val(F[1], 0);
+            char F[17][FLDW]; int nf = split_fields(opnd, F, 17);   /* base + up to 16 base registers */
+            if (pass == 2) {
                 int brel = 0;
                 long base = (F[0][0] == '*') ? lc : expr_val(F[0], &brel);
                 int isabs = 0, bsect = cur_sect_id;
@@ -4074,10 +4073,32 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * a word, IDA019R4 alone 130.  Keyed by register the table can
                  * never exceed 16 entries, so the bound is now unreachable
                  * rather than merely generous. */
-                { int slot = -1, q;
-                  for (q = 0; q < nusing; q++) if (usings[q].reg == reg) { slot = q; break; }
-                  if (slot < 0) slot = nusing++;
-                  usings[slot].reg = reg; usings[slot].base = base; usings[slot].sect = bsect; usings[slot].isabs = isabs; }
+                /* ONE USING may name up to 16 base registers, and they are
+                 * assigned BY POSITION, not by number: `USING D,11,12,10' makes
+                 * 11 the base for D, 12 for D+4096 and 10 for D+8192.  as370
+                 * read F[1] and dropped the rest, so everything past the first
+                 * 4096 bytes of the domain had no base at all -- IFO209, and the
+                 * instruction zeroed.  `USING BLSUPRAB,RB,RC' is the ordinary
+                 * way to map a control block wider than a register reaches, and
+                 * a module gets it in the middle: BLSUPUT addresses its fields at
+                 * x'E38' and x'28A' correctly through RB and loses the one at
+                 * x'1144'.  40 of the residual modules (cc370#154).
+                 *
+                 * Position, not number, is what tests/usingmul.s pins: its
+                 * registers descend (11,12,10) so an assignment sorted by
+                 * register number gives HIGH the 11, and EDGE at D+4092 gives 11
+                 * only because the ranges ASCEND -- were they all based at D, the
+                 * #138 tie-break would hand it the 12. */
+                { int j;
+                  for (j = 1; j < nf; j++) {
+                      int reg, slot = -1, q;
+                      if (!F[j][0]) continue;          /* an omitted register leaves ITS range uncovered, and the next one still advances */
+                      reg = (int)expr_val(F[j], 0);
+                      for (q = 0; q < nusing; q++) if (usings[q].reg == reg) { slot = q; break; }
+                      if (slot < 0) { if (nusing >= 32) break; slot = nusing++; }
+                      usings[slot].reg = reg; usings[slot].base = base + 4096L * (j - 1);
+                      usings[slot].sect = bsect; usings[slot].isabs = isabs;
+                  } }
                 lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
             }
         } else if (!strcmp(op, "DROP")) {
