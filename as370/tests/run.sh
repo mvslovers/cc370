@@ -338,6 +338,15 @@ rm -f /tmp/_au.$$
 # then shows.
 #   main daf53cc   00000006 0000000A 00000001 00000001
 #   IFOX00, this   6487FCB9 0000000A 00000005 00000005
+# setctype is the #257 oracle: T' is a term of a SETC expression as much as of a
+# comparison, and only the comparison path had it -- `&T SETC T'&P'' assigned the
+# four literal characters. The machinery was all there (the open-code look-ahead,
+# is_selfdef, the letter table); the character path never reached it. The last
+# three cases are the controls: an EQU and an unknown symbol both give U, and a
+# self-defining number gives N, so reading only the type table fails on the
+# number and testing only for digits fails on the EQU.
+#   main b1d4af6   E3 nine times -- the letter T itself
+#   IFOX00, this   F H C D X U A U N
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -348,7 +357,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
-         rxparen lenattr contrem spmrr dcvlist scale; do
+         rxparen lenattr contrem spmrr dcvlist scale setctype; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
