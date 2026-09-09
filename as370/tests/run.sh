@@ -556,6 +556,18 @@ rm -f /tmp/_au.$$
 # Same root as #295: the boundaries belong to the model card, not to the result.
 #   main 30654d5   K'&C = 0, &D empty
 #   IFOX00, this   K'&C = 1, &D = MVM22
+# repro is the #314 oracle. REPRO punches the card AFTER it into the object deck
+# exactly as it stands, and does not assemble it; as370 had no such operation at
+# all, so ICAPRTBL's three cards of IPL text drew `undefined operation code' and
+# the module came out three cards short.
+# The fixture asks the question the manual does not settle -- WHERE the card
+# lands -- with one REPRO ahead of the CSECT and two among the DCs. IFOX00's
+# answer: before the ESD block if it precedes the first control section, else
+# between TXT cards, ENDING the one that is open. Three DCs that would share a
+# single TXT card come out as three cards with a punched card between each pair,
+# and the punched cards carry no sequence number nor advance the deck's.
+#   f6b5123        3 x undefined operation code, cards missing
+#   IFOX00, this   deck byte-identical, 8 cards in that order
 # ovlattr is the #312 oracle, and the FOURTH place an attribute apostrophe has
 # opened a quoted body: parse() (#149), join_cont() (#184), the sublist scanners
 # (#300) and now has_overlong_term(). `L'' is an attribute and what follows it is
@@ -592,7 +604,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop emptyopnd brmnem subattr genblank selfdup ovlattr; do
+         endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
