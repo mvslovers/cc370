@@ -2448,7 +2448,7 @@ static void note_cont(int err, int card, const char *text, int len, int stmt, in
  * way; only the return code says "a build must not pass this".
  *
  * by_comment: the continued statement is a comment, so the card goes entirely. */
-static void check_cont_card(const char *c, int cl, int card, int stmt, int by_comment) {
+static void check_cont_card(const char *c, int cl, int card, int stmt, int by_comment, int itself_continues) {
     int k, nb = 0, iscmt = (c[0] == '*' || (c[0] == '.' && c[1] == '*'));
     for (k = 0; k < 15 && k < cl; k++) if (c[k] != ' ' && c[k] != '\t') { nb = 1; break; }
     /* A COMMENT card carries nothing to lose, whichever kind of statement ate it:
@@ -2458,7 +2458,28 @@ static void check_cont_card(const char *c, int cl, int card, int stmt, int by_co
      * comment card under it -- and they must stay warnings. */
     if (iscmt) { if (nb) note_cont(26, card, c, cl, stmt, 0); return; }
     if (by_comment) { note_cont(nb ? 26 : 0, card, c, cl, stmt, 1); return; }   /* err 0: IFOX00 does not even warn here */
-    if (nb) note_cont(26, card, c, cl, stmt, 1);   /* its label and operation are discarded */
+    if (nb) { note_cont(26, card, c, cl, stmt, 1); return; }   /* its label and operation are discarded */
+    /* A continuation card with NOTHING in the statement field draws IFO026 as
+     * well, and as370 said nothing at all about it. Measured (tests/blankcont.s):
+     * a card blank from the continue column to 71 is flagged at severity 4,
+     * while one carrying text from column 16 is not -- so the message's own
+     * wording, "characters appear between the begin and continue columns", is
+     * narrower than the condition it is issued for.
+     *
+     * ONLY when the card does not itself continue. A blank card in the MIDDLE of
+     * a continuation is not an empty continuation, it is a run of blanks inside
+     * a character constant -- `WTO '<70 blanks>' spread over three cards is the
+     * shape, and IER8CM, IFDOLT12, ILRPGEXP and four others write exactly that.
+     * Flagging those cost seven modules against the three this gains, which is
+     * how the condition was found: the rule without it is net negative.
+     *
+     * Nothing is lost here: the card carried nothing to lose, so it is recorded
+     * with lost = 0 and --strict-cont leaves it at 4 (cc370#325). */
+    if (!itself_continues) {
+        int j, body = 0;
+        for (j = 15; j < 71 && j < cl; j++) if (c[j] != ' ' && c[j] != '\t') { body = 1; break; }
+        if (!body) note_cont(27, card, c, cl, stmt, 0);   /* 27: IFO026's number, our own wording */
+    }
 }
 
 /* Conditional-assembly statements whose operand is an arithmetic or logical
@@ -2517,8 +2538,8 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
             out[no++] = strdup(l); i++;
             while (cont && i < n) {
                 const char *c = in[i]; int cl = rawlen(c), nxt;
-                check_cont_card(c, cl, i + 1, stmt, 1);
                 nxt = (cl > 71 && c[71] != ' ');
+                check_cont_card(c, cl, i + 1, stmt, 1, nxt);
                 if (++ncont == 2 && nxt) note_cont(69, i + 1, c, cl, stmt, 0);   /* card 3 of 3 still continues */
                 cont = nxt; i++;
             }
@@ -2601,7 +2622,7 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
             if (broke) { int t2 = a; while (t2 > os && (acc[t2-1] == ' ' || acc[t2-1] == '\t')) t2--;
               if (t2 > os && acc[t2-1] != ',') opnd_ended = 1; }
             const char *c = in[i]; int cl = rawlen(c), s = 15, e = cl > 71 ? 71 : cl;
-            check_cont_card(c, cl, i + 1, stmt_card, 0);   /* IFO026: RFCCHK checks every continuation card, not just a comment's */
+            check_cont_card(c, cl, i + 1, stmt_card, 0, (cl > 71 && c[71] != ' '));   /* IFO026: RFCCHK checks every continuation card, not just a comment's */
             if (!opnd_ended) { for (; s < e && a < 8190; s++) acc[a++] = c[s]; }
             cont = (cl > 71 && c[71] != ' ');
             i++;
@@ -5693,6 +5714,11 @@ int main(int argc, char **argv) {
                                            : " (IFOX00 does not even warn here; the card's columns 1-15 are blank)");
             } else if (contd[j].err == 26)
                 fprintf(stderr, " WARNING: Characters appear between the begin and continue columns on a continuation card (IFOX00 IFO026)");
+            else if (contd[j].err == 27)
+                /* IFOX00 issues IFO026 for this too, though its wording does not
+                 * describe it: the card is blank from the continue column to 71,
+                 * so there is nothing to continue with. Our own words, its number. */
+                fprintf(stderr, " WARNING: Continuation card is empty - nothing between the continue column and 71 (IFOX00 IFO026)");
             else
                 fprintf(stderr, " WARNING: Too many continuation cards, two allowed (IFOX00 IFO069)");
             if (contd[j].src[0]) fprintf(stderr, " in line %d of library member %s\n", contd[j].line, contd[j].src);

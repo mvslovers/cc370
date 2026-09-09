@@ -1,0 +1,36 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 13.06 09/09/26
+T         SD  0001 000000 000074
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 13.06 09/09/26
+000000                                1 T        CSECT
+                                      2 * 1: continued onto a WHOLLY BLANK card -- IFOX00 gives IFO026
+000000 C1C2                           3          DC    C'AB'                                                   X
+         *** ERROR ***
+                                      4 * 2: control -- a continuation card with text at column 16
+000002 C3C4                           5          DC    C'CD'                                                   X
+                                                       ,C'EF'
+                                      6 * 3: control -- a blank card in the MIDDLE of a continuation. The
+                                      7 * blanks are DATA inside the character constant, not an empty
+                                      8 * continuation, and IFOX00 does not flag it.
+000004 C7C8404040404040               9          DC    C'GH                                                    X
+00000C 4040404040404040                                                                                        X
+000014 4040404040404040                                IJ'
+                                     10          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.06 09/09/26
+T        00001 00000000 00001
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 13.06 09/09/26
+    3  IFO026      CHARACTERS APPEAR BETWEEN THE BEGIN AND CONTINUE COLUMNS ON CONTINUATION CARD
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    4
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         14
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        36
