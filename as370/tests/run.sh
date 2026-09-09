@@ -368,6 +368,16 @@ rm -f /tmp/_au.$$
 # is how the first version of this fixture passed while the defect stood.
 #   main f6f142c   NO1 OK2 OK3
 #   IFOX00, this   OK1 OK2 OK3
+# collate is the #264 oracle: a character comparison orders by the EBCDIC
+# sequence, not the host's. The two disagree in exactly one place assembler
+# source reaches -- LETTERS SORT BEFORE DIGITS in EBCDIC and after them in ASCII
+# -- so letter-against-letter and digit-against-digit agree and C3/C4 were always
+# right. That is why five instruments walked past it for two days. AMACLIB(DOM)
+# tests a register with `AIF ('&MSG(1)' LE '12')' and `DOM MSG=(R1)' makes that
+# 'R1' LE '12': true in EBCDIC, false here. C6/C7 hold the LENGTH rule from #189,
+# which applies before content and must not move.
+#   main d208259   N1 N2 Y3 Y4 N5 Y6 Y7
+#   IFOX00, this   Y1 Y2 Y3 Y4 Y5 Y6 Y7
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -379,7 +389,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
-         sublist logop; do
+         sublist logop collate; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
