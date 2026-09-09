@@ -347,6 +347,16 @@ rm -f /tmp/_au.$$
 # number and testing only for digits fails on the EQU.
 #   main b1d4af6   E3 nine times -- the letter T itself
 #   IFOX00, this   F H C D X U A U N
+# sublist is the #260 oracle: T' of a SUBLIST answers with the type attribute of
+# its FIRST ELEMENT and does not descend further -- a first element that is
+# itself a sublist gives U. as370 answered U for every sublist, so
+# APVTMACS(HEXCNVT)'s `AIF (T'&OUT NE 'N').ERROR4' took the error path on a call
+# as ordinary as `HEXCNVT (3),(2),4'. U3-U5 are the controls against "a sublist
+# is always N", U6 against "take the first non-empty", and U9 is the one that
+# fixes the rule: without it descent and non-descent are equally consistent,
+# because (1,2) descended would also give N.
+#   main 91ab753   U U C U N O N U U
+#   IFOX00, this   N N C C N O N U U
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -357,7 +367,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
-         rxparen lenattr contrem spmrr dcvlist scale setctype; do
+         rxparen lenattr contrem spmrr dcvlist scale setctype \
+         sublist; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

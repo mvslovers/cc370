@@ -1,0 +1,86 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 19.12 09/08/26
+SUBLIST   SD  0001 000000 00000F
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.12 09/08/26
+                                      1 * T' einer SUBLISTE antwortet mit dem Typattribut ihres ERSTEN
+                                      2 * ELEMENTS - und steigt nicht weiter ab: ein erstes Element, das
+                                      3 * selbst eine Sublist ist, gibt U (cc370#260).
+                                      4 *
+                                      5 * as370 antwortete fuer jede Sublist U. APVTMACS(HEXCNVT) prueft
+                                      6 *
+                                      7 *     AIF   (T'&OUT NE 'N').ERROR4
+                                      8 *
+                                      9 * und ein Aufruf so gewoehnlich wie `HEXCNVT (3),(2),4' nahm damit den
+                                     10 * Fehlerpfad. Sechs AMDPR*-Module, und IFOX00 assembliert alle sechs
+                                     11 * ohne ein Wort.
+                                     12 *
+                                     13 * Die Grenze ist nicht erratbar, deshalb steht sie vollstaendig hier:
+                                     14 *
+                                     15 *   U1  (3)         N    einelementige Liste
+                                     16 *   U2  (3,4)       N    mehrelementig - das ERSTE zaehlt
+                                     17 *   U3  (FLD)       C    also nicht immer N
+                                     18 *   U4  (FLD,3)     C    das erste, nicht das letzte
+                                     19 *   U5  (3,FLD)     N    und andersherum
+                                     20 *   U6  (,3)        O    ausgelassenes erstes Element
+                                     21 *   U7  (X'0A')     N    selbstdefinierender Term
+                                     22 *   U8  (NODEF)     U    unbekanntes Symbol
+                                     23 *   U9  ((1,2),3)   U    KEIN Abstieg - sonst waere es N
+                                     24 *
+                                     25 * U3 bis U5 sind die Kontrollen gegen "eine Sublist ist immer N",
+                                     26 * U9 gegen "steig in die erste Klammer hinein", U6 gegen "nimm das
+                                     27 * erste nicht leere". Ohne U9 waeren Abstieg und Nicht-Abstieg gleich
+                                     28 * gut vereinbar, denn (1,2) gaebe abgestiegen ebenfalls N.
+                                     29 *
+                                     30 * Punktzahl:  ohne Fix U U C U N O N U U
+                                     31 *             mit Fix  N N C C N O N U U
+                                     32          MACRO
+                                     33          QU    &P
+                                     34          LCLC  &T
+                                     35 &T       SETC  T'&P
+                                     36          DC    C'&T'
+                                     37          MEND
+000000                               38 SUBLIST  CSECT
+000000                               39 FLD      DS    CL4
+                                     40 U1       QU    (3)
+000004 D5                            41+         DC    C'N'
+                                     42 U2       QU    (3,4)
+000005 D5                            43+         DC    C'N'
+                                     44 U3       QU    (FLD)
+000006 C3                            45+         DC    C'C'
+                                     46 U4       QU    (FLD,3)
+000007 C3                            47+         DC    C'C'
+                                     48 U5       QU    (3,FLD)
+000008 D5                            49+         DC    C'N'
+                                     50 U6       QU    (,3)
+000009 D6                            51+         DC    C'O'
+                                     52 U7       QU    (X'0A')
+00000A D5                            53+         DC    C'N'
+                                     54 U8       QU    (NODEF)
+00000B E4                            55+         DC    C'U'
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.12 09/08/26
+                                     56 U9       QU    ((1,2),3)
+00000C E4                            57+         DC    C'U'
+                                     58 UA       QU    4
+00000D D5                            59+         DC    C'N'
+                                     60 UB       QU    FLD
+00000E C3                            61+         DC    C'C'
+                                     62          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 19.12 09/08/26
+FLD      00004 00000000 00039
+SUBLIST  00001 00000000 00038
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 19.12 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         51
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        86
