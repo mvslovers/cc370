@@ -3529,9 +3529,17 @@ static void note_ovlref(const char *o, int line) {
  * absorbing the comment; tracked as #35 -- whoever fixes parse() there must
  * update this scanner in lockstep. */
 static int has_overlong_term(const char *s) {
+    /* attr_apos, for the fourth time in this family (#149 parse, #184 join_cont,
+     * #300 sublists, now here). `L\'' is an ATTRIBUTE and the text after it is a
+     * symbol; `X\'' opens a quoted body. Toggling on both desynchronises the
+     * state, and the first thing that reaches is the NEXT literal:
+     * `CLC FLD(L\'FLD,3),=X\'FF00000000000000\'' left the hex digits outside any
+     * quote, where 16 alphanumerics read as one symbol and drew IFO236 --
+     * zeroing an instruction IFOX00 assembles (cc370#312). */
+    const char *base = s;
     int q = 0;
     while (*s) {
-        if (*s == '\'') { q = !q; s++; continue; }
+        if (*s == '\'') { if (q || !attr_apos(base, (int)(s - base))) q = !q; s++; continue; }
         if (q) { s++; continue; }
         if (isalpha((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_') {
             int n = 0; while (*s && (isalnum((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_')) { s++; n++; }

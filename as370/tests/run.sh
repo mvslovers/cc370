@@ -556,6 +556,18 @@ rm -f /tmp/_au.$$
 # Same root as #295: the boundaries belong to the model card, not to the result.
 #   main 30654d5   K'&C = 0, &D empty
 #   IFOX00, this   K'&C = 1, &D = MVM22
+# ovlattr is the #312 oracle, and the FOURTH place an attribute apostrophe has
+# opened a quoted body: parse() (#149), join_cont() (#184), the sublist scanners
+# (#300) and now has_overlong_term(). `L'' is an attribute and what follows it is
+# a symbol; `X'' opens a body. Toggling on both desynchronises the state, and the
+# next literal is what it reaches: in `CLC FLD-D(L'FLD,3),=X'FF00000000000000''
+# the hex digits ended up outside any quote, sixteen alphanumerics read as one
+# symbol, and IFO236 zeroed an instruction IFOX00 assembles (IGC0001I).
+# Case 4 is the control that keeps the fix honest: X' must still quote, so
+# `=X'FF00'' stays a body and not a symbol. A version that simply stopped
+# toggling would pass cases 1 to 3 and fail this one.
+#   f6b5123        IFO236, instruction zeroed
+#   IFOX00, this   deck byte-identical
 # selfdup is the #310 oracle: a DC's name field is defined BEFORE its operand is
 # evaluated, so the duplication factor may name the statement's own label -- the
 # pad-to-N idiom, `PATCH DC (4096-(PATCH-ERP1))X'00''. as370 evaluated the factor
@@ -580,7 +592,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop emptyopnd brmnem subattr genblank selfdup; do
+         endstop emptyopnd brmnem subattr genblank selfdup ovlattr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
