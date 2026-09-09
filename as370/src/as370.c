@@ -137,7 +137,7 @@ static struct esdent esdord[MAXSYM]; static int nesdord;
  * following by position, the clobbered value shifted the whole first card
  * (cc370#199). */
 
-struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int sect; int defln; int psect; };
+struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; };
 /* `sect` is where the literal was first REFERENCED -- it drives USING
  * resolution, and an END pool that moves sections re-stamps it so the
  * reference resolves through a USING covering the section it landed in.
@@ -528,8 +528,21 @@ static void lit_classify(struct lit *l) {
         int per = haslen ? len : (ty == 'Y' ? 2 : 4);
         char vv[64][FLDW]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;   /* =AL1(a,b,c): one constant per value */
         l->size = per * nv; l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
-    } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? (hasscale ? scaled_fixed(q + 1, scale) : strtol(q + 1, NULL, 10)) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
-    } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? (hasscale ? scaled_fixed(q + 1, scale) : strtol(q + 1, NULL, 10)) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
+    /* One operand may carry a LIST of nominal values, and F and H had no way to
+     * say so: `=F'-8,4'' is EIGHT bytes, two fullwords, and as370 sized it at
+     * four and emitted only the -8. The 4 was simply absent from the pool, so
+     * every literal behind it moved and the module came out four bytes short
+     * (IFNX4M, IFNX4T -- cc370#331). The A/V/Y arm has always split its list and
+     * P/Z gained one with #329; this is the same shape in the two arms that were
+     * left. */
+    } else if (ty == 'F' || ty == 'H') {
+        char body[VALSZ]; lit_body(p, body, sizeof body);
+        char vv[64][FLDW]; int nv = split_fields(body, vv, 64);
+        int per = haslen ? len : (ty == 'F' ? 4 : 2);
+        if (nv < 1) { nv = 1; vv[0][0] = 0; }
+        l->scale = scale; l->scaled = hasscale;
+        l->val = vv[0][0] ? (hasscale ? scaled_fixed(vv[0], scale) : strtol(vv[0], NULL, 10)) : 0;
+        l->size = per * nv; l->algn = haslen ? 1 : (ty == 'F' ? 4 : 2);
     /* Floating point carries no integer value: emit_lit converts the nominal
      * value itself. DCTABLE's default lengths are E 4 / D 8 / L 16, L doubleword
      * like D -- as370 used to have no arm for E or L at all, so both fell into
@@ -3994,7 +4007,13 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
             at2 += one;
         }
     } else if (ty == 'F' || ty == 'H') {
-        put(loc, l->val, size);
+        char body[VALSZ]; lit_body(p, body, sizeof body);
+        char vv[64][FLDW]; int nv = split_fields(body, vv, 64), vi;
+        if (nv < 1) { nv = 1; vv[0][0] = 0; }
+        { int per = size / nv; if (per < 1) per = 1;
+          for (vi = 0; vi < nv; vi++) {
+              long v = vv[vi][0] ? (l->scaled ? scaled_fixed(vv[vi], l->scale) : strtol(vv[vi], NULL, 10)) : 0;
+              put(loc + (long)vi * per, v, per); } }
     } else if (ty == 'X') {
         const char *q = strchr(p, '\''); unsigned char by[256]; int nb = q ? hex_to_bytes(q + 1, by, 256) : 0;
         int pad = size - nb, j; for (j = 0; j < size; j++) put(loc + j, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1);

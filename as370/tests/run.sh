@@ -586,6 +586,19 @@ rm -f /tmp/_au.$$
 # to the literal LENGTHS instead, where #317 was. It is kept so the next person
 # reading #317 can see that the padding hypothesis was tested and not merely
 # skipped -- and it still guards the segmenting it happened to prove correct.
+# litlist is the #331 oracle: a LIST of nominal values in a literal. `=F'-8,4''
+# is eight bytes, two fullwords, and as370 sized it at four and emitted only the
+# -8 -- so the 4 was simply absent from the pool and every literal behind it
+# moved. IFNX4M and IFNX4T came out four bytes short from that.
+# The A/V/Y arm has always split its list and P/Z gained one with #329; F and H
+# were the two arms left, which is the pattern worth noticing: the same missing
+# capability, found three times in three separate arms of one dispatch.
+# The three F shapes here are the ones the macro libraries actually use --
+# =F'-8,4', =F'252,-4', =F'128,4,128'. Measured across MVSBLD and the macro
+# libraries: no float literal carries a list anywhere, so E/D/L is left alone on
+# evidence rather than on symmetry.
+#   fb621ad        =F'-8,4' four bytes, the 4 missing
+#   IFOX00, this   every literal equals its DC twin
 # litpz is the #329 oracle: a packed or zoned LITERAL. lit_classify() had no arm
 # for P or Z at all, so `=P'0'' fell into the default and reserved FOUR bytes
 # where it is one, X'0C'. That is not only three bytes too many: the pool is
@@ -674,7 +687,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup pool contsev align blankcont litscale litpz; do
+         litdup pool contsev align blankcont litscale litpz litlist; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
