@@ -1474,6 +1474,73 @@ else
 fi
 rm -rf "$mlib"
 
+# --- issue #305: a COPY'd card inside a macro is not a model statement -------
+# #302 made a BLANK in a generated statement stop ending the operand, because
+# IFOX00 fixes the field boundaries on the MODEL card and substitutes into them.
+# It read that condition off LF_GEN -- "this line came out of a macro expansion"
+# -- and a card a COPY brings INTO an expansion satisfies it without being a
+# model statement at all: nothing is substituted into it and no model card cut
+# its remark off. So the remark joined the operand, and a remark containing a
+# COMMA then split into further operands, each beginning with a blank where the
+# constant type belongs. JCOMMON's `JLVTMDT DS 0CL24  ASM LEVEL, TIME, DATE'
+# gave two of them; three IFNX modules IFOX00 assembles clean went to RC 8.
+#
+# The fixture asserts BOTH rules, because a fix for either one alone passes half
+# of it and the two live one line apart:
+#   vor #304 (e28d86e)   rc 8 -- the substituted blank ended the operand
+#   main     (7a0cd90)   rc 8 -- the COPY'd remark became two bad operands
+#   both correct         rc 0
+# Only a remark holding a comma shows the second, which is why it reached three
+# modules and not three hundred -- and why the member below carries two.
+cpm=/tmp/_cpyrem.$$
+mkdir -p "$cpm"
+printf '%-71s\n' \
+  'GRP      DS    0CL24                    SIZE, TIME AND DATE' \
+  'GRPA     DS    CL10                     FIRST PART' \
+  'GRPB     DS    CL14                     SECOND, AND LAST' > "$cpm/cpyrem"
+# it is only a fixture while the remarks really do carry a comma
+if [ "$(grep -c ',' "$cpm/cpyrem")" != 2 ]; then
+    echo "copyrem: BROKEN FIXTURE (the COPY'd remarks carry no comma)"; fail=1
+fi
+printf '%-71s\n' \
+  '         MACRO' \
+  '         GENC' \
+  '         COPY  CPYREM' \
+  '         MEND' \
+  '         MACRO' \
+  '         GENB  &P' \
+  '         LCLC  &Z' \
+  "&Z       SETC  ' '" \
+  '         INNER &P,&Z,LAST' \
+  '         MEND' \
+  '         MACRO' \
+  '         INNER &A,&B,&C' \
+  "         AIF   ('&C' EQ 'LAST').OK" \
+  "         MNOTE 8,'SUBSTITUTED BLANK ENDED THE OPERAND'" \
+  '.OK      ANOP' \
+  "GOT&A    DC    C'&C'" \
+  '         MEND' \
+  'T        CSECT' \
+  '         GENC' \
+  '         GENB  X' \
+  '         DC    AL1(GRPA-GRP)' \
+  '         DC    AL1(GRPB-GRP)' \
+  '         DC    AL1(GRPB+14-GRP)' \
+  '         END' > "$cpm/a.s"
+./as370 "$cpm/a.s" -I "$cpm" -o "$cpm/a.obj" >"$cpm/a.out" 2>&1; rcC=$?
+if grep -q 'Invalid type declared' "$cpm/a.out"; then
+    echo "copyrem: the COPY'd card's remark joined the operand (#305)"; fail=1
+elif grep -q 'SUBSTITUTED BLANK' "$cpm/a.out"; then
+    echo "copyrem: a substituted blank ended the operand (#302 regressed)"; fail=1
+elif [ $rcC != 0 ]; then
+    echo "copyrem: rc $rcC, expected 0"; cat "$cpm/a.out"; fail=1
+elif ! od -An -tx1 "$cpm/a.obj" | tr -d ' \n' | grep -q 000a18; then
+    echo "copyrem: GRPA-GRP / GRPB-GRP / the group length are not 0, 10, 24"; fail=1
+else
+    echo "copyrem: OK (a COPY'd remark stays a remark; a substituted blank stays in the field)"
+fi
+rm -rf "$cpm"
+
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
 # address when END is reached with a non-empty pool, assembles the pool there and
