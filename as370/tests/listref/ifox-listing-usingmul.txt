@@ -1,0 +1,77 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 19.55 09/08/26
+T         SD  0001 000000 002004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.55 09/08/26
+                                      1 * Mehrere Basisregister in EINER USING (#154).
+                                      2 *
+                                      3 * `USING D,11,12,10' verteilt die Register NACH POSITION: 11 deckt
+                                      4 * D, 12 deckt D+4096, 10 deckt D+8192.  as370 las nur das erste
+                                      5 * Register und liess den Rest fallen -- alles jenseits der ersten
+                                      6 * 4096 Bytes war dann nicht adressierbar und wurde mit Basis 0 und
+                                      7 * Distanz 0 genullt, mit IFO209.
+                                      8 *
+                                      9 * Die Registerfolge ist ABSICHTLICH nicht aufsteigend.  Wer nach
+                                     10 * Registernummer statt nach Position verteilt, bekaeme fuer HIGH
+                                     11 * die 11 und fuer HIGH2 die 12 -- der Fehler faellt hier durch und
+                                     12 * nicht erst im Baum.
+                                     13 *
+                                     14 * EDGE trennt noch eine dritte Lesart ab: gaeben alle genannten
+                                     15 * Register DIESELBE Basis, dann deckte bei T+4092 jedes von ihnen
+                                     16 * den Operanden, und die Gleichstandsregel aus #138 naehme das
+                                     17 * hoechste (12).  Nur bei aufsteigenden Bereichen bleibt es die 11.
+                                     18 *
+                                     19 *   L 1,LOW    5810 B01C   erster Bereich -- Kontrolle
+                                     20 *   L 2,HIGH   5820 C000   zweiter Bereich
+                                     21 *   L 3,HIGH2  5830 A000   dritter Bereich
+                                     22 *   L 4,EDGE   5840 BFFC   letztes Byte des ersten Bereichs
+                                     23 *
+                                     24 * Die beiden letzten Faelle sind die Gegenprobe auf #177: die
+                                     25 * Schluesselung nach Basisregister muss ueber die Mehrfach-USING
+                                     26 * hinweg halten.
+                                     27 *
+                                     28 *   L 5,HIGH2  5850 9000   DROP 10 hat GENAU den dritten Eintrag
+                                     29 *                          geloescht; stuende er noch, gaebe die
+                                     30 *                          Gleichstandsregel die 10 statt der 9
+                                     31 *   L 6,LOW    5860 C01C   `USING T,12' ERSETZT den zweiten
+                                     32 *                          Eintrag; 11 und 12 liegen dann gleich
+                                     33 *                          auf, und das hoechste Register gewinnt
+000000                               34 T        CSECT
+                            00000    35          USING T,11,12,10
+000000 5810 B01C      0001C          36          L     1,LOW
+000004 5820 C000      01000          37          L     2,HIGH
+000008 5830 A000      02000          38          L     3,HIGH2
+00000C 5840 BFFC      00FFC          39          L     4,EDGE
+                                     40          DROP  10
+                            02000    41          USING HIGH2,9
+000010 5850 9000      02000          42          L     5,HIGH2
+                            00000    43          USING T,12
+000014 5860 C01C      0001C          44          L     6,LOW
+000018 07FE                          45          BR    14
+00001C                               46 LOW      DS    F
+000020                      00FFC    47          ORG   T+4092
+000FFC                               48 EDGE     DS    F
+001000                               49 HIGH     DS    F
+001004                      02000    50          ORG   T+8192
+002000                               51 HIGH2    DS    F
+000000                               52          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 19.55 09/08/26
+EDGE     00004 00000FFC 00048  00039
+HIGH     00004 00001000 00049  00037
+HIGH2    00004 00002000 00051  00038 00041 00042
+LOW      00004 0000001C 00046  00036 00044
+T        00001 00000000 00034  00035 00043 00047 00050 00052
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 19.55 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         52
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        77

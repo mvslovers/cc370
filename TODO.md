@@ -72,7 +72,7 @@ this file that is a joint plan rather than our own ranking:**
 | A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
 | B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. **It is larger than the five, and #165 proved how**: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. **`dc_split` is now measured and closed** (#218): it read every apostrophe as a string quote, so `DC AL1(L'FLD),X'FF'` dropped the `X'FF'` — at rc 0, and **IFOX00 assembles the same statement at rc 0 with no diagnostics either**, which is the cleanest argument in this file for why the deck is the instrument. `EQU` (`:3413`) and `SYM+(expr)` (`:761`) remain suspected and unscoped. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
-| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. |
+| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. **#154 now has its mechanism and it is open as #266**: one `USING` names up to 16 base registers and assigns them BY POSITION (`USING D,11,12,10` -> 11 for D, 12 for D+4096, 10 for D+8192); as370 read the first and dropped the rest, so a control block wider than 4096 bytes lost every field past the first range. +25 in the tree, none lost, and the diagnostic goes in 23 of the 32 modules that raised it. The 9 that keep it -- `IDA019C1 IDA019R4 IDA019RY IEFVDA IEFVEA IEFVFA IEHPROG1 IGC0001F ISTINCU7` -- are other causes in the same class, and `IEFVEA` is the one to read: its deck is byte-identical to IFOX00 **and it still complains**, so message and object are separate axes in that direction too. |
 
 `#117` and `#118` do not touch that consumer today — they upload over FTP and
 xmit370 is not in their chain. **At their M7 it changes**: `++PTF`/`++USERMOD`
@@ -615,6 +615,31 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-08/09 — twenty merges, none lost, 4,753 → 5,213 of 5,528 (94.3 %).**
+
+  The run that took the tree from 86.0 % to 94.3 %. Pointers, newest first:
+  #265 EBCDIC collating (+7), #263 a closing parenthesis ends a term (+9),
+  #261 `T'` of a sublist (+5), #259 `T'` in a SETC expression (+0),
+  #256 the scale modifier (+5), #255 a DC operand's value list (+31),
+  #254 stale operand fields (+17), #251 the continuation join (+82),
+  #249 `L'` of an ordinary symbol (+13), #248 a leading parenthesis (+30),
+  #245 a comparison operator without blanks (+67), #242 the bit length
+  modifier (+99), #239 a doubled apostrophe (+12), #237 the AIF condition
+  buffer (+9), #234 MNOTE, #232 CNOP (+57), #230/#228 the listing counters,
+  #225 `E` is a constant type, #222 `EQU` with a leading parenthesis.
+
+  **Not one merge lost an identity, in twenty.** The two that gained nothing
+  were not failures: #259 was the half of `T'` that pays only through #261, and
+  #234 is a diagnostic that changes no bytes at all.
+
+  Three method notes worth more than any single fix. **A difference class is not
+  a cause class** — 78 modules of "missing relocations" were 7 once the other
+  instruments' explanations were subtracted. **The population an instrument
+  returns is the population it can see**, which is why #264's seven were the
+  whole reach and not a sample. And **a message names its own cause, but the
+  name can be wrong**: four residuals closed free on changes aimed elsewhere,
+  recognisable only because they had been recorded with module names.
 
 - **2026-09-08 — five merges, +10 identities, none lost, and every module in the
   corpus produces a deck for the first time.**
