@@ -357,6 +357,17 @@ rm -f /tmp/_au.$$
 # because (1,2) descended would also give N.
 #   main 91ab753   U U C U N O N U U
 #   IFOX00, this   N N C C N O N U U
+# logop is the #262 oracle: a closing parenthesis ends a term as a closing quote
+# does, so an operator abutting it is its own token. PVTMAC(GOIF1) writes
+# `AIF (NOT(&B(1) AND &B(2) AND &B(3))OR '&ELSE' EQ '').C5' and without the rule
+# the OR glued onto the group. The mirror of #243, which needed the same thing on
+# the other side of the operator.
+# The TRUTH VALUES are the trick: all three &B are 1 so NOT(...) is FALSE, and
+# &ELSE is empty so the second operand is TRUE -- only then does the OR decide
+# anything. With &B = 0 both operands are true and any parse answers true, which
+# is how the first version of this fixture passed while the defect stood.
+#   main f6f142c   NO1 OK2 OK3
+#   IFOX00, this   OK1 OK2 OK3
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -368,7 +379,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
-         sublist; do
+         sublist logop; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

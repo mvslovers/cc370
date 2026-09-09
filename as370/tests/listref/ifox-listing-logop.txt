@@ -1,0 +1,79 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 19.26 09/08/26
+LOGOP     SD  0001 000000 000009
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.26 09/08/26
+                                      1 * Eine schliessende Klammer beendet einen Term genauso wie ein
+                                      2 * schliessendes Anfuehrungszeichen - ein Operator, der daran stoesst,
+                                      3 * ist ein eigenes Token. Leerzeichen um einen logischen Operator sind
+                                      4 * optional, und IBMs Makros lassen sie weg (cc370#262):
+                                      5 *
+                                      6 *     AIF   (NOT(&B(1) AND &B(2) AND &B(3))OR '&ELSE' EQ '').C5
+                                      7 *
+                                      8 * steht so in PVTMAC(GOIF1). Ohne die Regel klebte das OR mitsamt
+                                      9 * allem dahinter an der Gruppe, die Bedingung las sich als ein
+                                     10 * einziger Faktor und kam falsch heraus. Acht IFNX*-Module fallen
+                                     11 * deshalb auf .ERR3 und melden REDUNDANT LOGIC.
+                                     12 *
+                                     13 * Das ist das Spiegelbild der Regel, die #243 auf der anderen Seite
+                                     14 * des Operators brauchte: drei Trennzeichen, eine Regel.
+                                     15 *
+                                     16 * L1 ist der Fall, L2 dieselbe Bedingung MIT Leerzeichen - sie war
+                                     17 * immer richtig, und eine Fixture nur daraus besteht auf beiden
+                                     18 * Binaries.
+                                     19 *
+                                     20 * Die Wahrheitswerte sind der eigentliche Trick: alle drei &B sind 1,
+                                     21 * also ist NOT(...) FALSCH, und &ELSE ist leer, also ist der zweite
+                                     22 * Operand WAHR. Nur so entscheidet das ODER etwas. Mit &B = 0 waeren
+                                     23 * beide Operanden wahr und jede Zerlegung kaeme auf wahr heraus -
+                                     24 * meine erste Fassung dieser Fixture tat genau das und bestand
+                                     25 * fehlerhaft.
+                                     26 *
+                                     27 * L3 ist die Kontrolle in die Gegenrichtung: NOT( ohne Leerzeichen auf
+                                     28 * der OEFFNENDEN Seite war schon immer richtig und darf sich nicht
+                                     29 * bewegen.
+                                     30 *
+                                     31 * Punktzahl:  ohne Fix NO1 OK2 OK3, mit Fix OK1 OK2 OK3
+                                     32          MACRO
+                                     33          QP    &ELSE
+                                     34          LCLB  &B(3)
+                                     35 &B(1)    SETB  1
+                                     36 &B(2)    SETB  1
+                                     37 &B(3)    SETB  1
+                                     38          AIF   (NOT(&B(1) AND &B(2) AND &B(3))OR '&ELSE' EQ '').A
+                                     39          DC    C'NO1'
+                                     40          AGO   .B
+                                     41 .A       DC    C'OK1'
+                                     42 .B       AIF   (NOT(&B(1) AND &B(2) AND &B(3)) OR '&ELSE' EQ '').C
+                                     43          DC    C'NO2'
+                                     44          AGO   .D
+                                     45 .C       DC    C'OK2'
+                                     46 .D       AIF   (NOT(&B(1) AND &B(2))).E
+                                     47          DC    C'OK3'
+                                     48          MEXIT
+                                     49 .E       DC    C'NO3'
+                                     50          MEND
+000000                               51 LOGOP    CSECT
+                                     52          QP
+000000 D6D2F1                        53+         DC    C'OK1'
+000003 D6D2F2                        54+         DC    C'OK2'
+000006 D6D2F3                        55+         DC    C'OK3'
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.26 09/08/26
+                                     56          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 19.26 09/08/26
+LOGOP    00001 00000000 00051
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 19.26 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         53
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        79
