@@ -480,6 +480,7 @@ static void esd_add(struct sym *s, int role) {
 static int lenalgn(int len) { return (len % 8 == 0) ? 8 : (len % 4 == 0) ? 4 : (len % 2 == 0) ? 2 : 1; }
 /* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
+static long scaled_fixed(const char *t, int scale);   /* fwd: the DC path's own converter */
 static void lit_classify(struct lit *l) {
     const char *p = l->text + 1;                 /* past '=' */
     /* The duplication factor was SKIPPED here and never applied, so `=8X'0F''
@@ -492,7 +493,21 @@ static void lit_classify(struct lit *l) {
     l->dup = dup > 0 ? dup : 1;
     char ty = toupper((unsigned char)*p++);
     int len = 0, haslen = 0;
+    /* The scale modifier, on either side of the length as the DC path takes it
+     * (FS28 has no length, FL4S3 does). It was not parsed here AT ALL, so
+     * `=FS3'65535'' assembled as 65535 where the identical DC constant in the
+     * same assembly gave 65535 x 2**3 -- the value path was always right and
+     * only the literal path dropped it (cc370#327). */
+    int scale = 0, hasscale = 0;
+    if (*p == 'S') { const char *sp = p + 1; int sneg = 0, sd = 0;
+        if (*sp == '-') { sneg = 1; sp++; } else if (*sp == '+') sp++;
+        while (isdigit((unsigned char)*sp)) { scale = scale * 10 + (*sp++ - '0'); sd = 1; }
+        if (sd) { if (sneg) scale = -scale; hasscale = 1; p = sp; } else scale = 0; }
     if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) len = len * 10 + (*p++ - '0'); }
+    if (!hasscale && *p == 'S') { const char *sp = p + 1; int sneg = 0, sd = 0;
+        if (*sp == '-') { sneg = 1; sp++; } else if (*sp == '+') sp++;
+        while (isdigit((unsigned char)*sp)) { scale = scale * 10 + (*sp++ - '0'); sd = 1; }
+        if (sd) { if (sneg) scale = -scale; hasscale = 1; p = sp; } else scale = 0; }
     l->isV = (ty == 'V'); l->isA = (ty == 'A' || ty == 'V' || ty == 'Y');
     if (ty == 'A' || ty == 'V' || ty == 'Y') {
         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
@@ -500,8 +515,8 @@ static void lit_classify(struct lit *l) {
         int per = haslen ? len : (ty == 'Y' ? 2 : 4);
         char vv[64][FLDW]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;   /* =AL1(a,b,c): one constant per value */
         l->size = per * nv; l->algn = haslen ? 1 : (ty == 'Y' ? 2 : 4);
-    } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
-    } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? strtol(q + 1, NULL, 10) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
+    } else if (ty == 'F') { const char *q = strchr(p, '\''); l->val = q ? (hasscale ? scaled_fixed(q + 1, scale) : strtol(q + 1, NULL, 10)) : 0; l->size = haslen ? len : 4; l->algn = haslen ? 1 : 4;
+    } else if (ty == 'H') { const char *q = strchr(p, '\''); l->val = q ? (hasscale ? scaled_fixed(q + 1, scale) : strtol(q + 1, NULL, 10)) : 0; l->size = haslen ? len : 2; l->algn = haslen ? 1 : 2;
     /* Floating point carries no integer value: emit_lit converts the nominal
      * value itself. DCTABLE's default lengths are E 4 / D 8 / L 16, L doubleword
      * like D -- as370 used to have no arm for E or L at all, so both fell into

@@ -586,6 +586,15 @@ rm -f /tmp/_au.$$
 # to the literal LENGTHS instead, where #317 was. It is kept so the next person
 # reading #317 can see that the padding hypothesis was tested and not merely
 # skipped -- and it still guards the segmenting it happened to prove correct.
+# litscale is the #327 oracle: a scale modifier on a LITERAL. lit_classify()
+# never parsed one, so `=FS3'65535'' assembled as 65535 where the identical DC
+# constant gave 65535 x 2**3 = X'0007FFF8'.
+# The fixture carries each literal's own DC twin in the same assembly, and that
+# pairing is the whole design: the DC form was already right, so a difference
+# between the two cannot be the pool, the alignment or the ordering, and the
+# reader does not have to take the issue's word for where the defect was.
+#   bfd6c3a        =FS3'65535' -> 0000FFFF, DC FS3'65535' -> 0007FFF8
+#   IFOX00, this   both 0007FFF8
 # litdup is the #317 oracle: a duplication factor in a LITERAL. `=8X'0F'' is
 # eight bytes, and as370 skipped the factor entirely -- one byte. That is not
 # merely a short literal: the pool is segmented by lenalgn(size), so a literal of
@@ -647,7 +656,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup pool contsev align blankcont; do
+         litdup pool contsev align blankcont litscale; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

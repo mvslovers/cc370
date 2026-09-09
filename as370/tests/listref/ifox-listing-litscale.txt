@@ -1,0 +1,49 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 13.23 09/09/26
+T         SD  0001 000000 000022
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 13.23 09/09/26
+                                      1 * a scale modifier on a LITERAL. FS3'65535' is 65535 x 2**3 =
+                                      2 * 524280 = X'0007FFF8'. The DC form below is the control: it sits
+                                      3 * in the same assembly and as370 already gets it right, so this
+                                      4 * cannot be the pool, the alignment or the ordering.
+000000                                5 T        CSECT
+                            00000     6          USING T,15
+000000 55B0 F018      00018           7          CL    11,=FS3'65535'
+000004 55B0 F01C      0001C           8          CL    11,=F'524280'
+000008 4820 F020      00020           9          LH    2,=HS2'100'
+00000C 0007FFF8                      10 A        DC    FS3'65535'               the control, as a DC
+000010 0007FFF8                      11 B        DC    F'524280'                same value, no scale
+000014 0190                          12 C        DC    HS2'100'
+000018                               13          LTORG
+000018 0007FFF8                      14                =FS3'65535'
+00001C 0007FFF8                      15                =F'524280'
+000020 0190                          16                =HS2'100'
+                                     17          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.23 09/09/26
+A        00004 0000000C 00010
+B        00004 00000010 00011
+C        00002 00000014 00012
+T        00001 00000000 00005  00006
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.23 09/09/26
+=FS3'65535'
+         00004 00000018 00014  00007
+=F'524280'
+         00004 0000001C 00015  00008
+=HS2'100'
+         00002 00000020 00016  00009
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 13.23 09/09/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         14
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        49
