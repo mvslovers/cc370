@@ -517,6 +517,17 @@ rm -f /tmp/_au.$$
 # one compares the whole deck rather than particular bytes.
 #   main 87cdac3   two sections, 4 cards
 #   IFOX00, this   one section, 3 cards
+# emptyopnd is the #295 oracle: an operand that substitutes to NOTHING stays
+# empty. as370 substituted the whole card and re-parsed it, and parse() cannot
+# tell `INNER          REMARK HERE' -- an operand that vanished -- from a card
+# written that way, so it read the remark's first word as the operand.
+# BLSCAMMM calls `BLSCAMM1 &DYRB(2)         COUNT FLAGS1 ENTRIES' with a &DYRB
+# that is not a sublist, so &DYRB(2) is null and the counting macro was handed the
+# string COUNT: one element instead of none, a loop that must not run, and an
+# MNOTE from a macro complaining about input we invented.
+# The fixture reports K' rather than the text, so the DECK carries the answer.
+#   main 500cefe   06 06 02   (K'REMARK, K'SECOND, K'AL)
+#   IFOX00, this   00 00 02
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -530,7 +541,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop; do
+         endstop emptyopnd; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
