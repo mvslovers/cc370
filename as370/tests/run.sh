@@ -546,6 +546,16 @@ rm -f /tmp/_au.$$
 # version of this probe demonstrated instead of the defect.
 #   main 621a8db   04 01 01 00
 #   IFOX00, this   05 01 03 06
+# genblank is the #302 oracle and the mirror of #295: a BLANK in a generated
+# statement does not end the operand field. IFOX00 fixes the field boundaries on
+# the MODEL card and substitutes into them, so a variable whose value is a blank
+# stays inside the operand; as370 re-parsed the substituted text and stopped
+# there. IFDCOM generates `IFDPF1 &V,&X,&Z,&S' with &Z a single blank, and as370
+# lost BOTH remaining operands -- &S empty, an AIF on it took the wrong branch,
+# and PARTITEM was never defined, reported 400 cards later as an undefined symbol.
+# Same root as #295: the boundaries belong to the model card, not to the result.
+#   main 30654d5   K'&C = 0, &D empty
+#   IFOX00, this   K'&C = 1, &D = MVM22
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -559,7 +569,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop emptyopnd brmnem subattr; do
+         endstop emptyopnd brmnem subattr genblank; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
