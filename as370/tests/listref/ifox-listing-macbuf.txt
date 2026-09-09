@@ -1,0 +1,73 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 21.05 09/08/26
+TSTBUF    SD  0001 000000 00000E
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 21.05 09/08/26
+                                      1 * Feste Puffergroessen im Makropfad -- eine Fixture pro Grenze (#153).
+                                      2 *
+                                      3 * Alle sind still: der Wert wird gekuerzt, K' meldet die gekuerzte
+                                      4 * Laenge, und niemand sagt etwas, solange niemand einen Wert dieser
+                                      5 * Groesse schreibt.  as370 hielt Parameterwerte in 96 Bytes, Defaults
+                                      6 * im Prototyp in 40, &SYSLIST-Elemente in 128 und SETC in 96.
+                                      7 *
+                                      8 * IFOX00s Grenze ist 255, gemessen: bei 255 sauber, ab 256 IFO042
+                                      9 * PARAMETER ... EXCEEDS 255 CHARACTERS, Schweregrad 8.
+                                     10 *
+                                     11 *   C1  positionaler Wert (200), Default im Prototyp (60), und
+                                     12 *       &SYSLIST(1) -- alle drei aus EINEM Aufruf
+                                     13 *   C2  derselbe Wert im SCHLUESSELWORT statt positional
+                                     14 *   C3  SETC in offenem Code, 150 Zeichen -- ein SETC ist eine
+                                     15 *       Assembler-Operation und damit auf ZWEI Fortsetzungen
+                                     16 *       begrenzt (IFO069); ein Makroaufruf ist es nicht, C1 und
+                                     17 *       C2 stehen auf vier Karten. Genau die Asymmetrie aus #78.
+                                     18 *
+                                     19 * C1s dritter Wert ist die Probe darauf, dass die Elementgrenze
+                                     20 * getrennt von der Parametergrenze war: 95 gegen 127, zwei Puffer.
+                                     21          MACRO
+                                     22 &N       KP    &P,&KW=DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDX
+                                                       DDDDDDDDDDD
+                                     23          LCLA  &LA,&LB,&LC
+                                     24 &LA      SETA  K'&P
+                                     25 &LB      SETA  K'&KW
+                                     26 &LC      SETA  K'&SYSLIST(1)
+                                     27 &N       DC    AL2(&LA,&LB,&LC)
+                                     28          MEND
+000000                               29 TSTBUF   CSECT
+                                     30          LCLC  &S
+                                     31          LCLA  &L5
+                                     32 C1       KP    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAX
+                                                       AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAX
+                                                       AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAX
+                                                       AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+000000 00C8003C00C8                  33+C1       DC    AL2(200,60,200)
+                                     34 C2       KP    B,KW=CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCX
+                                                       CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCX
+                                                       CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCX
+                                                       CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+000006 000100C80001                  35+C2       DC    AL2(1,200,1)
+                                     36 &S       SETC  'EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEX
+                                                       EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEX
+                                                       EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE'
+                                     37 &L5      SETA  K'&S
+                                     38 C3       DC    AL2(&L5)
+00000C 0096                          39+C3       DC    AL2(150)
+                                     40          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 21.05 09/08/26
+C1       00002 00000000 00033
+C2       00002 00000006 00035
+C3       00002 0000000C 00039
+TSTBUF   00001 00000000 00029
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 21.05 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         46
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        73
