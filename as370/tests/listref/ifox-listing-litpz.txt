@@ -1,0 +1,56 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 13.52 09/09/26
+T         SD  0001 000000 00003C
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 13.52 09/09/26
+                                      1 * a packed or zoned LITERAL. Each one is paired with its own DC twin
+                                      2 * in the same assembly: the DC form was already right, so a difference
+                                      3 * between the two cannot be the pool, the alignment or the ordering.
+000000                                4 T        CSECT
+                            00000     5          USING T,15
+000000 FA10 1000 F032 00000 00032     6          AP    0(2,1),=P'0'
+000006 FA22 1000 F033 00000 00033     7          AP    0(3,1),=P'12345'
+00000C FA22 1000 F036 00000 00036     8          AP    0(3,1),=PL3'7'
+000012 D202 1000 F039 00000 00039     9          MVC   0(3,1),=Z'123'
+000018 D201 1000 F030 00000 00030    10          MVC   0(2,1),=ZL2'9'
+00001E 0C                            11 A        DC    P'0'
+00001F 12345C                        12 B        DC    P'12345'
+000022 00007C                        13 C        DC    PL3'7'
+000025 F1F2C3                        14 D        DC    Z'123'
+000028 F0C9                          15 E        DC    ZL2'9'
+000030                               16          LTORG
+000030 F0C9                          17                =ZL2'9'
+000032 0C                            18                =P'0'
+000033 12345C                        19                =P'12345'
+000036 00007C                        20                =PL3'7'
+000039 F1F2C3                        21                =Z'123'
+                                     22          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.52 09/09/26
+A        00001 0000001E 00011
+B        00003 0000001F 00012
+C        00003 00000022 00013
+D        00003 00000025 00014
+E        00002 00000028 00015
+T        00001 00000000 00004  00005
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 13.52 09/09/26
+=ZL2'9'  00002 00000030 00017  00010
+=P'0'    00001 00000032 00018  00006
+=P'12345'
+         00003 00000033 00019  00007
+=PL3'7'  00003 00000036 00020  00008
+=Z'123'  00003 00000039 00021  00009
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 13.52 09/09/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         17
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        56

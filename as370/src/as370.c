@@ -481,6 +481,19 @@ static int lenalgn(int len) { return (len % 8 == 0) ? 8 : (len % 4 == 0) ? 4 : (
 /* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
 static long scaled_fixed(const char *t, int scale);   /* fwd: the DC path's own converter */
+static int emit_decimal(const char *txt, int packed, long at, int want, int emit, int diag, int line);   /* fwd: P/Z, the DC path's own */
+/* The quoted body of a literal, without its quotes. emit_decimal() rejects any
+ * character that is not a digit or a point -- the closing quote included, with
+ * ERR236 -- so it must be handed the bare value the way the DC path hands it
+ * one. Passing `q + 1' instead sized every packed literal at 1 byte and emitted
+ * nothing at all: right for P'0' by accident, wrong for anything longer. */
+static int lit_body(const char *p, char *out, size_t outsz) {
+    const char *q = strchr(p, '\''); size_t n = 0;
+    if (!q) { out[0] = 0; return 0; }
+    for (q++; *q && *q != '\'' && n + 1 < outsz; q++) out[n++] = *q;
+    out[n] = 0; return (int)n;
+}
+static int emit_decimal(const char *txt, int packed, long at, int want, int emit, int diag, int line);   /* fwd: P/Z, the DC path's own */
 static void lit_classify(struct lit *l) {
     const char *p = l->text + 1;                 /* past '=' */
     /* The duplication factor was SKIPPED here and never applied, so `=8X'0F''
@@ -525,6 +538,23 @@ static void lit_classify(struct lit *l) {
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {
         int base = (ty == 'E') ? 4 : (ty == 'D') ? 8 : 16;
         l->size = haslen ? len : base; l->algn = haslen ? 1 : (base == 16 ? 8 : base);
+    /* P and Z had no arm at all, so a packed or zoned literal fell into the
+     * default below and reserved FOUR bytes: `=P'0'' is one byte, X'0C'. That
+     * is not only three bytes too many -- the pool is segmented by the alignment
+     * the length implies, so a 4-byte P also sorts into the fullword group and
+     * every literal behind it moves. BNGTLOCL and BNGTRMOT carry two of them and
+     * came out nine bytes long with 4,568 bytes differing (cc370#329).
+     * emit_decimal with want = 0 and emit = 0 computes the natural length, which
+     * is the same function the DC path measures with. */
+    } else if (ty == 'P' || ty == 'Z') {
+        char body[VALSZ]; lit_body(p, body, sizeof body);
+        char vv[64][FLDW]; int nv = split_fields(body, vv, 64), vi, tot = 0;   /* =P'1,2' is two constants, as a DC is */
+        if (nv < 1) { nv = 1; vv[0][0] = 0; }
+        for (vi = 0; vi < nv; vi++) {
+            int one = emit_decimal(vv[vi], ty == 'P', 0, haslen ? len : 0, 0, 0, 0);
+            tot += one > 0 ? one : (haslen ? len : 1);
+        }
+        l->size = tot > 0 ? tot : 1; l->algn = 1;
     } else if (ty == 'X') { const char *q = strchr(p, '\''); unsigned char tmp[260]; int nb = q ? hex_to_bytes(q + 1, tmp, 260) : 0; l->size = haslen ? len : nb; l->algn = 1;
     } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; }
         if (*e == '&' && e[1] == '&') { sl++; e += 2; continue; }
@@ -3954,6 +3984,15 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
         const char *q = strchr(p, '\'');
         if (q) emit_float(loc, q + 1, size);
         else { int j; for (j = 0; j < size; j++) put(loc + j, 0, 1); }
+    } else if (ty == 'P' || ty == 'Z') {
+        char body[VALSZ]; lit_body(p, body, sizeof body);
+        char vv[64][FLDW]; int nv = split_fields(body, vv, 64), vi; long at2 = loc;
+        if (nv < 1) { nv = 1; vv[0][0] = 0; }
+        for (vi = 0; vi < nv; vi++) {
+            int one = emit_decimal(vv[vi], ty == 'P', at2, nv == 1 ? size : 0, 1, 0, l->defln);
+            if (one <= 0) { int j; for (j = 0; j < size; j++) put(loc + j, 0, 1); break; }
+            at2 += one;
+        }
     } else if (ty == 'F' || ty == 'H') {
         put(loc, l->val, size);
     } else if (ty == 'X') {
