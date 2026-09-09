@@ -10,10 +10,13 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-08 — five PRs merged that day
-(#212, #214, #216 carrying two commits, #219), and six issues filed (#209, #210,
-#211, #215, #217, #218). `as370 == IFOX00` stands at **4,753 of 5,528 (86.0 %)**
-and every one of the 5,528 modules produces a deck for the first time. Before
+*Last reconciled against the tracker: 2026-09-09 — thirty PRs merged that day
+(see the two 2026-09-09 entries in *Recently landed*) and twenty-three issues
+filed, of which #290, #297, #305 and #307 name mechanisms rather than
+populations. `as370 == IFOX00` stands at **5,379 of 5,528 (97.3 %)** at
+`b799ae0`, and every one of the 5,528 modules produces a deck. Before that,
+2026-09-08 — five PRs merged that day (#212, #214, #216 carrying two commits,
+#219), and six issues filed (#209, #210, #211, #215, #217, #218). Before
 that, 2026-09-06, second pass — five PRs merged
 that day (#116, #119, #120, #121 for #109; #122, #123, #124 for #110). `#110` is
 functionally complete and accepted by its consumer; `#109`'s readers are in and
@@ -72,7 +75,7 @@ this file that is a joint plan rather than our own ranking:**
 | A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
 | B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. **It is larger than the five, and #165 proved how**: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. **`dc_split` is now measured and closed** (#218): it read every apostrophe as a string quote, so `DC AL1(L'FLD),X'FF'` dropped the `X'FF'` — at rc 0, and **IFOX00 assembles the same statement at rc 0 with no diagnostics either**, which is the cleanest argument in this file for why the deck is the instrument. `EQU` (`:3413`) and `SYM+(expr)` (`:761`) remain suspected and unscoped. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
-| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. **Both named halves are fixed and merged, and the classes are re-derived** — see the 2026-09-09 entry in *Recently landed*. What is left of Paket A is measured rather than named: **173 modules differing, 84 of them silent**, and the two instruments that can still see a defect in them are `mvs38src`'s three-way table (IBM's shipped object as a witness neither assembler produced) and its per-section views. Every text-reading instrument is blind to the class the evening actually turned up. |
+| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. **Both named halves are fixed and merged, and the classes are re-derived** — see the 2026-09-09 entry in *Recently landed*. What is left of Paket A is measured rather than named — **and the last figure taken, 173 differing with 84 silent, predates #304, which alone took 39 modules of which 35 were in that silent group, so it wants re-deriving before it is quoted.** The two instruments that can still see a defect in them are `mvs38src`'s three-way table (IBM's shipped object as a witness neither assembler produced) and its per-section views. Every text-reading instrument is blind to the class the evening actually turned up. |
 
 `#117` and `#118` do not touch that consumer today — they upload over FTP and
 xmit370 is not in their chain. **At their M7 it changes**: `++PTF`/`++USERMOD`
@@ -616,7 +619,10 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
-- **2026-09-09 — twelve merges, none lost, 5,213 → 5,334 of 5,528 (96.8 %); 173 differing, 84 of them silent.**
+- **2026-09-09 — twenty merges, none lost, 5,213 → 5,379 of 5,528 (97.3 %).** The day
+  the definition of done changed: Mike's `as370 == IFOX00` now means the deck **and**
+  the return code, and the second half was worth 151 modules that every deck-based
+  figure had been calling finished. `as370 alone flags` went 107 → 16.
 
   | PR | | gained |
   |---|---|---|
@@ -631,6 +637,18 @@ Pointers only. The reasoning lives in the issues and their PRs.
   | #284 | a section outranks an ER of the same name (#281) | +46 |
   | #286 | a definition outranks a lingering ER type (#285) | +6 |
   | #289 | `END` ends the assembly (#288) | +2 |
+  | #293 | a keyword the prototype does not declare is `IFO092` (#162, #292) | +115 rc |
+  | #294 | a discarded statement carries IFOX00's severity, not ours | +8 rc |
+  | #296 | an operand that substitutes to nothing stays empty (#295) | +1 rc |
+  | #299 | `BNPR` and `BNMR`, the `BR` forms (#298) | +3 |
+  | #301 | an attribute apostrophe inside a sublist is not a quote (#300) | +3 |
+  | #304 | a blank in a generated statement does not end the operand (#302) | +39 |
+  | #306 | a `COPY`'d card inside a macro is not a model statement (#305) | +2 both |
+
+  The `rc` column is return-code agreement where the deck did not move. #293 is the
+  largest single figure of the day and not one byte of it is code generation: a
+  keyword the prototype never declared was accepted in silence, so 115 modules
+  IFOX00 rejects assembled clean here.
 
   **The first four are silent CAPS**: a fixed size reached, the excess dropped, and
   the assembler carrying on as though nothing had been. They never announce
@@ -673,6 +691,21 @@ Pointers only. The reasoning lives in the issues and their PRs.
   sessions reading `AMASPZAP`'s module totals while its per-section view named the
   defect. Re-measuring the witness **before** writing the commit message rather than
   after is the only practice that caught one of them in time.
+
+  *A net count cannot report a regression it is outnumbered by.* #304 gained 39
+  modules and broke three — `IFNX1K`, `IFNX3K`, `IFNX5V` went RC 0 → RC 8 — and the
+  gate printed `LOST : 0` and `alone flags 23 → 19`, **both true**. The three decks
+  were already non-identical, so the deck measure could not see them, and seven
+  others improved in the same run. It was found the next morning by asking *when* a
+  suspiciously uniform family broke, from two `.tsv` files already on disk. #306
+  closes it; `retest.py` now prints `rc CLEAN -> FLAGGED` by name, unconditionally.
+
+  *A frozen file and a stable measurement look the same from outside.* The map of
+  what is left carried a fresh timestamp and a baseline **29 commits behind**, so
+  every cluster size in it was too large by an unknown amount. Second instance of
+  the shape in two days. A derivation is now written down with the command that
+  prints its own distance from `main`, because a bare commit hash needs a reader who
+  thinks to check it.
 
 - **2026-09-08/09 — twenty merges, none lost, 4,753 → 5,213 of 5,528 (94.3 %).**
 
