@@ -72,6 +72,10 @@ static const struct opc optab[] = {
     { "BHR", F_BR, 0x07, 2 }, { "BLR", F_BR, 0x07, 4 }, { "BNHR", F_BR, 0x07, 13 }, { "BNLR", F_BR, 0x07, 11 },
     { "BZR", F_BR, 0x07, 8 }, { "BNZR", F_BR, 0x07, 7 }, { "BPR", F_BR, 0x07, 2 }, { "BMR", F_BR, 0x07, 4 },
     { "BOR", F_BR, 0x07, 1 }, { "BNOR", F_BR, 0x07, 14 },
+    /* BNP and BNM had their BC forms above and not their BR ones. The pair is
+     * the same masks -- 13 and 11 -- and IGG0203A and IGC0009D use them
+     * (cc370#298). */
+    { "BNPR", F_BR, 0x07, 13 }, { "BNMR", F_BR, 0x07, 11 },
     { NULL, 0, 0, 0 }
 };
 

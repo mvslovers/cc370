@@ -528,6 +528,13 @@ rm -f /tmp/_au.$$
 # The fixture reports K' rather than the text, so the DECK carries the answer.
 #   main 500cefe   06 06 02   (K'REMARK, K'SECOND, K'AL)
 #   IFOX00, this   00 00 02
+# brmnem is the #298 oracle: the BR forms of BNP and BNM. Their BC forms were in
+# the table and their BR counterparts were not -- the same masks, 13 and 11.
+# IGG0203A and IGC0009D use them and as370 said `Undefined operation code' where
+# IFOX00 is clean. The other ten BR forms stand beside them as the control: a mask
+# transposed while adding these two shows up here rather than in the tree.
+#   main b13ffa5   Undefined operation code - BNPR, BNMR
+#   IFOX00, this   07DE 07BE
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -541,7 +548,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop emptyopnd; do
+         endstop emptyopnd brmnem; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
