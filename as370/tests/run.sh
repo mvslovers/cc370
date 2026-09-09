@@ -1780,6 +1780,73 @@ else
 fi
 rm -rf "$bigm"
 
+# --- issue #334: a macro's parameter VALUES are as many as its prototype ------
+# struct ctx's pv[] was 100 where the prototype table beside it is MAXPARM (256)
+# and its own comment names the module that needs more -- IDACB2 declares 127.
+# Every expansion of it wrote 27 entries, 6,912 bytes, past the end of pv[] and
+# into the rest of the context; DEFCCW at 200 parameters wrote 25,600.
+# It changed no output, which is why it survived. It was found by adding an
+# unrelated field AFTER pv[]: 70 modules then assembled differently and the new
+# field turned out to be innocent. AddressSanitizer sees nothing unless pv[] is
+# moved to the end of the struct, because the write stays inside the calloc.
+# THIS FIXTURE DOES NOT FAIL ON THE PRE-FIX BINARY, and saying so is the point.
+# The overflow is silent -- the bytes land in the rest of the context and change
+# nothing -- so a 150-parameter macro assembles correctly on fb621ad as well.
+# Checked, rather than assumed: it passes on both.
+# What it guards is the BOUND. If pv[] is ever narrowed again, or a later change
+# makes the landing zone matter, this is the cheap check that says so. The
+# instrument that actually shows the write is AddressSanitizer with pv[] moved
+# to the END of struct ctx, where the overrun leaves the allocation:
+#   ==ERROR: AddressSanitizer: heap-buffer-overflow / WRITE of size 1 / mexp_line
+# In its normal position the write stays inside the calloc and no sanitizer sees
+# it, which is how it survived.
+wide=/tmp/_widemac.$$
+mkdir -p "$wide"
+# The prototype and the call both need real continuation cards: 150 parameters
+# do not fit in columns 16-71. awk builds them -- text to column 71, non-blank
+# in 72 on every card but the last.
+awk 'BEGIN{
+  s=""; for(i=1;i<=150;i++){ s=s (i>1?",":"") "&P" i }
+  printf "         MACRO\n"
+  emit(s, "         WIDEM ")
+  printf "         DC    C'\''&P150'\''\n         MEND\n"
+}
+function emit(t, head,   line, cut, i) {
+  line = head t
+  while (length(line) > 71) {
+    cut = 71
+    while (cut > 16 && substr(line, cut, 1) != ",") cut--
+    printf "%-71sX\n", substr(line, 1, cut)
+    line = sprintf("%15s%s", "", substr(line, cut + 1))
+  }
+  print line
+}' > "$wide/widem.macro"
+awk 'BEGIN{
+  s=""; for(i=1;i<=149;i++){ s=s "X," } s=s "LAST"
+  printf "T        CSECT\n"
+  emit(s, "         WIDEM ")
+  printf "         END\n"
+}
+function emit(t, head,   line, cut) {
+  line = head t
+  while (length(line) > 71) {
+    cut = 71
+    while (cut > 16 && substr(line, cut, 1) != ",") cut--
+    printf "%-71sX\n", substr(line, 1, cut)
+    line = sprintf("%15s%s", "", substr(line, cut + 1))
+  }
+  print line
+}' > "$wide/a.s"
+./as370 "$wide/a.s" -I "$wide" -o "$wide/a.obj" >"$wide/a.out" 2>&1; rcW=$?
+if [ $rcW != 0 ]; then
+    echo "widemac: rc $rcW, expected 0"; head -3 "$wide/a.out"; fail=1
+elif ! od -An -tx1 "$wide/a.obj" | tr -d ' \n' | grep -q d3c1e2e3; then
+    echo "widemac: the 150th parameter's value did not arrive (#334)"; fail=1
+else
+    echo "widemac: OK (a 150-parameter macro binds every value inside pv[])"
+fi
+rm -rf "$wide"
+
 # --- issue #320: the severity IFOX00 gives a card it does not flag -----------
 # A comment card reaching column 72 eats the card under it. When that card's
 # columns 1-15 are blank, as370 already SAID the right thing -- its message reads
