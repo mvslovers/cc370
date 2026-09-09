@@ -1,0 +1,52 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.53 09/09/26
+T         SD  0001 000000 00002A
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.53 09/09/26
+                                      1 * an attribute apostrophe must not open a quoted body: the next
+                                      2 * literal's digits then read as one over-long symbol and the
+                                      3 * instruction is zeroed for a name nobody wrote.
+000000                                4 D        DSECT
+000000                                5          DS    CL4
+000004                                6 FLD      DS    CL8
+000000                                7 T        CSECT
+                            00000     8          USING T,15
+                            00000     9          USING D,3
+                                     10 * 1: L' in the length field, then a hex literal
+000000 D507 3004 F018 00004 00018    11          CLC   FLD-D(L'FLD,3),=X'FF00000000000000'
+                                     12 * 2: the control -- same statement, numeric length
+000006 D507 3004 F018 00004 00018    13          CLC   FLD-D(8,3),=X'FF00000000000000'
+                                     14 * 3: a character literal behind an attribute reference
+00000C D507 3004 F020 00004 00020    15          CLC   FLD-D(L'FLD,3),=C'ABCDEFGH'
+                                     16 * 4: X' really does quote -- FF00 is a body, not a symbol
+000012 D201 3004 F028 00004 00028    17          MVC   FLD-D(2,3),=X'FF00'
+000018                               18          LTORG
+000018 FF00000000000000              19                =X'FF00000000000000'
+000020 C1C2C3C4C5C6C7C8              20                =C'ABCDEFGH'
+000028 FF00                          21                =X'FF00'
+                                     22          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.53 09/09/26
+D        00001 00000000 00004  00009 00011 00013 00015 00017
+FLD      00008 00000004 00006  00011 00011 00013 00015 00015 00017
+T        00001 00000000 00007  00008
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.53 09/09/26
+=X'FF00000000000000'
+         00008 00000018 00019  00011 00013
+=C'ABCDEFGH'
+         00008 00000020 00020  00015
+=X'FF00' 00002 00000028 00021  00017
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 09.53 09/09/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         19
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        52
