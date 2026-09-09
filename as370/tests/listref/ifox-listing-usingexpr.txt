@@ -1,0 +1,64 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 21.54 09/08/26
+TSTUSE    SD  0001 000000 000028
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 21.54 09/08/26
+                                      1 * Ein USING-Operand, der mit * ANFAENGT, ist ein Ausdruck (#275).
+                                      2 *
+                                      3 * Gefunden ueber den dritten Zeugen: IBMs ausgeliefertes Objekt und
+                                      4 * IFOX00 sind sich einig, as370 weicht ab -- IGG019GC und IGG019GD.
+                                      5 *
+                                      6 * `*' allein ist der Ortszaehler, `*+8' ist ein Ausdruck, der mit ihm
+                                      7 * beginnt. as370 pruefte nur das erste Zeichen, nahm den blossen
+                                      8 * Zaehler und warf den Rest weg. `USING *+8,R15' ist die uebliche Art,
+                                      9 * die Adressierbarkeit hinter einem BALR und seinem Sicherungsbereich
+                                     10 * herzustellen -- die Basis lag dann 8 Bytes zu tief und JEDE Distanz
+                                     11 * ueber dieses Register kam 8 zu hoch heraus, ohne Diagnose.
+                                     12 *
+                                     13 *   C1  USING *+8  -- A liegt genau auf der Basis, Distanz 000
+                                     14 *   C2  dasselbe Register, hoehere Adresse: 004 statt 00C
+                                     15 *   C3  USING *-4  -- der Ausdruck darf auch nach unten gehen
+                                     16 *   C4  Kontrolle: das blosse `*', das schon vorher richtig war
+                                     17 *   C5  Kontrolle: ein Symbolausdruck ohne Stern, ebenfalls unbewegt
+000000                               18 TSTUSE   CSECT
+                            00008    19          USING *+8,15
+000000                               20          DS    XL8
+000008                               21 A        DS    F
+00000C                               22 B        DS    F
+000010 5810 F000      00008          23 C1       L     1,A
+000014 5820 F004      0000C          24 C2       L     2,B
+                                     25          DROP  15
+                            00000    26          USING *-24,14
+000018 5830 E00C      0000C          27 C3       L     3,B
+                                     28          DROP  14
+                            0001C    29          USING *,13
+00001C                               30 D        DS    F
+000020 5840 D000      0001C          31 C4       L     4,D
+                                     32          DROP  13
+                            0000C    33          USING A+4,12
+000024 5850 C000      0000C          34 C5       L     5,B
+                                     35          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 21.54 09/08/26
+A        00004 00000008 00021  00023 00033
+B        00004 0000000C 00022  00024 00027 00034
+C1       00004 00000010 00023
+C2       00004 00000014 00024
+C3       00004 00000018 00027
+C4       00004 00000020 00031
+C5       00004 00000024 00034
+D        00004 0000001C 00030  00031
+TSTUSE   00001 00000000 00018
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 21.54 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         35
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        64
