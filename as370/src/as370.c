@@ -2111,7 +2111,21 @@ static int eval_cond(struct ctx *c, const char *cond) {
                 if (d == 0 && oi > 0) { o[oi] = 0;                       /* a logical operator abutting '(' (NOT(..)/AND(..)/OR(..)) is its own token, not a subscript */
                     if (!strcmp(o, "NOT") || !strcmp(o, "AND") || !strcmp(o, "OR")) break; }
                 d++;
-            } else if (!q && *p == ')') d--;
+            } else if (!q && *p == ')') {
+                d--;
+                /* A closing parenthesis ends a term the same way a closing quote
+                 * does, so an operator abutting it is its own token. Blanks around
+                 * a logical operator are optional and IBM's macros omit them:
+                 * PVTMAC(GOIF1) writes `AIF (NOT(&B(1) AND &B(2) AND &B(3))OR
+                 * '&ELSE' EQ '').C5', and without this the OR and everything after
+                 * it glued onto the group, so the whole condition read as one
+                 * factor and came out false. Eight IFNX* modules fall to .ERR3 and
+                 * MNOTE over it (cc370#262).
+                 *
+                 * The mirror of the `closed' rule for quotes, which #243 needed on
+                 * the other side of the operator. Three delimiters, one rule. */
+                if (!d) closed = 1;
+            }
             if (oi < 255) o[oi++] = *p; else tovf = 1;
             p++; }
         o[oi] = 0; if (nt < 95) nt++; else tovf = 1;
