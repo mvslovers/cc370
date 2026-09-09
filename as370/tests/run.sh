@@ -392,6 +392,19 @@ rm -f /tmp/_au.$$
 # to hold across a multi-register USING, for DROP and for replacement alike.
 #   main acb4ebe   B01C  ....  ....  BFFC  9000  C01C   rc 8, two IFO209
 #   IFOX00, this   B01C  C000  A000  BFFC  9000  C01C   rc 0
+# stmtlen is the #153 oracle: FOUR bounds on the length of one statement, all
+# silent. join_cont builds a joined statement into acc[8192] and everything
+# downstream capped at about 1024 -- sysvar_sub cut every source line at 1022,
+# parse() the operand at 1023, and &SYSLIST is materialised as ONE synthetic
+# sublist whose buffer (and the subscript walker's copy of it) bounded the whole
+# list rather than an element. Plus MAXSYSLIST at 64, a limit IFOX00 does not
+# have. JTEXT's `DBV' call carries 86 positional operands and got 61: the tail
+# simply was not there, K' of it was 0, and the macro generated nothing for it
+# without a word. The call here is deliberately over 1022 characters so it tests
+# all four at once -- &SYSLIST(70) is past the count bound, &SYSLIST(86) past the
+# buffer -- and T2 is the short control that was always right.
+#   main 9606b53   AL1(,)      rc 8, More than 64
+#   IFOX00, this   X'4D58'     rc 0
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -403,7 +416,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
-         sublist logop collate usingmul; do
+         sublist logop collate usingmul stmtlen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
