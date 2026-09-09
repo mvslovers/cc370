@@ -647,7 +647,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup pool contsev align; do
+         litdup pool contsev align blankcont; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -1767,6 +1767,35 @@ else
     echo "align: OK (two symbol operands flagged, explicit base and IC silent, == IFOX00)"
 fi
 rm -f /tmp/_al.$$
+
+# --- issue #325: a continuation card with nothing on it ----------------------
+# IFOX00 gives IFO026 for a continuation card that is blank from the continue
+# column to 71, and as370 said nothing at all. The message's own wording --
+# "characters appear between the begin and continue columns" -- is narrower than
+# the condition it is issued for, which is why reading the text rather than
+# measuring the behaviour would have missed it.
+# Two controls, and the second one is why this took two gate runs:
+#   2  a continuation carrying text at column 16 -- an ordinary one.
+#   3  a blank card in the MIDDLE of a continuation. Those blanks are DATA
+#      inside a character constant, not an empty continuation. `WTO' with a long
+#      run of blanks in its message is the shape, and IER8CM, IFDOLT12,
+#      ILRPGEXP and four others write exactly that. Flagging them cost seven
+#      modules against the three this gains -- the rule without the condition is
+#      NET NEGATIVE, and the gate is what said so.
+# Measured on the oracle: statement 3 flagged, statements 6 and 11 not,
+# severity 4, deck unchanged.
+#   1112488        silent, rc 0
+#   IFOX00, this   one flagged, rc 4
+./as370 tests/blankcont.s -o /dev/null >/tmp/_bc.$$ 2>&1; rcBC=$?
+nbc=$(grep -c 'Continuation card is empty' /tmp/_bc.$$ || true)
+if [ $rcBC != 4 ]; then
+    echo "blankcont: rc $rcBC, expected 4"; cat /tmp/_bc.$$; fail=1
+elif [ "$nbc" != 1 ]; then
+    echo "blankcont: $nbc empty-continuation diagnostics, expected exactly 1 -- the card with text at column 16 must stay silent (#325)"; fail=1
+else
+    echo "blankcont: OK (an empty continuation card is IFO026, one with text at column 16 is not)"
+fi
+rm -f /tmp/_bc.$$
 
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
