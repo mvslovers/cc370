@@ -2406,9 +2406,10 @@ static struct { char src[24]; char card[80]; int line; int err; int stmt; int lo
 static int ncontd;          /* entries kept for printing */
 static int ncontd_seen;     /* every one raised */
 static int ncontd_lost;     /* of those, how many discarded a statement */
+static int ncontd_ifox;     /* of those, how many IFOX00 itself flags (err 26 or 69) -- the ones that may raise the RC */
 static const char *g_joinsrc;         /* library member being joined; NULL = the primary source */
 static void note_cont(int err, int card, const char *text, int len, int stmt, int lost) {
-    ncontd_seen++; if (lost) ncontd_lost++;
+    ncontd_seen++; if (lost) ncontd_lost++; if (err) ncontd_ifox++;
     mark_cont_stmt(stmt, g_joinsrc != NULL);   /* the STATEMENT's first card, not this continuation card */
     if (ncontd >= MAXCONTD) return;
     contd[ncontd].stmt = stmt; contd[ncontd].lost = lost;
@@ -5656,7 +5657,19 @@ int main(int argc, char **argv) {
         if (ncontd_seen > ncontd)
             fprintf(stderr, " ... and %d further continuation diagnostic%s, %d of them a discarded statement\n",
                     ncontd_seen - ncontd, ncontd_seen - ncontd == 1 ? "" : "s", ncontd_lost);
-        if (max_sev < 4) max_sev = 4;                 /* IFOX jermsgcd.asm SEV26 / SEV69 */
+        /* err 0 is the case as370's own message names: a continued COMMENT card
+         * ate the card under it, and that card's columns 1-15 are blank. IFOX00
+         * assembles it at severity 0 with NO STATEMENTS FLAGGED -- measured, and
+         * the deck is byte-identical on both sides (tests/contsev.s). Raising
+         * the return code for it made eight modules disagree with the oracle on
+         * decks that were already right, and Mike's rule is that the return code
+         * is half of `as370 == IFOX00' (cc370#320).
+         *
+         * The louder reading is still available and still defensible -- a lost
+         * statement that nobody is told about is how nsf370 shipped a comment
+         * card that ate a DCBD -- but it belongs to --strict-cont, which raises
+         * exactly these to 8, and not to the default. */
+        if (ncontd_ifox && max_sev < 4) max_sev = 4;   /* IFOX jermsgcd.asm SEV26 / SEV69 */
         if (strict_cont && ncontd_lost && max_sev < 8) max_sev = 8;   /* --strict-cont only: IFOX00 stays at 4 */
     }
     /* The statement-level diagnostics, in SOURCE order.

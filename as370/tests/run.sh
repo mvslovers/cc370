@@ -556,6 +556,18 @@ rm -f /tmp/_au.$$
 # Same root as #295: the boundaries belong to the model card, not to the result.
 #   main 30654d5   K'&C = 0, &D empty
 #   IFOX00, this   K'&C = 1, &D = MVM22
+# pool is the NEGATIVE control for #317, and it is in the corpus because it
+# reproduced nothing. Sixteen modules had a literal pool N bytes short with every
+# later displacement exactly N lower, and the obvious reading was alignment
+# padding inside the pool -- IFOX00 aligning =A/=F on a fullword and =H on a
+# halfword where as370 packed them. This fixture was built to show that: mixed
+# widths =A =C =D =F =H =X, referenced in a deliberately awkward order so a pool
+# that merely follows first-reference order cannot match one that groups by size.
+# Both assemblers produced the SAME pool, byte for byte.
+# That negative is what said the segmenting was already right and sent the search
+# to the literal LENGTHS instead, where #317 was. It is kept so the next person
+# reading #317 can see that the padding hypothesis was tested and not merely
+# skipped -- and it still guards the segmenting it happened to prove correct.
 # litdup is the #317 oracle: a duplication factor in a LITERAL. `=8X'0F'' is
 # eight bytes, and as370 skipped the factor entirely -- one byte. That is not
 # merely a short literal: the pool is segmented by lenalgn(size), so a literal of
@@ -617,7 +629,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup; do
+         litdup pool contsev; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -1692,6 +1704,34 @@ else
     echo "bigmacro: OK (a macro body past 4096 cards is read and expanded whole)"
 fi
 rm -rf "$bigm"
+
+# --- issue #320: the severity IFOX00 gives a card it does not flag -----------
+# A comment card reaching column 72 eats the card under it. When that card's
+# columns 1-15 are blank, as370 already SAID the right thing -- its message reads
+# "IFOX00 does not even warn here" -- and then raised the return code to 4
+# anyway. Measured on the oracle: NO STATEMENTS FLAGGED, HIGHEST SEVERITY 0, and
+# the deck byte-identical on both sides. Eight modules disagreed with IFOX00 on
+# decks that were already right, and ISTNSC00 became the ninth the moment #287
+# let the reader reach that far into NETSOL.
+# The louder reading is still available: --strict-cont raises exactly these to 8,
+# which is where it belongs -- a lost statement nobody is told about is how
+# nsf370 shipped a comment card that had eaten a DCBD.
+# The deck is in the loop above; what this block asserts is the RETURN CODE,
+# which is the whole of the divergence.
+#   7ef4000        rc 4
+#   IFOX00, this   rc 0, and --strict-cont still 8
+./as370 tests/contsev.s -o /dev/null >/tmp/_cs.$$ 2>&1; rcS=$?
+./as370 --strict-cont tests/contsev.s -o /dev/null >/dev/null 2>&1; rcT=$?
+if [ $rcS != 0 ]; then
+    echo "contsev: rc $rcS, expected 0 -- IFOX00 does not flag this card (#320)"; cat /tmp/_cs.$$; fail=1
+elif [ $rcT != 8 ]; then
+    echo "contsev: --strict-cont gave $rcT, expected 8 -- the guard must survive the default going quiet"; fail=1
+elif ! grep -q 'consumed as a continuation' /tmp/_cs.$$; then
+    echo "contsev: the card should still be REPORTED, only not counted"; fail=1
+else
+    echo "contsev: OK (IFOX00's severity 0 by default, still 8 under --strict-cont, still reported)"
+fi
+rm -f /tmp/_cs.$$
 
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
