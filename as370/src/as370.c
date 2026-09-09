@@ -4129,9 +4129,17 @@ static void do_pass(int pass, char **lines, int nlines) {
             char F[17][FLDW]; int nf = split_fields(opnd, F, 17);   /* base + up to 16 base registers */
             if (pass == 2) {
                 int brel = 0;
-                long base = (F[0][0] == '*') ? lc : expr_val(F[0], &brel);
+                /* `*' alone is the location counter; `*+8' is an EXPRESSION that
+                 * begins with it.  Testing only the first character took the bare
+                 * counter and threw the rest away, so `USING *+8,R15' -- the
+                 * ordinary way to establish addressability just past a BALR and
+                 * its save area -- set the base 8 bytes low and every displacement
+                 * through that register came out 8 too high, silently.  IGG019GC
+                 * and IGG019GD carry it; IBM's own shipped object agrees with
+                 * IFOX00 against us there (cc370#275). */
+                long base = (F[0][0] == '*' && !F[0][1]) ? lc : expr_val(F[0], &brel);
                 int isabs = 0, bsect = cur_sect_id;
-                if (F[0][0] != '*') { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm);
+                if (!(F[0][0] == '*' && !F[0][1])) { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm);
                     if (bs) bsect = bs->sect;
                     /* An ABSOLUTE domain -- `GSPCB EQU 0' with its fields as
                      * absolute EQUs, the pre-DSECT way of mapping a control
