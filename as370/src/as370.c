@@ -5296,6 +5296,18 @@ int main(int argc, char **argv) {
     int nl = macro_pass(raw, n, lines, raw_org);
     if (eonly) { int j; for (j = 0; j < nl; j++) { fputs(lines[j], stdout); if (lines[j][0] && lines[j][strlen(lines[j]) - 1] != '\n') putchar('\n'); } return 0; }
 
+    /* END ENDS THE ASSEMBLY.  Cards after it are not read, not listed and not
+     * assembled -- and the MVSBLD tree has modules with a second module's source
+     * appended behind the first END, which as370 assembled straight into the same
+     * object: ISTINCU7 came out with three control sections and 2,269 bytes where
+     * IFOX00 has one and 210, because IKJEGAPL is defined 1,100 cards past the END
+     * (cc370#288).
+     *
+     * Truncating the statement array here rather than breaking out of do_pass
+     * makes both passes and the listing agree by construction; a `break' in the
+     * loop would have to be repeated in three places and kept in step. */
+    { int k; for (k = 0; k < nl; k++) if (card_op_is(lines[k], "END")) { nl = k + 1; break; } }
+
     prescan_literals(lines, nl);   /* the END pool has to be known before pass 1 lays the first control section out (#68) */
     do_pass(1, lines, nl);
     { int k, id = 0; for (k = 0; k < nesdord; k++) {         /* SD/PC sections and ER refs get an ESDID; LD entries do not */

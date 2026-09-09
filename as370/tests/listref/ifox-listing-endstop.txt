@@ -1,0 +1,39 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 22.58 09/08/26
+A         SD  0001 000000 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 22.58 09/08/26
+                                      1 * END beendet die Assemblierung (#288).
+                                      2 *
+                                      3 * Karten hinter dem ersten END werden nicht gelesen, nicht gelistet
+                                      4 * und nicht assembliert. as370 las weiter.
+                                      5 *
+                                      6 * Das ist keine Spitzfindigkeit: im MVSBLD-Baum stehen Module, hinter
+                                      7 * deren END die Quelle eines ZWEITEN Moduls angehaengt ist. as370
+                                      8 * assemblierte beide in dasselbe Objekt -- ISTINCU7 kam mit drei
+                                      9 * Kontrollsektionen und 2269 Bytes heraus, wo IFOX00 eine und 210 hat,
+                                     10 * weil IKJEGAPL 1100 Karten hinter dem END definiert wird.
+                                     11 *
+                                     12 *   A steht vor dem END und muss allein im Deck stehen.
+                                     13 *   B steht dahinter: seine Sektion darf im ESD gar nicht auftauchen,
+                                     14 *     nicht bloss leer sein -- deshalb prueft die Fixture den ganzen
+                                     15 *     Deck und nicht einzelne Bytes.
+000000                               16 A        CSECT
+000000 11111111                      17          DC    XL4'11111111'
+                                     18          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 22.58 09/08/26
+A        00001 00000000 00016
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 22.58 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         21
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        39
