@@ -448,6 +448,18 @@ rm -f /tmp/_au.$$
 # a divergence where neither assembler says anything.
 #   main 0e097a8   0000000 0000000 000000 0000   0009
 #   IFOX00, this   00000000 00000007 00000042 00001234   0009
+# usingexpr is the #275 oracle: a USING operand that BEGINS with `*' is an
+# expression. `*' alone is the location counter; `*+8' is an expression that
+# starts with it, and as370 tested only the first character, took the bare
+# counter and threw the rest away. `USING *+8,R15' is the ordinary way to
+# establish addressability past a BALR and its save area, so the base sat 8 bytes
+# low and every displacement through that register came out 8 too high -- at rc 0
+# with no diagnostic, in either assembler. IGG019GC and IGG019GD carry it and
+# both become byte-identical.
+# C3 goes the other way (*-24) so a fix that only handles `+' fails; C4 is the
+# bare `*' and C5 a symbol expression, both of which were always right.
+#   main 0e097a8   F008 F00C 0000(IFO209) D000 C000
+#   IFOX00, this   F000 F004 E00C         D000 C000
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -460,7 +472,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
-         substrcat; do
+         substrcat usingexpr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
