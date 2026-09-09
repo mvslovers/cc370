@@ -161,6 +161,28 @@ static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentat
  * whenever the next byte's address is not the running card address (IFNX5P
  * PUNRTN: CRDVAL != LOCATN). Contiguous writes are merged into one event so the
  * common (strictly address-increasing) module yields just a few events. */
+/* REPRO: the card AFTER the statement is punched into the object deck exactly as
+ * it stands and is not assembled. Measured against IFOX00 (tests/repro.s): the
+ * card lands where it was written -- before the ESD block if the REPRO precedes
+ * the first control section, otherwise between TXT cards, ending the one that is
+ * open -- and it carries NO sequence number of its own, nor does it advance the
+ * deck's. ICAPRTBL puts three of them at the top, which is the documented use:
+ * IPL text that has to precede the module. */
+#define MAXREPRO 64
+/* The card is captured from the FILE BYTES and not from the line array: it may
+ * hold binary -- ICAPRTBL's is IPL text -- and the line array is C strings, so
+ * a card beginning x'00' arrives there empty. Cards holding x'0A' would still
+ * be split by the reader; none in the corpus does, and saying so is better than
+ * a silent limit. */
+static unsigned char repro_raw[MAXREPRO][80];   /* the punched card as it stands in the file */
+static int repro_raw_line[MAXREPRO];            /* its 0-based input-line index */
+static int nrepro_raw;
+static unsigned char repro_img[MAXREPRO][80];   /* the card image, already EBCDIC */
+static int repro_line[MAXREPRO];                /* lines[] index of the REPRO statement that captured it */
+static int nrepro;
+struct punchev { int ridx, before_esd; long at_bytes; };
+static struct punchev punches[MAXREPRO]; static int npunch;
+static int g_sect_seen;                         /* pass 2: a control section has been established */
 #define TXL_EV  131072
 #define TXL_BUF (TEXTMAX * 2)
 static long txl_addr[TXL_EV]; static int txl_len[TXL_EV]; static long txl_boff[TXL_EV];
@@ -2662,7 +2684,7 @@ static struct macro *lib_load(const char *name) {
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
     const char *d[] = { "CSECT", "START", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
-                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", "PUSH", "POP", "CCW", "ISEQ", NULL };
+                        "COPY", "MACRO", "MEND", "DSECT", "ORG", "TITLE", "PRINT", "SPACE", "EJECT", "CNOP", "PUSH", "POP", "CCW", "ISEQ", "REPRO", NULL };
     int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
 
@@ -3176,6 +3198,27 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
             if (eval_cond(cur_ctx(), cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
         if (!strcmp(op, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], opnd)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
+        if (!strcmp(op, "REPRO") && pc + 1 < n) {
+            /* The card is captured HERE and not in the assembly pass, because by
+             * then it would have been through sysvar_sub and the model-statement
+             * machinery: ICAPRTBL's IPL text holds bytes that read as `&' and as
+             * `*' in the host charset, and one of them is a comment marker and
+             * the other a variable symbol. It is punched as it stands, so it is
+             * translated to EBCDIC and padded to 80 columns, nothing else. */
+            int at = *nout;
+            mexp_line(arr[pc], out, nout, depth);
+            if (nrepro < MAXREPRO && *nout > at) {
+                const unsigned char *card = NULL; int rl = 0, j;
+                for (j = 0; j < nrepro_raw; j++)
+                    if (repro_raw_line[j] == g_curorg) { card = repro_raw[j]; rl = 80; break; }
+                if (!card) { card = (const unsigned char *)arr[pc + 1]; rl = rawlen(arr[pc + 1]); }
+                for (j = 0; j < 80; j++)
+                    repro_img[nrepro][j] = mvs_a2e(j < rl ? card[j] : ' ');
+                repro_line[nrepro] = *nout - 1;
+                nrepro++;
+            }
+            pc += 2; continue;                       /* the punched card is not a statement */
+        }
         mexp_line(arr[pc], out, nout, depth);
         pc++;
     }
@@ -3965,6 +4008,7 @@ static void assign_origins(void) {
 
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0; g_pass = pass;
+    if (pass == 2) { npunch = 0; g_sect_seen = 0; }
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
     /* Section extents are re-derived by each pass, not accumulated across them:
@@ -4186,6 +4230,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
 
         if (!strcmp(op, "CSECT") || !strcmp(op, "START")) {
+            g_sect_seen = 1;   /* a REPRO past this point is punched after the ESD block */
             /* START is CSECT that may set where the first control section begins.
              * Measured against IFOX00 on MVS/CE (cc370#127):
              *   START 0   -> SD ADDR 000000, byte for byte the CSECT entry
@@ -4357,6 +4402,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (!nf) nusing = 0;                       /* DROP with no operand drops all */
                 else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0);
                     for (k = 0; k < nusing; ) { if (usings[k].reg == r) { usings[k] = usings[--nusing]; } else k++; } } }
+        } else if (!strcmp(op, "REPRO")) {
+            /* Nothing is assembled and the location counter does not move. All
+             * this records is WHERE the card falls in the punch stream. */
+            if (pass == 2 && npunch < MAXREPRO) {
+                int r; for (r = 0; r < nrepro; r++) if (repro_line[r] == i) {
+                    punches[npunch].ridx = r; punches[npunch].at_bytes = txl_blen;
+                    punches[npunch].before_esd = !g_sect_seen; npunch++; break; } }
         } else if (!strcmp(op, "PUSH") || !strcmp(op, "POP")) {   /* PUSH/POP USING: save/restore the active USING table (PRINT etc. ignored) */
             if (pass == 2 && strstr(opnd, "USING")) {
                 static struct uent ustk[16][32]; static int ustkn[16], usp;
@@ -5050,6 +5102,14 @@ static long sect_length(int e) {
 static void emit_obj(FILE *f) {
     unsigned char c[80]; int seq = 0, k;
 
+    /* A REPRO ahead of the first control section is punched ahead of the ESD
+     * block -- IFOX00 writes SYSPUNCH sequentially and has nothing to say about
+     * a section yet. This is ICAPRTBL's case: three cards of IPL text that have
+     * to reach the reader before the module does. They carry the source card's
+     * own columns 73-80 and do not advance the deck's sequence number. */
+    { int pi; for (pi = 0; pi < npunch; pi++)
+        if (punches[pi].before_esd) fwrite(repro_img[punches[pi].ridx], 1, 80, f); }
+
     /* ESD: declaration order, 3 entries per card */
     { int e = 0; while (e < nesdord) {
         cinit(c); cname(c, "ESD");
@@ -5087,12 +5147,30 @@ static void emit_obj(FILE *f) {
      * the card fills. A backward ORG therefore re-punches its overlaid bytes as a
      * fresh (overlapping) card with the pre-overwrite content, exactly like IFOX. */
     { int e, cesdid = 0; long cstart = 0, running = -1; int cn = 0, open = 0; unsigned char cbuf[56];
+      long done = 0;   /* bytes of the emission log already punched -- a REPRO's position */
       for (e = 0; e <= ntxl; e++) {
         long ea; int el, eid; const unsigned char *eb;
         if (e < ntxl) { ea = txl_addr[e]; el = txl_len[e]; eb = txl_bytes + txl_boff[e]; eid = txl_esdid[e]; }
         else { ea = -1; el = 0; eb = NULL; eid = -1; }   /* sentinel: flush the open card */
         int pos = 0;
         do {
+            /* A REPRO standing at this point in the emission log ends the TXT
+             * card that is open and is punched between the two -- the oracle's
+             * three DCs, which would share one card, come out as three cards
+             * with a punched card between each pair. The position is a BYTE
+             * offset and not an event index: contiguous put()s are merged into
+             * one event, so two REPROs inside one run of text would otherwise
+             * land at the same place and both come out at the end. */
+            { int pi; for (pi = 0; pi < npunch; pi++)
+                if (!punches[pi].before_esd && punches[pi].at_bytes == done) {
+                    if (open) {
+                        cinit(c); cname(c, "TXT"); cbe(c, 5, cstart, 3); cbe(c, 10, cn, 2); cbe(c, 14, cesdid, 2);
+                        { int i; for (i = 0; i < cn; i++) c[16 + i] = cbuf[i]; }
+                        cseq(c, ++seq); fwrite(c, 1, 80, f); open = 0;
+                    }
+                    fwrite(repro_img[punches[pi].ridx], 1, 80, f);
+                    punches[pi].at_bytes = -1;                 /* punched */
+                } }
             if (open && (e == ntxl || ea + pos != running || cn == 56 || eid != cesdid)) {   /* flush: gap, full card, or a section change */
                 cinit(c); cname(c, "TXT"); cbe(c, 5, cstart, 3); cbe(c, 10, cn, 2); cbe(c, 14, cesdid, 2);
                 { int i; for (i = 0; i < cn; i++) c[16 + i] = cbuf[i]; }
@@ -5101,7 +5179,11 @@ static void emit_obj(FILE *f) {
             if (e == ntxl) break;
             if (!open) { cstart = ea + pos; running = cstart; cn = 0; open = 1; cesdid = eid; }
             int take = 56 - cn; if (take > el - pos) take = el - pos;
-            memcpy(cbuf + cn, eb + pos, (size_t)take); cn += take; pos += take; running += take;
+            /* stop exactly at the next punch boundary so the card ends there */
+            { int pi; for (pi = 0; pi < npunch; pi++) {
+                long b = punches[pi].at_bytes;
+                if (!punches[pi].before_esd && b > done && b - done < take) take = (int)(b - done); } }
+            memcpy(cbuf + cn, eb + pos, (size_t)take); cn += take; pos += take; running += take; done += take;
         } while (pos < el);
       } }
 
@@ -5440,7 +5522,17 @@ int main(int argc, char **argv) {
     init_sysvars();
     FILE *f = fopen(src, "r"); if (!f) { perror(src); return 16; }
     static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
-    while (fgets(lb, sizeof lb, f) && nr < MAXLINES) raw0[nr++] = strdup(lb);
+    while (nr < MAXLINES) {
+        memset(lb, 0, sizeof lb);
+        if (!fgets(lb, sizeof lb, f)) break;
+        if (nr > 0 && nrepro_raw < MAXREPRO && card_op_is(raw0[nr - 1], "REPRO")) {
+            int rl = 0; while (rl < (int)sizeof lb && lb[rl] != '\n') rl++;
+            if (rl > 0 && lb[rl - 1] == '\r') rl--;
+            { int j; for (j = 0; j < 80; j++) repro_raw[nrepro_raw][j] = (j < rl) ? (unsigned char)lb[j] : ' '; }
+            repro_raw_line[nrepro_raw] = nr; nrepro_raw++;
+        }
+        raw0[nr++] = strdup(lb);
+    }
     fclose(f);
     static int raw_org[MAXLINES];
     int n = join_cont(raw0, nr, raw, MAXLINES, NULL, raw_org);   /* fold column-72 continuations; raw_org = input line per statement */
