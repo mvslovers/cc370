@@ -1,0 +1,67 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 22.44 09/08/26
+A         SD  0001 000000 000010
+B         ER  0002
+EXT       ER  0003
+B         LD       000028        0004
+D         LD       00002C        0004
+C         SD  0004 000010 000020
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 22.44 09/08/26
+                                      1 * Eine Definition setzt sich gegen einen ER-Typ durch (#285).
+                                      2 *
+                                      3 * Das Geschwister von #281, eine Ebene tiefer. Dort gewann der ER die
+                                      4 * ESDID der Sektion, hier gewinnt er den TYP des Symbols.
+                                      5 *
+                                      6 * Jede S_ER-Zuweisung steht unter `if (!s->defined)', der Typ wird also
+                                      7 * nur gesetzt, solange das Symbol undefiniert ist -- und nie
+                                      8 * zurueckgenommen, wenn die Definition kommt. `DC V(B)' vor Bs eigenem
+                                      9 * Label laesst B dauerhaft S_ER tragen, und assign_origins uebersprang
+                                     10 * solche Symbole: der LD-Eintrag bekam den sektionsrelativen Wert ohne
+                                     11 * den Ursprung.
+                                     12 *
+                                     13 * Jede TXT-Karte der betroffenen Module ist bereits identisch; die EINE
+                                     14 * LD-Adresse ist die ganze Abweichung.
+                                     15 *
+                                     16 *   B liegt in einer SPAETEREN Sektion -- nur dann trennen sich Versatz
+                                     17 *     und Ursprung ueberhaupt. Versatz (24) und Ursprung (16) sind mit
+                                     18 *     Absicht verschieden, sonst waere nicht ablesbar, welcher fehlt.
+                                     19 *   D ist die Kontrolle: ein ENTRY ohne V() davor.
+                                     20 *   EXT ist ein echter externer Verweis, der nie definiert wird.
+000000                               21 A        CSECT
+000000 00000000                      22          DC    V(B)
+000004 00000000                      23          DC    V(EXT)
+                                     24          ENTRY B
+                                     25          ENTRY D
+000008                               26          DS    XL8
+000010                               27 C        CSECT
+000010                               28          DS    XL24
+000028                               29 B        DS    0H
+000028 11111111                      30          DC    XL4'11111111'
+00002C                               31 D        DS    0H
+00002C 22222222                      32          DC    XL4'22222222'
+                                     33          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 22.44 09/08/26
+ 0001     0002      1C     000000
+ 0001     0003      1C     000004
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 22.44 09/08/26
+A        00001 00000000 00021
+B        00002 00000028 00029  00024
+C        00001 00000010 00027
+D        00002 0000002C 00031  00025
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 22.44 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         33
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         6
+TOTAL RECORDS PRINTED                        67
