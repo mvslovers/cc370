@@ -535,6 +535,17 @@ rm -f /tmp/_au.$$
 # transposed while adding these two shows up here rather than in the tree.
 #   main b13ffa5   Undefined operation code - BNPR, BNMR
 #   IFOX00, this   07DE 07BE
+# subattr is the #300 oracle: an attribute apostrophe inside a SUBLIST. The
+# sublist readers are the fourth pair of eyes on this syntax -- parse() got it in
+# #182, split_card() in #183, dc_split() in #218 -- and never had it.
+# `ENQ (SYSZPSWD,,E,L'JFCBDSNM,SYSTEM),MF=L' counted FOUR elements where IFOX00
+# counts five, and element 4 came back as the single character `L' with the rest
+# of the list swallowed, so the macro emitted SYSTEM as a symbol rather than as a
+# scope. Measured through K'/N' and not the text: a value that itself contains an
+# apostrophe takes apart the MNOTE you substitute it into, which is what the first
+# version of this probe demonstrated instead of the defect.
+#   main 621a8db   04 01 01 00
+#   IFOX00, this   05 01 03 06
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -548,7 +559,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop emptyopnd brmnem; do
+         endstop emptyopnd brmnem subattr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
