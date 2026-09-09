@@ -1550,7 +1550,14 @@ static int sub_count(const char *v) {
     if (v[0] != '(') return 1;
     int n = 1, d = 0, q = 0; const char *p;
     for (p = v + 1; *p; p++) {
-        if (*p == '\'') q = !q;
+        /* An ATTRIBUTE apostrophe is not a quote, and inside a string an
+         * apostrophe can only close one -- the same pair of rules parse() needed
+         * in #182, split_card() in #183 and dc_split() in #218. The SUBLIST
+         * readers are the fourth pair of eyes on this syntax and never got it:
+         * `ENQ (SYSZPSWD,,E,L'JFCBDSNM,SYSTEM),MF=L' counted FOUR elements where
+         * IFOX00 counts five, and element 4 came back as the single character `L'
+         * with the rest of the list swallowed (cc370#300). */
+        if (*p == '\'') { if (q || !attr_apos(v, (int)(p - v))) q = !q; }
         else if (q) ;
         else if (*p == '(') d++;
         else if (*p == ')') { if (d == 0) break; d--; }
@@ -1567,7 +1574,7 @@ static void sub_elem(const char *v, int idx, char *out) {
     if (v[0] != '(') { if (idx == 1) scopy(out, v, VALSZ - 1); return; }
     const char *s = v + 1, *p = s; int n = 1, d = 0, q = 0;
     for (;; p++) {
-        if (*p == '\'') { q = !q; continue; }
+        if (*p == '\'') { if (q || !attr_apos(v, (int)(p - v))) q = !q; continue; }   /* see sub_count (#300) */
         if (!q && *p == '(') { d++; continue; }
         if ((!q && *p == ',' && d == 0) || (!q && *p == ')' && d == 0) || !*p) {
             if (n == idx) { int L = (int)(p - s); if (L > VALSZ - 1) L = VALSZ - 1; memcpy(out, s, L); out[L] = 0; return; }
