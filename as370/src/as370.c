@@ -5292,10 +5292,21 @@ int main(int argc, char **argv) {
     { int k, id = 0; for (k = 0; k < nesdord; k++) {         /* SD/PC sections and ER refs get an ESDID; LD entries do not */
         if (esdord[k].role != ESD_SECT && esdord[k].role != ESD_ER) continue;
         esdord[k].esdid = ++id;
-        /* FIRST entry wins for the symbol's own id: a section's SD is registered
-         * before any ER for the same name, and s->esdid feeds cur_sect_esdid and
-         * so the RLD's P. Last-wins put the ER's id there. */
-        if (!esdord[k].s->esdid) esdord[k].s->esdid = esdord[k].esdid; } }
+        /* FIRST entry wins for the symbol's own id -- among ERs. s->esdid feeds
+         * cur_sect_esdid and so the TXT's id and the RLD's P, and last-wins put
+         * an ER's id there. */
+        if (!esdord[k].s->esdid) esdord[k].s->esdid = esdord[k].esdid; }
+      /* But a SECTION outranks an ER for the same name whatever the order was.
+       * This used to rest on "a section's SD is registered before any ER for the
+       * same name", which is not true the moment the name is REFERENCED first:
+       * `DC V(B)' ahead of `B CSECT' registers B's ER first, so s->esdid held the
+       * ER and B's whole TXT was filed under it. The ESD itself was right -- both
+       * entries present, right types, right lengths and origin -- and only the
+       * TXT card named the wrong section, which is why nothing comparing one
+       * section's bytes could see it. AMASPZAP files 6,700 bytes that way
+       * (cc370#281). */
+      for (k = 0; k < nesdord; k++)
+        if (esdord[k].role == ESD_SECT) esdord[k].s->esdid = esdord[k].esdid; }
     { int k; main_sect_esdid = 0;            /* the content section: first named SD, else first section */
       for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT && esdord[k].s->type == S_SD) { main_sect_esdid = esdord[k].s->esdid; break; }
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }

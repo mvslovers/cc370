@@ -1,0 +1,63 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 22.31 09/08/26
+A         SD  0001 000000 000010
+B         ER  0002
+EXT       ER  0003
+C         SD  0004 000010 000004
+C         ER  0005
+B         SD  0006 000018 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 22.31 09/08/26
+                                      1 * Ein CSECT, dessen Name schon einen ER aus V() hat (#281).
+                                      2 *
+                                      3 * s->esdid speist cur_sect_esdid und damit die ESDID der TXT-Karte.
+                                      4 * Die Zuweisung nahm den ERSTEN Eintrag und stuetzte sich darauf, dass
+                                      5 * der SD einer Sektion vor jedem ER desselben Namens registriert wird.
+                                      6 * Das stimmt nicht, sobald der Name zuerst REFERENZIERT wird: `DC V(B)'
+                                      7 * vor `B CSECT' registriert Bs ER zuerst, und Bs gesamter TXT landete
+                                      8 * unter dieser ID.
+                                      9 *
+                                     10 * Das ESD selbst war richtig -- beide Eintraege da, richtige Typen,
+                                     11 * Laengen und Ursprung. Falsch war allein, welche Sektion die TXT-Karte
+                                     12 * nennt, weshalb kein Vergleich der Bytes EINER Sektion das sehen kann.
+                                     13 *
+                                     14 *   B  ist der Fall: V(B) steht vor B CSECT.
+                                     15 *   C  ist die Kontrolle in der ueblichen Reihenfolge -- CSECT zuerst,
+                                     16 *      V() danach; die darf sich nicht bewegen.
+                                     17 *   EXT ist ein echter externer Verweis, der nie eine Sektion wird;
+                                     18 *      sein ER und sein RLD-Eintrag muessen unveraendert bleiben.
+000000                               19 A        CSECT
+000000 00000000                      20          DC    V(B)
+000004 00000000                      21          DC    V(EXT)
+000008 11111111                      22          DC    XL4'11111111'
+000010                               23 C        CSECT
+000010 33333333                      24          DC    XL4'33333333'
+00000C                               25 A        CSECT
+00000C 00000000                      26          DC    V(C)
+000018                               27 B        CSECT
+000018 2222222222222222              28          DC    XL8'2222222222222222'
+                                     29          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 22.31 09/08/26
+ 0001     0002      1C     000000
+ 0001     0003      1C     000004
+ 0001     0005      1C     00000C
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 22.31 09/08/26
+A        00001 00000000 00019  00025
+B        00001 00000018 00027
+C        00001 00000010 00023
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 22.31 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         29
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         8
+TOTAL RECORDS PRINTED                        63
