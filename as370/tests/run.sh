@@ -1541,6 +1541,74 @@ else
 fi
 rm -rf "$cpm"
 
+# --- issue #307: a COPY'd card inside a macro is substituted, and from the ----
+# ---              enclosing expansion's variables ----------------------------
+# The other half of #305. IFOX00 splices a COPY'd member into the macro body in
+# its edit phase, so the member's cards are model statements of THAT expansion:
+# their variable symbols are substituted, and their conditional assembly reads
+# the same variables. as370 expanded COPY lazily, substituted nothing into such
+# a card, and evaluated its AIF against open code.
+#
+# ICOMMON's `&COMPNM.X4V01  CONTAINS  EVAL' reached CONTAINS with the LITERAL
+# name. CONTAINS stores it in a global array; GOTO takes `'&X0(1)'(4,5)' of it,
+# which of `&COMPNM.X4V01' is `MPNM.'; and `L R12,MPNM.' was reported as an
+# undefined symbol some 900 statements later, in seven IFNX modules.
+#
+# The fixture writes the SAME call twice -- once in the macro body, once in a
+# member the body COPYs, behind an AIF on the macro's own parameter -- and
+# CHECK requires both to have produced ABCCPY01. The equality alone would not
+# do: if neither substituted, both would hold `&G.CPY01' and agree. The name is
+# asserted, so a wrong answer cannot pass by being wrong twice.
+#   main b799ae0    COPY NAME IS ><   (the AIF never saw &SEL)   rc 8
+#   this            rc 0
+cpv=/tmp/_cpysub.$$
+mkdir -p "$cpv"
+printf '%-71s\n' \
+  "         AIF   ('&SEL' NE 'YES').SKIP" \
+  '&G.CPY01 INNER FROMCOPY' \
+  '.SKIP    ANOP' > "$cpv/cpysub"
+printf '%-71s\n' \
+  '         MACRO' \
+  '&P       INNER &D' \
+  '         GBLC  &SAWC,&SAWB' \
+  "         AIF   ('&D' EQ 'FROMCOPY').C" \
+  "&SAWB    SETC  '&P'" \
+  '         MEXIT' \
+  '.C       ANOP' \
+  "&SAWC    SETC  '&P'" \
+  '         MEND' \
+  '         MACRO' \
+  '         CHECK' \
+  '         GBLC  &SAWC,&SAWB' \
+  "         AIF   ('&SAWC' EQ 'ABCCPY01').N1" \
+  "         MNOTE 8,'COPY NAME IS >&SAWC<'" \
+  ".N1      AIF   ('&SAWB' EQ 'ABCCPY01').N2" \
+  "         MNOTE 8,'BODY NAME IS >&SAWB<'" \
+  '.N2      ANOP' \
+  '         MEND' \
+  '         MACRO' \
+  '         OUTER &SEL' \
+  '         GBLC  &G' \
+  "&G       SETC  'ABC'" \
+  '         COPY  CPYSUB' \
+  '&G.CPY01 INNER INBODY' \
+  '         MEND' \
+  'T        CSECT' \
+  '         OUTER YES' \
+  '         CHECK' \
+  '         END' > "$cpv/a.s"
+./as370 "$cpv/a.s" -I "$cpv" -o "$cpv/a.obj" >"$cpv/a.out" 2>&1; rcV=$?
+if grep -q 'COPY NAME IS' "$cpv/a.out"; then
+    echo "copysubst: $(grep -o 'COPY NAME IS .*' "$cpv/a.out" | head -1) -- the COPY'd card did not substitute (#307)"; fail=1
+elif grep -q 'BODY NAME IS' "$cpv/a.out"; then
+    echo "copysubst: $(grep -o 'BODY NAME IS .*' "$cpv/a.out" | head -1) -- the body call itself is wrong"; fail=1
+elif [ $rcV != 0 ]; then
+    echo "copysubst: rc $rcV, expected 0"; cat "$cpv/a.out"; fail=1
+else
+    echo "copysubst: OK (a COPY'd card substitutes, and its AIF reads the expansion's variables)"
+fi
+rm -rf "$cpv"
+
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
 # address when END is reached with a non-empty pool, assembles the pool there and

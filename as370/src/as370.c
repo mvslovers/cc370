@@ -1374,7 +1374,9 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
 #define LF_SUBST 4
 static unsigned char lflags[MAXLINES];
 static int g_genlevel;  /* >0 while inside a macro expansion (distinguishes generated lines from COPY'd source) */
-static int g_copyraw;   /* >0 while expanding a COPY'd member: its cards are raw source, not model statements */
+static int g_copyraw;   /* >0 while expanding a COPY'd member: nothing has been substituted into its cards yet */
+struct ctx;
+static struct ctx *g_copyctx;   /* the enclosing expansion's variables, for a COPY'd card's substitution (see #307) */
 /* per-statement listing data captured in pass 2 (LOC + emitted bytes + effective operand addresses) */
 struct lrec { long loc; int len; long a1, a2; unsigned char hasa1, hasa2; };
 static struct lrec lrecs[MAXLINES];
@@ -2772,6 +2774,7 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
     g_genlevel++;   /* lines emitted during this expansion are macro-generated */
     int savecopyraw = g_copyraw; g_copyraw = 0;   /* a macro body is model statements, whatever the call arrived on */
+    struct ctx *savecopyctx = g_copyctx;   /* a COPY inside THIS body substitutes from THIS expansion's variables */
     /* ctx and the sequence-symbol table live on the HEAP, not on this frame.
      * Measured: sizeof(struct ctx) is 78,240 and seqn/seqi add 49,152, so a level
      * costs 127,392 bytes -- and mexp_macro is reached only through mexp_line's
@@ -2785,6 +2788,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
      * so one free at the end covers it. The table-full paths call exit(2), where
      * leaking is the process ending. */
     struct ctx *c = calloc(1, sizeof *c);
+    g_copyctx = c;
     char (*seqn)[20] = malloc(2048 * 20);
     int *seqi = malloc(2048 * sizeof *seqi);
     /* the split operand list: MAXSYSLIST x FLDW is 64 KB, too much for a frame
@@ -2907,7 +2911,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
-    g_genlevel--; g_copyraw = savecopyraw;
+    g_genlevel--; g_copyraw = savecopyraw; g_copyctx = savecopyctx;
     set_free(c); free(c); free(seqn); free(seqi); free(args);
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
@@ -2980,8 +2984,21 @@ static int has_varsym(const char *card) {
     }
     return 0;
 }
+/* Which variables a statement's symbols resolve against. A COPY'd block inside
+ * a macro expansion is part of that macro's body -- IFOX00 splices the member in
+ * during its edit phase -- so its model statements AND its conditional assembly
+ * see the enclosing expansion's variables, not open code's. Everywhere else this
+ * is the shared open-code context, unchanged. */
+static struct ctx *cur_ctx(void) { return (g_copyraw > 0 && g_copyctx) ? g_copyctx : &g_opc; }
 static void mexp_line(const char *line, char **out, int *nout, int depth) {
-    struct ctx *opc = &g_opc;   /* shared open-code context */
+    /* A card a COPY brings into a macro expansion is a MODEL statement of that
+     * expansion: IFOX00 splices the member into the body in its edit phase, so
+     * its variable symbols are the enclosing macro's, not open code's. as370
+     * expands COPY lazily and substituted nothing into such a card at all --
+     * ICOMMON's `&COMPNM.X4V01 CONTAINS ...' reached CONTAINS with the LITERAL
+     * name, which a `(4,5)' substring three macros later turned into `MPNM.'
+     * and an undefined symbol 900 statements after that (cc370#307). */
+    struct ctx *opc = cur_ctx();
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
     char sysbuf[STMTSZ]; sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
@@ -3053,7 +3070,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * it as one turns every '&' in a comment into a generated statement pair.
      * The fixture for this very issue has two such cards in its own header. */
     int iscmt = (line[0] == '*') || (line[0] == '.' && line[1] == '*');
-    if (g_genlevel == 0 && !iscmt && op[0] && has_varsym(line)) {   /* the RAW card: &SYSDATE is a system global and pairs (remark_sub.s 26/27+) */
+    if ((g_genlevel == 0 || g_copyraw > 0) && !iscmt && op[0] && has_varsym(line)) {   /* the RAW card: &SYSDATE is a system global and pairs (remark_sub.s 26/27+) */
         int fcol[4]; char fld[4][FLDMAX];
         int ml = (int)strlen(sysbuf); while (ml > 0 && (sysbuf[ml-1] == '\n' || sysbuf[ml-1] == '\r')) ml--;
         split_card(sysbuf, ml, ml, fcol, fld);   /* the whole joined card, not 72 columns */
@@ -3156,7 +3173,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ]; scopy(buf, arr[pc], STMTSZ - 1); parse(buf, lbl, op, opnd);
         if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
         if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, sizeof cond, seq, sizeof seq);
-            if (eval_cond(&g_opc, cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
+            if (eval_cond(cur_ctx(), cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
         if (!strcmp(op, "AGO")) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], opnd)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } pc++; continue; }
         mexp_line(arr[pc], out, nout, depth);
