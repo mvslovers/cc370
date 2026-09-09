@@ -1,0 +1,61 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 04.59 09/09/26
+T         SD  0001 000000 000006
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 04.59 09/09/26
+                                      1 * Ein Leerzeichen in einer ERZEUGTEN Anweisung beendet den Operanden
+                                      2 * nicht (#302).
+                                      3 *
+                                      4 * IFOX00 legt die Feldgrenzen auf der MODELLKARTE fest und substituiert
+                                      5 * hinein -- eine Variable, deren Wert ein Leerzeichen ist, bleibt also
+                                      6 * im Operandenfeld. as370 parste den substituierten Text neu und blieb
+                                      7 * an diesem Leerzeichen stehen.
+                                      8 *
+                                      9 * Das Spiegelbild von #295: dort musste ein Operand, der zu NICHTS
+                                     10 * substituiert, leer bleiben; hier muss einer, der zu einem LEERZEICHEN
+                                     11 * substituiert, im Feld bleiben. Dieselbe Wurzel -- die Grenzen
+                                     12 * gehoeren der Modellkarte, nicht dem Ergebnis.
+                                     13 *
+                                     14 * Gefunden ueber IFDOLT12: IFDCOM erzeugt `IFDPF1 &V,&X,&Z,&S' mit &Z
+                                     15 * als einzelnem Leerzeichen. as370 verlor damit BEIDE restlichen
+                                     16 * Operanden, &S war leer, ein AIF darauf nahm den falschen Zweig, und
+                                     17 * PARTITEM wurde nie definiert -- 400 Karten weiter als undefiniertes
+                                     18 * Symbol gemeldet.
+                                     19 *
+                                     20 *   K'&C = 1 (ein Leerzeichen)   und   C'&D' = MVM22
+                                     21 *   vorher: K'&C = 0 und &D leer
+                                     22          MACRO
+                                     23          INNER &A,&B,&C,&D
+                                     24          LCLA  &K
+                                     25 &K       SETA  K'&C
+                                     26          DC    AL1(&K)
+                                     27          DC    C'&D'
+                                     28          MEND
+                                     29          MACRO
+                                     30          OUTER
+                                     31          LCLC  &Z,&S
+                                     32 &Z       SETC  ' '
+                                     33 &S       SETC  'MVM22'
+                                     34          INNER DS,C,&Z,&S
+                                     35          MEND
+000000                               36 T        CSECT
+                                     37          OUTER
+000000 01                            38+         DC    AL1(1)
+000001 D4E5D4F2F2                    39+         DC    C'MVM22'
+                                     40          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 04.59 09/09/26
+T        00001 00000000 00036
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 04.59 09/09/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         38
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        61
