@@ -599,6 +599,23 @@ rm -f /tmp/_au.$$
 # evidence rather than on symmetry.
 #   fb621ad        =F'-8,4' four bytes, the 4 missing
 #   IFOX00, this   every literal equals its DC twin
+# actr is the #336 oracle. ACTR bounds the conditional-assembly LOOPS and as370
+# had none at all -- it skipped the statement and used a flat 100,000-STATEMENT
+# guard instead, which is a different thing and silently cut a macro in half.
+# IFCSXXXF's ITEMSORT sets `ACTR 200000' to heapsort a 624-entry table. It hit
+# the guard three times, left the table part-sorted, and never reached the tail
+# where &ITEMITR and &ITEMMDX are assigned -- so ITEMFIND's binary search failed
+# on names that ARE in the table, and the module came out rc 20 against 0.
+# Three loops pin the whole rule in one assembly:
+#   UNDER  4000 branches, no ACTR    completes
+#   OVER   4200 branches, no ACTR    IFO118, so the default is between the two
+#   RAISED 5000 branches, ACTR 20000 completes
+# The middle one is why the default is a measurement here and not a citation:
+# 4096 was the number I believed, and the fixture is what makes it checkable.
+# The message number is measured too -- IFO118, not the IFO063 the first version
+# of the diagnostic claimed.
+#   8ad1ca6        no IFO118 at all, all three loops run to completion
+#   IFOX00, this   one statement flagged, deck byte-identical
 # litpz is the #329 oracle: a packed or zoned LITERAL. lit_classify() had no arm
 # for P or Z at all, so `=P'0'' fell into the default and reserved FOUR bytes
 # where it is one, X'0C'. That is not only three bytes too many: the pool is
@@ -2557,7 +2574,7 @@ deck_eq() {
 # statement. That separates the message count from the statement count, and
 # without it the counting rule is not tested at all.
 rc8fail=0
-for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8 kwundef:2:8; do
+for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8 kwundef:2:8 actr:1:8; do
     f8=${s8%%:*}; rest8=${s8#*:}; nf8=${rest8%%:*}; rc8=${rest8##*:}
     ./as370 "tests/$f8.s" -o "/tmp/_$f8$$.obj" >/dev/null 2>"/tmp/_$f8$$.err"; got8=$?
     if [ $got8 != $rc8 ]; then

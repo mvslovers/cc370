@@ -9,12 +9,18 @@
 * unterscheidet damit eine STRUKTURAENDERUNG von einer erhoehten
 * Grenze.  Bei 600 wuerde ihn auch ein MAXLSET von 1024 bestehen.
 *
+* Die ACTR-Karte ist seit #336 noetig: 20.000 Zweige liegen weit ueber
+* der Vorgabe 4096, und IFOX00 kennzeichnet eine solche Schleife
+* ebenfalls. Sie gehoert zum Fall, nicht zur Umgehung -- ITEMSORT,
+* das den Defekt aufdeckte, setzt aus demselben Grund ACTR 200000.
+*
 *   main e5e4430   local SET-symbol table full (512)
 *   mit dieser     rc 0
 ASG600    CSECT
          MACRO
          ARR
          LCLB  &SW(40000)
+         ACTR  100000                                                 
          LCLA  &I
 &I       SETA  0
 .L       ANOP

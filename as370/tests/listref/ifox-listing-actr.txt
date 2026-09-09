@@ -1,0 +1,64 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 16.21 09/09/26
+T         SD  0001 000000 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 16.21 09/09/26
+                                      1 * ACTR bounds the conditional-assembly loops, and as370 had none.
+                                      2 * Three loops pin the whole rule in one assembly:
+                                      3 *   UNDER  4000 branches, no ACTR   -- completes
+                                      4 *   OVER   4200 branches, no ACTR   -- IFO118, so the default
+                                      5 *                                      lies between the two
+                                      6 *   RAISED 5000 branches, ACTR 20000 -- completes
+                                      7          MACRO
+                                      8          UNDER
+                                      9          LCLA  &A
+                                     10 &A      SETA  0
+                                     11 .A      ANOP
+                                     12 &A      SETA  &A+1
+                                     13          AIF   (&A LT 4000).A
+                                     14          DC    AL2(&A)
+                                     15          MEND
+                                     16          MACRO
+                                     17          OVER
+                                     18          LCLA  &B
+                                     19 &B      SETA  0
+                                     20 .B      ANOP
+                                     21 &B      SETA  &B+1
+                                     22          AIF   (&B LT 4200).B
+                                     23          DC    AL2(&B)
+                                     24          MEND
+                                     25          MACRO
+                                     26          RAISED
+                                     27          LCLA  &C
+                                     28          ACTR  20000
+                                     29 &C      SETA  0
+                                     30 .C      ANOP
+                                     31 &C      SETA  &C+1
+                                     32          AIF   (&C LT 5000).C
+                                     33          DC    AL2(&C)
+                                     34          MEND
+000000                               35 T        CSECT
+                                     36          UNDER
+000000 0FA0                          37+         DC    AL2(4000)
+                                     38          OVER
+         *** ERROR ***
+                                     39          RAISED
+000002 1388                          40+         DC    AL2(5000)
+                                     41          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 16.21 09/09/26
+T        00001 00000000 00035
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 16.21 09/09/26
+   38  IFO118      THE ACTR LIMIT HAS BEEN EXCEEDED
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         39
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        64
