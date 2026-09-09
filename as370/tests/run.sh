@@ -419,6 +419,20 @@ rm -f /tmp/_au.$$
 # not bounded at all. That asymmetry is #78's, measured here by accident.
 #   main 380a7c4   95,39,95   1,95,1    95
 #   IFOX00, this   200,60,200 1,200,1   150
+# dcvals is the #270 oracle: a DC address-constant operand held 32 nominal
+# values and each value in 80 bytes, both silently. Past the 32nd the value was
+# dropped, the location counter carried on early, and every later address in the
+# section was wrong at rc 0.
+# The bound is reachable in VALID source, which is the whole point: a DC is an
+# assembler operation and gets two continuations, so its operand runs to about
+# 168 characters -- room for some 55 short values. C1 puts 48 on three cards.
+# C2 is one value of 89 characters, ten eight-character symbols; it is ten terms
+# and not fifty because IFOX00 rejects an expression outside conditional assembly
+# past 20 terms (IFO168), which the first version of this fixture found the hard
+# way. L1 and L2 hold the generated LENGTH, so the check covers the counter and
+# not only the bytes.
+#   main f1334fc   L1=x'80'  D2=x'24' + Undefined symbol
+#   IFOX00, this   L1=x'C0'  D2=x'37'
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -430,7 +444,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
-         sublist logop collate usingmul stmtlen macbuf setc_len95; do
+         sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
