@@ -97,6 +97,13 @@ static int nsym;
  * anything that later holds one has to be that big: every smaller bound on
  * this path is a silent truncation of a statement the joiner assembled
  * correctly (cc370#153). */
+/* A macro parameter value.  IFOX00's limit is exactly 255 characters and it
+ * says so past it -- IFO042 PARAMETER IN MACRO PROTOTYPE OR MACRO INSTRUCTION
+ * EXCEEDS 255 CHARACTERS, severity 8, measured on the guest at 255 (clean),
+ * 256, 300 and 400 (flagged).  as370 kept parameter values in 96 bytes,
+ * prototype defaults in 40 and &SYSLIST elements in 128, and cut to fit
+ * without a word (cc370#153). */
+#define VALSZ 256
 #define STMTSZ 8192
 #define FLDW 256
 
@@ -240,7 +247,7 @@ static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
 /* &SYSPARM: the assembly's PARM=SYSPARM() string, and the NULL string when
  * none is given -- which is the case the fixtures and the ecosystem run under,
  * and the one that makes '&SYSPARM'(1,4) an IFO117 rather than four blanks. */
-static char g_sysparm[96] = "";
+static char g_sysparm[VALSZ] = "";
 /* as370's own translator identity (working title V2.0; product rename to as370
  * is planned). Stamped into the object's END-record IDR and the -a listing
  * header so the deck identifies itself rather than masquerading as IFOX. */
@@ -710,14 +717,20 @@ static int hex_to_bytes(const char *s, unsigned char *out, int max) {
 /* split operand into fields at top-level (depth-0, unquoted) commas. A comma
  * inside parens or a 'quoted' string is not a separator, so =X'80,8F' and
  * C'a,b' stay intact; the K'/N'/L'/T' attribute apostrophe is not a quote. */
+/* Set when the last split_fields() had to clip a field to FLDW-1.  FLDW-1 is
+ * 255, which is exactly IFOX00's limit on a macro parameter, so on the macro
+ * paths this flag IS the IFO042 condition -- see mexp_macro and capture_macro.
+ * Read it immediately after the call; the next call overwrites it. */
+static int g_fld_clipped;
 static int split_fields(const char *s, char f[][FLDW], int max) {
     int n = 0, depth = 0, q = 0; const char *start = s, *p = s;
+    g_fld_clipped = 0;
     for (;; p++) {
         if (*p == '\'') { if (q || !(p > s && strchr("KNLT", p[-1]))) q = !q; }
         else if (!q && *p == '(') depth++;
         else if (!q && *p == ')') depth--;
         if ((!q && *p == ',' && depth == 0) || *p == 0) {
-            int len = (int)(p - start); if (len > FLDW - 1) len = FLDW - 1;
+            int len = (int)(p - start); if (len > FLDW - 1) { len = FLDW - 1; g_fld_clipped = 1; }
             if (n < max) { memcpy(f[n], start, len); f[n][len] = 0; n++; }
             if (*p == 0) break;
             start = p + 1;
@@ -1338,7 +1351,7 @@ static int line_org[MAXLINES];
 static int g_curorg;
 struct macro {
     char namep[20], name[16];
-    char pname[100][20], pdef[100][40]; int pkey[100]; int nparm;   /* DCB has ~96 keyword params */
+    char pname[100][20], pdef[100][VALSZ]; int pkey[100]; int nparm;   /* DCB has ~96 keyword params */
     char *body[4096]; int nbody;
     char *bodyseq[4096];           /* cols 73-80 of each body card, for the listing's SOURCE column (NULL if unknown) */
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
@@ -1381,7 +1394,7 @@ static char g_sysect[9] = "";
  * array records the base name and creates no row, which is what makes declaring
  * &SW(4000) free. `eset' distinguishes an element that was assigned the empty
  * string from one never assigned, which the declared default depends on. */
-struct setrow { char name[20]; char val[96]; char (*elem)[96]; unsigned char *eset; int nelem; };
+struct setrow { char name[20]; char val[VALSZ]; char (*elem)[VALSZ]; unsigned char *eset; int nelem; };
 /* Local SET symbols per macro context. 256 was too small by a little: IFCEOAK1
  * needs 295, IFCEXXXF 303, IFCSXXXG 288 -- and the ones that reach these numbers
  * only reach them once N'&SYSLIST stops cutting their loops short, so the old
@@ -1411,12 +1424,12 @@ struct setrow { char name[20]; char val[96]; char (*elem)[96]; unsigned char *es
 #define MAXSYSLIST 255
 struct ctx {
     struct macro *m;
-    char pv[100][96];                      /* parameter values (may be sublists) */
+    char pv[100][VALSZ];                      /* parameter values (may be sublists) */
     const char *namepval;
     struct setrow sr[MAXLSET]; int nset;   /* local SET symbols, arrays one row each */
     int sysndx;                            /* &SYSNDX for this macro invocation */
     char sysect[9];                        /* &SYSECT, frozen at the call (see g_sysect) */
-    char syslist[MAXSYSLIST][128]; int nsyslist;   /* &SYSLIST: positional operands in order */
+    char syslist[MAXSYSLIST][VALSZ]; int nsyslist;   /* &SYSLIST: positional operands in order */
     char arrb[48][20]; char arrnum[48]; int narr;   /* declared SET arrays: base name + 1 if numeric (A/B) */
 };
 /* Global SET symbols (GBLA/GBLB/GBLC) are shared between open code and every
@@ -1463,10 +1476,13 @@ static char *row_elem(struct setrow *r, long idx, int create) {
     if (idx > r->nelem) {
         if (!create) return NULL;
         long cap = idx < 64 ? 64 : idx;
-        char (*ne)[96] = realloc(r->elem, (size_t)cap * 96);
+        /* sizeof *ne, not the element width written out: this said 96 while the
+         * element was VALSZ, and every array SET symbol then wrote 256 bytes into
+         * 96-byte slots -- 11 modules died in the gate. */
+        char (*ne)[VALSZ] = realloc(r->elem, (size_t)cap * sizeof *ne);
         unsigned char *ns = realloc(r->eset, (size_t)cap);
         if (!ne || !ns) { fprintf(stderr, "as370: out of memory growing &%s to %ld elements\n", r->name, cap); exit(2); }
-        memset(ne + r->nelem, 0, (size_t)(cap - r->nelem) * 96);
+        memset(ne + r->nelem, 0, (size_t)(cap - r->nelem) * sizeof *ne);
         memset(ns + r->nelem, 0, (size_t)(cap - r->nelem));
         r->elem = ne; r->eset = ns; r->nelem = (int)cap;
     }
@@ -1495,7 +1511,7 @@ static void set_put(struct ctx *c, const char *n, const char *v) {
     }
     char *slot = (idx < 0) ? r->val : row_elem(r, idx, 1);
     if (!slot) return;
-    scopy(slot, v, 95);
+    scopy(slot, v, VALSZ - 1);
 }
 /* release a context's array element vectors (the rows themselves are inline) */
 static void set_free(struct ctx *c) {
@@ -1519,17 +1535,17 @@ static int sub_count(const char *v) {
 }
 static void sub_elem(const char *v, int idx, char *out) {
     out[0] = 0;
-    /* scopy, not strncpy: OUT holds 96 bytes and V can be the whole &SYSLIST
+    /* scopy, not strncpy: OUT holds VALSZ bytes and V can be the whole &SYSLIST
      * buffer, so gcc rightly reads the pair as a truncating copy under -Werror.
-     * The truncation is intended -- a variable symbol's value is bounded at 95
-     * here as everywhere in this evaluator -- and scopy says so and terminates. */
-    if (v[0] != '(') { if (idx == 1) scopy(out, v, 95); return; }
+     * The truncation is intended -- a value is bounded at 255 here as everywhere
+     * in this evaluator -- and scopy says so and terminates. */
+    if (v[0] != '(') { if (idx == 1) scopy(out, v, VALSZ - 1); return; }
     const char *s = v + 1, *p = s; int n = 1, d = 0, q = 0;
     for (;; p++) {
         if (*p == '\'') { q = !q; continue; }
         if (!q && *p == '(') { d++; continue; }
         if ((!q && *p == ',' && d == 0) || (!q && *p == ')' && d == 0) || !*p) {
-            if (n == idx) { int L = (int)(p - s); if (L > 95) L = 95; memcpy(out, s, L); out[L] = 0; return; }
+            if (n == idx) { int L = (int)(p - s); if (L > VALSZ - 1) L = VALSZ - 1; memcpy(out, s, L); out[L] = 0; return; }
             n++; s = p + 1; if ((*p == ')' && d == 0) || !*p) return;
         } else if (!q && *p == ')') d--;
     }
@@ -1557,7 +1573,7 @@ static void vref(struct ctx *c, const char *ref, char *out) {
      * not blanks, and K' of it is 0 (ifnx3n.asm:395-406) -- which is what makes
      * IEDHJN's '&SYSPARM'(1,4) reach IFO117 rather than yielding four blanks.
      * It resolves, so R2 substitutes it away instead of leaving it verbatim. */
-    if (!strcmp(nm, "SYSPARM")) { scopy(out, g_sysparm, 95); return; }
+    if (!strcmp(nm, "SYSPARM")) { scopy(out, g_sysparm, VALSZ - 1); return; }
     /* Only inside a macro: IFOX00 rejects &SYSECT in open code with IFO006
      * (undefined variable symbol) rather than substituting anything, so open
      * code is left to the general undefined-symbol path -- that is #97, not
@@ -1636,20 +1652,20 @@ static void vref(struct ctx *c, const char *ref, char *out) {
                 memcpy(one, t, (size_t)L2); one[L2] = 0;
                 const char *sep = ep_; struct ctx *sec = ec_;
                 long idx = eval_seta(c, one); ep_ = sep; ec_ = sec;   /* save/restore parser state */
-                char nxt[96]; sub_elem(cur, (int)idx, nxt);
+                char nxt[VALSZ]; sub_elem(cur, (int)idx, nxt);
                 scopy(cur, nxt, sizeof cur - 1);
                 if (!*e2) break;
                 t = e2 + 1;
             }
-            scopy(out, cur, 95);
+            scopy(out, cur, VALSZ - 1);
         }
         else { long idx; { const char *sep = ep_; struct ctx *sec = ec_; idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec; } char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn);
-            if (v) { strncpy(out, v, 95); out[95] = 0; }
-            else { int a, decl = 0; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; decl = 1; break; } g_vref_res = decl; strncpy(out, def, 95); out[95] = 0; } }   /* unset array element -> declared default, else unresolved */
+            if (v) { scopy(out, v, VALSZ - 1); }
+            else { int a, decl = 0; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; decl = 1; break; } g_vref_res = decl; scopy(out, def, VALSZ - 1); } }   /* unset array element -> declared default, else unresolved */
     } else {
         if (!is_param) base = set_find(c, amp);
         if (!base) { base = ""; g_vref_res = 0; }
-        strncpy(out, base, 95); out[95] = 0;
+        scopy(out, base, VALSZ - 1);
     }
 }
 /* substitute all & references in a model statement (with &x. concatenation).
@@ -1683,7 +1699,7 @@ static void msub_ex(struct ctx *c, const char *src, char *dst, size_t dstsz, int
             while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && ri < 30) ref[ri++] = *p++;
             if (*p == '(') { ref[ri++] = '('; p++; int d = 1; while (*p && d && ri < 42) { if (*p=='(')d++; else if(*p==')'){d--; if(!d){p++;break;}} ref[ri++]=*p++; } ref[ri++] = ')'; }
             ref[ri] = 0;
-            char v[96]; vref(c, ref, v);
+            char v[VALSZ]; vref(c, ref, v);
             if (keepunres && !g_vref_res) {
                 /* R2: a reference that names nothing is left EXACTLY as written,
                  * concatenation dot included, so the card is byte-identical to
@@ -1732,10 +1748,10 @@ static long e_prim(void) {
     e_sp();
     if (*ep_ == '(') { ep_++; long v = e_expr(); e_sp(); if (*ep_ == ')') ep_++; return v; }
     if ((*ep_ == 'N' || *ep_ == 'K' || *ep_ == 'L') && ep_[1] == '\'') {
-        int kind = *ep_; ep_ += 2; char ref[44], v[96];
+        int kind = *ep_; ep_ += 2; char ref[44], v[VALSZ];
         if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); }
         else if (kind == 'L') { int ln = 0;   /* L'SYM names the symbol directly, not through a variable */
-            while (*ep_ && !strchr("+-*/(), ", *ep_) && ln < 95) v[ln++] = *ep_++;
+            while (*ep_ && !strchr("+-*/(), ", *ep_) && ln < VALSZ - 1) v[ln++] = *ep_++;
             v[ln] = 0; }
         else v[0] = 0;
         /* N'&SYSLIST is the NUMBER OF POSITIONAL OPERANDS, and it must not be
@@ -1769,7 +1785,7 @@ static long e_prim(void) {
         if (*ep_ == '\'') ep_++;
         return v;
     }
-    if (*ep_ == '&') { char ref[44], v[96]; e_readref(ref); vref(ec_, ref, v); return selfdef(v); }
+    if (*ep_ == '&') { char ref[44], v[VALSZ]; e_readref(ref); vref(ec_, ref, v); return selfdef(v); }
     return strtol(ep_, (char **)&ep_, 10);
 }
 static long e_term(void) {
@@ -1796,8 +1812,14 @@ static void set_canon(struct ctx *c, const char *name, char *out) {
 }
 /* SETC: 'string'(with subst, optional substring (s,l)) or a bare &ref */
 static const char *type_attr(struct ctx *c, const char *p, char *out);   /* fwd: T' (#257) */
-static void eval_setc(struct ctx *c, const char *s, char *out) {
-    out[0] = 0; int olen = 0; const char *p = s;
+/* OUT is bounded by OUTSZ and always was in practice -- the clamp below used to
+ * be a literal 95 that happened to fit every caller's buffer, so raising the
+ * value limit to IFOX00's 255 turned an accidental agreement into a stack
+ * overflow that only ASAN saw (tests/msub_overflow.s). The size is a parameter
+ * now, the way msub_ex takes one, so the two cannot drift apart again. */
+static void eval_setc(struct ctx *c, const char *s, char *out, size_t outsz) {
+    out[0] = 0; int olen = 0, olim = (int)outsz - 1; const char *p = s;
+    if (olim < 0) olim = 0;
     /* a SETC operand is one or more terms joined by '.' (concatenation); each
      * term is a 'quoted' string (optionally msub'd, optional (start,len)
      * substring) or a &variable. */
@@ -1857,7 +1879,7 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
         } else {                                   /* bare text up to a '.' */
             int i = 0; while (*p && *p != '.' && *p != ' ' && i < 255) piece[i++] = *p++; piece[i] = 0;
         }
-        int pl = (int)strlen(piece); if (olen + pl > 95) pl = 95 - olen; if (pl < 0) pl = 0;
+        int pl = (int)strlen(piece); if (olen + pl > olim) pl = olim - olen; if (pl < 0) pl = 0;
         memcpy(out + olen, piece, pl); olen += pl; out[olen] = 0;
         if (*p == '.') p++;                        /* concatenation */
         else break;
@@ -1998,7 +2020,7 @@ static int term_is_str(const char *t) { return t[0] == '\'' || (t[0] == 'T' && t
  * One function because there were two callers and only one of them existed: the
  * comparison path had it and the character path did not (cc370#257). */
 static const char *type_attr(struct ctx *c, const char *p, char *out) {
-    char ref[44], v[96]; int i = 0;
+    char ref[44], v[VALSZ]; int i = 0;
     if (*p == '&') {
         ref[i++] = *p++;
         while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 42) ref[i++] = *p++;
@@ -2028,7 +2050,7 @@ static const char *type_attr(struct ctx *c, const char *p, char *out) {
      * `HEXCNVT (3),(2),4' -- six AMDPR* modules, and IFOX00 assembles all six
      * without a word. */
     if (v[0] == '(') {
-        char el[96]; int d = 0, k = 0; const char *e = v + 1;
+        char el[VALSZ]; int d = 0, k = 0; const char *e = v + 1;
         while (*e && k < (int)sizeof el - 1) {
             if (*e == '(') d++;
             else if (*e == ')') { if (!d) break; d--; }
@@ -2037,7 +2059,7 @@ static const char *type_attr(struct ctx *c, const char *p, char *out) {
         }
         el[k] = 0;
         if (el[0] == '(') { strcpy(out, "U"); return p; }   /* a nested sublist is not descended into */
-        scopy(v, el, 95);
+        scopy(v, el, VALSZ - 1);
     }
     if (!v[0]) strcpy(out, "O");
     else if (is_selfdef(v)) strcpy(out, "N");
@@ -2045,9 +2067,9 @@ static const char *type_attr(struct ctx *c, const char *p, char *out) {
     return p;
 }
 /* a comparison term is character if quoted or a T' (type) attribute */
-static void term_str(struct ctx *c, const char *t, char *out) {
+static void term_str(struct ctx *c, const char *t, char *out, size_t outsz) {
     if (t[0] == 'T' && t[1] == '\'') type_attr(c, t + 2, out);
-    else eval_setc(c, t, out);
+    else eval_setc(c, t, out, outsz);
 }
 static int rel_apply(const char *rel, int cmp) {
     if (!strcmp(rel, "EQ")) return cmp == 0;
@@ -2060,7 +2082,7 @@ static int rel_apply(const char *rel, int cmp) {
 }
 static int eval_comp(struct ctx *c, const char *L, const char *rel, const char *R) {
     int cmp;
-    if (term_is_str(L) || term_is_str(R)) { char ls[128], rs[128]; term_str(c, L, ls); term_str(c, R, rs);
+    if (term_is_str(L) || term_is_str(R)) { char ls[VALSZ], rs[VALSZ]; term_str(c, L, ls, sizeof ls); term_str(c, R, rs, sizeof rs);
         /* A CHARACTER comparison orders by LENGTH first and only then by
          * content: a shorter string is less than a longer one whatever the
          * characters are.  strcmp() instead reads them left to right, so it makes
@@ -2119,7 +2141,7 @@ static int eval_cond(struct ctx *c, const char *cond) {
      * what it did -- `if (nt < 31) nt++' kept overwriting the last slot, so a
      * long condition evaluated on its first thirty-one tokens and no one was
      * told (cc370#236, the same shape as the 126-character cut in aif_split). */
-    char toks[96][256]; int nt = 0, tovf = 0; const char *p = cond;
+    char toks[VALSZ][256]; int nt = 0, tovf = 0; const char *p = cond;
     while (*p) {
         while (*p == ' ') p++;
         if (!*p) break;
@@ -2532,8 +2554,9 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
     struct macro *m = &macros[nmac++]; memset(m, 0, sizeof *m);
     scopy(m->namep, pl, sizeof m->namep - 1); scopy(m->name, po, sizeof m->name - 1);
     if (pp[0]) { char flds[100][FLDW]; int nf = split_fields(pp, flds, 100), k;
+        if (g_fld_clipped) note_operr("parameter in macro prototype or macro instruction exceeds 255 characters (IFOX00 IFO042)", 8, g_curln);
         for (k = 0; k < nf && k < 100; k++) { char *eq = strchr(flds[k], '=');
-            if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, 39); m->pkey[k] = 1; }
+            if (eq) { *eq = 0; scopy(m->pname[k], flds[k], 19); scopy(m->pdef[k], eq + 1, VALSZ - 1); m->pkey[k] = 1; }
             else scopy(m->pname[k], flds[k], 19);
             m->nparm++; } }
     while (++i < nin) { char bb[STMTSZ], bl[32], bo[16], bd[STMTSZ]; scopy(bb, in[i], STMTSZ - 1); parse(bb, bl, bo, bd);
@@ -2578,7 +2601,7 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
     }
     if (!strcmp(op, "SETA")) { long v = eval_seta(c, opnd); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, nb); return 1; }
     if (!strcmp(op, "SETB")) { int v = opnd[0] == '(' ? eval_cond(c, opnd + 1) : (int)eval_seta(c, opnd); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v ? "1" : "0"); return 1; }
-    if (!strcmp(op, "SETC")) { char v[128]; eval_setc(c, opnd, v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
+    if (!strcmp(op, "SETC")) { char v[VALSZ]; eval_setc(c, opnd, v, sizeof v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
     if (!strcmp(op, "ANOP")) return 1;
     return 0;
 }
@@ -2689,15 +2712,19 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     c->m = m; c->namepval = lbl; c->sysndx = ++g_sysndx;
     scopy(c->sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
     int k;
-    for (k = 0; k < m->nparm; k++) { strncpy(c->pv[k], m->pkey[k] ? m->pdef[k] : "", 95); c->pv[k][95] = 0; }
+    for (k = 0; k < m->nparm; k++) { scopy(c->pv[k], m->pkey[k] ? m->pdef[k] : "", VALSZ - 1); }
     if (opnd[0]) { int na = split_fields(opnd, args, MAXSYSLIST), pos = 0;
+        /* IFOX00 IFO042, measured on the guest: 255 characters is clean, 256 and
+         * up are flagged at severity 8.  A parameter that long is cut to fit
+         * whatever we do -- what must not happen is cutting it in silence. */
+        if (g_fld_clipped) note_operr("parameter in macro prototype or macro instruction exceeds 255 characters (IFOX00 IFO042)", 8, g_curln);
         for (k = 0; k < na; k++) {
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
             if (iskw) { *eq = 0; int j; char nm[66]; snprintf(nm, sizeof nm, "&%.63s", args[k]);
-                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { strncpy(c->pv[j], eq + 1, 95); c->pv[j][95] = 0; break; } }
-            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c->pv[j], args[k], 95); break; } cc2++; }
-                if (pos < MAXSYSLIST) { scopy(c->syslist[pos], args[k], 127); }
+                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { scopy(c->pv[j], eq + 1, VALSZ - 1); break; } }
+            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c->pv[j], args[k], VALSZ - 1); break; } cc2++; }
+                if (pos < MAXSYSLIST) { scopy(c->syslist[pos], args[k], VALSZ - 1); }
                 else if (pos == MAXSYSLIST) note_operr("More than 255 positional macro operands - the rest are not addressable through &SYSLIST", 8, g_curln);
                 pos++; c->nsyslist = pos; }
         }
@@ -3141,7 +3168,7 @@ static void note_notimpl(const char *what, int line) {
  * ERR236 ILLEGAL CHARACTER IN EXPRESSION, ERR177 MISSING OPERAND. The severity
  * is passed with the message because they differ: 178, 224 and 236 are 8 while
  * 177 is 12 (jermsgcd.asm). */
-static char operr_msg[128][96]; static int operr_ln[128]; static int operr_sev[128]; static int noperr;
+static char operr_msg[128][VALSZ]; static int operr_ln[128]; static int operr_sev[128]; static int noperr;
 static void note_operr(const char *msg, int sev, int line) {
     /* A diagnostic with no statement to attach to is dropped, not recorded: main
      * prints lines[operr_ln[j]] and line_org[operr_ln[j]], so a negative index
@@ -3216,7 +3243,7 @@ static int mnote_split(const char *opnd, char *text, int textsz, char *image, in
  * The call sites test dsect_sect[] EXPLICITLY rather than reusing !tgtreal: an
  * undefined symbol fails that test too and is a different error entirely. */
 static void note_dsect_adcon(const char *sym, int line) {
-    char m[96];
+    char m[VALSZ];
     /* The symbol is bounded so the whole message provably fits: the call sites
      * pass a char[64], and note_operr keeps 95 characters, so an unbounded %s
      * could cut the error number off the end -- and gcc's -Wformat-truncation
@@ -4240,7 +4267,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                              * cannot resolve is a term it cannot prove absolute,
                              * and IFO217 is severity 12 -- so one forward
                              * reference here takes the whole assembly to RC 12. */
-                            char m[96];
+                            char m[VALSZ];
                             snprintf(m, sizeof m, "Duplication factor uses a symbol not previously defined (IFOX00 IFO231) - %.20s", ubad);
                             note_operr(m, 8, i);
                             note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);

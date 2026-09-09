@@ -405,6 +405,20 @@ rm -f /tmp/_au.$$
 # buffer -- and T2 is the short control that was always right.
 #   main 9606b53   AL1(,)      rc 8, More than 64
 #   IFOX00, this   X'4D58'     rc 0
+# macbuf is the second #153 oracle: the fixed-size buffers of the macro path.
+# A parameter value lived in 96 bytes, a prototype default in 40, a &SYSLIST
+# element in 128 and a SETC in 96 -- four different numbers, none of them
+# IFOX00's, and every one of them cut the value and reported the CUT length
+# through K' without a word. IFOX00's limit is 255 and it says so past it:
+# measured on the guest at 255 (clean), 256, 300 and 400 (IFO042 PARAMETER IN
+# MACRO PROTOTYPE OR MACRO INSTRUCTION EXCEEDS 255 CHARACTERS, severity 8).
+# C1's third value is the probe that the ELEMENT bound was separate from the
+# parameter bound -- 95 against 127, two buffers, one construct.
+# C3 is 150 and not 200 because a SETC is an assembler operation and gets TWO
+# continuations (IFO069), where the macro calls in C1/C2 stand on four and are
+# not bounded at all. That asymmetry is #78's, measured here by accident.
+#   main 380a7c4   95,39,95   1,95,1    95
+#   IFOX00, this   200,60,200 1,200,1   150
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -416,7 +430,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
-         sublist logop collate usingmul stmtlen; do
+         sublist logop collate usingmul stmtlen macbuf setc_len95; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -2031,50 +2045,12 @@ for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8; do
 done
 fail=$((fail + rc8fail))
 
-# A SETC value is clipped at 95 characters where IFOX00 holds 255 (#151), and
-# this test asserts the DIVERGENCE, not agreement -- it fails, correctly, the day
-# #151 is fixed, and becomes a plain byte-identity check against the oracle
-# beside it.
-#
-# &T is concatenated to 128 characters. IFOX00 keeps all of it and both
-# substrings resolve: [AB][EF], rc 0. as370 keeps 95, so the substring at 127
-# indexes past the end -- and reports IFO117, which is true of the clipped value
-# and false of the program. The message names the substring; the defect is in the
-# assignment.
-#
-# The case was found in a module that indexes a 128-character GBLC translation
-# table through two macros, but that macro is web-mirror material of unestablished
-# maintenance level, so it is NOT the witness. This fixture is our own code and
-# owes it nothing.
-lenfail=0
-./as370 tests/setc_len95.s -o /tmp/_l95$$.obj >/dev/null 2>/tmp/_l95$$.err; rcl=$?
-mine=$(python3 -c "
-d=open('/tmp/_l95$$.obj','rb').read(); t=b''
-for o in range(0,len(d)-79,80):
-    c=d[o:o+80]
-    if c[:4]==bytes((0x02,0xE3,0xE7,0xE3)): t+=c[16:16+((c[10]<<8)|c[11])]
-print(t.hex())
-")
-ref=$(python3 -c "
-d=open('tests/ref/setc_len95.obj','rb').read(); t=b''
-for o in range(0,len(d)-79,80):
-    c=d[o:o+80]
-    if c[:4]==bytes((0x02,0xE3,0xE7,0xE3)): t+=c[16:16+((c[10]<<8)|c[11])]
-print(t.hex())
-")
-if [ "$ref" != "bac1c2bbbac5c6bb" ]; then
-    echo "setc_len95: FAIL (the IFOX00 oracle is not [AB][EF] -- reference changed?)"; lenfail=1
-elif [ "$mine" = "$ref" ]; then
-    echo "setc_len95: FAIL (as370 now matches IFOX00 -- #151 is fixed; drop this test and compare the decks)"; lenfail=1
-elif [ "$mine" != "bac1c2bbbabb" ] || [ $rcl != 8 ]; then
-    echo "setc_len95: FAIL (expected the 95-char clip: [AB][] at RC 8, got $mine at RC $rcl)"; lenfail=1
-elif ! grep -q 'IFO117' /tmp/_l95$$.err; then
-    echo "setc_len95: FAIL (the clip must at least be audible -- no IFO117)"; lenfail=1
-else
-    echo "setc_len95: OK (clipped at 95 as #151 describes; IFOX00 keeps all 128)"
-fi
-rm -f /tmp/_l95$$.obj /tmp/_l95$$.err
-fail=$((fail + lenfail))
+# #151 is CLOSED: a SETC value is held to IFOX00's 255 characters, not 95.
+# This block used to assert the DIVERGENCE and was written to fail the day the
+# defect was fixed -- "drop this test and compare the decks". It did exactly
+# that when the macro-path buffers were raised, so the fixture has moved into
+# the deck loop above and its oracle now stands as a plain byte-identity check.
+# tests/ref/setc_len95.obj is unchanged; only what we assert about it is.
 
 # --- issue #141: variable symbols are substituted in OPEN CODE ---
 # --- issue #141: variable symbols are substituted in OPEN CODE ---------------
