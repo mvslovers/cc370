@@ -586,6 +586,24 @@ rm -f /tmp/_au.$$
 # to the literal LENGTHS instead, where #317 was. It is kept so the next person
 # reading #317 can see that the padding hypothesis was tested and not merely
 # skipped -- and it still guards the segmenting it happened to prove correct.
+# litpz is the #329 oracle: a packed or zoned LITERAL. lit_classify() had no arm
+# for P or Z at all, so `=P'0'' fell into the default and reserved FOUR bytes
+# where it is one, X'0C'. That is not only three bytes too many: the pool is
+# segmented by the alignment the length implies, so a 4-byte P sorts into the
+# fullword group and every literal behind it moves. BNGTLOCL and BNGTRMOT each
+# carry two, and came out nine bytes long with 4,568 and 7,628 bytes differing.
+# The emission needed the same care: emit_decimal() rejects any character that
+# is not a digit or a point, the closing quote included, so handing it `q + 1'
+# sized every packed literal at 1 byte and emitted nothing -- right for P'0' by
+# accident and wrong for anything longer. It gets the bare value now, the way
+# the DC path hands it one.
+# Every literal here is paired with its own DC twin in the same assembly, which
+# is what makes the fixture readable years later: the DC form was already right,
+# so a difference between the two cannot be the pool, the alignment or the
+# ordering. PL3 and ZL2 are in it because an explicit length takes a different
+# route through emit_decimal than a natural one.
+#   ff783f6        =P'0' four bytes, no value written
+#   IFOX00, this   every literal equals its DC twin
 # litscale is the #327 oracle: a scale modifier on a LITERAL. lit_classify()
 # never parsed one, so `=FS3'65535'' assembled as 65535 where the identical DC
 # constant gave 65535 x 2**3 = X'0007FFF8'.
@@ -656,7 +674,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup pool contsev align blankcont litscale; do
+         litdup pool contsev align blankcont litscale litpz; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
