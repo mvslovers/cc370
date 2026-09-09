@@ -1,0 +1,46 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 03.42 09/09/26
+T         SD  0001 000000 000020
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 03.42 09/09/26
+                                      1 * Die BR-Formen von BNP und BNM (#298).
+                                      2 *
+                                      3 * Die BC-Formen standen in der Tabelle, ihre BR-Gegenstuecke nicht --
+                                      4 * dieselben Masken, 13 und 11. IGG0203A und IGC0009D benutzen sie, und
+                                      5 * as370 meldete `Undefined operation code', wo IFOX00 sauber ist.
+                                      6 *
+                                      7 * Die uebrigen zehn BR-Formen stehen als Kontrolle daneben: eine
+                                      8 * Maske, die man beim Ergaenzen verwechselt, faellt hier auf.
+000000                                9 T        CSECT
+                            00000    10          USING *,15
+000000 07DE                          11          BNPR  14
+000002 07BE                          12          BNMR  14
+000004 47D0 F000      00000          13          BNP   T
+000008 47B0 F000      00000          14          BNM   T
+00000C 07FE                          15          BR    14
+00000E 078E                          16          BER   14
+000010 077E                          17          BNER  14
+000012 070E                          18          NOPR  14
+000014 072E                          19          BHR   14
+000016 074E                          20          BLR   14
+000018 07DE                          21          BNHR  14
+00001A 07BE                          22          BNLR  14
+00001C 071E                          23          BOR   14
+00001E 07EE                          24          BNOR  14
+                                     25          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 03.42 09/09/26
+T        00001 00000000 00009  00013 00014
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 03.42 09/09/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         25
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        46
