@@ -245,6 +245,19 @@ static char dsect_sect[256];                  /* dsect_sect[id]=1 if section id 
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
 static int  errors;
+/* The statement being parsed came from a macro expansion (or from open-code
+ * substitution). A BLANK in it does not end the operand field: IFOX00 fixes the
+ * field boundaries on the MODEL card and substitutes into them, so a variable
+ * whose value is a blank stays inside the operand. as370 re-parses the
+ * substituted text and stopped at that blank -- `IFDPF1 DS,C,&Z,&S' with &Z a
+ * single blank lost BOTH remaining operands, so IFDPF1's &S was empty, an AIF on
+ * it took the wrong branch, and PARTITEM was never defined (cc370#302).
+ *
+ * The mirror of #295: there an operand that substituted to NOTHING had to stay
+ * empty, here one that substitutes to a BLANK has to stay in the field. Same
+ * root -- the boundaries belong to the model card, not to the result. The remark
+ * is already gone by then (#295 cuts it), so the operand is the remainder. */
+static int  g_genstmt;
 static int  g_curln;           /* lines[] index of the statement being assembled -- line context for diagnostics raised from helpers (e.g. sym_get) */
 static int  g_pass;            /* the pass do_pass is running, 0 outside it -- x_factor's undefined-symbol diagnostic
                                 * must stay silent in pass 1, where a forward reference is not yet defined and legal */
@@ -1251,10 +1264,14 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
         if (*p == '\'') { if (q || !attr_apos(line, (int)(p - line))) q = !q; }
         else if (!q && *p == '(') d++;
         else if (!q && *p == ')') { if (d) d--; }
-        if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
+        if (!q && d == 0 && !g_genstmt && (*p == ' ' || *p == '\t')) break;
         if (i < STMTSZ - 1) opnd[i++] = *p;
         p++;
     } }
+    /* A generated statement's operand runs to the end of the text rather than to
+     * the first blank, so the card's padding to column 71 comes with it. The
+     * field ends where the text does; trailing blanks were never part of it. */
+    if (g_genstmt) while (i > 0 && (opnd[i-1] == ' ' || opnd[i-1] == '\t')) i--;
     opnd[i] = 0;
     return 1;
 }
@@ -2950,7 +2967,8 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
     char sysbuf[STMTSZ]; sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
-    scopy(buf, sysbuf, STMTSZ - 1); parse(buf, lbl, op, opnd);
+    scopy(buf, sysbuf, STMTSZ - 1);
+    { int sv = g_genstmt; g_genstmt = (g_genlevel > 0); parse(buf, lbl, op, opnd); g_genstmt = sv; }
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`.
@@ -3919,6 +3937,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
         g_curln = i;                          /* line context for diagnostics raised inside sym_get/lit_get */
+        g_genstmt = (lflags[i] & LF_GEN) != 0;   /* see g_genstmt: a blank in a generated statement is not a field end */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
