@@ -556,6 +556,18 @@ rm -f /tmp/_au.$$
 # Same root as #295: the boundaries belong to the model card, not to the result.
 #   main 30654d5   K'&C = 0, &D empty
 #   IFOX00, this   K'&C = 1, &D = MVM22
+# pool is the NEGATIVE control for #317, and it is in the corpus because it
+# reproduced nothing. Sixteen modules had a literal pool N bytes short with every
+# later displacement exactly N lower, and the obvious reading was alignment
+# padding inside the pool -- IFOX00 aligning =A/=F on a fullword and =H on a
+# halfword where as370 packed them. This fixture was built to show that: mixed
+# widths =A =C =D =F =H =X, referenced in a deliberately awkward order so a pool
+# that merely follows first-reference order cannot match one that groups by size.
+# Both assemblers produced the SAME pool, byte for byte.
+# That negative is what said the segmenting was already right and sent the search
+# to the literal LENGTHS instead, where #317 was. It is kept so the next person
+# reading #317 can see that the padding hypothesis was tested and not merely
+# skipped -- and it still guards the segmenting it happened to prove correct.
 # litdup is the #317 oracle: a duplication factor in a LITERAL. `=8X'0F'' is
 # eight bytes, and as370 skipped the factor entirely -- one byte. That is not
 # merely a short literal: the pool is segmented by lenalgn(size), so a literal of
@@ -617,7 +629,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup; do
+         litdup pool; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
