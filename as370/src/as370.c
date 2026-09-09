@@ -2053,8 +2053,24 @@ static int eval_comp(struct ctx *c, const char *L, const char *rel, const char *
          * operand on the LEFT with blanks, which is how the manuals put it;
          * length-first is the same order and does not depend on blank being the
          * lowest character in the set. */
-        size_t ll = strlen(ls), rl = strlen(rs);
-        cmp = (ll < rl) ? -1 : (ll > rl) ? 1 : strcmp(ls, rs); }
+        /* Content is compared in the EBCDIC collating sequence, not the host's.
+         * strcmp() orders by the ASCII values the source characters happen to
+         * have here, and the two sequences disagree in exactly one place that
+         * assembler source reaches: LETTERS SORT BEFORE DIGITS in EBCDIC and
+         * after them in ASCII. Letter against letter and digit against digit
+         * agree, which is why 'A' LT 'B' and '1' LT '2' were always right and
+         * five instruments walked past this for two days (cc370#264).
+         *
+         * AMACLIB(DOM)'s register test is the standard IBM idiom --
+         * `AIF ('&MSG(1)' GE '1' AND '&MSG(1)' LE '12')' -- and `DOM MSG=(R1)'
+         * makes that 'R1' LE '12', true in EBCDIC and false here. 103 macros in
+         * the libraries carry the shape. */
+        size_t ll = strlen(ls), rl = strlen(rs), ci;
+        cmp = (ll < rl) ? -1 : (ll > rl) ? 1 : 0;
+        for (ci = 0; !cmp && ci < ll; ci++) {
+            unsigned char le = mvs_a2e((unsigned char)ls[ci]), re = mvs_a2e((unsigned char)rs[ci]);
+            if (le != re) cmp = (le < re) ? -1 : 1;
+        } }
     else { long lv = eval_seta(c, L), rv = eval_seta(c, R); cmp = (lv < rv) ? -1 : (lv > rv) ? 1 : 0; }
     return rel_apply(rel, cmp);
 }

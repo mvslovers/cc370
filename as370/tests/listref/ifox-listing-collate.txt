@@ -1,0 +1,63 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 19.38 09/08/26
+COLLATE   SD  0001 000000 00000E
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.38 09/08/26
+                                      1 * Ein Zeichenvergleich ordnet nach der EBCDIC-Sortierfolge, nicht nach
+                                      2 * der des Wirts. strcmp() ordnet nach den ASCII-Werten, die die
+                                      3 * Quellzeichen hier zufaellig haben, und die beiden Folgen weichen an
+                                      4 * genau EINER Stelle voneinander ab, die Assemblerquellen erreichen:
+                                      5 *
+                                      6 *     In EBCDIC sortieren BUCHSTABEN VOR ZIFFERN, in ASCII danach.
+                                      7 *
+                                      8 * Buchstabe gegen Buchstabe und Ziffer gegen Ziffer stimmen in beiden
+                                      9 * ueberein - deshalb waren C3 und C4 immer richtig, und deshalb sind
+                                     10 * fuenf Instrumente zwei Tage lang daran vorbeigelaufen (cc370#264).
+                                     11 *
+                                     12 * AMACLIB(DOM) prueft ein Register mit der ueblichen IBM-Wendung
+                                     13 *
+                                     14 *     AIF ('&MSG(1)' GE '1' AND '&MSG(1)' LE '12').DOML4
+                                     15 *
+                                     16 * und `DOM MSG=(R1)' macht daraus 'R1' LE '12' - in EBCDIC wahr, hier
+                                     17 * falsch. 103 Makros der Bibliotheken tragen diese Form.
+                                     18 *
+                                     19 * C3 und C4 sind die Kontrollen: sie stimmen in BEIDEN Sortierfolgen,
+                                     20 * eine Fixture nur daraus besteht auf beiden Binaries. C6 und C7
+                                     21 * halten die Laengenregel aus #189 fest, die vor dem Inhalt greift und
+                                     22 * sich nicht bewegen darf.
+                                     23 *
+                                     24 * Punktzahl:  ohne Fix N1 N2 Y3 Y4 N5 Y6 Y7
+                                     25 *             mit Fix  Y1 Y2 Y3 Y4 Y5 Y6 Y7
+000000                               26 COLLATE  CSECT
+                                     27          AIF   ('A' LE '1').A
+000000 E8F1                          28 .A       DC    C'Y1'
+                                     29 .B       AIF   ('Z' LT '0').C
+000002 E8F2                          30 .C       DC    C'Y2'
+                                     31 .D       AIF   ('A' LT 'B').E
+000004 E8F3                          32 .E       DC    C'Y3'
+                                     33 .F       AIF   ('1' LT '2').G
+000006 E8F4                          34 .G       DC    C'Y4'
+                                     35 .H       AIF   ('R1' LE '12').I
+000008 E8F5                          36 .I       DC    C'Y5'
+                                     37 .J       AIF   ('2' LE '11').K
+00000A E8F6                          38 .K       DC    C'Y6'
+                                     39 .L       AIF   ('B' LE 'AB').M
+00000C E8F7                          40 .M       DC    C'Y7'
+                                     41 .N       ANOP
+                                     42          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 19.38 09/08/26
+COLLATE  00001 00000000 00026
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 19.38 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         56
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        63
