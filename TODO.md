@@ -72,7 +72,7 @@ this file that is a joint plan rather than our own ranking:**
 | A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
 | B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. **It is larger than the five, and #165 proved how**: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. **`dc_split` is now measured and closed** (#218): it read every apostrophe as a string quote, so `DC AL1(L'FLD),X'FF'` dropped the `X'FF'` — at rc 0, and **IFOX00 assembles the same statement at rc 0 with no diagnostics either**, which is the cleanest argument in this file for why the deck is the instrument. `EQU` (`:3413`) and `SYM+(expr)` (`:761`) remain suspected and unscoped. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
-| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. **#153's `JT*` half is open as #268**: four silent caps at about 1024 downstream of a joiner that builds into `acc[8192]` — `sysvar_sub` cut every source line at 1022, `parse()` the operand at 1023, and `&SYSLIST` is materialised as ONE synthetic sublist whose buffer, and the subscript walker's copy of it, bounded the whole list rather than an element. Plus `MAXSYSLIST` at 64, which IFOX00 does not have and which no scan could see because the statement was cut to ~61 operands before the count was taken. JTEXT's `DBV` call carries 86 and got 61, at rc 0 with no diagnostic anywhere. +2, none lost, 15 closer; census 880 → 873 modules flagged, 16,173 → 16,014 undefined-symbol sites. **#154 now has its mechanism and it is open as #266**: one `USING` names up to 16 base registers and assigns them BY POSITION (`USING D,11,12,10` -> 11 for D, 12 for D+4096, 10 for D+8192); as370 read the first and dropped the rest, so a control block wider than 4096 bytes lost every field past the first range. +25 in the tree, none lost. Tree-wide census of the diagnostic itself, both binaries, every module: **88 modules / 6,604 sites -> 41 / 1,671**, so the fix silences 47 modules — the 25 that became identical and **22 more whose deck still differs**, the same shape as the `IFNX*` eight. `mvs38src` re-derived the class file to 8 (`IDA019C1 IDA019R4 IDA019RU IDA019RY IEHPROG1 IGC0001F ISTINCU7 ISTNSC00`), and both binaries raise it on all 8 — this fix touched none of them. **The opposite failure mode is real and its modules are `IEAVTRTH`, `IEAVTRTR` and `IEAVTRTS`**: byte-identical to IFOX00, rc 8, four sites each. (An earlier version of this line named `IEFVEA` for that role and gave 32 -> 9; both were wrong — the measurement behind them ran with `$MACFLAGS` unquoted, which zsh does not word-split, so as370 saw no `-I` at all and every macro was undefined. `IEFVEA` is fully fixed: 112 sites and rc 8 before, rc 0 and an identical deck after.) |
+| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. **Both named halves are fixed and merged, and the classes are re-derived** — see the 2026-09-09 entry in *Recently landed*. What is left of Paket A is measured rather than named: **173 modules differing, 84 of them silent**, and the two instruments that can still see a defect in them are `mvs38src`'s three-way table (IBM's shipped object as a witness neither assembler produced) and its per-section views. Every text-reading instrument is blind to the class the evening actually turned up. |
 
 `#117` and `#118` do not touch that consumer today — they upload over FTP and
 xmit370 is not in their chain. **At their M7 it changes**: `++PTF`/`++USERMOD`
@@ -615,6 +615,64 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-09 — twelve merges, none lost, 5,213 → 5,334 of 5,528 (96.8 %); 173 differing, 84 of them silent.**
+
+  | PR | | gained |
+  |---|---|---|
+  | #266 | a `USING` may name up to 16 base registers (#154) | +25 |
+  | #268 | a statement is as long as the joiner made it (#153) | +2 |
+  | #269 | a macro parameter value is 255 characters (#151) | +46 |
+  | #271 | a `DC` operand carries as many values as it has room for (#270) | +0 |
+  | #274 | a term following a substring is concatenated (#273) | +1 |
+  | #278 | a `USING` operand beginning with `*` is an expression (#275) | +10 |
+  | #280 | an `ORG` past the content extends the section (#279) | +1 |
+  | #283 | the section high-water mark rises in pass 1 too (#282) | +7 |
+  | #284 | a section outranks an ER of the same name (#281) | +46 |
+  | #286 | a definition outranks a lingering ER type (#285) | +6 |
+  | #289 | `END` ends the assembly (#288) | +2 |
+
+  **The first four are silent CAPS**: a fixed size reached, the excess dropped, and
+  the assembler carrying on as though nothing had been. They never announce
+  themselves — the symptom is always something else, a long way downstream.
+  `JTEXT`'s whole `JT*` set came out of one `DBV` call carrying 86 positional
+  operands of which 61 survived, at rc 0 with no diagnostic anywhere.
+
+  **The last seven are all the same sentence, and it is the result worth keeping.**
+  Not one of them is a wrong byte of code generation. The text as370 emitted was
+  already right; what diverged was **what the object said about it** — a length
+  (#280, #283), an origin (#278, #283), which section the text was filed under
+  (#284, #286), or a name that never got its counter (#274). as370 computes the
+  text from the source and the metadata from its own bookkeeping, and only the
+  first of those had ever been under a byte-for-byte test.
+
+  **How they were found is the transferable part.** Every instrument until then
+  compared as370 against IFOX00 and treated IFOX00 as the authority — which is
+  exactly no help on a divergence where neither assembler says anything. `mvs38src`
+  built a **third witness**: IBM's own shipped DLIB object, produced by neither of
+  them. Where it agrees with IFOX00, as370 is wrong without any appeal to
+  authority. Six modules selected that way, five closed, and every one of the five
+  lived outside the bytes anyone was comparing.
+
+  Two open at the end of it: **#290**, where the rule is measured against the oracle
+  (`EXTRN X` then `X CSECT` is IFO196 and unnamed private code, while `DC V(X)` then
+  `X CSECT` keeps the name) and the obvious implementation produces a malformed
+  deck — deliberately not shipped. And `IFCEA155`, a **−8** across 3,876 bytes.
+
+  **Two method notes that cost real time and are worth the space.**
+
+  *A gate line can be green on a deck that is structurally wrong.* #290's naive fix
+  reads `+0, closer 1, none lost` while writing TXT under an ESDID with no ESD entry.
+  `mvs38src` closed that hole the same evening with `deck_lint.py`, which asks of one
+  deck alone whether it is well formed; every as370 deck outside the five excluded
+  CICS modules passes.
+
+  *Aggregation fails where measurement does not.* Four times in one day the number
+  was already correct and nobody looked at it in the right shape — a class file that
+  had stopped measuring its own issue, a messages cache eleven merges stale, and both
+  sessions reading `AMASPZAP`'s module totals while its per-section view named the
+  defect. Re-measuring the witness **before** writing the commit message rather than
+  after is the only practice that caught one of them in time.
 
 - **2026-09-08/09 — twenty merges, none lost, 4,753 → 5,213 of 5,528 (94.3 %).**
 
