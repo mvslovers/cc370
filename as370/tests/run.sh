@@ -507,6 +507,16 @@ rm -f /tmp/_au.$$
 # says WHICH of them is missing. D is an ENTRY with no V() ahead of it.
 #   main 2c01e89   LD B 000018
 #   IFOX00, this   LD B 000028
+# endstop is the #288 oracle: END ends the assembly. Cards after the first END
+# are not read, not listed and not assembled, and as370 read straight on.
+# Not a technicality -- the MVSBLD tree has modules with a SECOND module's source
+# appended behind the first END, and as370 assembled both into one object:
+# ISTINCU7 came out with three control sections and 2,269 bytes where IFOX00 has
+# one and 210, because IKJEGAPL is defined 1,100 cards past the END.
+# B's section must be ABSENT from the ESD, not merely empty, which is why this
+# one compares the whole deck rather than particular bytes.
+#   main 87cdac3   two sections, 4 cards
+#   IFOX00, this   one section, 3 cards
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -519,7 +529,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
-         substrcat usingexpr orglen sectlen esdvsect ldentry; do
+         substrcat usingexpr orglen sectlen esdvsect ldentry \
+         endstop; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
