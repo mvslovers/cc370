@@ -1,0 +1,86 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 19.01 09/08/26
+SETCTYPE  SD  0001 000000 000029
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.01 09/08/26
+                                      1 * T' ist ein Term eines SETC-Ausdrucks so gut wie eines Vergleichs.
+                                      2 * Nur der Vergleichspfad hatte ihn: `&T SETC T'&P' wies die vier
+                                      3 * Zeichen T'&P woertlich zu, und jedes Makro, das auf den zugewiesenen
+                                      4 * Wert verzweigt, ging falsch (cc370#257).
+                                      5 *
+                                      6 * Die ganze Maschinerie war schon da - der Vorablauf ueber offenen
+                                      7 * Code, is_selfdef, die Buchstabentabelle. Der Zeichenpfad erreichte
+                                      8 * sie nur nie. Jetzt eine Funktion, zwei Aufrufer.
+                                      9 *
+                                     10 * Die Buchstaben sind am Orakel gemessen:
+                                     11 *
+                                     12 *   DS F     F      DS H     H      DS CL7   C
+                                     13 *   DS D     D      DS XL2   X      DC A(0)  A
+                                     14 *   EQU 4    U      unbekannt U     3        N
+                                     15 *
+                                     16 * Die letzten drei sind die Kontrollen: ein EQU und ein unbekanntes
+                                     17 * Symbol geben beide U, und eine selbstdefinierende Zahl gibt N - wer
+                                     18 * nur die Typtabelle liest, faellt an der Zahl auf, wer nur auf
+                                     19 * Ziffern prueft, am EQU.
+                                     20 *
+                                     21 * Punktzahl:  ohne Fix neunmal E3 (der Buchstabe T selbst)
+                                     22 *             mit Fix  F H C D X U A U N
+                                     23          MACRO
+                                     24          QT    &P
+                                     25          LCLC  &T
+                                     26 &T       SETC  T'&P
+                                     27          DC    C'&T'
+                                     28          MEND
+000000                               29 SETCTYPE CSECT
+000000                               30 FW       DS    F
+000004                               31 HW       DS    H
+000006                               32 CH       DS    CL7
+000010                               33 DW       DS    D
+000018                               34 XX       DS    XL2
+                            00004    35 EQ4      EQU   4
+00001A 0000
+00001C 00000000                      36 LAB      DC    A(0)
+                                     37          QT    FW
+000020 C6                            38+         DC    C'F'
+                                     39          QT    HW
+000021 C8                            40+         DC    C'H'
+                                     41          QT    CH
+000022 C3                            42+         DC    C'C'
+                                     43          QT    DW
+000023 C4                            44+         DC    C'D'
+                                     45          QT    XX
+000024 E7                            46+         DC    C'X'
+                                     47          QT    EQ4
+000025 E4                            48+         DC    C'U'
+                                     49          QT    LAB
+000026 C1                            50+         DC    C'A'
+                                     51          QT    NODEF
+000027 E4                            52+         DC    C'U'
+                                     53          QT    3
+000028 D5                            54+         DC    C'N'
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 19.01 09/08/26
+                                     55          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 19.01 09/08/26
+CH       00007 00000006 00032
+DW       00008 00000010 00033
+EQ4      00001 00000004 00035
+FW       00004 00000000 00030
+HW       00002 00000004 00031
+LAB      00004 0000001C 00036
+SETCTYPE 00001 00000000 00029
+XX       00002 00000018 00034
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 19.01 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         46
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        86

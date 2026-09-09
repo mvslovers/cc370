@@ -1772,6 +1772,7 @@ static void set_canon(struct ctx *c, const char *name, char *out) {
     snprintf(out + b, 40 - b, "(%ld)", v);
 }
 /* SETC: 'string'(with subst, optional substring (s,l)) or a bare &ref */
+static const char *type_attr(struct ctx *c, const char *p, char *out);   /* fwd: T' (#257) */
 static void eval_setc(struct ctx *c, const char *s, char *out) {
     out[0] = 0; int olen = 0; const char *p = s;
     /* a SETC operand is one or more terms joined by '.' (concatenation); each
@@ -1823,6 +1824,13 @@ static void eval_setc(struct ctx *c, const char *s, char *out) {
             while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 62) ref[i++] = *p++;
             if (*p == '(') { ref[i++] = *p++; int d = 1; while (*p && d && i < 62) { if (*p=='(')d++; else if(*p==')')d--; ref[i++]=*p++; } }
             ref[i] = 0; vref(c, ref, piece);
+        } else if (*p == 'T' && p[1] == '\'') {
+            /* T' is a term of a SETC expression as much as of a comparison, and
+             * only the comparison path had it -- so `&T SETC T'&P' assigned the
+             * four literal characters T'&P and every macro that branches on the
+             * assigned value took the wrong path. All the machinery was already
+             * here; the character path simply never reached it (cc370#257). */
+            p = type_attr(c, p + 2, piece);
         } else {                                   /* bare text up to a '.' */
             int i = 0; while (*p && *p != '.' && *p != ' ' && i < 255) piece[i++] = *p++; piece[i] = 0;
         }
@@ -1960,16 +1968,40 @@ static void prescan_symtypes(char **in, int n) {
 }
 /* a comparison term is character if quoted or a T' (type) attribute */
 static int term_is_str(const char *t) { return t[0] == '\'' || (t[0] == 'T' && t[1] == '\''); }
+/* T' of a term: 'N' for a self-defining term, the symbol's type letter from the
+ * look-ahead table otherwise, 'U' for anything unknown and 'O' for nothing at
+ * all. Returns the position after the term so a SETC can carry on reading.
+ *
+ * One function because there were two callers and only one of them existed: the
+ * comparison path had it and the character path did not (cc370#257). */
+static const char *type_attr(struct ctx *c, const char *p, char *out) {
+    char ref[44], v[96]; int i = 0;
+    if (*p == '&') {
+        ref[i++] = *p++;
+        while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 42) ref[i++] = *p++;
+        if (*p == '(') { ref[i++] = *p++; int d = 1;
+            while (*p && d && i < 42) { if (*p=='(') d++; else if (*p==')') d--; ref[i++] = *p++; } }
+        ref[i] = 0; vref(c, ref, v);
+    } else {
+        int k = 0;
+        if ((*p == 'X' || *p == 'B' || *p == 'C') && p[1] == '\'') {   /* a self-defining term keeps its quotes */
+            v[k++] = *p++; v[k++] = *p++;
+            while (*p && *p != '\'' && k < (int)sizeof v - 2) v[k++] = *p++;
+            if (*p == '\'') v[k++] = *p++;
+        } else {
+            while (*p && *p != '.' && *p != ' ' && k < (int)sizeof v - 1) v[k++] = *p++;
+        }
+        v[k] = 0;
+    }
+    if (!v[0]) strcpy(out, "O");
+    else if (is_selfdef(v)) strcpy(out, "N");
+    else { char t = styp_find(v); out[0] = t ? t : 'U'; out[1] = 0; }
+    return p;
+}
+/* a comparison term is character if quoted or a T' (type) attribute */
 static void term_str(struct ctx *c, const char *t, char *out) {
-    if (t[0] == 'T' && t[1] == '\'') {
-        char ref[44], v[96]; const char *p = t + 2; int i = 0;
-        if (*p == '&') { ref[i++] = *p++; while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_')) ref[i++] = *p++;
-            if (*p == '(') { ref[i++] = *p++; int d = 1; while (*p && d) { if (*p=='(')d++; else if(*p==')')d--; ref[i++]=*p++; } } ref[i] = 0; vref(c, ref, v); }
-        else { int k = 0; while (*p && k < (int)sizeof v - 1) v[k++] = *p++; v[k] = 0; }   /* T'SYMBOL and T'X'..' written out, not reached through a variable */
-        if (!v[0]) strcpy(out, "O");
-        else if (is_selfdef(v)) strcpy(out, "N");
-        else { char t = styp_find(v); out[0] = t ? t : 'U'; out[1] = 0; }
-    } else eval_setc(c, t, out);
+    if (t[0] == 'T' && t[1] == '\'') type_attr(c, t + 2, out);
+    else eval_setc(c, t, out);
 }
 static int rel_apply(const char *rel, int cmp) {
     if (!strcmp(rel, "EQ")) return cmp == 0;
