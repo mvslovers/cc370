@@ -256,7 +256,17 @@ static int  errors;
  * The mirror of #295: there an operand that substituted to NOTHING had to stay
  * empty, here one that substitutes to a BLANK has to stay in the field. Same
  * root -- the boundaries belong to the model card, not to the result. The remark
- * is already gone by then (#295 cuts it), so the operand is the remainder. */
+ * is already gone by then (#295 cuts it), so the operand is the remainder.
+ *
+ * It is set from LF_SUBST and NOT from LF_GEN, and the difference is the whole
+ * of cc370#305. A card a COPY brings into a macro expansion is generated -- it
+ * carries the '+' in the listing -- but nothing is substituted into it and no
+ * model card cut its remark off, so its blank ends the operand exactly as an
+ * open-code card's does. Reading LF_GEN here made every such card keep its
+ * remark: JCOMMON's `JLVTMDT DS 0CL24   ASM LEVEL, TIME, DATE' became four
+ * operands, two of them a bare blank, and three IFNX modules IFOX00 assembles
+ * clean went to RC 8. Only a remark holding a COMMA shows it, which is why it
+ * reached three modules and not three hundred. */
 static int  g_genstmt;
 static int  g_curln;           /* lines[] index of the statement being assembled -- line context for diagnostics raised from helpers (e.g. sym_get) */
 static int  g_pass;            /* the pass do_pass is running, 0 outside it -- x_factor's undefined-symbol diagnostic
@@ -1356,8 +1366,15 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
 /* per-expanded-line listing flags, parallel to the flattened lines[] array */
 #define LF_GEN   1     /* macro-generated statement (listed with '+') */
 #define LF_NOASM 2     /* listing-only (e.g. the macro call line): shown, not assembled */
+/* The operand text came out of a SUBSTITUTION, so its field boundaries were
+ * fixed on the model card and a blank inside it is not a field end (see
+ * g_genstmt). Not the same thing as LF_GEN: a card a COPY brings into a macro
+ * expansion is generated -- it is listed with the '+' -- but nothing was
+ * substituted into it, so its blank ends the operand like any other card's. */
+#define LF_SUBST 4
 static unsigned char lflags[MAXLINES];
 static int g_genlevel;  /* >0 while inside a macro expansion (distinguishes generated lines from COPY'd source) */
+static int g_copyraw;   /* >0 while expanding a COPY'd member: its cards are raw source, not model statements */
 /* per-statement listing data captured in pass 2 (LOC + emitted bytes + effective operand addresses) */
 struct lrec { long loc; int len; long a1, a2; unsigned char hasa1, hasa2; };
 static struct lrec lrecs[MAXLINES];
@@ -2754,6 +2771,7 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
 /* expand a macro invocation, interpreting conditional assembly */
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
     g_genlevel++;   /* lines emitted during this expansion are macro-generated */
+    int savecopyraw = g_copyraw; g_copyraw = 0;   /* a macro body is model statements, whatever the call arrived on */
     /* ctx and the sequence-symbol table live on the HEAP, not on this frame.
      * Measured: sizeof(struct ctx) is 78,240 and seqn/seqi add 49,152, so a level
      * costs 127,392 bytes -- and mexp_macro is reached only through mexp_line's
@@ -2889,7 +2907,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
-    g_genlevel--;
+    g_genlevel--; g_copyraw = savecopyraw;
     set_free(c); free(c); free(seqn); free(seqi); free(args);
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
@@ -2968,7 +2986,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     char sysbuf[STMTSZ]; sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
     scopy(buf, sysbuf, STMTSZ - 1);
-    { int sv = g_genstmt; g_genstmt = (g_genlevel > 0); parse(buf, lbl, op, opnd); g_genstmt = sv; }
+    { int sv = g_genstmt; g_genstmt = (g_genlevel > 0 && !g_copyraw); parse(buf, lbl, op, opnd); g_genstmt = sv; }
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`.
@@ -3008,7 +3026,10 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     }
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
         char *cb[2048]; int n = lib_readlines(opnd, cb, 2048, NULL, 0);   /* COPY takes the member entire */
-        if (n >= 0) { mexp_block(cb, n, out, nout, depth + 1, NULL); return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
+        /* g_copyraw: the member's cards are read from a library exactly as they
+         * were written. Nothing is substituted into them here, so their fields
+         * are delimited the ordinary way -- see LF_SUBST. */
+        if (n >= 0) { g_copyraw++; mexp_block(cb, n, out, nout, depth + 1, NULL); g_copyraw--; return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
     }
     /* SUBSTITUTION IN OPEN CODE (#141). Everything above this point interprets
      * the statement; from here it is a MODEL statement, and its variable symbols
@@ -3074,7 +3095,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
             lflags[*nout] = LF_NOASM; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
             out[*nout] = strdup(line); (*nout)++;
         }
-        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)(g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM); gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0)); gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
         /* HLASM substitutes the caller's variable symbols in a macro's arguments
          * in the caller's context. At open-code level resolve them from g_opc, so
          * e.g. `DCB MACRF=P&OUTM.M` binds &MACRF='PMM' (not the literal 'P&OUTM.M',
@@ -3105,7 +3126,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") ||
                   !strcmp(op, "START") || !strcmp(op, "COM")))
         scopy(g_sysect, (lbl[0] && lbl[0] != '.') ? lbl : "", 8);
-    lflags[*nout] = (unsigned char)(g_genlevel > 0 || subst ? LF_GEN : 0);
+    lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN : 0) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0));
     gcard[*nout] = img ? strdup(img) : NULL;
     line_org[*nout] = g_curorg;
     if (lbl[0] == '.') { char r[STMTSZ + 32]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
@@ -3937,7 +3958,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
         g_curln = i;                          /* line context for diagnostics raised inside sym_get/lit_get */
-        g_genstmt = (lflags[i] & LF_GEN) != 0;   /* see g_genstmt: a blank in a generated statement is not a field end */
+        g_genstmt = (lflags[i] & LF_SUBST) != 0;   /* see g_genstmt: a blank SUBSTITUTED into an operand is not a field end */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
