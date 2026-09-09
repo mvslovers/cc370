@@ -998,14 +998,22 @@ rm -f /tmp/_o72a.s /tmp/_o72a.obj /tmp/_o72a.out /tmp/_o72b.s /tmp/_o72b.obj /tm
 # which on MVS passed COND=(8,LT) -- survivable in JCL, not in a host build,
 # where a tolerated RC 4 lets silent corruption through CI (mvslovers/nsf370: a
 # comment card ate a DCBD, two EQUs and an instruction, and the modules kept
-# building). as370 keeps IFO026 at 4 for the harmless case and raises the two
-# eaten statements to 8. Section length, TXT and message texts stay the oracle's.
+# building). Section length, TXT and message texts stay the oracle's.
+#
+# The SEVERITY of a discarded statement was as370's own choice: IFOX00 gives the
+# harmless case and the statement-losing one the same 4, and as370 returned 8 for
+# the second. Under `as370 == IFOX00' meaning the deck AND the return code that
+# cost eight modules whose decks are byte-identical, so as of 2026-09-09 the
+# default is IFOX00's 4 and the guard is `--strict-cont'. Both are checked here,
+# because a fixture that pins only the default cannot tell the flag from a no-op.
+./as370 --strict-cont tests/cont72.s -o /dev/null >/dev/null 2>&1
+if [ $? != 8 ]; then echo "cont72: --strict-cont must still return 8"; fail=1; fi
 ./as370 tests/cont72.s -o /tmp/_c72.obj >/tmp/_c72.out 2>&1; rc72=$?
 n26=$(grep -c 'IFO026' /tmp/_c72.out); n69=$(grep -c 'IFO069' /tmp/_c72.out)
 nlost=$(grep -c '^ ERROR: This card was consumed' /tmp/_c72.out)
 hex=$(od -An -tx1 /tmp/_c72.obj | tr -d ' \n')
-if [ $rc72 != 8 ]; then
-    echo "cont72: expected RC 8 (two statements discarded), got $rc72"; fail=1
+if [ $rc72 != 4 ]; then
+    echo "cont72: expected RC 4 (IFOX00's severity for a discarded statement), got $rc72"; fail=1
 elif [ "$nlost" != 2 ]; then
     echo "cont72: expected 2 discarded statements (SWALLOW, CTLC), got $nlost"; fail=1
 elif [ "$n26" != 5 ] || [ "$n69" != 1 ]; then
@@ -1017,7 +1025,7 @@ elif ! echo "$hex" | grep -q "c3d6d5e3f7f240400000000040000008"; then
 elif ! echo "$hex" | grep -q "0000000200000003"; then
     echo "cont72: the surviving constants are not CTLA=2 and CTLB=3"; fail=1
 else
-    echo "cont72: OK (8 bytes and IFOX00's messages; the two eaten statements are RC 8, not 4)"
+    echo "cont72: OK (8 bytes and IFOX00's messages; rc 4 by default, 8 under --strict-cont)"
 fi
 rm -f /tmp/_c72.obj /tmp/_c72.out
 # Control: a comment card that stops before column 72 continues nothing, and a
@@ -1046,7 +1054,11 @@ rm -f /tmp/_c72c.s /tmp/_c72c.obj /tmp/_c72c.out
   i=0; while [ $i -lt 600 ]; do printf '%-71sX\n' "* filler card $i reaching column 72"; i=$((i + 1)); done
   printf 'EATEN    DC    F\0477\047\n'
   printf 'KEPT     DC    F\0478\047\n         END\n'; } > /tmp/_cap.s
-./as370 /tmp/_cap.s -o /tmp/_cap.obj >/tmp/_cap.out 2>&1; rccap=$?
+# --strict-cont: this case is about the discarded statement still being COUNTED
+# past the print cap, not about its severity. The severity default followed
+# IFOX00 to 4 on 2026-09-09; the flag keeps this assertion testing what it was
+# written to test rather than re-testing the new default.
+./as370 --strict-cont /tmp/_cap.s -o /tmp/_cap.obj >/tmp/_cap.out 2>&1; rccap=$?
 hexcap=$(od -An -tx1 /tmp/_cap.obj | tr -d ' \n')
 if [ $rccap != 8 ]; then
     echo "diag_cap: expected RC 8 -- the discarded statement is past the print limit (got $rccap)"; fail=1
@@ -1404,7 +1416,10 @@ fi
 printf 'LIBM     CSECT\nLBL      TRAILM\n         END\n' > "$mlib/a.s"
 printf 'LIBM     CSECT\nLBL      INSIDM\n         END\n' > "$mlib/b.s"
 ./as370 "$mlib/a.s" -I "$mlib" -o "$mlib/a.obj" >"$mlib/a.out" 2>&1; rcA=$?
-./as370 "$mlib/b.s" -I "$mlib" -o "$mlib/b.obj" >"$mlib/b.out" 2>&1; rcB=$?
+# --strict-cont for the same reason as diag_cap: what this asserts is that a
+# column-72 comment INSIDE a library macro definition eats the model statement
+# and is flagged for it, not what severity the flag carries.
+./as370 --strict-cont "$mlib/b.s" -I "$mlib" -o "$mlib/b.obj" >"$mlib/b.out" 2>&1; rcB=$?
 if [ $rcA != 0 ]; then
     echo "libmac_mend: text after MEND was read (rc $rcA, expected 0)"; cat "$mlib/a.out"; fail=1
 elif ! od -An -tx1 "$mlib/a.obj" | tr -d ' \n' | grep -q 00000005; then
