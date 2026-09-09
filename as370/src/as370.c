@@ -3867,6 +3867,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = ins_len(o->fmt); }
                 lit_scan_operands(opnd);   /* same registration the pre-scan ran, so the two cannot drift */
                 lc += ins_len(o->fmt);
+                /* The section high-water mark has to be raised in PASS 1 too.  It
+                 * was raised by DS/DC and by put(), and put() runs only in pass 2 --
+                 * so a control section ending in machine instructions measured only
+                 * to its last DS/DC when assign_origins() chained the next one, and
+                 * the two sections OVERLAPPED.  AMASPZAP's AMASZDMP ends in
+                 * instructions 332 bytes past its last DS: its own ESD length is
+                 * right, because that comes from pass 2, and AMASZCON was placed
+                 * 332 bytes INSIDE it.  Its image goes from 7,577 differing bytes
+                 * to none; the deck still differs in how the text is FILED across
+                 * ESD entries, which is a second defect in the same module
+                 * (cc370#282). */
+                if (!in_dsect) note_sect_lc(lc);
             } else if (has_overlong_term(opnd)) {   /* operand symbol term >8 -> IFOX IFO236: zero the whole instruction (as IFO228/IFO209 do) */
                 note_ovlref(op, i); int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
                 lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
@@ -4273,6 +4285,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 put(lc + 4, nf >= 3 ? expr_val(F[2], 0) & 0xff : 0, 1); put(lc + 5, 0, 1);
                 put(lc + 6, nf >= 4 ? expr_val(F[3], 0) & 0xffff : 0, 2); }
             lc += 8;
+            if (!in_dsect) note_sect_lc(lc);   /* pass 1 too, for the same reason the instruction path does */
         } else if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
             static char ops[256][1024]; int nops = dc_split(opnd, ops, 256), oi;
             int emit_dc = (pass == 2 && !strcmp(op, "DC"));

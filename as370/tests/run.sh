@@ -470,6 +470,20 @@ rm -f /tmp/_au.$$
 # already returned to the high-water mark and must stay where it was.
 #   main 2a1505c   T1 len 000001  T2 at 000008
 #   IFOX00, this   T1 len 0000C9  T2 at 0000D0
+# sectlen is the #281 oracle: the section high-water mark has to be raised in
+# PASS 1 too. It was raised by DS/DC and by put(), and put() runs only in pass 2,
+# so a control section ending in MACHINE INSTRUCTIONS measured only to its last
+# DS/DC when assign_origins() chained the next one -- and the two sections
+# OVERLAPPED. Its own ESD length was right the whole time, because that comes
+# from pass 2; only the next section's origin was wrong, which is why nothing
+# reading one section's bytes could see it. AMASPZAP's AMASZDMP ends 332 bytes
+# past its last DS and AMASZCON sat 332 bytes inside it. Its IMAGE goes from
+# 7,577 differing bytes to none here; its deck still differs because the text is
+# filed under the wrong ESD entry, which is a second defect in the same module.
+# T3 ends on a CCW -- the same gap on a different path. T5 ends on a DC and is
+# the control.
+#   main 2a1505c   T1 len 000008  T2 at 000008
+#   IFOX00, this   T1 len 00000C  T2 at 000010
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -482,7 +496,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
-         substrcat usingexpr orglen; do
+         substrcat usingexpr orglen sectlen; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
