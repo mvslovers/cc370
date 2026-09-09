@@ -104,6 +104,17 @@ static int nsym;
  * prototype defaults in 40 and &SYSLIST elements in 128, and cut to fit
  * without a word (cc370#153). */
 #define VALSZ 256
+/* A DC address-constant value list: the text inside the parentheses, and the
+ * values split out of it.  The two are DERIVED from one another -- the
+ * shortest possible value is one character plus its comma, so DCINSIDE/2 is
+ * the arithmetic maximum and the pair cannot drift apart.  They used to be 256
+ * and 32, and 32 was reachable in valid source: a DC is an assembler operation
+ * and gets two continuations, so its operand runs to about 168 characters --
+ * room for some 55 short values.  Past the 32nd the value was dropped, the
+ * location counter carried on early, and every later address in the section
+ * was wrong, all of it silent (cc370#270). */
+#define DCINSIDE 256
+#define DCVALS (DCINSIDE / 2)
 #define STMTSZ 8192
 #define FLDW 256
 
@@ -755,9 +766,12 @@ static int split_fields(const char *s, char f[][FLDW], int max) {
 }
 
 /* ENTRY/EXTRN/WXTRN operand buffer: a comma-separated external-symbol list.
- * The bound cannot be reached -- parse() caps the operand field at 1023
- * characters and every symbol costs at least one character plus its separating
- * comma, so 512 fields is the arithmetic maximum. EXTRN/WXTRN used to pass a
+ * The bound cannot be reached, but NOT for the reason this comment used to
+ * give.  It said parse() caps the operand at 1023 characters so 512 fields is
+ * the arithmetic maximum; cc370#153 raised that cap to STMTSZ-1 and the
+ * arithmetic stopped holding the moment it did.  What holds instead is the
+ * SOURCE: ENTRY/EXTRN are assembler operations and get two continuations, so
+ * the operand runs to about 168 characters and cannot carry 512 symbols. EXTRN/WXTRN used to pass a
  * local f[8][64], and split_fields drops everything past its maximum without a
  * diagnostic, so the 9th and later symbols of a long EXTRN went missing
  * silently. Shared (and static) because both call sites want the same size and
@@ -4438,16 +4452,17 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int isaddr = (ty == 'A' || ty == 'Y' || isvcon || isscon);
                     if (isaddr) {                                  /* address constant, possibly a value list A(v1,v2,..) */
                         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
-                        char inside[256] = "";
-                        if (lp && rp && rp > lp) { size_t n = (size_t)(rp - lp - 1); if (n > 255) n = 255; memcpy(inside, lp + 1, n); inside[n] = 0; }
-                        char vals[32][80]; int nv = 0;             /* split the operand list on top-level commas */
+                        char inside[DCINSIDE] = "";
+                        if (lp && rp && rp > lp) { size_t n = (size_t)(rp - lp - 1); if (n > DCINSIDE - 1) { n = DCINSIDE - 1; note_operr("DC value list is longer than the operand buffer - the tail is dropped", 8, g_curln); } memcpy(inside, lp + 1, n); inside[n] = 0; }
+                        static char vals[DCVALS][VALSZ]; int nv = 0;   /* split the operand list on top-level commas */
                         { const char *s = inside, *st = inside; int q = 0, d = 0;
                           for (;; s++) {
                               if (*s == '\'') { if (q || !(s > inside && strchr("KNLT", s[-1]))) q = !q; }  /* K'/N'/L'/T' apostrophe (e.g. AL2(L'SYM,0)) is an attribute, not a string quote */
                               else if (!q && *s == '(') d++;
                               else if (!q && *s == ')') { if (d) d--; }
                               if ((!q && d == 0 && *s == ',') || !*s) {
-                                  if (nv < 32) { int L = (int)(s - st); if (L > 79) L = 79; memcpy(vals[nv], st, L); vals[nv][L] = 0; nv++; }
+                                  if (nv < DCVALS) { int L = (int)(s - st); if (L > VALSZ - 1) L = VALSZ - 1; memcpy(vals[nv], st, L); vals[nv][L] = 0; nv++; }
+                                  else note_operr("more than 128 values in one DC operand - the rest are dropped", 8, g_curln);
                                   if (!*s) { break; } st = s + 1; } } }
                         if (nv == 0) { vals[0][0] = 0; nv = 1; }   /* A() -> a single zero constant */
                         if (isvcon && pass == 1 && !in_dsect) { int vj; for (vj = 0; vj < nv; vj++) {   /* register each V-con ER */

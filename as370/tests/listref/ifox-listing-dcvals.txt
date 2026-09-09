@@ -1,0 +1,79 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 21.30 09/08/26
+TSTDC     SD  0001 000000 0000D4
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 21.30 09/08/26
+                                      1 * Feste Grenzen im DC-Pfad (#270).
+                                      2 *
+                                      3 * Ein DC-Operand hielt hoechstens 32 Nominalwerte und jeden EINZELNEN
+                                      4 * Wert in 80 Bytes. Beides ist still: der Rest faellt weg, der
+                                      5 * Ortszaehler laeuft zu frueh weiter, und jede spaetere Adresse in
+                                      6 * der Sektion ist falsch.
+                                      7 *
+                                      8 * Die Grenze ist in gueltiger Quelle erreichbar, und das ist der
+                                      9 * Punkt: ein DC ist eine Assembler-Operation und bekommt ZWEI
+                                     10 * Fortsetzungen, also bis etwa 168 Zeichen Operand -- Platz fuer
+                                     11 * rund 55 kurze Werte, also deutlich mehr als 32.
+                                     12 *
+                                     13 *   C1  48 Werte auf drei Karten -- vorher 32, also 64 Bytes zu kurz
+                                     14 *   C2  EIN Wert aus zehn achtstelligen Symbolen, 89 Zeichen --
+                                     15 *       vorher bei 79 mitten im zehnten Symbol abgeschnitten.
+                                     16 *       Zehn Terme und nicht fuenfzig, weil IFOX00 einen Ausdruck
+                                     17 *       ausserhalb der bedingten Assemblierung bei 20 Termen
+                                     18 *       abweist (IFO168) und die Fixture gueltige Quelle sein muss.
+                                     19 *   C3  Kontrolle: drei Werte, war immer richtig
+                                     20 *
+                                     21 * L1 und L2 halten die erzeugte Laenge fest, damit der Vergleich
+                                     22 * den Ortszaehler prueft und nicht nur die Bytes.
+000000                               23 TSTDC    CSECT
+                            00001    24 S0000001 EQU   1
+                            00002    25 S0000002 EQU   2
+                            00003    26 S0000003 EQU   3
+                            00004    27 S0000004 EQU   4
+                            00005    28 S0000005 EQU   5
+                            00006    29 S0000006 EQU   6
+                            00007    30 S0000007 EQU   7
+                            00008    31 S0000008 EQU   8
+                            00009    32 S0000009 EQU   9
+                            0000A    33 S0000010 EQU   10
+000000 0000000100000002              34 D1       DC    A(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,X
+000008 0000000300000004                                22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40X
+000010 0000000500000006                                ,41,42,43,44,45,46,47,48)
+                            000C0    35 L1       EQU   *-D1
+0000C0 00000037                      36 D2       DC    A(S0000001+S0000002+S0000003+S0000004+S0000005+S0000006+X
+                                                       S0000007+S0000008+S0000009+S0000010)
+                            00004    37 L2       EQU   *-D2
+0000C4 0000000100000002              38 D3       DC    A(1,2,3)
+0000D0 00C00004                      39          DC    AL2(L1,L2)
+                                     40          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 21.30 09/08/26
+D1       00004 00000000 00034  00035
+D2       00004 000000C0 00036  00037
+D3       00004 000000C4 00038
+L1       00001 000000C0 00035  00039
+L2       00001 00000004 00037  00039
+S0000001 00001 00000001 00024  00036
+S0000002 00001 00000002 00025  00036
+S0000003 00001 00000003 00026  00036
+S0000004 00001 00000004 00027  00036
+S0000005 00001 00000005 00028  00036
+S0000006 00001 00000006 00029  00036
+S0000007 00001 00000007 00030  00036
+S0000008 00001 00000008 00031  00036
+S0000009 00001 00000009 00032  00036
+S0000010 00001 0000000A 00033  00036
+TSTDC    00001 00000000 00023
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 21.30 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         43
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         6
+TOTAL RECORDS PRINTED                        79
