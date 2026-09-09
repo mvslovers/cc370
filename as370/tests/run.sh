@@ -1657,6 +1657,42 @@ else
 fi
 rm -rf "$cpv"
 
+# --- issue #287: a macro definition is as long as it is ----------------------
+# The body was two fixed 4,096-entry arrays and the append was guarded by
+# `if (m->nbody < 4096)' with nothing said, and the library reader cut at 4,096
+# statements before capture_macro ever saw the rest. NETSOL is 6,881 cards, so
+# ISTNSC00 -- which calls it -- lost two whole control sections, 24,909 bytes of
+# object, and reported the loss as undefined symbols and addressability errors
+# several hundred statements away from the cut.
+#
+# The fixture needs no oracle: it is a definition whose LAST card is the only
+# one that generates anything, so either the byte is there or the body was cut.
+# 5,000 macro comments sit in front of it -- above the old cap on both the
+# reader and the body array, and cheap to generate.
+#   main 847aed7   no object at all, rc 0, nothing said
+#   this           DC C'LAST' assembled
+bigm=/tmp/_bigmac.$$
+mkdir -p "$bigm"
+{ printf '         MACRO\n         BIGM\n'
+  i=1
+  while [ $i -le 5000 ]; do printf '.* filler %d\n' $i; i=$((i + 1)); done
+  printf "         DC    C'LAST'\n         MEND\n"; } > "$bigm/bigm.macro"
+# it is only a fixture while the body really is longer than the old cap
+bodyn=$(wc -l < "$bigm/bigm.macro")
+if [ "$bodyn" -le 4096 ]; then
+    echo "bigmacro: BROKEN FIXTURE (body is $bodyn cards, not past the 4096 cap)"; fail=1
+fi
+printf 'T        CSECT\n         BIGM\n         END\n' > "$bigm/a.s"
+./as370 "$bigm/a.s" -I "$bigm" -o "$bigm/a.obj" >"$bigm/a.out" 2>&1; rcB=$?
+if [ $rcB != 0 ]; then
+    echo "bigmacro: rc $rcB, expected 0"; head -3 "$bigm/a.out"; fail=1
+elif ! od -An -tx1 "$bigm/a.obj" | tr -d ' \n' | grep -q d3c1e2e3; then
+    echo "bigmacro: the last card of a 5002-card macro body was cut (#287)"; fail=1
+else
+    echo "bigmacro: OK (a macro body past 4096 cards is read and expanded whole)"
+fi
+rm -rf "$bigm"
+
 # --- issue #68: the END literal pool belongs to the FIRST control section -----
 # IFOX00 (xfour.asm, ENDING) resumes the first control section at its highest
 # address when END is reached with a non-empty pool, assembles the pool there and

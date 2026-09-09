@@ -1443,8 +1443,14 @@ struct macro {
      * declares it perfectly well.  27 modules did exactly that the moment
      * #162's diagnostic went in (cc370#292). */
     char pname[MAXPARM][20], pdef[MAXPARM][VALSZ]; int pkey[MAXPARM]; int nparm;
-    char *body[4096]; int nbody;
-    char *bodyseq[4096];           /* cols 73-80 of each body card, for the listing's SOURCE column (NULL if unknown) */
+    /* The body GROWS. It used to be two fixed 4,096-entry arrays and the append
+     * was guarded by `if (m->nbody < 4096)' with nothing said, so a longer
+     * definition was silently cut: NETSOL is 6,881 cards, and ISTNSC00 -- which
+     * calls it -- lost two whole control sections, 24,909 bytes of object, at
+     * rc 8 with the diagnostics pointing at symbols the cut had eaten
+     * (cc370#287). Growing also SAVES memory: 256 slots x 8,192 pointers was
+     * 16 MB of static array for bodies that are typically a few dozen cards. */
+    char **body; char **bodyseq; int nbody, bodycap;
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
 };
 static struct macro macros[256];
@@ -2648,9 +2654,21 @@ static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[
     static char *tmp[16384]; char lb[256]; int n = 0;
     while (fgets(lb, sizeof lb, f) && n < 16384) tmp[n++] = strdup(lb);
     fclose(f);
+    if (n >= 16384) fprintf(stderr, "as370: library member %s is longer than 16384 cards and was cut\n", name);
     if (as_macro) n = macro_extent(tmp, n);   /* a macro definition ends at MEND; what follows is not read */
     { int r; const char *sv = g_joinsrc;    /* a continuation diagnostic in here names the member, not a source line */
       g_joinsrc = name; r = join_cont(tmp, n, buf, max, seqbuf, NULL); g_joinsrc = sv; return r; }
+}
+static void mac_body_add(struct macro *m, const char *card, const char *seq) {
+    if (m->nbody >= m->bodycap) {
+        int nc = m->bodycap ? m->bodycap * 2 : 64;
+        char **nb = realloc(m->body, (size_t)nc * sizeof *nb);
+        char **ns = realloc(m->bodyseq, (size_t)nc * sizeof *ns);
+        if (!nb || !ns) { free(nb); free(ns); fprintf(stderr, "as370: out of memory for a macro body\n"); exit(2); }
+        m->body = nb; m->bodyseq = ns; m->bodycap = nc;
+    }
+    m->bodyseq[m->nbody] = seq ? strdup(seq) : NULL;
+    m->body[m->nbody++] = strdup(card);
 }
 static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12]) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
@@ -2675,13 +2693,21 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
             m->nparm++; } }
     while (++i < nin) { char bb[STMTSZ], bl[32], bo[16], bd[STMTSZ]; scopy(bb, in[i], STMTSZ - 1); parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') scopy(m->endlbl, bl, sizeof m->endlbl - 1); break; }
-        if (m->nbody < 4096) { m->bodyseq[m->nbody] = (inseq ? strdup(inseq[i]) : NULL); m->body[m->nbody++] = strdup(in[i]); } }
+        mac_body_add(m, in[i], inseq ? inseq[i] : NULL); }
     *ip = i; return m;
 }
 static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
-    static char *buf[4096]; static char seqbuf[4096][12];
-    int n = lib_readlines(name, buf, 4096, seqbuf, 1); if (n < 0) return NULL;   /* a macro: stops at MEND */
+    /* LIBMAX bounds the STATEMENTS a library macro may hold. At 4,096 it cut
+     * NETSOL (6,881 cards) in the reader, before capture_macro ever saw it, so
+     * raising only the body array would have moved the cut and not removed it.
+     * Both are lifted; this one is loud if it is ever reached. */
+    enum { LIBMAX = 65536 };
+    static char **buf; static char (*seqbuf)[12];
+    if (!buf) { buf = malloc(LIBMAX * sizeof *buf); seqbuf = malloc((size_t)LIBMAX * 12);
+        if (!buf || !seqbuf) { fprintf(stderr, "as370: out of memory for the macro library buffer\n"); exit(2); } }
+    int n = lib_readlines(name, buf, LIBMAX, seqbuf, 1); if (n < 0) return NULL;   /* a macro: stops at MEND */
+    if (n >= LIBMAX) fprintf(stderr, "as370: macro %s is longer than %d statements and was cut\n", name, LIBMAX);
     int i = 0; for (; i < n; i++) { char b[STMTSZ], l[32], o[16], od[STMTSZ]; scopy(b, buf[i], STMTSZ - 1);
         if (!parse(b, l, o, od) || !o[0]) continue;
         if (strcmp(o, "MACRO")) return NULL;
@@ -3072,11 +3098,19 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         if (slot >= 0) { free(out[--(*nout)]); free((void *)gcard[*nout]); gcard[*nout] = NULL; }   /* not a CA statement after all */
     }
     if (op[0] && !strcmp(op, "COPY") && opnd[0] && depth <= 40) {
-        char *cb[2048]; int n = lib_readlines(opnd, cb, 2048, NULL, 0);   /* COPY takes the member entire */
+        /* COPY takes the member entire, and its members are as long as a macro's
+         * -- LINEEND is 5,828 cards. The array is on the heap because mexp_line
+         * recurses once per nesting level. */
+        enum { COPYMAX = 65536 };
+        char **cb = malloc(COPYMAX * sizeof *cb);
+        if (!cb) { fprintf(stderr, "as370: out of memory for a COPY member\n"); exit(2); }
+        int n = lib_readlines(opnd, cb, COPYMAX, NULL, 0);
+        if (n >= COPYMAX) fprintf(stderr, "as370: COPY member %s is longer than %d statements and was cut\n", opnd, COPYMAX);
         /* g_copyraw: the member's cards are read from a library exactly as they
          * were written. Nothing is substituted into them here, so their fields
          * are delimited the ordinary way -- see LF_SUBST. */
-        if (n >= 0) { g_copyraw++; mexp_block(cb, n, out, nout, depth + 1, NULL); g_copyraw--; return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
+        if (n >= 0) { g_copyraw++; mexp_block(cb, n, out, nout, depth + 1, NULL); g_copyraw--; free(cb); return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
+        free(cb);
     }
     /* SUBSTITUTION IN OPEN CODE (#141). Everything above this point interprets
      * the statement; from here it is a MODEL statement, and its variable symbols
