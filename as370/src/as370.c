@@ -1841,6 +1841,7 @@ static void eval_setc(struct ctx *c, const char *s, char *out, size_t outsz) {
         while (*p == ' ') p++;
         if (!*p) break;
         char piece[256]; piece[0] = 0;
+        int subterm = 0;   /* this term ended with a substring's ')' */
         if (*p == '\'') {
             char inner[256]; int il = 0; const char *q = p + 1;   /* scan to the closing quote, de-escaping doubled '' to a single ' */
             while (*q) { if (*q == '\'') { if (q[1] == '\'') { if (il < 255) inner[il++] = '\''; q += 2; continue; } break; }
@@ -1877,6 +1878,7 @@ static void eval_setc(struct ctx *c, const char *s, char *out, size_t outsz) {
                 else { int a = (int)st - 1;
                        int take = (int)ln; if (take > n - a) take = n - a; if (take < 0) take = 0;
                        memcpy(piece, sub + a, take); piece[take] = 0; }
+                subterm = 1;
             } else { strncpy(piece, sub, 255); piece[255] = 0; }
         } else if (*p == '&') {
             char ref[64]; int i = 0; ref[i++] = *p++;
@@ -1895,8 +1897,22 @@ static void eval_setc(struct ctx *c, const char *s, char *out, size_t outsz) {
         }
         int pl = (int)strlen(piece); if (olen + pl > olim) pl = olim - olen; if (pl < 0) pl = 0;
         memcpy(out + olen, piece, pl); olen += pl; out[olen] = 0;
-        if (*p == '.') p++;                        /* concatenation */
-        else break;
+        /* A SUBSTRING ENDS ITS TERM, so a term following it is concatenated with
+         * no period between them -- `'&F'(1,8-K'&P)'&P''.  The period is what
+         * separates two terms that would otherwise run together; after a closing
+         * parenthesis there is nothing to run together, and IFOX00 concatenates
+         * (tests/substrcat.s: '0000000'(1,7) then '0' is '00000000', eight
+         * characters).  as370 required the period and dropped everything after
+         * the substring.
+         *
+         * IBM's USS macros pad a counter into a generated name exactly this way,
+         * and the counter is the part that was dropped: every generated block got
+         * the SAME name, so every A(...) pointing at one resolved to the same
+         * place or to zero.  ISTINCDT and five others -- and neither assembler
+         * says anything, which is why it took IBM's own shipped object to decide
+         * which of the two was wrong (cc370#273). */
+        if (*p == '.') p++;                        /* explicit concatenation */
+        else if (!(subterm && (*p == '\'' || *p == '&'))) break;
     }
 }
 /* T' of a SELF-DEFINING TERM is 'N', whatever the notation (#142).

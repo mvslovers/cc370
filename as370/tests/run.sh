@@ -433,6 +433,21 @@ rm -f /tmp/_au.$$
 # not only the bytes.
 #   main f1334fc   L1=x'80'  D2=x'24' + Undefined symbol
 #   IFOX00, this   L1=x'C0'  D2=x'37'
+# substrcat is the #273 oracle: a SUBSTRING ends its term, so a term following
+# it is concatenated with no period between them. The period separates two terms
+# that would otherwise run together; after a closing parenthesis there is nothing
+# to run together. as370 required it and dropped everything after the substring.
+# IBM's USS macros pad a counter into a generated name exactly this way, and the
+# counter is the part that was dropped -- so every generated block got the SAME
+# name and every A(...) pointing at one resolved to the same place or to zero.
+# C4's counter is four digits so the LENGTH of the second part varies: a fix that
+# appends one character passes C1..C3 and fails here. C5 is the control, the same
+# concatenation written WITH the period.
+# Found through a third witness rather than through the oracle: IBM's shipped
+# DLIB object and IFOX00 agree and as370 differs, which is the only way to settle
+# a divergence where neither assembler says anything.
+#   main 0e097a8   0000000 0000000 000000 0000   0009
+#   IFOX00, this   00000000 00000007 00000042 00001234   0009
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -444,7 +459,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
-         sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals; do
+         sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
+         substrcat; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
