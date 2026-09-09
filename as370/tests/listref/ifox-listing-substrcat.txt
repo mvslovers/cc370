@@ -1,0 +1,84 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 21.47 09/08/26
+TSTPAD    SD  0001 000000 000029
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 21.47 09/08/26
+                                      1 * Verkettung nach einem Substring.
+                                      2 *
+                                      3 * Gefunden ueber den dritten Zeugen: IBMs ausgeliefertes DLIB-Objekt
+                                      4 * und IFOX00 sind sich einig, as370 weicht ab -- ISTINCDT und fuenf
+                                      5 * weitere. Bei einer stillen Abweichung sagt keiner der beiden
+                                      6 * Assembler etwas, also entscheidet erst ein dritter Zeuge, wer
+                                      7 * recht hat.
+                                      8 *
+                                      9 * '&F'(1,n) unmittelbar gefolgt von '&P' ist eine VERKETTUNG, ohne
+                                     10 * Punkt dazwischen. as370 wertete den Substring aus und liess den
+                                     11 * zweiten Teil fallen.
+                                     12 *
+                                     13 * Das ist die Padding-Routine, mit der IBMs USS-Makros Namen wie
+                                     14 * ISTC001, ISTC002 bilden: der Zaehler steckt genau in dem Teil, der
+                                     15 * wegfiel. Also hiessen alle erzeugten Bloecke gleich, und jeder
+                                     16 * A(...)-Verweis darauf zeigte auf denselben Ort oder auf 0.
+                                     17 *
+                                     18 *   C1..C4 sind vier Zaehlerstaende. C4s Zaehler ist vierstellig,
+                                     19 *   damit die LAENGE des zweiten Teils mitvariiert: ein Fix, der
+                                     20 *   einfach ein Zeichen anhaengt, faellt hier durch.
+                                     21 *   C5 ist die Kontrolle -- dieselbe Verkettung MIT Punkt, die
+                                     22 *   schon vorher richtig war und sich nicht bewegen darf.
+                                     23 *
+                                     24 * Beide Makros stehen vor dem CSECT: IFOX00 weist eine In-Stream-
+                                     25 * MACRO nach dem ersten Programmsatz ab (IFO023), was die erste
+                                     26 * Fassung dieser Fixture erst vom Orakel erfahren hat.
+                                     27          MACRO
+                                     28 &L       PADP   &P=
+                                     29          LCLC  &F,&Q
+                                     30          LCLA  &K
+                                     31 &F       SETC  '0000000'
+                                     32 &Q       SETC  '&F'(1,8-K'&P)'&P'
+                                     33 &K       SETA  K'&Q
+                                     34 &L       DC    C'&Q',AL1(&K)
+                                     35          MEND
+                                     36          MACRO
+                                     37 &L       PADD   &P=
+                                     38          LCLC  &F,&Q
+                                     39          LCLA  &K
+                                     40 &F       SETC  '0000000'
+                                     41 &Q       SETC  '&F'(1,3).'&P'
+                                     42 &K       SETA  K'&Q
+                                     43 &L       DC    C'&Q',AL1(&K)
+                                     44          MEND
+000000                               45 TSTPAD   CSECT
+                                     46 C1       PADP  P=0
+000000 F0F0F0F0F0F0F0F0              47+C1       DC    C'00000000',AL1(8)
+                                     48 C2       PADP  P=7
+000009 F0F0F0F0F0F0F0F7              49+C2       DC    C'00000007',AL1(8)
+                                     50 C3       PADP  P=42
+000012 F0F0F0F0F0F0F4F2              51+C3       DC    C'00000042',AL1(8)
+                                     52 C4       PADP  P=1234
+00001B F0F0F0F0F1F2F3F4              53+C4       DC    C'00001234',AL1(8)
+                                     54 C5       PADD  P=9
+000024 F0F0F0F904                    55+C5       DC    C'0009',AL1(4)
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 21.47 09/08/26
+                                     56          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 21.47 09/08/26
+C1       00008 00000000 00047
+C2       00008 00000009 00049
+C3       00008 00000012 00051
+C4       00008 0000001B 00053
+C5       00004 00000024 00055
+TSTPAD   00001 00000000 00045
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 21.47 09/08/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         51
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        84
