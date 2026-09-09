@@ -3705,7 +3705,16 @@ static void emit_lit(struct lit *l) {
     } else put(l->loc, l->val, l->size);
     g_curln = svln;
 }
-static int listing = 0;                 /* -L: print a LOC/object/source listing in pass 2 */
+static int listing = 0;
+/* --strict-cont: raise a DISCARDED statement from IFOX00's severity 4 to 8.
+ * IFOX00 gives a harmless continued comment and a statement-losing continuation
+ * the same severity 4, and as370 used to split them and return 8 unconditionally.
+ * That is a deliberate divergence and it costs eight modules whose decks are
+ * byte-identical, so the default is now IFOX00's 4 and the guard is opt-in.
+ * The guard is worth keeping available: mbt fails a build at rc >= 8, and a
+ * module assembled against a mangled macro library is exactly what #115 saw --
+ * 150 modules compared in good faith against source the assembler had eaten. */
+static int strict_cont = 0;                 /* -L: print a LOC/object/source listing in pass 2 */
 static void emit_listing(long a, long b, const char *src) {
     char hex[20]; int hn = 0; long i;
     for (i = a; i < b && i < a + 8; i++) hn += snprintf(hex + hn, sizeof hex - hn, "%02X", defn[i] ? text[i] : 0);
@@ -5267,6 +5276,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strncmp(argv[ai], "--sysparm=", 10)) scopy(g_sysparm, argv[ai] + 10, 95);   /* IFOX PARM=SYSPARM(...); default is the null string */
         else if (!strcmp(argv[ai], "-m") && ai + 1 < argc) ++ai;   /* -m HLASM-option: accepted, not yet implemented */
+        else if (!strcmp(argv[ai], "--strict-cont")) strict_cont = 1;   /* a discarded statement becomes severity 8 -- see the RC note below */
         else if (!strcmp(argv[ai], "--")) { /* end of options: recognised, no-op */ }
         else if (!strcmp(argv[ai], "-E")) eonly = 1;       /* (internal) dump macro-expanded source */
         else if (!strcmp(argv[ai], "-L")) listing = 1;     /* (internal) terse stderr listing */
@@ -5372,7 +5382,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "%s\n", contd[j].card);                         /* the flagged card */
             if (contd[j].lost) {
                 fprintf(stderr, " ERROR: This card was consumed as a continuation and the statement on it discarded%s",
-                        contd[j].err == 26 ? " (IFOX00 IFO026, severity 4 -- as370 raises it: a build must not pass silently)"
+                        contd[j].err == 26 ? (strict_cont ? " (IFOX00 IFO026, severity 4; --strict-cont raises it to 8)" : " (IFOX00 IFO026, severity 4)")
                                            : " (IFOX00 does not even warn here; the card's columns 1-15 are blank)");
             } else if (contd[j].err == 26)
                 fprintf(stderr, " WARNING: Characters appear between the begin and continue columns on a continuation card (IFOX00 IFO026)");
@@ -5385,7 +5395,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, " ... and %d further continuation diagnostic%s, %d of them a discarded statement\n",
                     ncontd_seen - ncontd, ncontd_seen - ncontd == 1 ? "" : "s", ncontd_lost);
         if (max_sev < 4) max_sev = 4;                 /* IFOX jermsgcd.asm SEV26 / SEV69 */
-        if (ncontd_lost && max_sev < 8) max_sev = 8;  /* a discarded statement is as370's own error, not IFOX00's */
+        if (strict_cont && ncontd_lost && max_sev < 8) max_sev = 8;   /* --strict-cont only: IFOX00 stays at 4 */
     }
     /* The statement-level diagnostics, in SOURCE order.
      *
