@@ -4431,6 +4431,22 @@ static void do_pass(int pass, char **lines, int nlines) {
              * interrupts it or the statement ends (cc370#240). */
             static unsigned char bitbuf[8192]; int bitn = 0;
             for (oi = 0; oi < nops; oi++) {
+                /* The name field is defined BEFORE the operand is evaluated, so a
+                 * duplication factor may name the statement's OWN label -- the
+                 * pad-to-N idiom, `PATCH DC (4096-(PATCH-ERP1))X'00''. IGE0000I
+                 * and IGE0002A write exactly that and IFOX00 assembles both at
+                 * rc 0; as370 evaluated the factor first, so the symbol was not
+                 * yet defined and the statement drew IFO231 and IFO217 and
+                 * reserved nothing (cc370#310).
+                 *
+                 * The value is the location counter as it stands, which is what
+                 * the oracle shows: tests/selfdup.s pads twice behind different
+                 * run-ups and IFOX00 gives PATCH x'0A' and PATCH2 x'54'. The
+                 * setlbl assignments below still run and still decide the final
+                 * value, so an aligned type is unaffected -- this only makes the
+                 * symbol resolvable while its own operand is being read. */
+                if (pass == 1 && oi == 0 && lbl[0])
+                    { struct sym *s0 = sym_get(lbl); s0->val = lc; s0->defined = 1; s0->sect = cur_sect_id; s0->len = 1; }
                 const char *p = ops[oi]; int cnt = 0, hascnt = 0, k;
                 while (isdigit((unsigned char)*p)) { cnt = cnt * 10 + (*p - '0'); hascnt = 1; p++; }
                 /* A duplication factor may also be an absolute expression in

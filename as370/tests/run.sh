@@ -556,6 +556,17 @@ rm -f /tmp/_au.$$
 # Same root as #295: the boundaries belong to the model card, not to the result.
 #   main 30654d5   K'&C = 0, &D empty
 #   IFOX00, this   K'&C = 1, &D = MVM22
+# selfdup is the #310 oracle: a DC's name field is defined BEFORE its operand is
+# evaluated, so the duplication factor may name the statement's own label -- the
+# pad-to-N idiom, `PATCH DC (4096-(PATCH-ERP1))X'00''. as370 evaluated the factor
+# first, so the symbol was not yet defined: IFO231, then IFO217 for good measure,
+# and no storage reserved. IGE0000I and IGE0002A write exactly that and IFOX00
+# assembles both at rc 0.
+# The fixture pads TWICE behind different run-ups, so a wrong answer cannot be a
+# constant that happens to fit the first one, and it ends with DC AL1 of the two
+# lengths and the total -- values, not just an rc.
+#   main f1a3d30   IFO231 + IFO217, nothing reserved
+#   IFOX00, this   PATCH x'0A', PATCH2 x'54', AL1 bytes 0A 14 30
 # csect_resume{,2,3} are the #136 oracles: a resumed control section keeps its
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
@@ -569,7 +580,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop emptyopnd brmnem subattr genblank; do
+         endstop emptyopnd brmnem subattr genblank selfdup; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
