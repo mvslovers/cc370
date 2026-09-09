@@ -2723,6 +2723,48 @@ static int known_op(const char *o) {
     int i; for (i = 0; d[i]; i++) if (!strcmp(o, d[i])) return 1; return 0;
 }
 
+/* IFO220 ALIGNMENT ERROR: the boundary a storage operand must lie on, or 0 for
+ * an instruction that has no requirement. IFOX00 issues it at severity 4 and
+ * assembles the instruction unchanged -- it is a warning about the ADDRESS, not
+ * about the encoding, which is why all fourteen modules carrying it have a
+ * byte-identical deck and disagree with us only on the return code.
+ *
+ * It is checked ONLY where the operand is a symbol the assembler resolved
+ * itself. Written with an explicit base -- `C R8,350(,R3)' -- the runtime
+ * address depends on the register and cannot be known here, and IFOX00 does not
+ * check it: IGC017 has exactly that pair, one of each, and only the symbol is
+ * flagged. That single module is what separates the rule from "the displacement
+ * is odd"; without it the rule over-predicts and looks right on thirteen. */
+static int op_align(const char *o) {
+    static const struct { const char *n; int a; } t[] = {
+        { "L", 4 }, { "ST", 4 }, { "A", 4 }, { "AL", 4 }, { "S", 4 }, { "SL", 4 },
+        { "C", 4 }, { "CL", 4 }, { "N", 4 }, { "O", 4 }, { "X", 4 },
+        { "M", 4 }, { "D", 4 }, { "LM", 4 }, { "STM", 4 }, { "CS", 4 },
+        { "LCTL", 4 }, { "STCTL", 4 },
+        /* NOT BXH/BXLE. Their storage operand is a BRANCH TARGET, not a data
+         * reference: it needs only the halfword alignment every instruction
+         * already has, and IFOX00 does not check it. Including them cost 95
+         * false positives -- 188 diagnostics, and every single one of the 95
+         * modules was one of these two mnemonics and nothing else, which is
+         * what made the tally conclusive rather than suggestive. */
+        { "LE", 4 }, { "STE", 4 }, { "AE", 4 }, { "SE", 4 }, { "ME", 4 },
+        { "DE", 4 }, { "CE", 4 }, { "AU", 4 }, { "SU", 4 },
+        { "LH", 2 }, { "STH", 2 }, { "AH", 2 }, { "SH", 2 }, { "CH", 2 }, { "MH", 2 },
+        { "LD", 8 }, { "STD", 8 }, { "AD", 8 }, { "SD", 8 }, { "MD", 8 },
+        { "DD", 8 }, { "CD", 8 }, { "AW", 8 }, { "SW", 8 }, { "MXD", 8 },
+        { "CVB", 8 }, { "CVD", 8 }, { "CDS", 8 }, { "LPSW", 8 },
+        { NULL, 0 } };
+    int k; for (k = 0; t[k].n; k++) if (!strcmp(o, t[k].n)) return t[k].a;
+    return 0;
+}
+static void note_align(const char *o, int sy, long ea, int line) {
+    int a = sy ? op_align(o) : 0;
+    if (a && (ea % a)) {
+        char m[VALSZ];
+        snprintf(m, sizeof m, "Alignment error - %s needs a %d-byte boundary and the operand resolves to x'%lX' (IFOX00 IFO220)", o, a, ea);
+        note_operr(m, 4, line);
+    }
+}
 static void mexp_line(const char *line, char **out, int *nout, int depth);
 static int g_sysndx;
 /* interpret a conditional-assembly definition statement (GBLx/LCLx/SETx/ANOP)
@@ -4156,7 +4198,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                         note_addrerr(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)x << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
-                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
+                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1;
+                    note_align(op, sy, lrecs[i].a1, i); break; }
                 case F_RS: { int r1 = (int)eval_reg(F[0]), r3, b;
                     if (nf >= 3) { r3 = (int)eval_reg(F[1]); resolve(F[2], &d, sub, &ns, &sy); }
                     else { r3 = 0; resolve(F[1], &d, sub, &ns, &sy); }  /* shift form R1,D2(B2): R3 field unused */
@@ -4169,7 +4212,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                         note_addrerr(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, ((long)o->op << 24) | ((long)r1 << 20) | ((long)r3 << 16) | ((long)b << 12) | (d & 0xfff), 4); lc += 4;
-                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
+                    lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1;
+                    note_align(op, sy, lrecs[i].a1, i); break; }
                 case F_SI: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0]; long im = imm_val(F[1]);
                     if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;

@@ -1,0 +1,57 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.11 09/09/26
+T         SD  0001 000000 000028
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.11 09/09/26
+                                      1 * IFO220: a storage operand the assembler resolved itself, whose
+                                      2 * address is not on the boundary the instruction requires. It is a
+                                      3 * warning -- the instruction assembles unchanged.
+000000                                4 T        CSECT
+                            00000     5          USING T,15
+000000 C1                             6          DC    C'A'
+000001                                7 ODDF     DS    CL4                      at x'1', not fullword
+000008                                8          DS    0F
+000008                                9 GOODF    DS    F                        aligned
+00000C C1                            10          DC    C'A'
+00000D                               11 ODDH     DS    CL2                      not halfword aligned
+                                     12 * 1: symbol, misaligned -- IFO220
+00000F 00
+000010 5810 F001      00001          13          L     1,ODDF
+         *** ERROR ***
+                                     14 * 2: symbol, aligned -- silent
+000014 5820 F008      00008          15          L     2,GOODF
+                                     16 * 3: symbol, misaligned halfword -- IFO220
+000018 4830 F00D      0000D          17          LH    3,ODDH
+         *** ERROR ***
+                                     18 * 4: the control. Explicit base: the address is not known here
+                                     19 * and IFOX00 does not check it, however odd the displacement.
+00001C 5840 9007      00007          20          L     4,7(,9)
+                                     21 * 5: an instruction with no alignment requirement at all
+000020 4350 F001      00001          22          IC    5,ODDF
+                                     23 * 6: the control that cost 95 modules. BXLE's operand is a BRANCH
+                                     24 * TARGET, not a data reference -- LOOP is halfword aligned and not
+                                     25 * fullword aligned, which is the ordinary case for any label.
+000024 8768 F024      00024          26 LOOP     BXLE  6,8,LOOP
+                                     27          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.11 09/09/26
+GOODF    00004 00000008 00009  00015
+LOOP     00004 00000024 00026  00026
+ODDF     00004 00000001 00007  00013 00022
+ODDH     00002 0000000D 00011  00017
+T        00001 00000000 00004  00005
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 12.11 09/09/26
+   13  IFO220      ALIGNMENT ERROR NEAR OPERAND COLUMN 7
+   17  IFO220      ALIGNMENT ERROR NEAR OPERAND COLUMN 7
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     2
+HIGHEST SEVERITY WAS    4
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         27
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        57
