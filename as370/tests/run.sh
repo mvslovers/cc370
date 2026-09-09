@@ -556,6 +556,18 @@ rm -f /tmp/_au.$$
 # Same root as #295: the boundaries belong to the model card, not to the result.
 #   main 30654d5   K'&C = 0, &D empty
 #   IFOX00, this   K'&C = 1, &D = MVM22
+# litdup is the #317 oracle: a duplication factor in a LITERAL. `=8X'0F'' is
+# eight bytes, and as370 skipped the factor entirely -- one byte. That is not
+# merely a short literal: the pool is segmented by lenalgn(size), so a literal of
+# the wrong length also lands in the wrong SEGMENT and everything behind it
+# moves. It is why sixteen modules came out N bytes short with every later
+# displacement exactly N lower, and seven more had the right total length with
+# the wrong order inside it.
+# The fixture puts the factor on four types (X, C, F twice over) among plain
+# literals, so both halves are visible: =8X'0F' has to be eight bytes AND has to
+# sort into the 8-byte segment ahead of the =F' that was written before it.
+#   main 2f90d47   deck differs, same total size
+#   IFOX00, this   byte-identical
 # repro is the #314 oracle. REPRO punches the card AFTER it into the object deck
 # exactly as it stands, and does not assemble it; as370 had no such operation at
 # all, so ICAPRTBL's three cards of IPL text drew `undefined operation code' and
@@ -604,7 +616,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
-         endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro; do
+         endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
+         litdup; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

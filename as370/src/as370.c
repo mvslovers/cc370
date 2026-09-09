@@ -137,7 +137,7 @@ static struct esdent esdord[MAXSYM]; static int nesdord;
  * following by position, the clobbered value shifted the whole first card
  * (cc370#199). */
 
-struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int sect; int defln; int psect; };
+struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int sect; int defln; int psect; };
 /* `sect` is where the literal was first REFERENCED -- it drives USING
  * resolution, and an END pool that moves sections re-stamps it so the
  * reference resolves through a USING covering the section it landed in.
@@ -482,7 +482,14 @@ static int lenalgn(int len) { return (len % 8 == 0) ? 8 : (len % 4 == 0) ? 4 : (
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
 static void lit_classify(struct lit *l) {
     const char *p = l->text + 1;                 /* past '=' */
-    while (isdigit((unsigned char)*p)) p++;       /* duplication factor (rare) */
+    /* The duplication factor was SKIPPED here and never applied, so `=8X'0F''
+     * was one byte rather than eight. That is not only a short literal: the
+     * pool is segmented by lenalgn(size), so a literal of the wrong length also
+     * lands in the wrong segment, and every literal behind it moves. Sixteen
+     * modules came out N bytes short with every later displacement N lower, and
+     * seven more had the right length with the wrong order (cc370#317). */
+    int dup = 0; while (isdigit((unsigned char)*p)) dup = dup * 10 + (*p++ - '0');
+    l->dup = dup > 0 ? dup : 1;
     char ty = toupper((unsigned char)*p++);
     int len = 0, haslen = 0;
     if (*p == 'L') { p++; haslen = 1; while (isdigit((unsigned char)*p)) len = len * 10 + (*p++ - '0'); }
@@ -509,6 +516,7 @@ static void lit_classify(struct lit *l) {
         sl++; e++; } } l->size = haslen ? len : sl; l->algn = 1;
     } else { l->size = 4; l->algn = 4; }
     if (l->size < 1) l->size = 1;
+    l->size *= l->dup;
 }
 static struct lit *lit_get(const char *t) {
     int i; for (i = 0; i < nlit; i++) if (lits[i].ltseq == litpool && !strcmp(lits[i].text, t)) {
@@ -3799,6 +3807,53 @@ static void emit_float(long at, const char *vstr, int bytes) {
         for (i = 1; i < lb; i++) put(at + hb + i, (long)((G >> (8 * (lb - 1 - i))) & 0xff), 1);
     }
 }
+/* one copy's width: the size a single nominal value occupies, which is what the
+ * per-type emitters below are written against. */
+static int size_unit(const struct lit *l, int dup) { int u = l->size / (dup > 0 ? dup : 1); return u > 0 ? u : 1; }
+static void emit_lit_one(struct lit *l, long loc, int size) {
+    /* A literal is assembled at the pool, so g_curln here is the LTORG or the
+     * END -- neither of which mentions the symbol.  IFOX00 flags the pool's own
+     * generated statement; as370's listing renders that line but has no lines[]
+     * entry for it, so the diagnostic goes to the statement that WROTE the
+     * literal, which is the line a reader needs anyway.  Same choice defln
+     * already makes for IFO158 below. */
+    const char *p = l->text + 1;
+    while (isdigit((unsigned char)*p)) p++;
+    char ty = toupper((unsigned char)*p++);
+    if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
+    if (ty == 'V' || ty == 'A' || ty == 'Y') {            /* address constant, possibly a value list =AL1(a,b,c) */
+        char vv[64][FLDW]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;
+        int per = size / nv, vj;
+        for (vj = 0; vj < nv; vj++) { long vloc = loc + (long)vj * per;
+            if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
+                put(vloc, 0, per); add_reloc(vloc, r, 1, per); }
+            else { int rc = 0; long v = vv[vj][0] ? expr_val_full(vv[vj], &rc) : 0; put(vloc, v, per);   /* leading '(' -- see the DC arm and cc370#167 */
+                char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
+                struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
+                int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
+                if (rc != 0 && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
+                if (rc != 0 && tgtreal) { add_reloc(vloc, sym, 0, per); } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
+    } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
+        /* Every nominal value goes through the converter. It used to be reached
+         * only when the text contained a `.`, `e` or `E`, so =D'2' and =E'1' took
+         * the integer route and assembled as 0000000000000002 and 00000000 where
+         * IFOX00 says 4120000000000000 and 41100000 (#53). */
+        const char *q = strchr(p, '\'');
+        if (q) emit_float(loc, q + 1, size);
+        else { int j; for (j = 0; j < size; j++) put(loc + j, 0, 1); }
+    } else if (ty == 'F' || ty == 'H') {
+        put(loc, l->val, size);
+    } else if (ty == 'X') {
+        const char *q = strchr(p, '\''); unsigned char by[256]; int nb = q ? hex_to_bytes(q + 1, by, 256) : 0;
+        int pad = size - nb, j; for (j = 0; j < size; j++) put(loc + j, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1);
+    } else if (ty == 'C') {
+        const char *q = strchr(p, '\''); char body[256]; int slen = 0;
+        if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
+            if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
+            body[slen++] = *e++; } }
+        int j; for (j = 0; j < size; j++) put(loc + j, j < slen ? mvs_a2e((unsigned char)body[j]) : 0x40, 1);
+    } else put(loc, l->val, size);
+}
 static void emit_lit(struct lit *l) {
     /* A literal is assembled at the pool, so g_curln here is the LTORG or the
      * END -- neither of which mentions the symbol.  IFOX00 flags the pool's own
@@ -3807,44 +3862,11 @@ static void emit_lit(struct lit *l) {
      * literal, which is the line a reader needs anyway.  Same choice defln
      * already makes for IFO158 below. */
     int svln = g_curln; g_curln = l->defln;
-    const char *p = l->text + 1;
-    while (isdigit((unsigned char)*p)) p++;
-    char ty = toupper((unsigned char)*p++);
-    if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
-    if (ty == 'V' || ty == 'A' || ty == 'Y') {            /* address constant, possibly a value list =AL1(a,b,c) */
-        char vv[64][FLDW]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;
-        int per = l->size / nv, vj;
-        for (vj = 0; vj < nv; vj++) { long loc = l->loc + (long)vj * per;
-            if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
-                put(loc, 0, per); add_reloc(loc, r, 1, per); }
-            else { int rc = 0; long v = vv[vj][0] ? expr_val_full(vv[vj], &rc) : 0; put(loc, v, per);   /* leading '(' -- see the DC arm and cc370#167 */
-                char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
-                struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
-                int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
-                if (rc != 0 && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
-                if (rc != 0 && tgtreal) { add_reloc(loc, sym, 0, per); } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
-    } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
-        /* Every nominal value goes through the converter. It used to be reached
-         * only when the text contained a `.`, `e` or `E`, so =D'2' and =E'1' took
-         * the integer route and assembled as 0000000000000002 and 00000000 where
-         * IFOX00 says 4120000000000000 and 41100000 (#53). */
-        const char *q = strchr(p, '\'');
-        if (q) emit_float(l->loc, q + 1, l->size);
-        else { int j; for (j = 0; j < l->size; j++) put(l->loc + j, 0, 1); }
-    } else if (ty == 'F' || ty == 'H') {
-        put(l->loc, l->val, l->size);
-    } else if (ty == 'X') {
-        const char *q = strchr(p, '\''); unsigned char by[256]; int nb = q ? hex_to_bytes(q + 1, by, 256) : 0;
-        int pad = l->size - nb, j; for (j = 0; j < l->size; j++) put(l->loc + j, (j >= pad && j - pad < nb) ? by[j - pad] : 0, 1);
-    } else if (ty == 'C') {
-        const char *q = strchr(p, '\''); char body[256]; int slen = 0;
-        if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
-            if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
-            body[slen++] = *e++; } }
-        int j; for (j = 0; j < l->size; j++) put(l->loc + j, j < slen ? mvs_a2e((unsigned char)body[j]) : 0x40, 1);
-    } else put(l->loc, l->val, l->size);
+    int dup = l->dup > 0 ? l->dup : 1, unit = size_unit(l, dup), k;
+    for (k = 0; k < dup; k++) emit_lit_one(l, l->loc + (long)k * unit, unit);
     g_curln = svln;
 }
+
 static int listing = 0;
 /* --strict-cont: raise a DISCARDED statement from IFOX00's severity 4 to 8.
  * IFOX00 gives a harmless continued comment and a statement-losing continuation
