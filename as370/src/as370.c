@@ -804,7 +804,14 @@ static long eval_reg(const char *s) {
         for (; *p; p++) { if (*p == '(') d++; else if (*p == ')') { if (--d == 0) break; } }
         if (d == 0 && *p == ')') { const char *q = p + 1; while (*q == ' ') q++;
             if (!*q) { char in[64]; int n = (int)(p - s - 1); if (n > 63) n = 63; memcpy(in, s + 1, n); in[n] = 0; return expr_val(in, NULL); } } }
-    return expr_val(s, NULL);
+    /* Not a fully enclosing pair, so the leading '(' is a GROUP and the operand
+     * is an ordinary expression: `CVB (LINUM2+CTR)/TWO,LTPAKARA' names register
+     * 8.  expr_val's guard reads that '(' as a subscript and answers 0, which
+     * put a register 0 into the instruction where IFOX00 writes 8 -- one byte,
+     * silent on both sides (cc370#247's family; IKJEBELT). expr_val_full is the
+     * same evaluator without the guard, and it already values the fully
+     * enclosing form the same way the branch above does. */
+    return expr_val_full(s, NULL);
 }
 static void put(long at, long v, int n) {
     if (in_dsect) return;                       /* a DSECT generates no object text */
