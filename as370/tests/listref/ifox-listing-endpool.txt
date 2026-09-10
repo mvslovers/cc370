@@ -1,0 +1,51 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 11.22 09/10/26
+LTA       SD  0001 000000 00001C
+SEC2      SD  0002 000020 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 11.22 09/10/26
+                                      1 * cc370 -- the END literal pool goes behind the first control
+                                      2 * section's FINAL extent.  as370 reserved its room when the
+                                      3 * second section opened and never moved it.
+                                      4 *
+                                      5 * The resume below adds only TWO bytes, which is LESS than the
+                                      6 * four the pool reserved.  That is AMDPRUIM's shape and it is
+                                      7 * the strict case: the section's own growth stays under the
+                                      8 * reserved pool's end, so "has it grown?" cannot be answered
+                                      9 * from the extent the reservation itself raised.
+                                     10 *
+                                     11 * Control inside the fixture: TWOB's object code must survive
+                                     12 * -- if the pool is placed at the old mark it lands on top of
+                                     13 * it -- and the L must reach the literal.
+000000                               14 LTA      CSECT
+                            00000    15          USING LTA,15
+000000 0000000000000000              16          DC    XL16'00'
+000020                               17 SEC2     CSECT
+000020 0000000000000000              18          DC    XL8'00'
+000010                               19 LTA      CSECT
+000010 ABCD                          20 TWOB     DC    XL2'ABCD'
+000012 5810 F018      00018          21          L     1,=X'00FFFFFF'
+                                     22          END
+000018 00FFFFFF                      23                =X'00FFFFFF'
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.22 09/10/26
+LTA      00001 00000000 00014  00015 00019
+SEC2     00001 00000020 00017
+TWOB     00002 00000010 00020
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.22 09/10/26
+=X'00FFFFFF'
+         00004 00000018 00023  00021
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 11.22 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         22
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         6
+TOTAL RECORDS PRINTED                        51
