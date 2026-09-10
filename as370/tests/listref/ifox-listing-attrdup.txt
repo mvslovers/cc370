@@ -1,0 +1,52 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 07.19 09/10/26
+ATTRDUP   SD  0001 000000 000026
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 07.19 09/10/26
+                                      1 * cc370#184 -- an attribute apostrophe is not a delimiter in a
+                                      2 * parenthesised duplication factor, nor in a macro prototype
+                                      3 * default.  Every line has its control on the line below it,
+                                      4 * written with the plain number 4: the two must produce the
+                                      5 * same bytes, so a wrong answer shows without the oracle.
+                                      6          MACRO
+                                      7          PROTO &P=L'FLD
+                                      8 P&SYSNDX DC    AL1(&P)
+                                      9          MEND
+000000                               10 ATTRDUP  CSECT
+000000                               11 FLD      DS    CL4
+000004                               12 A1       DS    CL(L'FLD)
+000008                               13 A2       DS    CL(4)
+00000C E7E7E7E7                      14 B1       DC    (L'FLD)C'X'
+000010 E7E7E7E7                      15 B2       DC    (4)C'X'
+000014                               16 C1       DS    (L'FLD)CL2
+00001C                               17 C2       DS    (4)CL2
+                                     18          PROTO
+000024 04                            19+P0001    DC    AL1(L'FLD)
+                                     20          PROTO P=4
+000025 04                            21+P0002    DC    AL1(4)
+                                     22          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 07.19 09/10/26
+ATTRDUP  00001 00000000 00010
+A1       00004 00000004 00012
+A2       00004 00000008 00013
+B1       00001 0000000C 00014
+B2       00001 00000010 00015
+C1       00002 00000014 00016
+C2       00002 0000001C 00017
+FLD      00004 00000000 00011  00012 00014 00016 00019
+P0001    00001 00000024 00019
+P0002    00001 00000025 00021
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 07.19 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         20
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        52

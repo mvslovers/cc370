@@ -738,7 +738,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
          litdup pool contsev align blankcont litscale litpz litlist \
-         adcon aliasext; do
+         adcon aliasext attrdup; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
