@@ -1,0 +1,55 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 23.10 09/09/26
+T         SD  0001 000000 000001
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 23.10 09/09/26
+                                      1 * An empty nominal value, one card per type. Which message does each
+                                      2 * draw, and does IFOX00 reserve anything? Measured rather than split
+                                      3 * between 178 and 255 by guesswork.
+000000                                4 T        CSECT
+000000                                5          DC    X''
+         *** ERROR ***
+000000                                6          DC    C''
+         *** ERROR ***
+000000                                7          DC    B''
+         *** ERROR ***
+000000                                8          DC    F''
+         *** ERROR ***
+000000                                9          DC    H''
+         *** ERROR ***
+000000                               10          DC    P''
+         *** ERROR ***
+000000                               11          DC    Z''
+         *** ERROR ***
+000000                               12          DC    E''
+         *** ERROR ***
+000000                               13          DC    A()
+         *** ERROR ***
+000000 FF                            14 MARK     DC    X'FF'
+                                     15          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 23.10 09/09/26
+MARK     00001 00000000 00014
+T        00001 00000000 00004
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 23.10 09/09/26
+    5  IFO178      SYNTAX ERROR NEAR OPERAND COLUMN 3
+    6  IFO178      SYNTAX ERROR NEAR OPERAND COLUMN 3
+    7  IFO178      SYNTAX ERROR NEAR OPERAND COLUMN 3
+    8  IFO255      FIXED OR FLOATING POINT EXPRESSION ERROR NEAR OPERAND COLUMN 3
+    9  IFO255      FIXED OR FLOATING POINT EXPRESSION ERROR NEAR OPERAND COLUMN 3
+   10  IFO178      SYNTAX ERROR NEAR OPERAND COLUMN 3
+   11  IFO178      SYNTAX ERROR NEAR OPERAND COLUMN 3
+   12  IFO255      FIXED OR FLOATING POINT EXPRESSION ERROR NEAR OPERAND COLUMN 3
+   13  IFO234      PREMATURE END OF EXPRESSION NEAR OPERAND COLUMN 3
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     9
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         15
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        55
