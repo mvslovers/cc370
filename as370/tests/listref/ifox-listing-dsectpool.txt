@@ -1,0 +1,41 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.16 09/10/26
+DPC       SD  0001 000000 000014
+          PC  0002 000018 000000
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.16 09/10/26
+                                      1 * Achte Form, und diesmal IFDOLT39s ESD: EINE benannte Sektion,
+                                      2 * danach ein DSECT, und die zweite Sektion (Private Code) oeffnet
+                                      3 * erst, WAEHREND der DSECT aktuell ist.
+000000                                4 DPC      CSECT
+                            00000     5          USING DPC,15
+000000 5810 F010      00010           6          L     1,=X'00FFFFFF'
+000004 0000000000000000               7          DC    XL8'00'
+000000                                8 DPRCOM   DSECT
+000000                                9          DS    XL256
+                            00100    10 ENDCOM   EQU   *
+000018                               11          CSECT
+                                     12          END
+000010 00FFFFFF                      13                =X'00FFFFFF'
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.16 09/10/26
+DPC      00001 00000000 00004  00005
+DPRCOM   00001 00000000 00008
+ENDCOM   00001 00000100 00010
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.16 09/10/26
+=X'00FFFFFF'
+         00004 00000010 00013  00006
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 12.16 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         12
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        41
