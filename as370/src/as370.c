@@ -2223,9 +2223,12 @@ static char ds_type_letter(const char *opnd) {
     else while (isdigit((unsigned char)*p)) p++;
     return *p ? (char)toupper((unsigned char)*p) : 0;
 }
-static void prescan_symtypes(char **in, int n) {
+static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12], int as_macro);   /* fwd: COPY in the prescan */
+/* `nest' bounds COPY-within-COPY; the caller passes 0 and clears the table. */
+static void prescan_cards(char **in, int n, int nest);
+static void prescan_symtypes(char **in, int n) { nstypes = 0; prescan_cards(in, n, 0); }
+static void prescan_cards(char **in, int n, int nest) {
     int i, depth = 0;
-    nstypes = 0;
     for (i = 0; i < n; i++) {
         char lbl[32], op[16], opnd[STMTSZ];
         if (card_op_is(in[i], "MACRO")) { depth++; continue; }
@@ -2240,6 +2243,24 @@ static void prescan_symtypes(char **in, int n) {
                 while (*s && *s != ',' && *s != ' ' && k < 15) nm[k++] = *s++;
                 nm[k] = 0; if (k) styp_add(nm, 'T');
                 while (*s && *s != ',') s++;
+            }
+            continue;
+        }
+        /* A COPY member's symbols are open code and IFOX00 answers T' for them:
+         * IFNX5P does `COPY X5COM' and then GOIF1 tests `T'LNCNT', where LNCNT
+         * is a DS F inside that member.  The prescan walked the source cards
+         * only, so every such symbol came back 'U', GOIF1 generated the
+         * four-byte CLI instead of the six-byte CLC, and every branch target
+         * after it moved four bytes -- 1,600 differing bytes in one module from
+         * one attribute.  Read the member here the same way the expansion does. */
+        if (!strcmp(op, "COPY") && opnd[0] && nest < 8) {
+            enum { PRECOPYMAX = 65536 };
+            char **cb = malloc(PRECOPYMAX * sizeof *cb);
+            if (cb) {
+                int cn = lib_readlines(opnd, cb, PRECOPYMAX, NULL, 0);   /* 0 = not a macro: take the
+                                                                         * member entire, as COPY does */
+                if (cn > 0) prescan_cards(cb, cn, nest + 1);
+                free(cb);
             }
             continue;
         }
