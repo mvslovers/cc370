@@ -650,6 +650,23 @@ rm -f /tmp/_au.$$
 # route through emit_decimal than a natural one.
 #   ff783f6        =P'0' four bytes, no value written
 #   IFOX00, this   every literal equals its DC twin
+# adcon is the #343 oracle: an address constant written in extra parentheses.
+# `DC A((SYM))' always had the right VALUE -- expr_val_full evaluates it -- and
+# no RLD entry at all, because both scanners that find the relocation target,
+# reloc_sym() and expr_sect_terms(), skipped a parenthesised group whole.
+# The rule is #247's and was already right in resolve(): a leading '(' is a
+# GROUP whose terms belong to the expression, one that FOLLOWS a complete term
+# is a subscript and does not. These two skipped either way.
+# IGC0E05A's PDR macro writes two such constants and its deck was exactly two
+# RLD entries short with the TXT byte-identical, which is why it presented as an
+# RLD defect of its own.
+# Half the fixture is the half that must NOT change:
+#   4  A((ABS))      grouped but ABSOLUTE -- no relocation is correct, and 38
+#                    MVSBLD modules write exactly this shape and are identical
+#   5  A((TGT-TGT))  a difference, likewise absolute
+#   6  L 1,TGT(2)    a SUBSCRIPT, not a group -- the half that keeps skipping
+#   8250810        RLD 8 bytes, one entry for three A-constants
+#   IFOX00, this   RLD 16 bytes, three entries, deck byte-identical
 # litscale is the #327 oracle: a scale modifier on a LITERAL. lit_classify()
 # never parsed one, so `=FS3'65535'' assembled as 65535 where the identical DC
 # constant gave 65535 x 2**3 = X'0007FFF8'.
@@ -720,7 +737,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup pool contsev align blankcont litscale litpz litlist; do
+         litdup pool contsev align blankcont litscale litpz litlist \
+         adcon; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

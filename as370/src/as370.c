@@ -1061,7 +1061,20 @@ static int expr_sect_terms(const char *f, int *tsect, long *tsign, int max) {
         if (*p == '/') { p++; expect = 1; continue; }
         if (*p == ',') { p++; sign = 1; expect = 1; continue; }     /* multi-value term separator */
         if (*p == '*' && !expect) { p++; expect = 1; continue; }   /* binary multiply */
-        if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } continue; }
+        if (*p == '(') {
+            /* A leading '(' is a GROUP and its terms belong to the expression;
+             * one that FOLLOWS a complete term is a subscript and does not.
+             * That is #247's positional rule, and it was already right in
+             * resolve() while both of these skipped the group either way.
+             * `DC A((SYM))' therefore got the correct VALUE -- expr_val_full
+             * evaluates it -- and no RLD entry at all, because the symbol the
+             * relocation targets was never seen. IGC0E05A's PDR macro writes
+             * two of them and the deck is exactly two entries short, with the
+             * TXT byte-identical, which is why it read as an RLD defect of its
+             * own for as long as it did (cc370#343). */
+            if (expect) { p++; continue; }                       /* group: descend */
+            { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } }
+            continue; }
         if (*p == ')') { p++; continue; }
         int csect = -1;
         if (*p == '*') { csect = cur_sect_id; p++; }               /* location counter term */
@@ -1103,7 +1116,20 @@ static void reloc_sym(const char *expr, char *out, int outsz) {
         if (*p == '/') { p++; expect = 1; continue; }
         if (*p == ',') { p++; sign = 1; expect = 1; continue; }     /* multi-value DC A(a,b): term separator */
         if (*p == '*' && !expect) { p++; expect = 1; continue; }    /* binary multiply */
-        if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } continue; }
+        if (*p == '(') {
+            /* A leading '(' is a GROUP and its terms belong to the expression;
+             * one that FOLLOWS a complete term is a subscript and does not.
+             * That is #247's positional rule, and it was already right in
+             * resolve() while both of these skipped the group either way.
+             * `DC A((SYM))' therefore got the correct VALUE -- expr_val_full
+             * evaluates it -- and no RLD entry at all, because the symbol the
+             * relocation targets was never seen. IGC0E05A's PDR macro writes
+             * two of them and the deck is exactly two entries short, with the
+             * TXT byte-identical, which is why it read as an RLD defect of its
+             * own for as long as it did (cc370#343). */
+            if (expect) { p++; continue; }                       /* group: descend */
+            { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } }
+            continue; }
         if (*p == ')') { p++; continue; }
         if (*p == '*') { if (sign > 0 && !out[0] && outsz > 1) { out[0] = '*'; out[1] = 0; } p++; sign = 1; expect = 0; continue; }   /* location counter */
         if ((*p == 'X' || *p == 'B' || *p == 'C') && p[1] == '\'') { p += 2; while (*p && *p != '\'') p++; if (*p == '\'') p++; sign = 1; expect = 0; continue; }   /* self-defining term */

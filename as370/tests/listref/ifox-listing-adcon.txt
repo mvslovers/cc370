@@ -1,0 +1,51 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 02.18 09/10/26
+T         SD  0001 000000 000018
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 02.18 09/10/26
+                                      1 * An address constant written in extra parentheses. The value was
+                                      2 * always right; the RLD entry was not, because both scanners that
+                                      3 * find the relocation target skipped a parenthesised group whole.
+000000                                4 T        CSECT
+000000                                5 TGT      DS    0H
+                            00004     6 ABS      EQU   4
+                                      7 * 1: plain -- the control that always worked
+000000 00000000                       8          DC    A(TGT)
+                                      9 * 2: grouped -- the case
+000004 00000000                      10          DC    A((TGT))
+                                     11 * 3: grouped inside an expression
+000008 00000004                      12          DC    A((TGT)+4)
+                                     13 * 4: grouped ABSOLUTE -- no relocation is correct here, and 38
+                                     14 * MVSBLD modules write exactly this shape
+00000C 00000004                      15          DC    A((ABS))
+                                     16 * 5: a difference of two labels -- absolute, no relocation
+000010 00000000                      17          DC    A((TGT-TGT))
+                                     18 * 6: a machine operand with a SUBSCRIPT, not a group. The rule is
+                                     19 * positional and this is the half that must keep skipping.
+                            00000    20          USING T,15
+000014 5812 F000      00000          21          L     1,TGT(2)
+                                     22          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 02.18 09/10/26
+ 0001     0001      0C     000000
+ 0001     0001      0C     000004
+ 0001     0001      0C     000008
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 02.18 09/10/26
+ABS      00001 00000004 00006  00015
+T        00001 00000000 00004  00020
+TGT      00002 00000000 00005  00008 00010 00012 00017 00017 00021
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 02.18 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         22
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        51
