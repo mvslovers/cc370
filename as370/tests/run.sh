@@ -599,6 +599,22 @@ rm -f /tmp/_au.$$
 # evidence rather than on symmetry.
 #   fb621ad        =F'-8,4' four bytes, the 4 missing
 #   IFOX00, this   every literal equals its DC twin
+# emptydc is the #338 oracle: a DC whose nominal value is EMPTY -- the quotes
+# are written and nothing is between them. IEDHJN takes a substring of an empty
+# &SYSPARM, and MODID's &LABELC substitutes to nothing, so both generate cards
+# like `DC CL8'''' and `DC X''''. IFOX00 calls that a syntax error and reserves
+# NOTHING; as370 took it in silence and reserved the type's default length, so
+# every symbol behind it moved. IECVOID was +8 bytes from one such card.
+# One card per type, because the message is not uniform and guessing which half
+# gets which would have been wrong for three of them:
+#   X C B P Z -> IFO178      F H E -> IFO255      A() -> IFO234
+# and every one of them reserves nothing -- MARK sits at 0 in IFOX00's listing
+# with nine rejected constants in front of it.
+# The A() case is in the fixture because the first version of the fix handled
+# only the quoted forms, and the fixture's own deck comparison caught the four
+# bytes it still emitted.
+#   b67af3d        no diagnostic at all, 14 bytes reserved
+#   IFOX00, this   9 flagged, deck byte-identical
 # actr is the #336 oracle. ACTR bounds the conditional-assembly LOOPS and as370
 # had none at all -- it skipped the statement and used a flat 100,000-STATEMENT
 # guard instead, which is a different thing and silently cut a macro in half.
@@ -2574,7 +2590,8 @@ deck_eq() {
 # statement. That separates the message count from the statement count, and
 # without it the counting rule is not tested at all.
 rc8fail=0
-for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8 kwundef:2:8 actr:1:8; do
+for s8 in setc_substr:4:8 var_opcode:1:8 sysparm_substr:2:8 kwundef:2:8 actr:1:8 \
+          emptydc:9:8; do
     f8=${s8%%:*}; rest8=${s8#*:}; nf8=${rest8%%:*}; rc8=${rest8##*:}
     ./as370 "tests/$f8.s" -o "/tmp/_$f8$$.obj" >/dev/null 2>"/tmp/_$f8$$.err"; got8=$?
     if [ $got8 != $rc8 ]; then
