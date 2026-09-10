@@ -1,0 +1,71 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.55 09/10/26
+DROPL     SD  0001 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.55 09/10/26
+                                      1 * cc370 -- a DROP names as many registers as it likes.  The
+                                      2 * operand list was cut at four, so IGC0001F's eight-register
+                                      3 * DROP left the last four registered, and a later USING on the
+                                      4 * same section tied against a base that should have been gone.
+                                      5 *
+                                      6 * Every register dropped below has an active USING first, which
+                                      7 * is the shape IGC0001F has and which IFOX00 accepts.
+                                      8 * Control inside the fixture: the first L uses a four-register
+                                      9 * DROP, which already worked.  Both L must show base 9.
+000000                               10 DROPL    CSECT
+                            00001    11 R1       EQU   1
+                            00005    12 R5       EQU   5
+                            00006    13 R6       EQU   6
+                            00007    14 R7       EQU   7
+                            00008    15 R8       EQU   8
+                            00009    16 R9       EQU   9
+                            0000C    17 R12      EQU   12
+                            0000F    18 R15      EQU   15
+                            00000    19          USING MYD,R15
+                            00000    20          USING MYD,R5
+                            00000    21          USING MYD,R12
+                            00000    22          USING MYD,R8
+                                     23          DROP  R15,R5,R12,R8
+                            00000    24          USING MYD,R9
+000000 5810 9008      00008          25          L     1,FLD
+                                     26          DROP  R9
+                            00000    27          USING MYD,R1
+                            00000    28          USING MYD,R5
+                            00000    29          USING MYD,R6
+                            00000    30          USING MYD,R7
+                            00000    31          USING MYD,R8
+                            00000    32          USING MYD,R12
+                            00000    33          USING MYD,R15
+                                     34          DROP  R1,R5,R6,R7,R8,R12,R15
+                            00000    35          USING MYD,R9
+000004 5820 9008      00008          36          L     2,FLD
+000000                               37 MYD      DSECT
+000000                               38          DS    CL8
+000008                               39 FLD      DS    F
+                                     40          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.55 09/10/26
+DROPL    00001 00000000 00010
+FLD      00004 00000008 00039  00025 00036
+MYD      00001 00000000 00037  00019 00020 00021 00022 00024 00027 00028 00029 00030 00031 00032 00033 00035
+R1       00001 00000001 00011  00027 00034
+R12      00001 0000000C 00017  00021 00023 00032 00034
+R15      00001 0000000F 00018  00019 00023 00033 00034
+R5       00001 00000005 00012  00020 00023 00028 00034
+R6       00001 00000006 00013  00029 00034
+R7       00001 00000007 00014  00030 00034
+R8       00001 00000008 00015  00022 00023 00031 00034
+R9       00001 00000009 00016  00024 00026 00035
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 09.55 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         40
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        71
