@@ -15,13 +15,16 @@ against `origin/main` at `fd287d3`, one at a time, and every figure below
 re-derived on this host rather than carried forward. Twenty-five PRs merged since
 this file last looked (#311…#337 on the evening of 2026-09-09, #340…#357 on
 2026-09-10) and **none of them was recorded here**. `as370 == IFOX00` stands at
-**5,427 of 5,528 (98.2 %)** at `fd287d3` — deck body, END card excluded, on the
-macro path the promoted baseline uses. On the gate's *current* path it is 5,426,
-and the single module between them is `IGC018`: `mvs38src` put
-`macros/amaclib-live` at the head of the `-I` list on 2026-09-10, and that copy
-of `IHADVCT` is an older maintenance level with no `DVCBPSEC` in it, so as370
-correctly reports the symbol undefined against a macro IFOX00 did not use.
-**Quote the path with the number** — the same binary produces both, and a figure
+**5,427 of 5,528 (98.2 %)** at `fd287d3` — deck body, END card excluded, 101
+modules still differing. For part of the day it read 5,426, and chasing that one
+module is the most useful hour in this entry: `mvs38src` had put
+`macros/amaclib-live` at the *head* of the `-I` list, and its `IHADVCT` is a
+pre-`@ZA40405` level with no `DVCBPSEC`, so as370 correctly reported the symbol
+undefined against a macro IFOX00 never used. `mvs38src` `0457a00` moved the
+directory to the **end** of the path and the two figures converged; re-measured
+here at `fd287d3` afterwards, the reordered path and the baseline path are not
+merely equal in count but the **same set of modules**, `+0 / -0`. **Quote the
+path with the number anyway** — the same binary produced both, and a figure
 without its rule is the one mistake this file keeps making. What the pass found:
 **#39 has been closed since 2026-09-08 and led the ranking through two
 reconciliations anyway**; **#35 is fixed** and closes on this one; **#110 is
@@ -408,10 +411,15 @@ comparison needs, both measured: exclude the END card (each assembler stamps its
 own translator id) and compare columns 1–72 only (73–76 is the card sequence
 number, and ignoring that produced a false alarm on all five cards of one
 module). Both sides must also see the **same macro libraries**, or the diff
-attributes nothing to anyone. That is what found #138 — and on 2026-09-10 it is
-what cost `IGC018`, in the other direction: a corrected macro path handed as370
-an older `IHADVCT` than the oracle had used, and one identity moved for reasons
-that have nothing to do with either assembler.
+attributes nothing to anyone. That is what found #138 — and on 2026-09-10 it
+cost `IGC018` and then earned it back: a macro path corrected on one argument
+handed as370 an older `IHADVCT` than the oracle had used, and one identity moved
+for reasons that have nothing to do with either assembler. **What settled it is
+the rule this whole band rests on** — the decks decide, not the search order.
+IFOX00's own diagnostics for that module flag `DVCMODU` and `DVCUFIX1` undefined
+and say nothing about `DVCBPSEC`, and only one of the three `IHADVCT` copies on
+the path has that profile. A claim about which library an oracle read is
+answerable from what it produced, and answerable from nothing else.
 
 **And it is available as an acceptance gate, not only as a report.** The decks
 are recorded, so it runs on this host in about 90 seconds per binary
@@ -1544,17 +1552,26 @@ variants) and — now that #99 is in — the `__premain()` hook that closes #10.
 not rank those here; the sequence table above is the place that keeps them in
 step.
 
-**One thing owed to `mvs38src`, measured here on 2026-09-10.** Its `25679ba` put
-`work/macros/amaclib-live` at the head of the gate's `-I` path, on the argument
-that `SYS1.AMACLIB` is first in the oracle's SYSLIB and the six members were read
-from the live library. For five of the six that argument holds. For `IHADVCT` the
-reference deck contradicts it: `IGC018` codes `LH R0,DVCBPSEC`, IFOX00 emits
-`48F0 9012`, and the live copy of `IHADVCT` — 196 lines against `mirror`'s 203 —
-does not define `DVCBPSEC` at all (it predates APAR `@ZA40405`). So the oracle
-resolved that macro from somewhere else, or the live library moved after
-2026-09-07. Same binary, two macro paths, 5,427 against 5,426, and the whole
-difference is that one member. It is their call, not ours; ours is to quote the
-path with the number until it is settled.
+**Settled the same day it was raised, and the answer is worth more than the
+identity it recovered.** `mvs38src`'s `25679ba` put `work/macros/amaclib-live` at
+the head of the gate's `-I` path, on the argument that `SYS1.AMACLIB` is first in
+the oracle's SYSLIB. For five of the six members that holds. For `IHADVCT` the
+reference deck contradicted it, and `0457a00` moved the directory to the end of
+the path: unique members still resolve out of it, colliding ones come from
+`mirror`. Re-measured here at `fd287d3` afterwards — 5,427 on the reordered path,
+the same **set** as the baseline path, `+0 / -0`.
+
+**What it exposed is not ours to fix and is bigger than the one module.** IFOX00's
+diagnostics for `IGC018` name `DVCMODU` and `DVCUFIX1` and not `DVCBPSEC`, a
+profile only the `@ZA40405` level has; `IHADVCT` is in no other library of the
+oracle's SYSLIB; and the SYSLIB list itself did not change on 2026-09-07. So
+`MVSCE-LAB`'s `SYS1.AMACLIB` is **no longer in the state that produced the
+reference corpus**, and MVS 3.8j keeps no member statistics to date the change.
+Re-running the oracle there today would not reproduce the decks we measure
+against. Their call and their stage-1 direction — but it is the strongest
+argument yet for a reference system that is pinned rather than live, and for us
+it is the reason `#345` (`-am`, the macro and copy code source summary) stopped
+being a listing nicety.
 
 **MVS 3.8j source recovery** (`mvs38src`) is a *consumer*, not a half: it needs
 #109–#113 and #115 and files them here, but it decides nothing about cc370 beyond
