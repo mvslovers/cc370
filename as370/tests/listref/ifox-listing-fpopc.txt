@@ -1,0 +1,45 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.43 09/10/26
+FPOPC     SD  0001 000000 000028
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.43 09/10/26
+                                      1 * cc370 -- AWR and AUR had each other's opcode.  AWR is the
+                                      2 * LONG unnormalized add (0x2E), AUR the short one (0x3E).
+                                      3 *
+                                      4 * The controls are inside the fixture: the table's own rule is
+                                      5 * that a floating RR opcode is its RX counterpart minus 0x40,
+                                      6 * and every sibling pair below is written out so a swap cannot
+                                      7 * return unnoticed on one line.
+000000                                8 FPOPC    CSECT
+                            00000     9          USING FPOPC,15
+000000                               10 D        DS    D
+000008 2A02                          11          ADR   0,2
+00000A 3A02                          12          AER   0,2
+00000C 2E02                          13          AWR   0,2
+00000E 3E02                          14          AUR   0,2
+000010 2B02                          15          SDR   0,2
+000012 3B02                          16          SER   0,2
+000014 2F02                          17          SWR   0,2
+000016 3F02                          18          SUR   0,2
+000018 6A00 F000      00000          19          AD    0,D
+00001C 7A00 F000      00000          20          AE    0,D
+000020 6E00 F000      00000          21          AW    0,D
+000024 7E00 F000      00000          22          AU    0,D
+                                     23          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.43 09/10/26
+D        00008 00000000 00010  00019 00020 00021 00022
+FPOPC    00001 00000000 00008  00009
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 09.43 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         23
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        45
