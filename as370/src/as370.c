@@ -5100,7 +5100,19 @@ static void do_pass(int pass, char **lines, int nlines) {
                                                 note_addrerr(op, i);
                                                 reg = 0; disp = 0;
                                             }
-                                        } else { disp = a; reg = 0; }
+                                        } else {
+                                            /* An absolute expression still takes its base from an
+                                             * ABSOLUTE using, exactly as a machine operand does.
+                                             * IECVESIO and IECVCINT write `CRCA EQU 0' /
+                                             * `USING CRCA,R1' / `DC X'8300',S(CRCAMCW)' and IFOX00
+                                             * answers 1008 -- base 1, displacement 8 -- while the
+                                             * NI on the same symbol under the same USING was
+                                             * already right here.  With no absolute USING in range
+                                             * using_for_abs() returns 0 and sets disp = val, so the
+                                             * S(0) -> 0000 case the comment above measured under a
+                                             * RELOCATABLE using is unchanged. */
+                                            reg = using_for_abs(a, &disp);
+                                        }
                                     }
                                     put(lc, ((long)(reg & 0xf) << 12) | (disp & 0xfff), 2);
                                 }
