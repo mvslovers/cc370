@@ -2879,5 +2879,53 @@ else
 fi
 fail=$((fail + asanfail))
 
+# ---------------------------------------------------------------- chain_pc --
+# The implicit private-code section is CHAINED, so a named CSECT that follows
+# it starts after it instead of on top of it.
+#
+# assign_origins() walks sect_ord alone, and only the CSECT/START handler used
+# to append to it -- so a section opened any other way kept origin 0. Content
+# before the first CSECT opens private code that way, and the named section
+# then got origin 0 as well: two sections overlapping inside one module.
+#
+# The assertion is structural and needs no oracle: no two sections of one deck
+# may overlap. IFOX00 produced no such deck in 5,528; as370 produced five
+# (BNGC3270 BNGCDISP BNGCLOCL BNGCMENU BNGCRMOT), three of which became
+# byte-identical when this was fixed. The measured oracle for the origins
+# themselves is tests/ref/extrn_csect.obj (JOB00221): private code 20 bytes at
+# 0, the named section at x'18'.
+cat > /tmp/_chain$$.s <<'EOF'
+         DC    F'1'               implicit private code, no CSECT yet
+A        CSECT
+         DC    XL4'AAAAAAAA'
+         END
+EOF
+./as370 /tmp/_chain$$.s -o /tmp/_chain$$.obj >/dev/null 2>&1
+python3 - /tmp/_chain$$.obj <<'PY'
+import sys
+def be(b): return int.from_bytes(b, 'big')
+d = open(sys.argv[1], 'rb').read()
+sec = []
+for i in range(0, len(d), 80):
+    c = d[i:i+80]
+    if c[1:4] != b"\xc5\xe2\xc4": continue          # 'ESD' in EBCDIC
+    n = be(c[10:12])
+    for off in range(16, 16 + n, 16):
+        it = c[off:off+16]
+        if len(it) < 16: break
+        if it[8] in (0x00, 0x04, 0x05):               # SD, PC, CM
+            sec.append((it[0:8].decode('cp037').rstrip() or "(blank)",
+                        be(it[9:12]), be(it[13:16])))
+bad = [(a, b) for i, a in enumerate(sec) for b in sec[i+1:]
+       if a[2] and b[2] and a[1] < b[1] + b[2] and b[1] < a[1] + a[2]]
+if bad:
+    print("chain_pc: FAIL -- sections overlap: %s" % (bad,)); sys.exit(1)
+if len(sec) != 2 or sec[0][0] != "(blank)" or sec[0][1] != 0 or sec[1][1] != 8:
+    print("chain_pc: FAIL -- expected blank PC at 0 and A at 8, got %s" % (sec,)); sys.exit(1)
+print("chain_pc: OK (private code at 0, the named section chained after it)")
+PY
+[ $? = 0 ] || fail=$((fail + 1))
+rm -f /tmp/_chain$$.s /tmp/_chain$$.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
