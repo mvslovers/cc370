@@ -1,0 +1,48 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.21 09/10/26
+REGX      SD  0001 000000 00001E
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.21 09/10/26
+                                      1 * cc370 -- a register operand that begins with a GROUPING
+                                      2 * parenthesis.  IKJEBELT writes CVB (LINUM2+CTR)/TWO,... and
+                                      3 * means register 8; as370 read the '(' as a subscript and put
+                                      4 * register 0 into the instruction.
+                                      5 *
+                                      6 * Controls are inside the fixture: R8 names the same register
+                                      7 * without a parenthesis, and (EIGHT) is the fully enclosing
+                                      8 * form that already worked.  All four must name register 8.
+000000                                9 REGX     CSECT
+                            00000    10          USING REGX,15
+                            0000E    11 A        EQU   14
+                            00002    12 B        EQU   2
+                            00002    13 TWO      EQU   2
+                            00008    14 EIGHT    EQU   8
+000000                               15 AREA     DS    D
+000008 4F80 F000      00000          16          CVB   (A+B)/TWO,AREA
+00000C 4F80 F000      00000          17          CVB   EIGHT,AREA
+000010 4F80 F000      00000          18          CVB   (EIGHT),AREA
+000014 5880 F000      00000          19          L     (A+B)/TWO,AREA
+000018 5880 F000      00000          20          L     EIGHT,AREA
+00001C 1888                          21          LR    (A+B)/TWO,EIGHT
+                                     22          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.21 09/10/26
+A        00001 0000000E 00011  00016 00019 00021
+AREA     00008 00000000 00015  00016 00017 00018 00019 00020
+B        00001 00000002 00012  00016 00019 00021
+EIGHT    00001 00000008 00014  00017 00018 00020 00021
+REGX     00001 00000000 00009  00010
+TWO      00001 00000002 00013  00016 00019 00021
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 09.21 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         22
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        48
