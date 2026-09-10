@@ -1,0 +1,41 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.32 09/10/26
+SCONABS   SD  0001 000000 00000E
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.32 09/10/26
+                                      1 * cc370 -- an S-type constant must take its base from an
+                                      2 * active USING, including a USING on an ABSOLUTE symbol.
+                                      3 * IECVESIO and IECVCINT write  CRCA EQU 0 / USING CRCA,R1 /
+                                      4 * DC X'8300',S(CRCAMCW)  and mean base 1, displacement 8.
+                                      5 *
+                                      6 * The control is inside the fixture: the two machine
+                                      7 * instructions resolve the same symbol under the same USING
+                                      8 * and must show the same base and displacement as the S-con.
+000000                                9 SCONABS  CSECT
+                            00000    10          USING CRCA,1
+000000 94EF 1008      00008          11          NI    CRCAMCW,X'EF'
+000004 5820 1008      00008          12          L     2,CRCAMCW
+000008 1008                          13          DC    S(CRCAMCW)
+00000A 83001008                      14          DC    X'8300',S(CRCAMCW)
+                                     15          DROP  1
+                            00000    16 CRCA     EQU   0
+                            00008    17 CRCAMCW  EQU   CRCA+8
+                                     18          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.32 09/10/26
+CRCA     00001 00000000 00016  00010 00017
+CRCAMCW  00001 00000008 00017  00011 00012 00013 00014
+SCONABS  00001 00000000 00009
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 09.32 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         18
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        41
