@@ -4699,7 +4699,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                 lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
             }
         } else if (!strcmp(op, "DROP")) {
-            if (pass == 2) { char F[4][FLDW]; int nf = split_fields(opnd, F, 4), j, k;
+            /* Sixteen, not four: a DROP names as many registers as it likes and
+             * IGC0001F writes `DROP R0,R1,R6,R5,R7,R8,R12,R15'.  With a cap of
+             * four the last four stayed registered, so a later USING on the same
+             * section tied with a base that should have been gone -- and the tie
+             * went to the higher-numbered register (#138, which is right), giving
+             * base 15 where IFOX00 writes 5 and base 7 where it writes 3.  Two
+             * wrong bases in one module from one cap.  Sixteen is the ceiling by
+             * construction: there are sixteen registers to drop. */
+            if (pass == 2) { char F[16][FLDW]; int nf = split_fields(opnd, F, 16), j, k;
                 if (!nf) nusing = 0;                       /* DROP with no operand drops all */
                 else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0);
                     for (k = 0; k < nusing; ) { if (usings[k].reg == r) { usings[k] = usings[--nusing]; } else k++; } } }
