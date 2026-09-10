@@ -80,7 +80,11 @@ static const struct opc optab[] = {
 };
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; int eq_to; };
+/* `eq_to` is 1 + the index of the symbol this one was EQU'd to, when the EQU
+ * operand is that symbol alone. It exists for one reason: an alias of an
+ * EXTERNAL has to relocate against the external's ESD entry, and an alias
+ * carries no ESDID of its own -- see add_reloc (cc370#186). */
 /* `opened` counts the CSECT/DSECT statements naming this symbol WITHIN the
  * current pass, so both passes can tell a section that BEGINS here from one
  * that is merely resumed. `defined` cannot serve: pass 1 sets it, so by pass 2
@@ -1453,6 +1457,18 @@ static void add_reloc(long at, const char *target, int isV, int len) {
     int rel = 0;
     if (s && isV) { int q; for (q = 0; q < nesdord; q++) if (esdord[q].s == s && esdord[q].role == ESD_ER) { rel = esdord[q].esdid; break; } }
     if (!rel) rel = (s && s->esdid) ? s->esdid : 0;
+    /* An alias carries no ESDID; the symbol it was equated to may.  Follow the
+     * chain before falling back to the section, or an `A(alias-of-EXTRN)' is
+     * filed under the CSECT and the linker adds the section origin instead of
+     * resolving the external (cc370#186).  Bounded: an alias chain is short and
+     * a cycle must not hang the assembler.  An alias of an ordinary label or of
+     * an ENTRY is unaffected -- neither carries an ESDID, so the walk ends with
+     * nothing and the section fallback below still applies, which is what the
+     * oracle does for those two. */
+    if (!rel && s) { const struct sym *t = s; int hop;
+        for (hop = 0; hop < 16 && t->eq_to; hop++) {
+            t = &syms[t->eq_to - 1];
+            if (t->esdid) { rel = t->esdid; break; } } }
     if (!rel && s) rel = sect_esdid_of(s->sect);
     if (!rel) rel = cur_sect_esdid;
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
@@ -5283,7 +5299,19 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * cur_sect_id exactly as before. */
                 s->sect = rc ? expr_sect(F[0]) : cur_sect_id;
                 s->len = (nf >= 2 && F[1][0]) ? (int)expr_val_full(F[1], NULL) : equ_len_of(F[0]);   /* EQU value,length: 2nd operand sets the length attribute (L') */
-                s->type = (rc == 0) ? S_ABS : S_REL; }   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
+                s->type = (rc == 0) ? S_ABS : S_REL;   /* an absolute expression (e.g. SYM-SYM, length, *-DSECT) yields a non-relocatable equate */
+                /* An EQU whose operand is one bare symbol is an ALIAS, and an
+                 * alias of an EXTERNAL must relocate against that external's ESD
+                 * entry.  The alias has no ESDID -- only sections and ERs get
+                 * one -- so add_reloc used to fall through to the enclosing
+                 * section and file the relocation under the CSECT.  IFOX00 does
+                 * not: measured on the oracle, `A(ALIASA)' and `=A(ALIASA)' both
+                 * carry the ER's id where as370 wrote 1 (cc370#186).  The
+                 * construct is not exotic -- the JEXTRN macro generates exactly
+                 * `EXTRN IFNX6C01' + `ERRMSGS EQU IFNX6C01'. */
+                { const char *q = F[0]; int ok = (isalpha((unsigned char)*q) || *q=='@' || *q=='#' || *q=='$');
+                  while (ok && *q) { if (!(isalnum((unsigned char)*q) || *q=='@' || *q=='#' || *q=='$')) ok = 0; else q++; }
+                  if (ok) { struct sym *t = sym_find(F[0]); if (t && t != s) s->eq_to = (int)(t - syms) + 1; } } }
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
             if (!strcmp(op, "END") && opnd[0]) {
