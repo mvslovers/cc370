@@ -2856,6 +2856,27 @@ static void note_align(const char *o, int sy, long ea, int line) {
         note_operr(m, 4, line);
     }
 }
+/* A DC whose nominal value is EMPTY -- the quotes are written and nothing is
+ * between them. IEDHJN takes a substring of an empty &SYSPARM, draws IFO117
+ * for it, and then generates `DC X'&HJA'' with &HJA empty, so the card reads
+ * DC X''. IFOX00 calls that a syntax error and reserves NOTHING; as370 took it
+ * in silence and reserved the type's default length, so every symbol behind it
+ * moved (cc370#338).
+ *
+ * A doubled quote is a quoted apostrophe and not empty, which is why the third
+ * character has to be looked at. Measured per type in one assembly:
+ *   X C B P Z -> IFO178   F H E -> IFO255   A() -> IFO234, left alone here
+ * and every one of them reserves nothing. */
+static int dc_value_empty(const char *p) {
+    /* p points AT the value, so both tests look at its first character and
+     * nothing further. Searching the operand for a quote or a bracket finds
+     * them inside a character string: `DC C'say ''USERID()'''' has a bracket
+     * pair in its TEXT, and the first version of this flagged it. The suite
+     * caught that on sample7 before the tree ever saw it. */
+    if (p[0] == '\'' && p[1] == '\'' && p[2] != '\'') return 1;
+    if (p[0] == '(' && p[1] == ')') return 2;   /* A(), V(), Y() -- IFO234, not IFO178 */
+    return 0;
+}
 static void mexp_line(const char *line, char **out, int *nout, int depth);
 static int g_sysndx;
 /* interpret a conditional-assembly definition statement (GBLx/LCLx/SETx/ANOP)
@@ -4858,6 +4879,19 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (sneg2) scale = -scale;
                     hasscale = 1; }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
+                int emptyval = !strcmp(op, "DC") ? dc_value_empty(p) : 0;
+                if (emptyval) {
+                    if (pass == 1) {
+                        if (emptyval == 2)
+                            note_operr("Premature end of expression - the address constant has no value (IFOX00 IFO234)", 8, i);
+                        else if (strchr("FHEDL", ty))
+                            note_operr("Fixed or floating point expression error - the nominal value is empty (IFOX00 IFO255)", 8, i);
+                        else
+                            note_operr("Syntax error - the nominal value is empty (IFOX00 IFO178)", 8, i);
+                        if (setlbl) { struct sym *s2 = sym_get(lbl); s2->val = lc; s2->defined = 1; s2->sect = cur_sect_id; s2->len = 1; }
+                    }
+                    continue;                      /* IFOX00 reserves nothing for it */
+                }
                 /* A bit field joins the run and does not move the location
                  * counter; anything else flushes the run first. The values are
                  * taken by type -- a paren list for the address constants, the
