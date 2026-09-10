@@ -285,6 +285,22 @@ under an ESDID that has no ESD entry — and it reads `+0, closer 1, none lost` 
 a gate while doing it. `mvs38src`'s `deck_lint.py` is what catches that, and any
 attempt at this issue should be run through it before its gate line is believed.
 
+**It now has a named witness, and the witness is an acceptance case rather than
+an example.** `IECVHDET` codes `EXTRN IECVHIDT` at line 412 and `IECVHIDT CSECT`
+at 617; IFOX00's recorded diagnostics answer `IFO196 IECVHIDT HAS BEEN PREVIOUSLY
+DEFINED` and it opens unnamed private code at `0x408`, where as370 opens a named
+`SD`. **Three cards differ between the two decks and all three are this defect** —
+the ESD name field, the `DC A(IECVHIDT)` that as370 resolves to `0x0408` while
+IFOX00 leaves `0x0000` and relocates, and the RLD entries that shift with it. So
+#290 alone would make that deck byte-identical, and the TXT card is what separates
+a real fix from one that only renames the ESD entry.
+
+It surfaced sideways, which is the part worth generalising: two length instruments
+disagreed by thirteen modules, twelve of them explained, and **the thirteenth went
+the other way because a name-keyed comparison drops IFOX00's unnamed private code
+and so invents eight bytes that are not in the object.** A disagreement between
+two instruments is a place to look, not a reconciliation exercise.
+
 ### 6 · #342 — a symbol from a macro-generated DSECT is recorded absolute
 
 In `IEDQWIE` a symbol defined inside a DSECT that a macro generated comes out
