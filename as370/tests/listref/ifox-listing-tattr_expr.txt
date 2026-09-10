@@ -1,0 +1,54 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.48 09/10/26
+TATTR     SD  0001 000000 000002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.48 09/10/26
+                                      1 * cc370 -- T' of an EXPRESSION answers with the type of its
+                                      2 * LEFTMOST TERM, the rule L' already had.  GOIF1 (APVTMACS)
+                                      3 * branches on  AIF (T'&C NE 'U')  and picks CLI over CLC when
+                                      4 * it gets 'U', which moves every branch target after it.
+                                      5 *
+                                      6 * Controls are inside the fixture: the bare symbol beside the
+                                      7 * expression, and an absolute EQU whose type IS 'U' -- so a
+                                      8 * version that simply answered "not U" everywhere fails too.
+                                      9          MACRO
+                                     10          SHOW  &C
+                                     11          AIF   (T'&C EQ 'U').ISU
+                                     12          MNOTE 0,'&C -> nicht U'
+                                     13          MEXIT
+                                     14 .ISU     MNOTE 0,'&C -> U'
+                                     15          MEND
+000000                               16 TATTR    CSECT
+000000                               17 LNCNT    DS    H
+                            00002    18 D2       EQU   2
+                                     19          SHOW  LNCNT
+                                     20+    0,LNCNT -> nicht U
+                                     21          SHOW  LNCNT+D2
+                                     22+    0,LNCNT+D2 -> nicht U
+                                     23          SHOW  D2
+                                     24+    0,D2 -> U
+                                     25          SHOW  D2+1
+                                     26+    0,D2+1 -> U
+                                     27          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.48 09/10/26
+D2       00001 00000002 00018
+LNCNT    00002 00000000 00017
+TATTR    00001 00000000 00016
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 10.48 09/10/26
+   20  IFO197      *** MNOTE ***
+   22  IFO197      *** MNOTE ***
+   24  IFO197      *** MNOTE ***
+   26  IFO197      *** MNOTE ***
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     4
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         23
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         2
+TOTAL RECORDS PRINTED                        54

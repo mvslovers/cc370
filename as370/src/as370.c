@@ -2300,6 +2300,26 @@ static const char *type_attr(struct ctx *c, const char *p, char *out) {
         if (el[0] == '(') { strcpy(out, "U"); return p; }   /* a nested sublist is not descended into */
         scopy(v, el, VALSZ - 1);
     }
+    /* T' of an EXPRESSION answers with the type of its LEFTMOST TERM, the same
+     * rule equ_len_of() already applies to L'.  Measured against IFOX00:
+     * `T'LNCNT+D2' is the type of LNCNT (a DS H, so not 'U'), while `T'D2+1'
+     * with D2 an absolute EQU stays 'U' because D2 itself is.  as370 kept the
+     * whole text as one name, found no symbol of that name and answered 'U'.
+     *
+     * That is GOIF1 (APVTMACS) deciding between CLI and CLC on
+     * `AIF (T'&CMP NE 'U').SS' -- with 'U' it generates the four-byte CLI where
+     * IFOX00 generates the six-byte CLC, and every branch target after it in
+     * the module moves (cc370, IFNX5P). */
+    { const char *e = v; char nm[64]; int n = 0;
+      while (*e == ' ') e++;
+      if (*e == '+' || *e == '-') e++;
+      while (*e == '(') e++;                        /* a group does not hide the leftmost term (#221) */
+      if (isalpha((unsigned char)*e) || *e=='@' || *e=='#' || *e=='$' || *e=='_') {
+          while (*e && (isalnum((unsigned char)*e) || *e=='@' || *e=='#' || *e=='$' || *e=='_')
+                 && n < 63) nm[n++] = *e++;
+          nm[n] = 0;
+          if (*e && !is_selfdef(v)) scopy(v, nm, VALSZ - 1);   /* the term ended before the text did */
+      } }
     if (!v[0]) strcpy(out, "O");
     else if (is_selfdef(v)) strcpy(out, "N");
     else { char t = styp_find(v); out[0] = t ? t : 'U'; out[1] = 0; }
