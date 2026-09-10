@@ -1,0 +1,56 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 07.03 09/10/26
+ALIASX    SD  0001 000000 000018
+EXTA      ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 07.03 09/10/26
+                                      1 * cc370#186 -- an EQU alias of an EXTERNAL relocates against
+                                      2 * the ER entry, not the enclosing section.  JEXTRN generates
+                                      3 * exactly this shape: EXTRN IFNX6C01 / ERRMSGS EQU IFNX6C01.
+                                      4 *
+                                      5 * The control is INSIDE the fixture: EQU makes EXTA and
+                                      6 * ALIASA one symbol, so both DC cards and both literals must
+                                      7 * carry the same relocation ESDID.  A wrong answer shows
+                                      8 * without the oracle.
+000000                                9 ALIASX   CSECT
+                                     10          EXTRN EXTA
+                            00000    11 ALIASA   EQU   EXTA
+                            00000    12          USING ALIASX,15
+000000 5810 F010      00010          13          L     1,=A(EXTA)
+000004 5820 F014      00014          14          L     2,=A(ALIASA)
+000008 00000000                      15          DC    A(EXTA)
+00000C 00000000                      16          DC    A(ALIASA)
+000010                               17          LTORG
+000010 00000000                      18                =A(EXTA)
+000014 00000000                      19                =A(ALIASA)
+                                     20          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 07.03 09/10/26
+ 0001     0002      0C     000008
+ 0001     0002      0C     00000C
+ 0001     0002      0C     000010
+ 0001     0002      0C     000014
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 07.03 09/10/26
+ALIASA   00001 00000000 00011  00016 00019
+ALIASX   00001 00000000 00009  00012
+EXTA     00001 00000000 00010  00011 00015 00018
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 07.03 09/10/26
+=A(EXTA) 00004 00000010 00018  00013
+=A(ALIASA)
+         00004 00000014 00019  00014
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
+                                                                                                 ASM 0201 07.03 09/10/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =19066/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         18
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        56
