@@ -4264,9 +4264,15 @@ static void pool_reserve(void) {
     if (pool_defer && own <= pool_hwm0) return;          /* the section did not grow: the reservation stands */
     int n = pool_gather(end_pool_seq, mem, 4096);
     if (n <= 0) return;                                  /* nothing outstanding: END has no pool to place */
-    long base = lc;
-    if (pool_defer) base = own;                          /* re-reserving: measure from the grown section */
-    else if (own > base) base = own;
+    /* Measure from the FIRST CONTROL SECTION's own extent, never from lc.  The
+     * pool belongs to that section, and lc is whatever counter happens to be
+     * current -- which is the DSECT's when the second section opens from inside
+     * one.  IFDOLT39 does exactly that: one named section, then DPRCOM DSECT,
+     * then a bare CSECT card while the DSECT is still current, so the pool was
+     * placed at the DSECT's counter and the section came out as long as the
+     * DSECT (0xb6c against IFOX00's 0xa0c).  All three IFDOLT modules end at
+     * ~0xB80, which is DPRCOM's size and not their own. */
+    long base = own;
     pool_hwm0 = base;
     pool_org = align8(base);
     lc = pool_extent(mem, n, pool_org);
