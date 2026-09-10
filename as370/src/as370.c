@@ -2813,7 +2813,12 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
         while (*p && !isspace((unsigned char)*p)) p++;                                          /* skip opcode */
         while (*p == ' ' || *p == '\t') p++;
         int oi = 0, q = 0, d = 0; while (*p && *p != '\n') {
-            if (*p == '\'') q = !q; else if (!q && *p == '(') d++; else if (!q && *p == ')') { if (d) d--; }
+            /* Same rule as parse(): an attribute apostrophe is not a delimiter.
+             * A prototype default carrying one -- `&P=L'FLD' -- otherwise left the
+             * quote state inverted, the field ended at the next apostrophe, and
+             * the default arrived as `L'. IFOX00 passes it whole (cc370#184). */
+            if (*p == '\'') { if (q || !attr_apos(pb, (int)(p - pb))) q = !q; }
+            else if (!q && *p == '(') d++; else if (!q && *p == ')') { if (d) d--; }
             if (!q && d == 0 && (*p == ' ' || *p == '\t')) break;
             if (oi < 4095) { pp[oi++] = *p; } p++; }
         pp[oi] = 0; }
@@ -4813,7 +4818,12 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (!hascnt && *p == '(') {
                     const char *st = p + 1, *q = st; int d = 1, qt = 0;
                     for (; *q; q++) {
-                        if (*q == '\'') { qt = !qt; continue; }
+                        /* An attribute apostrophe opens no string, so toggling on
+                         * it leaves the state inverted and the closing ')' is never
+                         * counted: `DC (L'FLD)C'X'' came out with no constant type
+                         * and reserved nothing, at rc 8, where IFOX00 assembles it
+                         * to the same bytes as `DC (4)C'X'' (cc370#184). */
+                        if (*q == '\'') { if (qt || !attr_apos(p, (int)(q - p))) qt = !qt; continue; }
                         if (qt) continue;
                         if (*q == '(') d++;
                         else if (*q == ')' && --d == 0) break;
