@@ -216,8 +216,16 @@ static int  cur_sect_id, g_sectid;            /* section identity for USING reso
  * contents out of the enclosing control section's total on its own. */
 #define MAXSECT 1024
 static long sect_hwm[MAXSECT];
+static int  first_ctl_sect;   /* fwd: the pool must not count as that section's own content */
+static long first_content;    /* the first control section's extent EXCLUDING a reserved END pool */
+static int  pool_placing;     /* set while pool_reserve() is writing its reservation */
 static void sect_lc_of(int sect, long end) {
     if (sect > 0 && sect < MAXSECT && end > sect_hwm[sect]) sect_hwm[sect] = end;
+    /* The reserved END pool raises sect_hwm, which then hides the section's own
+     * growth: a CSECT resumed after the reservation can add content and still
+     * sit below the pool's end, so "did it grow?" cannot be asked of sect_hwm.
+     * Track the content on its own (cc370, AMDPRUIM). */
+    if (!pool_placing && sect > 0 && sect == first_ctl_sect && end > first_content) first_content = end;
 }
 static void note_sect_lc(long end) { sect_lc_of(cur_sect_id, end); }
 /* Per-section location counters, and the origins chained from them.
@@ -263,7 +271,7 @@ static long start_base;           /* START operand: where the chain begins (roun
  * as370 used to place the pool at whatever `lc` had reached when END was seen,
  * which lands it in the LAST section -- the same place only while the module has
  * one section, which is the whole of the ecosystem corpus. */
-static int  first_ctl_sect;   /* internal id of the first control section, 0 = none opened yet */
+/* first_ctl_sect is declared above sect_lc_of, which needs it. */
 static int  end_pool_seq;     /* pool index END flushes (= the LTORG count), from the literal pre-scan */
 static int  pool_defer;       /* this pass reserved the END pool inside the first control section */
 static long pool_org;         /* address the reserved pool starts at */
@@ -4243,16 +4251,27 @@ static long pool_extent(const int *mem, int n, long base) {
  * origins are chained from the finished lengths (#136), a later section then
  * lands behind the pool automatically; csect_resume3.s is the oracle for that
  * composition (A len 00000C, B at 000010). */
+/* The first section's extent when the pool was reserved, and where the reserved
+ * pool ended.  A section that is RESUMED after the reservation grows past that
+ * end, and the pool has to move with it -- AMDPRUIM resumes AMDPRUIM after
+ * opening AMDUIMMG, adds a six-byte TRT, and IFOX00 puts the END pool behind it
+ * while as370 left it at the old mark, where it overwrote the instruction. */
+static long pool_hwm0, pool_end;
 static void pool_reserve(void) {
     static int mem[4096];
-    if (pool_defer || first_ctl_sect <= 0) return;
+    if (first_ctl_sect <= 0) return;
+    long own = first_content;
+    if (pool_defer && own <= pool_hwm0) return;          /* the section did not grow: the reservation stands */
     int n = pool_gather(end_pool_seq, mem, 4096);
     if (n <= 0) return;                                  /* nothing outstanding: END has no pool to place */
     long base = lc;
-    if (first_ctl_sect < MAXSECT && sect_hwm[first_ctl_sect] > base) base = sect_hwm[first_ctl_sect];
+    if (pool_defer) base = own;                          /* re-reserving: measure from the grown section */
+    else if (own > base) base = own;
+    pool_hwm0 = base;
     pool_org = align8(base);
     lc = pool_extent(mem, n, pool_org);
-    sect_lc_of(first_ctl_sect, lc);                      /* the pool is part of THAT section, whatever is current here */
+    pool_end = lc;
+    pool_placing = 1; sect_lc_of(first_ctl_sect, lc); pool_placing = 0;                      /* the pool is part of THAT section, whatever is current here */
     if (lc > modlen) modlen = lc;
     pool_defer = 1;
 }
@@ -4354,7 +4373,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     /* Section extents are re-derived by each pass, not accumulated across them:
      * the END pool moves between sections between pass 1's placement and pass 2's,
      * so a carried-over high-water mark would place it twice (#68). */
-    first_ctl_sect = 0; pool_defer = 0; pool_org = 0; modlen = 0; memset(sect_hwm, 0, sizeof sect_hwm);
+    first_ctl_sect = 0; pool_defer = 0; pool_org = 0; pool_hwm0 = 0; pool_end = 0; first_content = 0; modlen = 0; memset(sect_hwm, 0, sizeof sect_hwm);
     /* Each pass rebuilds every section's own counter from scratch; the ORIGINS
      * (sect_org) must survive, since pass 2 runs against the chain assigned
      * from pass 1's lengths. The chaining order is likewise built once. */
@@ -5420,6 +5439,10 @@ static void do_pass(int pass, char **lines, int nlines) {
              * pool_reserve() already took: assemble it there and put the counter
              * back, so its bytes are punched last but carry that section's ESDID
              * and an address inside it -- IFOX00's LCSAVE/LCRESTOR (#68). */
+            /* A section resumed AFTER the reservation grows past the reserved
+             * pool, so ask once more here: pool_reserve() only moves it when the
+             * first control section really did outgrow it (AMDPRUIM). */
+            if (pass == 1 && !strcmp(op, "END")) pool_reserve();
             int defer = (pool_defer && !strcmp(op, "END") && nmem > 0);
             long sv_lc = lc; int sv_sid = cur_sect_id, sv_eid = cur_sect_esdid;
             if (defer) { lc = pool_org; cur_sect_id = first_ctl_sect; cur_sect_esdid = sect_esdid_of(first_ctl_sect); }
