@@ -1711,6 +1711,48 @@ else
 fi
 rm -rf "$cpm"
 
+# ---- COPY'd symbols carry their attributes (cc370, IFNX5P) ----------------
+# T' of a symbol defined inside a COPY member answered 'U', because the
+# prescan that builds the attribute table walked the source cards and never
+# opened the member.  IFNX5P does `COPY X5COM' and then GOIF1 (APVTMACS)
+# tests `T'LNCNT': with 'U' it generates the four-byte CLI where IFOX00
+# generates the six-byte CLC, and every branch target after it moves four
+# bytes -- 1,600 differing bytes in one module from one attribute.
+#
+# The control is inside the fixture: LOCAL and CPYSYM are the same DS F,
+# one written here and one in the member, so they must answer alike.
+cpa=/tmp/_copyattr.$$
+mkdir -p "$cpa"
+printf '%-71s\n' \
+  'CPYSYM   DS    F                        SAME AS LOCAL BELOW' > "$cpa/cpyattr"
+printf '%-71s\n' \
+  '         MACRO' \
+  '         SHOW  &C,&W' \
+  "         AIF   (T'&C EQ 'U').ISU" \
+  "GOT&W    DC    C'F'" \
+  '         MEXIT' \
+  '.ISU     ANOP' \
+  "GOT&W    DC    C'U'" \
+  '         MEND' \
+  'T        CSECT' \
+  'LOCAL    DS    F' \
+  '         COPY  CPYATTR' \
+  '         SHOW  LOCAL,A' \
+  '         SHOW  CPYSYM,B' \
+  '         END' > "$cpa/a.s"
+./as370 "$cpa/a.s" -I "$cpa" -o "$cpa/a.obj" >"$cpa/a.out" 2>&1; rcA=$?
+gotA=$(od -An -c "$cpa/a.obj" 2>/dev/null | tr -d ' \n' | grep -c . )
+if [ $rcA != 0 ]; then
+    echo "copyattr: rc $rcA, expected 0"; cat "$cpa/a.out"; fail=1
+elif ! od -An -tx1 "$cpa/a.obj" | tr -d ' \n' | grep -q c6c6; then
+    # C6 C6 = 'F','F' -- both SHOWs took the not-U path.  A single C6E4
+    # ('F','U') is the defect: the local symbol typed, the COPY'd one not.
+    echo "copyattr: T' of a COPY'd symbol is not its type (IFNX5P)"; fail=1
+else
+    echo "copyattr: OK (a COPY'd symbol carries its type attribute)"
+fi
+rm -rf "$cpa"
+
 # --- issue #307: a COPY'd card inside a macro is substituted, and from the ----
 # ---              enclosing expansion's variables ----------------------------
 # The other half of #305. IFOX00 splices a COPY'd member into the macro body in
