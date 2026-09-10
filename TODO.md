@@ -10,7 +10,25 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-09 — thirty PRs merged that day
+*Last reconciled against the tracker: 2026-09-10 — all 48 open issues read
+against `origin/main` at `fd287d3`, one at a time, and every figure below
+re-derived on this host rather than carried forward. Twenty-five PRs merged since
+this file last looked (#311…#337 on the evening of 2026-09-09, #340…#357 on
+2026-09-10) and **none of them was recorded here**. `as370 == IFOX00` stands at
+**5,427 of 5,528 (98.2 %)** at `fd287d3` — deck body, END card excluded, on the
+macro path the promoted baseline uses. On the gate's *current* path it is 5,426,
+and the single module between them is `IGC018`: `mvs38src` put
+`macros/amaclib-live` at the head of the `-I` list on 2026-09-10, and that copy
+of `IHADVCT` is an older maintenance level with no `DVCBPSEC` in it, so as370
+correctly reports the symbol undefined against a macro IFOX00 did not use.
+**Quote the path with the number** — the same binary produces both, and a figure
+without its rule is the one mistake this file keeps making. What the pass found:
+**#39 has been closed since 2026-09-08 and led the ranking through two
+reconciliations anyway**; **#35 is fixed** and closes on this one; **#110 is
+delivered but not finished** and is narrowed rather than closed; **#108 is closed
+and still sits in the loud-gaps band below**; and eleven open issues — #160,
+#184, #193, #199, #229, #241, #258, #272, #333, #342, #345 — had never been
+mentioned in this file at all. Before that, 2026-09-09 — thirty PRs merged that day
 (see the two 2026-09-09 entries in *Recently landed*) and twenty-three issues
 filed, of which #290, #297, #305 and #307 name mechanisms rather than
 populations. `as370 == IFOX00` stands at **5,379 of 5,528 (97.3 %)** at
@@ -43,12 +61,17 @@ already fixed was dropped).*
 
 **The ranking rule, and it is the project's own:** *silent wrong output* beats
 *silent under-reporting* beats *a loud gap* beats *cosmetics* — and inside the
-top class, "has already shipped broken code" breaks the tie. It ranks *defects*,
-which is why **#39 — the one with a shipped instance — leads.** It held that
-place until the entry-point direction was decided and #99 was moved ahead of it
-for a reason the rule does not cover: the whole direction rests on weak
-externals, and #99 was the one place ld370 got them wrong. #99 landed on
-2026-09-04, so the rule applies unmodified again.
+top class, "has already shipped broken code" breaks the tie. It ranks *defects*.
+
+**The tie-break is spent.** It picked #39 for a year and #39 closed on
+2026-09-08; no open issue now has a shipped instance behind it. What replaces it
+is the weakest ordering that is still defensible, and it is worth saying out
+loud so the next reader can argue with it: inside the top class, **a defect whose
+wrongness can be read off the source alone** outranks one that needs a
+measurement to establish, and a defect **nothing is waiting on** outranks one
+parked behind a decision. That is why a reproducing single case (#26) now leads a
+twenty-module population (#241) — the first was re-run today and is wrong in
+front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
@@ -56,16 +79,33 @@ externals, and #99 was the one place ld370 got them wrong. #99 landed on
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #39 | as370 | silent — **and it has already shipped** | nothing |
-| 2 | #37 | driver + ld370 | silent — the driver drops the AC | nothing |
-| 3 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
-| 4 | #26 | as370 | silent — garbage bytes IFOX00 rejects | nothing |
-| 5 | #97 | as370 | silent — a different object module | nothing |
-| 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 7 | #104 | as370 | silent — a swallowed build option | nothing |
-| 8 | #86 | as370 | silent under-reporting, ×9 recorders | nothing |
-| 9 | #35 | as370 | one root cause under two known symptoms | nothing |
-| 10 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 1 | #26 | as370 | silent — garbage bytes IFOX00 rejects | nothing |
+| 2 | #37 | ld370 | silent — the AC does not survive `--pack` | nothing |
+| 3 | #97 | as370 | silent — a different object module | nothing |
+| 4 | #104 | as370 | silent — a swallowed build option | nothing |
+| 5 | #290 | as370 | silent — an `EXTRN`'d name opens a named section | nothing |
+| 6 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 7 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 8 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
+| 9 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 10 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
+| 11 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
+| 12 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+
+Twelve, not ten: **#39 and #35 leave** (closed and closing), and #290, #342,
+#184 and #241 arrive, because this file had never listed them.
+
+**#56 was written into row 1 of this table during the pass and taken out again**,
+and the reason is worth keeping rather than quietly deleting. `opc_table.h:134`
+records `BRXH`/`BRXLE` as `F_SI`, which is not their format — they are RSI — and
+that reads exactly like silent wrong output. It is not, because **`BRXH` is not
+an Assembler XF statement at all**: it is ESA/390, and X'84'/X'85' on S/370 are
+`WRD`/`RDD`, which the same table also carries at `F_SI` and which *are* correct.
+So the defect is real but its shape is different — as370 accepts two mnemonics
+IFOX00 rejects and invents an encoding for them, which is the precise thing the
+comment ten lines above forbids for `TPROT` and `IPTE`. A defect with no
+plausible caller on this target does not outrank one that is reproducing. It
+belongs in the loud-gaps band, with #56, and it is recorded there.
 
 **Ahead of all of it, agreed with `mvs38src` on 2026-09-06 and the only part of
 this file that is a joint plan rather than our own ranking:**
@@ -73,80 +113,53 @@ this file that is a joint plan rather than our own ranking:**
 | | Issue | Why here |
 |---|---|---|
 | A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
-| B | **#140** | The silent-success class: five modules where IFOX flags and as370 does not, plus the `IFO036` found while building #146. Smaller than it first looked (the eight-module version rested on a truncated column 72), but it distorts the accounting, which is why it is not last. **It is larger than the five, and #165 proved how**: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. **`dc_split` is now measured and closed** (#218): it read every apostrophe as a string quote, so `DC AL1(L'FLD),X'FF'` dropped the `X'FF'` — at rc 0, and **IFOX00 assembles the same statement at rc 0 with no diagnostics either**, which is the cleanest argument in this file for why the deck is the instrument. `EQU` (`:3413`) and `SYM+(expr)` (`:761`) remain suspected and unscoped. |
-| C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. A refactor that must change nothing — so it wants the sharpest available measurement. `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
-| D | **Paket A — #153…#163** | The 2026-09-07 hand-over: eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **The decks are recorded, so the gate now runs on this host in about 90 seconds per binary** (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. #153 is the largest at 333 modules and **two of its sixteen mechanisms are fixed and merged** (see *Recently landed*). Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. **Both named halves are fixed and merged, and the classes are re-derived** — see the 2026-09-09 entry in *Recently landed*. What is left of Paket A is measured rather than named — **and the last figure taken, 173 differing with 84 silent, predates #304, which alone took 39 modules of which 35 were in that silent group, so it wants re-deriving before it is quoted.** The two instruments that can still see a defect in them are `mvs38src`'s three-way table (IBM's shipped object as a witness neither assembler produced) and its per-section views. Every text-reading instrument is blind to the class the evening actually turned up. |
+| B | **#140** | The silent-success class: modules where IFOX00 flags and as370 does not. **Re-derived at `fd287d3` from the recorded IFOX00 return codes: `as370 alone flags` is 0, `IFOX00 alone flags` is 5** — `IBCDASDI`, `IBCDMPRS`, `IEAVEXS`, `IEAVRTI0` at severity 8, and `BLSR3270` at severity 4. The issue's headline count of four is still exactly right; the fifth is the severity-4 module the thread already knows about. It is larger than the five, and #165 proved how: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. **`dc_split` is measured and closed** (#218): it read every apostrophe as a string quote, so `DC AL1(L'FLD),X'FF'` dropped the `X'FF'` — at rc 0, and **IFOX00 assembles the same statement at rc 0 with no diagnostics either**, which is the cleanest argument in this file for why the deck is the instrument. `EQU` (`:3413`) and `SYM+(expr)` (`:761`) remain suspected and unscoped. |
+| C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. **Re-read at `fd287d3`, and the acceptance list in the issue is now literally satisfied while the work in its title is not**: all six tools compile with `-Icommon/include` and link `common/src/{mvs370,obj370}.c`, so "they build against the library" is true and says nothing. What is actually left is four reader sites — ld370, ar370 and file370 still carry their own ESD walk. A refactor that must change nothing, so it wants the sharpest available measurement: `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
+| D | **Paket A — closed except #184** | The 2026-09-07 hand-over was eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **Ten of the eleven are closed**; #153, #154, #155, #157, #158, #159 and #161 each ended on a re-derivation that measured its own class at 0 or 1. What is left is **#184**, the attribute apostrophe in the three scans that decide *diagnostics* rather than bytes — PR #347 says in its own body that it does not close it. The decks are recorded, so the gate runs on this host in about 90 seconds per binary (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. |
+| E | **Paket B — #160, #193, #199, #241** | The four population issues, none of which this file had ever listed, and all four re-derived in this pass. **They shrank:** #193 is 2 → 1, #199 is 3, #160 is 3, #241 is 20 under one counting rule and 33 under another. What they now share is the thing that decides whether any of them is workable: **nineteen of #241's twenty, and the survivor of #193, have reference decks from IFOX00 runs that ended at rc 12** — a deck an assembler did not finish is not an oracle. The band's real question is no longer "what is the mechanism" but "which of these has a witness at all", and for #241 the answer is one module, `BLSR3270`. |
 
 `#117` and `#118` do not touch that consumer today — they upload over FTP and
 xmit370 is not in their chain. **At their M7 it changes**: `++PTF`/`++USERMOD`
 are to go out through `xmit370` and be received with `RECV370`, and #118 is then
 a silent defect with their name on it. Build it before M7, not now.
 
-Ten, not twelve: **#13 was closed on 2026-08-30 and #99 on 2026-09-04** — see
-*Recently landed*.
+Thirteen, not ten — and two of the ten had already gone: **#13 closed
+2026-08-30, #99 on 2026-09-04, #39 on 2026-09-08, and #35 closes on this pass.**
+See *Recently landed*.
 
-**Filed while fixing #141, both silent, both found by a gate rather than by
-reading. #148 is now closed — see *Recently landed*; the trap it was armed with
-worked exactly as designed and the two `&&` oracles failed the moment it was
-repaired.**
+**The three issues this block used to carry are down to one.** #148, #149 and
+#151 were all filed while fixing #141, all silent, all found by a gate rather
+than by reading — and #149 and #151 both closed on 2026-09-09/10 on their own
+re-derivations. What is left of that family is #184, which is ranked above, and
+one listing item:
 
-- **#149** — an attribute apostrophe opens a quote state, so an operand carrying
-  `L'A` swallows the remarks field. Fixed in the substitution splitter by #141,
-  where no deck can move; `parse()` — which decides real operands — is
-  deliberately left alone and is what the issue is for. **Measured 2026-09-07:
-  14 of #153's modules, 9 of them clean on `parse()` alone — and it is also the
-  root of #157**, whose `GENPARML` trio comes from `N'&MF` on `AMACLIB(IDACB2)`
-  line 124 letting the sequence field reach the operand, not from the `DS`.
-  `attr_apos()` is not the fix: stateless, it misreads the closing quote of
-  `C'E'` and moves 10 of 399 sampled modules *away* from IFOX. Gate it on quote
-  state, and use IFOX's letter set `T L I S N K` (`ifnx1a.asm:4862`), not
-  `LTKNISE`. `dc_split` had the same blindness on the DC path and is **fixed**
-  (#218, +2, none lost) — silent there in the strongest sense: `as370` dropped
-  every constant after the apostrophe at rc 0, and IFOX00 assembles the same
-  statement at rc 0 with no diagnostics, so only a byte comparison could see it.
-
-  **The three letter sets in as370 are not all one bug, and the oracle says so.**
-  `dc_split` took `KNLT`, deliberately: IFOX00 reads `S'` and `I'` in an ordinary
-  expression as an opening quote and answers `IFO035 QUOTES NOT PAIRED`
-  (measured). So the narrow set is right for a `DC` operand and the wide one for
-  a card scan, where conditional assembly also passes — they differ **by
-  context**. What remains wrong is the `E`: IFOX's own set is `T L I S N K`
-  (`ifnx1a.asm:4862`) and `attr_apos` carries `LTKNISE`.
-
-- **#151** — a `SETC` value is clipped at 95 characters where IFOX00 holds 255.
-  Silent, and it re-emerges wearing someone else's name: a substring indexing
-  past 95 reports `IFO117`, which is true of the clipped value and false of the
-  program. Oracle committed (`setc_len95`): IFOX00 answers `[AB][EF]` at rc 0
-  where as370 answers `[AB][]` at rc 8, and `run.sh` asserts that **divergence**
-  so it fails when the defect is fixed. Exposure **17 macro members, fifteen of
-  them IBM's own, and zero modules** — the longest `SETC` literal in 5,528
-  modules of source is 48 characters, so every user is in a macro body. It
-  corrects two counts, both ours: "neither corpus needs a longer value" scanned
-  open-code substring `SETC` only and never looked in a macro body, and a first
-  replacement count of 46/5 measured operand *text* to column 72 instead of the
-  value — i.e. it counted the remarks field, which is **#149** counting itself.
-  The module that led here (`BLSR3270`, **no variable symbol in any code card**,
-  32 bogus `IFO117`) is **not** the witness: it reaches the 128-character table
-  through a `COPY` chain into the `BLSR327*` family, every member of which is
-  web-mirror material of unestablished maintenance level. Following `COPY` and
-  `GBLC` edges, 71 modules can reach an over-95 value — 43 assembling, 4 already
-  byte-identical — which is the set a gate must cover, not a forecast. Gate it against **IBM's object**
-  when it moves, not against as370 — before #141 this clip was silent and put
-  wrong characters in decks that already assembled, the `&SYSECT` pattern.
 - **#150** — an **in-stream** macro definition is not listed, so every statement
   after one is numbered short by the number of cards it held. Listing-only, but
-  the statement number is what a diagnostic is addressed by. Exactly the shape
-  #141 just fixed for conditional-assembly statements, and it has the same
-  repair. Scoped by measurement: `NOLIBMAC` is the default and IFOX00 does not
-  list a library macro either, which is why `listref` case 1 compares clean.
-  It is the reason `tests/sysparm_substr.s` — the fixture for #141's named
-  real-world trigger — is checked on its deck rather than as a `listref` case.
+  the statement number is what a diagnostic is addressed by. **#233 was filed a
+  day later from a different fixture and closed as a duplicate of this one**, so
+  #150 is the canonical record and carries the scope note that decides how a fix
+  is tested: `NOLIBMAC` is the default and IFOX00 does not list a library macro
+  either, which is why `listref` case 1 compares clean — in-stream definitions
+  only. It is the reason `tests/sysparm_substr.s` is checked on its deck rather
+  than as a `listref` case.
+
+**What #149 left behind is worth keeping, because it is the rule for #184.**
+The three attribute-apostrophe letter sets in as370 are not all one bug, and the
+oracle says so: `dc_split` took `KNLT` deliberately, because IFOX00 reads `S'`
+and `I'` in an ordinary expression as an opening quote and answers `IFO035
+QUOTES NOT PAIRED` (measured). The narrow set is right for a `DC` operand and
+the wide one for a card scan, where conditional assembly also passes — they
+differ **by context**. What remains wrong is the `E`: IFOX's own set is
+`T L I S N K` (`ifnx1a.asm:4862`) and `attr_apos` carries `LTKNISE`.
 
 Below the line, in bands rather than ranks: **the entry-point work** (#8, #107,
 #10 and `libc370#159` — decided, sequenced, and spanning two repos), **the format
-library and the tools on it** (#109 adoption left; #110 done; #111, #112, #113,
-#117, #118 open — the only band with an outside consumer), **loud gaps** (#108, #56, #76, #78, #101, #102,
-#103), **observability** (#9, #106), **listing fidelity** (#24, #28, #91),
+library and the tools on it** (#109 adoption left; **#110 delivered but narrowed,
+not closed**; #111, #112, #113, #117, #118 open — the only band with an outside
+consumer), **loud gaps** (#56, #76, #78, #101, #102, #103, #128, #211, #229, #297 —
+**#108 closed on 2026-09-06 and should have left this band then**), **populations**
+(#160, #193, #199, #241), **observability** (#9, #106, #345), **listing
+fidelity** (#24, #28, #91, #150), **conditional assembly** (#258, #272, #333),
 **deferred** (#36). `&&` folding moved from the substituter to the DC scanner
 en route to #141 (`6d235db`): the two paths had contradicted each other at `rc=0`
 since as370 existed, and the two defects cancelled, so 950 modules of deck
@@ -181,85 +194,7 @@ not.
 
 ---
 
-### 1 · #39 — MNOTE severity is swallowed
-
-*the only open issue with a confirmed shipped instance*
-
-`MNOTE` is skipped in the macro-expansion loop alongside the listing controls, so
-the operand — including the severity — is never parsed. The IBM macro error
-convention is `IHBERMAC` → `MNOTE 8/12` → `MEXIT`: the macro **deletes the
-statement** and reports the error only through the MNOTE. Under as370 that means
-a macro-argument error compiles to silence — no instruction, no diagnostic, rc 0.
-
-It has already cost the ecosystem once. libc370's `@@aopen.asm` wrote a
-`FREEMAIN` whose operand combination `freemain.macro` rejects; the storage-shortage
-cleanup therefore never existed, and the buffer leaked exactly when storage was
-short. It was found by scanning the object for a missing SVC 10, not by the
-toolchain. The same statement shape is one typo away in every GETMAIN/FREEMAIN
-caller.
-
-The fix is three small steps and the issue spells them out. Note the last one:
-`mklibc.py` already deletes the object and stops on a non-zero rc, so libc370
-inherits the protection with no change on its side.
-
-### 2 · #37 — the AC is dropped, and an unauthorized module looks authorized
-
-*one of the two drops is real; the other has a narrower cause than the issue says*
-
-`-Wl,--ac,1` never reaches ld370 from the driver — the two outputs are
-byte-identical, and passing `--ac` to the driver directly is at least loud
-(`unrecognized command line option "-fac"` from cc1). That half is a plain driver
-defect and is the substance of this issue.
-
-Why it costs a cycle rather than a minute: an unauthorized module is
-indistinguishable from an authorized one until it runs, and then the first
-`MODESET KEY=ZERO` ends the step **S047** with an empty SYSPRINT, because stdio
-buffers are lost with the unclosed DCB. The symptom is "no output and an abend",
-with nothing pointing at the link step. It cost two deploy cycles.
-
-**The `--pack` half is narrower than reported.** `build_userdata()` already keeps
-a packed member's *complete* PDS2 user-data verbatim — entry, modlen, AC,
-RENT/REUS/REFR — and re-stamps only `PDS2TTRT`, since 2026-06-23. It can only do
-that for an **`-iebcopy` input**, which is the self-describing form; the issue's
-command packs a bare `.lm`, which carries no directory and therefore no
-attributes to carry over. So the fix here is not "carry the AC over" — that
-exists — but to make the bare-`.lm` path stop looking like the `-iebcopy` one:
-recommend the two-step workflow in the usage text, and say so when a bare `.lm`
-is packed with attributes that cannot survive.
-
-**Its "adjacent observation" is answered and is not a bug.** `--norent` producing
-a byte-identical module is not the flag being ignored: `build_userdata()` is
-reached only from `emit_unload`, so attributes exist only in the directory entry
-of an `-iebcopy`/`-xmit`/`--pack` output. A bare `-o OUT` member carries none at
-all and is byte-identical with and without the flag by construction. Confirm on
-the `-iebcopy` output before closing that half.
-
-### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
-
-*adjacent to #3, not the same change; the decision is which default*
-
-The PDS2 template hardcodes `0xC3`, and `build_userdata` only ever *clears* those
-bits. IEWL zeroes both attribute bytes before PARM processing (`NI PDSE7,ZERO` /
-`NI PDSE8,ZERO`, with `ZERO EQU 0`) and sets RENT/REUS only from the option table
-when the PARM asks — verified in the source, not inferred. A false RENT is not a
-label but a promise the loader acts on: the module may be placed in the LPA and
-shared across address spaces, which makes this the one finding in the group that
-corrupts storage across address spaces rather than within one module. rexx370
-already needs `--norent`, so the case is live; today it depends on remembering the
-flag per module, and forgetting is silent.
-
-It shares a function with #3 and nothing else — #3 is about a value that never
-arrives, this is about a default that is wrong when nothing arrives. Whoever
-touches `build_userdata` should read both, and `REFR` is worth four more lines
-while in there (another `PDS2ATR1` bit with no control at all).
-
-**Two open points.** The decision: invert the default to match IEWL, or keep it
-and *require* an explicit `--rent`/`--norent`. And the survey that sizes it —
-mbt v2 links every ecosystem module through ld370, so how many of them actually
-want RENT decides whether inverting is a one-line change or a sweep across every
-`project.toml`. Do the survey before the decision.
-
-### 4 · #26 — operands IFOX00 rejects, assembled to garbage
+### 1 · #26 — operands IFOX00 rejects, assembled to garbage
 
 as370 has no "simply relocatable" check, so `L 1,FLDX*2-FLDX` assembles as an
 absolute base-0 reference and a paren subterm spanning two sections yields a
@@ -268,11 +203,48 @@ instruction. Two mechanisms let them through: `expr_val` loses relocatability
 across a multiply, and `expr_sect` skips parenthesised content wholesale while
 `expr_val` evaluates it. Both verified against a real IFOX00.
 
+**Re-measured at `fd287d3`, and the first case is unchanged**: `L 1,FLDX*2-FLDX`
+gives `5810 0028`, byte for byte what the body reports, rc 0, no diagnostic. The
+other two lines in the issue body no longer describe the binary — `expr_sect` has
+been through #215, #216, #222 and #344 since — so **do not quote the body's
+second and third cases without re-running them**. The defect stands on its first
+case alone.
+
 It is complementary to #21, not overlapping: #21's fix relies on
 "IFOX-accepted ⇒ `expr_sect`-correct", which holds *because* these forms are
 IFOX-rejected.
 
-### 5 · #97 — an undeclared SET symbol produces a different object module
+### 2 · #37 — the AC does not survive `--pack`
+
+*half of this issue does not reproduce any more, and the half that does is the
+silent one*
+
+**The driver half is gone, and it was measured rather than assumed.**
+`-Wl,--ac,1` does reach ld370 at `fd287d3` — `-###` shows `"--ac" "1"` in its
+argv, and the two real links produce xmits that differ (`AC=1` against `AC=0`)
+while the bare members stay byte-identical. That last clause is the trap the
+report fell into: a bare `-o OUT` member carries no directory and therefore no
+attributes at all, so comparing members can never show an AC. The same
+member-versus-directory reading is what the thread already corrected once, for
+the `--norent` observation.
+
+**What still reproduces is `--pack` on a bare `.lm`**: it packs at `AC=0`, rc 0,
+no diagnostic, where the same module packed from its `-iebcopy` form carries
+`AC=1`. `build_userdata()` keeps a packed member's *complete* PDS2 user-data
+verbatim — entry, modlen, AC, RENT/REUS/REFR — since 2026-06-23, but only for the
+self-describing `-iebcopy` input. So the fix is not "carry the AC over"; it is to
+stop the bare-`.lm` path from looking like the `-iebcopy` one: say so when a bare
+`.lm` is packed with attributes that cannot survive, and put the two-step
+workflow in the usage text, which at `ld370.c:1581` still does not mention
+`--ac` at all.
+
+Why it costs a cycle rather than a minute: an unauthorized module is
+indistinguishable from an authorized one until it runs, and then the first
+`MODESET KEY=ZERO` ends the step **S047** with an empty SYSPRINT, because stdio
+buffers are lost with the unclosed DCB. The symptom is "no output and an abend",
+with nothing pointing at the link step. It cost two deploy cycles.
+
+### 3 · #97 — an undeclared SET symbol produces a different object module
 
 The risk of enforcing it was measured before the issue was filed and it is nil:
 an instrumented build found **0 modules** with an undeclared SET symbol across
@@ -284,18 +256,7 @@ the reference unsubstituted and the statement generates nothing — is the large
 half, because the substitution path has to distinguish "undeclared" from
 "declared but null", which today it does not.
 
-### 6 · #89 — a forward reference in EQU resolves to 0
-
-`A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
-repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
-#82 just implemented everywhere else; #82's recorder is gated on pass 2 and has to
-be, so it cannot cover this.
-
-**Measure first.** Whether any ecosystem module relies on a forward EQU is not
-known — the #82 probe counted pass-2 lookups only and says nothing about it. A
-corpus that quietly depends on this would move decks.
-
-### 7 · #104 — an unrecognised option becomes the source filename
+### 4 · #104 — an unrecognised option becomes the source filename
 
 The argument loop ends in `else src = argv[ai];` with no validation, so a typo,
 an option from a build script, or an IFOX00 option as370 does not implement is
@@ -307,36 +268,125 @@ debug build.
 Cheapest fix in either tool, and it must not wait for `SYSPARM` — adding that
 later does not help anyone who mistyped it in the meantime.
 
-### 8 · #86 — nine diagnostic recorders drop everything past 128 entries
+### 5 · #290 — an `EXTRN`'d name that also names a section
+
+`EXTRN X` followed by `X CSECT` opens a *named* section at rc 0 here; IFOX00
+raises `IFO196` and opens **unnamed private code**, and the two produce different
+ESDs. Measured against the oracle, and the distinction is real rather than
+pedantic: `DC V(X)` followed by `X CSECT` *keeps* the name, so the rule is about
+`EXTRN` specifically and not about a prior reference in general.
+
+It has been carried unfixed on purpose since 2026-09-09, and the reason is worth
+keeping: **the obvious implementation produces a malformed deck** — TXT filed
+under an ESDID that has no ESD entry — and it reads `+0, closer 1, none lost` on
+a gate while doing it. `mvs38src`'s `deck_lint.py` is what catches that, and any
+attempt at this issue should be run through it before its gate line is believed.
+
+### 6 · #342 — a symbol from a macro-generated DSECT is recorded absolute
+
+In `IEDQWIE` a symbol defined inside a DSECT that a macro generated comes out
+absolute rather than relocatable, so an SS operand written with an explicit
+length loses its base register. Filed 2026-09-10 and unchanged at `fd287d3`.
+
+It sits this high because no measurement is owed before the work can start: the
+mechanism is one bookkeeping decision and the witness is a single named module.
+Everything below this line in the top class is waiting on something.
+
+### 7 · #89 — a forward reference in EQU resolves to 0
+
+`A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
+repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
+#82 just implemented everywhere else; #82's recorder is gated on pass 2 and has to
+be, so it cannot cover this.
+
+**Measure first.** Whether any ecosystem module relies on a forward EQU is not
+known — the #82 probe counted pass-2 lookups only and says nothing about it. A
+corpus that quietly depends on this would move decks.
+
+### 8 · #100 — every module is marked RENT+REUS, IEWL marks neither
+
+*the decision is which default*
+
+The PDS2 template hardcodes `0xC3`, and `build_userdata` only ever *clears* those
+bits. IEWL zeroes both attribute bytes before PARM processing (`NI PDSE7,ZERO` /
+`NI PDSE8,ZERO`, with `ZERO EQU 0`) and sets RENT/REUS only from the option table
+when the PARM asks — verified in the source, not inferred. A false RENT is not a
+label but a promise the loader acts on: the module may be placed in the LPA and
+shared across address spaces, which makes this the one finding in the group that
+corrupts storage across address spaces rather than within one module. rexx370
+already needs `--norent`, so the case is live; today it depends on remembering the
+flag per module, and forgetting is silent.
+
+Whoever touches `build_userdata` should read #37 in the same sitting — #37 is
+about a value that never arrives, this is about a default that is wrong when
+nothing arrives — and `REFR` is worth four more lines while in there (another
+`PDS2ATR1` bit with no control at all).
+
+**Two open points.** The decision: invert the default to match IEWL, or keep it
+and *require* an explicit `--rent`/`--norent`. And the survey that sizes it —
+mbt v2 links every ecosystem module through ld370, so how many of them actually
+want RENT decides whether inverting is a one-line change or a sweep across every
+`project.toml`. Do the survey before the decision.
+
+### 9 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
 established the shape — count every diagnostic whether or not it is printed,
 derive the severity from the counters, bound only the printed list, and say what
-was dropped. Nine recorders to go, worth one pass with a shared helper rather than
-nine copies. In one of them (`note_operr`) the cap can also mis-state the severity.
+was dropped.
 
-### 9 · #35 — the attribute apostrophe, and the lockstep it imposes
+**Two corrections from this pass.** The count in the title is **eleven**, not
+nine: `note_mnote` (`as370.c:3709`) is a twelfth recorder of the same shape and
+was never listed. And the issue's own demonstration — *"128 reported and stated as
+fact"* — was **fixed by #88** on 2026-08-29, which added `mark_flagged` /
+`stmt_flagged` so the flagged count no longer comes from the printed list. The
+defect that remains is the shared-buffer cap itself and the silence about what it
+dropped; the sentence that demonstrates it needs replacing before the issue is
+quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-`parse()`'s operand tokenizer toggles string state on every apostrophe with no
-attribute-operator exception, so `L'SYM` opens a string that never closes and the
-trailing comment is absorbed. Fixed for `parse()` itself in #182.
+### 10 · #184 — the attribute apostrophe, in the scans that decide diagnostics
 
-**"Every *other* scanner in as370 already special-cases it" was written here and
-was false.** `dc_split` did not, and it dropped constants silently until #218.
-Six readers of the same apostrophe now exist; three carry `KNLT`, one `LTKNIS`,
-one `LTKNISE`, and one decides at the opening quote and skips to the close.
-Before treating any of that as neglect, note that IFOX00 itself answers `IFO035`
-for `S'` in an ordinary expression — so some of the asymmetry is correct, and
-only an oracle separates the two cases.
+*the last live member of the #35/#149/#218 family, and the one PR #347 says it
+did not close*
 
-**The lockstep is the point.** #32's `has_overlong_term` was deliberately written
-to mirror the buggy tokenization, and #34 disclosed the false negative that
-buys. Whoever fixes `parse()` must update `has_overlong_term` in the same change,
-or it either resumes false-positiving on comments or stays blind to attribute-ref
-over-length symbols.
+Nineteen apostrophe toggles exist in as370; twelve carry the quote-state guard
+and seven do not. Four of the seven were measured clear by #347 — it fixed the two
+that were demonstrably wrong and said in its own body that **three sites remain**:
+`scan_undef_terms()` twice and `undefined_term()`. They decide *diagnostics*, not
+bytes, which is exactly why a deck-based gate cannot see them and why this is
+under-reporting rather than wrong output.
 
-### 10 · #23 — the corpus gate has an oracle-shaped hole
+**What it is waiting on is a construct, not a decision**: a source that separates
+a correct diagnostic from a suppressed one on those three paths. Until one
+exists, a fix here is unfalsifiable by every instrument this project owns — the
+tree gate included.
+
+### 11 · #241 — twenty modules longer than IFOX00, one of them readable
+
+*the largest remaining population, and the number depends on which length you
+count*
+
+Re-derived at `fd287d3` over the 102 decks that still differ, with both rules
+written down because they disagree:
+
+| rule | as370 longer | delta a multiple of 8 |
+|---|---:|---:|
+| section text extents rebuilt from the TXT cards | 33 | 3 |
+| declared `SD`/`PC`/`CM` lengths on the ESD cards | 20 | 10 |
+
+Nothing goes the other way: no module lays out *fewer* bytes than IFOX00. Neither
+figure contradicts the 36/4 recorded on the issue — that was ten merges earlier
+and **its rule was never written down**, which is the whole reason two correct
+counts can look like a contradiction.
+
+**Nineteen of the twenty have no oracle behind them.** They are `IFCE*`/`IFCS*`
+at IFOX00 rc 12 plus `IEAVEXS` at rc 8 — a deck the assembler did not finish is
+not a reference. The one that did finish is `BLSR3270`: `+8` on section
+`BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
+whole workable surface of this issue today, and it is one module.
+
+### 12 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -358,15 +408,16 @@ comparison needs, both measured: exclude the END card (each assembler stamps its
 own translator id) and compare columns 1–72 only (73–76 is the card sequence
 number, and ignoring that produced a false alarm on all five cards of one
 module). Both sides must also see the **same macro libraries**, or the diff
-attributes nothing to anyone. That is what found #138. It does not retire this
-item — the gate here is still as370-against-as370 — but it changes what a
-committed corpus of decks would have to add on top.
+attributes nothing to anyone. That is what found #138 — and on 2026-09-10 it is
+what cost `IGC018`, in the other direction: a corrected macro path handed as370
+an older `IHADVCT` than the oracle had used, and one identity moved for reasons
+that have nothing to do with either assembler.
 
-**And it is available as an acceptance gate, not only as a report.** `mvs38src`
-runs it on request: 4,533 assemblies, 4,108 comparisons against IBM's own
-object, roughly ten minutes, answering "N byte-identical, none lost" or not.
-Ask for it per tool rather than per branch, so a divergence names the tool.
-That is the right gate for any change that is supposed to alter nothing —
+**And it is available as an acceptance gate, not only as a report.** The decks
+are recorded, so it runs on this host in about 90 seconds per binary
+(`mvs38src/tools/gate.sh` + `retest.py`) — no MVS and no waiting on the other
+session. Ask for it per tool rather than per branch, so a divergence names the
+tool. That is the right gate for any change that is supposed to alter nothing —
 the 743-module corpus here is our own output and has been structurally blind
 to whole classes: the scatter record, the resumed section, the base-register
 tie, and every `T'` defect moved none of it.
@@ -436,6 +487,15 @@ system ships; the comparison **is** its success criterion, and an agent works th
 loop unattended. That is a harder contract than the C ecosystem ever placed on
 these tools — it needs machine-readable output and exit codes that mean one thing.
 
+**Re-read at `fd287d3`, and one thing about #109 needs saying before the rest is
+read: its Acceptance list is now literally satisfied while the work in its title
+is not.** All six tools compile with `-Icommon/include` and link
+`common/src/{mvs370,obj370}.c`, so *"as370, ld370 and file370 build against the
+library"* is true and measures nothing. What is actually left is four reader
+sites — ld370, ar370 and file370 still walk an ESD of their own. An acceptance
+list that a half-done change passes is worth rewriting, and that is the one edit
+this issue needs.
+
 **#109: `libmvs370` done, `libobj370`'s READERS done, its adoption pending.**
 PRs #116 and #119 moved the byte layer (primitives, 3350 geometry, the
 COPYR1/COPYR2 template). PRs #120 and #121 built `common/obj370` — the
@@ -486,7 +546,7 @@ those do not already cover.
 | | depends on | what it is |
 |---|---|---|
 | #109 | — | `libmvs370` **done** (#116, #119); `libobj370` **readers done** (#120, #121); **adoption of as370/ld370/ar370 open** |
-| #110 | — | `cmplmd370` — **built and accepted** (#122, #123, #124). Compare, `--clearrld`, `--csect`, `--difin`/`--difout`, `--json`, hole classification |
+| #110 | — | `cmplmd370` — **built and accepted, and still open on one behaviour** (#122, #123, #124). Compare, `--clearrld`, `--csect`, `--difin`/`--difout`, `--json`, hole classification all work; `--difout` does **not** merge `--difin` forward, so a reviewed run cannot seed the next one — the property the issue asks `--difout` for. Worse, `--difin acc --difout acc` on a converged comparison leaves `acc` **zero bytes**: `difin_load()` runs before the output file is opened, and an identical section writes nothing. That is data loss in the obvious usage, and it is why this stays open |
 | #111 | #109 readers | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
 | #112 | #109 readers | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
 | #113 | *ownership only* | read a **foreign** IEBCOPY unload — an FB source library unloaded by MVS parses to zero members today |
@@ -520,17 +580,43 @@ translated and not declared recovered.
 
 Ranked below the whole list above for that reason alone, not by size.
 
-- **#108** — `DC S(…)` / `DS S` are diagnosed and not implemented, so no storage
-  is reserved and every later symbol in the section would move. #53 turned the
-  corruption into that diagnostic; it did not close the gap. Two bytes,
-  base+displacement through the active `USING` — small, and the only as370
-  limitation reported *by name* in the same 150-module sample (4 failures).
-  **Not #76:** that covers `Q` as part of pseudo registers; `S` is unrelated.
-- **#56** — the last four IFOX00 opcodes. Two are table rows with masks already in
-  the table; two need formats as370 does not have (SSE, RRE). They were left out
-  of #55 deliberately: a fabricated encoding turns a clean RC 8 into silently
-  wrong bytes. **RRE is worth more than `IPTE` alone** — it is also the format a
-  good part of the Hercules S/370-extension set needs.
+**#108 left this band on 2026-09-06** — `DC S(…)` / `DS S` were implemented by
+#130 and the issue closed the same day; it stood here through two reconciliations
+afterwards.
+
+- **#56** — the IFOX00 opcode gaps, and it is now two different things.
+  **The half that landed:** `BNPR`/`BNMR` were added by #299, which closes #298 —
+  filed separately out of the `Undefined operation code` cluster, which is why
+  this issue stayed open while its work was done. **The half that is still a
+  loud gap:** `enum fmt` has no SSE and no RRE, so `TPROT` and `IPTE` are rejected
+  at rc 8; the exclusion is deliberate, written down at `opc_table.h:183` and
+  asserted by `tests/run.sh:1065`, because a fabricated encoding turns a clean
+  RC 8 into silently wrong bytes. **RRE is worth more than `IPTE` alone** — it is
+  also the format a good part of the Hercules S/370-extension set needs.
+  **And a third thing, found in this pass:** `opc_table.h:134` carries `BRXH` and
+  `BRXLE` at `F_SI`, which is not their format — they are RSI. `BRXH 2,4,T`
+  assembles to `8404 0002` at rc 0. It is *not* the silent-wrong-output it looks
+  like, because `BRXH` is ESA/390 and Assembler XF does not know it at all: on
+  S/370, X'84'/X'85' are `WRD`/`RDD`, which the same table carries correctly.
+  What it is, is the table breaking its own stated rule — an invented encoding
+  for a mnemonic IFOX00 rejects, ten lines below the comment that refuses exactly
+  that for `TPROT`. Either drop the two rows or give them RSI; do not leave them
+  encoding as something else.
+
+- **#229** — `COM` gets no `CM` entry in the ESD and does not reset the location
+  counter, so a common section is neither declared nor addressed. Adjacent to
+  #76's `DXD`/`COM` message-class note and worth doing with it.
+- **#297** — a macro prototype may take a machine mnemonic's name and as370
+  assembles it in silence; IFOX00 answers `IFO043` at rc 12. Loud on the oracle
+  side, absent on ours.
+- **#211** — a CCW whose data address names a DSECT symbol draws no `IFO158`,
+  though the `DC` path already does. The check exists; one call site does not
+  make it.
+- **#128** — `ISEQ` is recognised and does nothing. **Read the title with care: it
+  says "not implemented (25 modules)" and that is no longer what is open.** PR
+  #129 landed the operand parse, the column range and the disable form and its own
+  body says what it did *not* do — raise `IFO025` on an out-of-sequence card. So
+  the gap is the check, not the statement, and it is diagnostic-only either way.
 - **#76** — pseudo registers, one feature across both tools (`DXD`, `CXD`,
   `Q`-cons, PR collection in the linker). Zero occurrences anywhere in the
   ecosystem and no oracle in reach. **One part is worth doing regardless of the
@@ -572,6 +658,12 @@ Ranked below the whole list above for that reason alone, not by size.
   did they come from" turned into guesswork against a CESD full of string
   literals. It is the thing you reach for *after* the link succeeded but the
   module misbehaves.
+- **#345** — `-am`, the macro and copy code source summary, is accepted on the
+  command line and produces nothing. It is the only instrument that says which
+  library a macro came from — which is exactly the question `IGC018` turned into
+  a lost identity on 2026-09-10, and exactly the question a second macro-path
+  argument will ask again. Filed 2026-09-10; new, and better placed here than
+  among the listing options it looks like it belongs to.
 - **#106** — the translator IDR is dropped on the floor. Split out of #13:
   a genuine IEWL member carries three IDR records and ours carries two, so
   `AMBLIST LISTIDR` cannot say which assembler produced the code. as370 already
@@ -579,12 +671,16 @@ Ranked below the whole list above for that reason alone, not by size.
   21-byte record, one flag byte — and the fixture oracle settles the layout.
 ## Listing fidelity
 
-All three are cosmetic, all three are pinned rather than hidden — each was found
-while building a `listref` case, and each is excluded from that case *with a
-reference to its issue* instead of being silently masked.
+All five are cosmetic, and the first three are pinned rather than hidden — each
+was found while building a `listref` case, and each is excluded from that case
+*with a reference to its issue* instead of being silently masked.
 
 - **#24** — DS inside a DSECT renders with the enclosing CSECT's LOC and stale
-  object-code bytes.
+  object-code bytes. **Half of it is fixed and the issue does not say so**: PR
+  #230 (closing #227) gave `DSECT` its own counter, so the LOC half is right at
+  `fd287d3`. What survives is the object code — a `DS` in a DSECT body still
+  prints bytes from the enclosing section. Two rows of `listref/README.md` are
+  stale for the same reason.
 - **#28** — LTORG renders at the pre-alignment LOC, and literal-pool entries are
   numbered out of source order.
 - **#91** — a library-member continuation diagnostic cannot be reconciled with the
@@ -593,6 +689,44 @@ reference to its issue* instead of being silently masked.
   modules** produce one at all. The residual is pinned as a tripwire in
   `flagged_libmac`, so implementing it fails that case and brings whoever does it
   to the number that has to change.
+- **#150** — an in-stream macro definition is not listed, so every statement after
+  one is numbered short. The canonical record of the defect #233 duplicated; see
+  the block under *The order*.
+- **#199** — three modules whose object image matches IFOX00 exactly and whose
+  *deck* does not, both assemblers silent. Re-derived at `fd287d3`: still three.
+  PRs #200 and #206 each say in their own bodies that they address a part of it,
+  and the split the 2026-09-08 comment predicted — a card-layout issue separate
+  from an ESD-numbering one — is still on the table rather than made.
+
+## Conditional assembly — three that behave, and one that has to be decided
+
+Filed 2026-09-09/10 out of the macro-language work and never listed here.
+
+- **#258** — `S'` and `I'` are not evaluated in conditional assembly. Note the
+  context rule above before fixing it: IFOX00 treats `S'` in an *ordinary*
+  expression as an opening quote, so the letter set is not the same on both
+  paths.
+- **#272** — an expression outside conditional assembly is not held to 20 terms;
+  IFOX00 raises `IFO168` and zeroes the result. Wants a corpus measurement before
+  it is worth doing — a limit nothing reaches costs a check on every expression.
+- **#333** — `T'` of a macro parameter answers from the parameter's *value*;
+  IFOX00 answers from what was written at the call site. **The defect reproduces
+  unchanged and its decision does not stand**: the withdrawal comment rests on a
+  `-70 LOST` measurement, and that figure is now known to be an artefact of the
+  run it came from. Re-derive before quoting it either way.
+
+## Populations — two left, and the question is whether they have a witness
+
+- **#193** — as370 and IFOX00 choosing different base registers. **2 → 1 at
+  `fd287d3`**: `IDA019S6` and `IKJEBELT` are byte-identical, and PR #353's
+  fixture settled the tie-break in #138's favour in *both* declaration orders, so
+  the issue's premise — that #138's rule is in question — is answered. The
+  survivor is `IECVXURT`, whose reference deck comes from an IFOX00 run at rc 12,
+  which means the remaining question cannot be tested on it at all.
+- **#160** — three sections whose object differs from IFOX00's inside the first
+  16 bytes, both assemblers silent. Same three at `fd287d3`. It waits on a
+  decision rather than on work: the reference decks are rc-12 runs, and whether
+  such a deck is admissible as an oracle is the question the whole band turns on.
 
 ---
 
@@ -618,6 +752,78 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-10 — the tracker pass itself: 48 issues read, one closed, nine
+  corrected.** No code changed. What it found is in the header; what it is worth
+  recording here is the failure mode, because it is the same one three times.
+  **#39 closed on 2026-09-08 and led this ranking until today. #108 closed on
+  2026-09-06 and still sat in the loud-gaps band. #149 and #151 closed and their
+  paragraphs stayed.** Every one of them was a *closure* nobody propagated, and
+  in each case the file went on being read as current. The tracker is the source
+  of truth and this file is the order — but an order that names a closed issue
+  first is worse than no order, and nothing here detects that on its own. The
+  cheapest guard is the one this pass used: `comm` the issue numbers this file
+  mentions against `gh issue list --state open`, which takes a second and would
+  have caught all four.
+
+- **2026-09-10 — thirteen merges, none lost, 5,415 → 5,427 of 5,528 (98.2 %).**
+  Measured on this host at `b67af3d` and `fd287d3` on one macro path, so the two
+  figures are comparable to each other and to the 5,379 this file already
+  records — `b799ae0` reproduces that number exactly, which is what makes the
+  rest quotable.
+
+  | PR | |
+  |---|---|
+  | #340 | a macro's parameter values are as many as its prototype (#334) |
+  | #341 | an empty nominal value is rejected and reserves nothing (#338) |
+  | #344 | a grouped parenthesis is descended into, not skipped (#343) |
+  | #346 | an `EQU` alias of an external relocates against the ER (#186) |
+  | #347 | an attribute apostrophe is not a delimiter in two more scans (#184, part) |
+  | #350 | a register operand may begin with a grouping parenthesis (#247) |
+  | #351 | an S-type constant takes its base from an absolute `USING` |
+  | #352 | `AWR` and `AUR` had each other's opcode |
+  | #353 | a `DROP` takes as many registers as it names (#193) |
+  | #354 | `T'` of an expression is the type of its leftmost term (#270) |
+  | #355 | a `COPY`'d symbol carries its attributes |
+  | #356 / #357 | the `END` literal pool follows its own section's extent (#349) |
+
+  **#352 is the one to read twice.** `AWR` and `AUR` carried each other's opcode
+  — a two-row table error, silent, in code generation, on a table that has been
+  read many times. This pass found the same shape twice more in the same file:
+  `BRXH`/`BRXLE` at the wrong format (see #56 under *Loud gaps*). An opcode table
+  is not self-checking, and nothing in the corpus gate looks at a mnemonic nobody
+  uses — which is exactly where a table error survives.
+
+  **What did not move, and why the day's number is not the day's work.** Six of
+  the thirteen closed an issue that had been open for less than a day. The gate
+  says `+12`; the issues say twelve *mechanisms*, several of which reach modules
+  no oracle can settle. Both are true and they answer different questions.
+
+- **2026-09-09, second half — twelve merges, none lost, 5,379 → 5,415 of 5,528.**
+  Never recorded here: the day's close-out entry below stops at #306, and #311
+  through #337 merged after it was written.
+
+  | PR | |
+  |---|---|
+  | #311 | a `DC`'s label is defined before its own duplication factor (#310) |
+  | #313 | an attribute apostrophe is not a quote in `has_overlong_term` (#312) |
+  | #316 | `REPRO` punches the next card into the object deck (#314) |
+  | #318 | a literal carries its duplication factor (#317) |
+  | #319 | a macro definition is as long as it is (#287) |
+  | #322 | a card IFOX00 does not flag does not raise the return code (#320) |
+  | #324 | `IFO220`, the alignment warning IFOX00 gives and we did not |
+  | #326 | an empty continuation card is `IFO026` (#325) |
+  | #328 | a literal carries its scale modifier (#327) |
+  | #330 | a packed or zoned literal is sized and emitted like its `DC` (#329) |
+  | #332 | an `F` or `H` literal may carry a list of nominal values (#331) |
+  | #337 | `ACTR` bounds the conditional-assembly loops (#336) |
+
+  **Five of the twelve are the literal pool**, and they are one defect wearing
+  five names: a literal was being sized and emitted by a path that had never been
+  reconciled with the `DC` path it is supposed to be identical to. Duplication
+  factor, scale modifier, packed/zoned, value lists — each was found separately,
+  each was a separate issue, and every one of them was the same missing sentence.
+  Whoever next finds a literal defect should assume the pool, not the case.
 
 - **2026-09-09 — twenty merges, none lost, 5,213 → 5,379 of 5,528 (97.3 %).** The day
   the definition of done changed: Mike's `as370 == IFOX00` now means the deck **and**
@@ -1337,6 +1543,18 @@ This file is cc370-only, and two threads are not.
 variants) and — now that #99 is in — the `__premain()` hook that closes #10. Do
 not rank those here; the sequence table above is the place that keeps them in
 step.
+
+**One thing owed to `mvs38src`, measured here on 2026-09-10.** Its `25679ba` put
+`work/macros/amaclib-live` at the head of the gate's `-I` path, on the argument
+that `SYS1.AMACLIB` is first in the oracle's SYSLIB and the six members were read
+from the live library. For five of the six that argument holds. For `IHADVCT` the
+reference deck contradicts it: `IGC018` codes `LH R0,DVCBPSEC`, IFOX00 emits
+`48F0 9012`, and the live copy of `IHADVCT` — 196 lines against `mirror`'s 203 —
+does not define `DVCBPSEC` at all (it predates APAR `@ZA40405`). So the oracle
+resolved that macro from somewhere else, or the live library moved after
+2026-09-07. Same binary, two macro paths, 5,427 against 5,426, and the whole
+difference is that one member. It is their call, not ours; ours is to quote the
+path with the number until it is settled.
 
 **MVS 3.8j source recovery** (`mvs38src`) is a *consumer*, not a half: it needs
 #109–#113 and #115 and files them here, but it decides nothing about cc370 beyond
