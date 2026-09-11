@@ -845,11 +845,16 @@ static long x_term(int sign) {
          * IFO217 RELOCATABILITY ERROR when either side is relocatable and zeroes
          * the instruction; as370 evaluated it as though the product were simply
          * absolute, so `L 1,FLDX*2-FLDX' assembled to base 0 at rc 0. */
-        if (*xp_ == '*') { xp_++; struct xrlsnap b1; xrl_snap(&b1); v *= x_factor(0);
-                           if (lrel || xrl_moved(&b1)) xmulrel_ = 1; lrel = 0; }
-        else if (*xp_ == '/') { xp_++; struct xrlsnap b1; xrl_snap(&b1); long r = x_factor(0);
-                                if (lrel || xrl_moved(&b1)) xmulrel_ = 1; lrel = 0;
-                                v = r ? v / r : 0; }
+        if (*xp_ == '*') {
+            xp_++; struct xrlsnap b1; xrl_snap(&b1); v *= x_factor(0);
+            if (lrel || xrl_moved(&b1)) xmulrel_ = 1;
+            lrel = 0;
+        } else if (*xp_ == '/') {
+            xp_++; struct xrlsnap b1; xrl_snap(&b1); long r = x_factor(0);
+            if (lrel || xrl_moved(&b1)) xmulrel_ = 1;
+            lrel = 0;
+            v = r ? v / r : 0;
+        }
         else break; }
     return v;
 }
