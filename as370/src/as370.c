@@ -80,7 +80,7 @@ static const struct opc optab[] = {
 };
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; int eq_to; };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; int eq_to; int declared_extrn; };
 /* `eq_to` is 1 + the index of the symbol this one was EQU'd to, when the EQU
  * operand is that symbol alone. It exists for one reason: an alias of an
  * EXTERNAL has to relocate against the external's ESD entry, and an alias
@@ -4650,8 +4650,35 @@ static void do_pass(int pass, char **lines, int nlines) {
                 if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT);
                                 chain_sect(pc->sect); }   /* chained here too: same reason as the site above */
             }
-            struct sym *s = sym_get(lbl[0] ? lbl : "");
+            /* A name already DECLARED EXTRN may not name a control section.
+             * IFOX00 answers IFO196 <name> HAS BEEN PREVIOUSLY DEFINED and opens
+             * private code instead; the name stays an ER, so a DC A(name) still
+             * relocates against it. Measured (tests/extrn_csect.s, JOB00221):
+             * one blank PC entry of 20 bytes at 0 holding the implicit content
+             * and every rejected section's, the named section chained after it
+             * at x'18', DC A(C) = 00000000 with an RLD against C's ER, and all
+             * three occurrences flagged -- including the one that merely
+             * resumes. A V-con reference does NOT reject the name (#281), which
+             * is why this tests the declaration and not the ER role. */
+            int rejected = 0;
+            if (lbl[0]) { struct sym *e = sym_find(lbl);
+                          if (e && e->declared_extrn && !e->defined) rejected = 1; }
+            if (rejected && pass == 1) {
+                char m[96];
+                snprintf(m, sizeof m, "A name declared EXTRN may not name a control section (IFOX00 IFO196) - %.8s", lbl);
+                note_operr(m, 8, i);
+            }
+            struct sym *s = sym_get(rejected || !lbl[0] ? "" : lbl);
             if (!s->sect) s->sect = ++g_sectid;
+            /* The rejected section RESUMES the private code where it stands --
+             * the oracle lists the first one at LOC 000004, after the implicit
+             * DC F'1'. `opened' cannot express that here: the implicit opening
+             * does not go through this statement, so the counter would be reset
+             * to zero and the implicit content overwritten. What a literal blank
+             * CSECT card does is a different question, deliberately untouched:
+             * the modules that would answer it (&CSECT substituting to nothing,
+             * IFCE and IFCS) have IFOX00 references from rc 12 runs. */
+            int resume_pc = rejected && s->sect < MAXSECT && sect_hwm[s->sect] > 0;
             /* Opening a control section other than the first closes the first
              * one: the END literal pool goes at its end (#68), so take the room
              * before this section's origin is fixed. */
@@ -4677,13 +4704,13 @@ static void do_pass(int pass, char **lines, int nlines) {
              * has moved to the chaining between the passes, where the origins
              * are actually assigned. */
             if (++s->opened == 1 && s->sect < MAXSECT) {
-                sect_rel[s->sect] = 0;
+                if (!resume_pc) sect_rel[s->sect] = 0;
                 chain_sect(s->sect);   /* definition order = chaining order, and membership is decided in one place */
             }
             cur_sect_id = s->sect;
             lc = sect_base(cur_sect_id) + (cur_sect_id < MAXSECT ? sect_rel[cur_sect_id] : 0);
             if (!first_ctl_sect) first_ctl_sect = cur_sect_id;   /* IFOX FSTCSECT: the first section that is not a DSECT (nor COM) */
-            if (pass == 1 && !s->defined) { s->type = lbl[0] ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }   /* relative origin; assign_origins() makes it absolute */
+            if (pass == 1 && !s->defined) { s->type = (lbl[0] && !rejected) ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }   /* relative origin; assign_origins() makes it absolute; a rejected name opens PRIVATE code, so the type follows the section and not the label */
             if (pass == 2) { cur_sect_esdid = s->esdid; lrecs[i].loc = lc; }   /* the listing shows the section's OWN counter, not the one it left (#227) */
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             /* A DSECT is just another section with its own counter -- the save
@@ -4693,7 +4720,16 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (!in_dsect) { main_lc = lc; main_sect_id = cur_sect_id; }
             if (cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = lc - sect_base(cur_sect_id);
             in_dsect = 1; org_hwm = 0;
-            struct sym *s = sym_get(lbl[0] ? lbl : "");
+            /* An unnamed DSECT gets a symbol of its own. It used to take `""',
+             * which is the IMPLICIT PRIVATE CODE's symbol, and the two are not
+             * the same section: the line below then marked the private code as
+             * a DSECT, assign_origins() skipped it as one, and -- because the
+             * DSECT path defines the symbol without an esd_add -- a later
+             * unnamed control section found it `defined' and emitted no ESD
+             * entry at all. That is the malformed deck cc370#290 warned about,
+             * reproduced in three cards: TXT filed under ESDID 0. The name is
+             * unreachable from source, so it can collide with nothing. */
+            struct sym *s = sym_get(lbl[0] ? lbl : "\1DSECT");
             if (!s->sect) s->sect = ++g_sectid;
             cur_sect_id = s->sect;
             if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
@@ -4725,7 +4761,9 @@ static void do_pass(int pass, char **lines, int nlines) {
             int weak = (op[0] == 'W');
             if (pass == 1 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
                 for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;
-                    struct sym *s = sym_get(extsym[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1; esd_add(s, ESD_ER); } }
+                    struct sym *s = sym_get(extsym[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1;
+                    s->declared_extrn = 1;   /* the DECLARATION is what makes a later CSECT of this name IFO196 (#290); a V-con reference does not -- #281 */
+                    esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
             char F[17][FLDW]; int nf = split_fields(opnd, F, 17);   /* base + up to 16 base registers */
             if (pass == 2) {

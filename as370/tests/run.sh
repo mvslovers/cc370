@@ -2927,5 +2927,88 @@ PY
 [ $? = 0 ] || fail=$((fail + 1))
 rm -f /tmp/_chain$$.s /tmp/_chain$$.obj
 
+# -------------------------------------------------------------- extrn_csect --
+# cc370#290: a name declared EXTRN may not name a control section. IFOX00
+# answers IFO196 and opens PRIVATE CODE; the name stays an ER, so a DC A(name)
+# still relocates against it.
+#
+# Not in the byte-identity list above, because that loop requires RC < 8 and
+# this assembly is RC 8 on both sides -- which is itself part of what is
+# asserted. tests/ref/extrn_csect.obj is a real IFOX00 deck (JOB00221) --
+# and PROVISIONAL: it came from MVSCE-DEV, which is not a pinned reference.
+# See the header of tests/extrn_csect.s. Recapture on the pinned oracle.
+./as370 tests/extrn_csect.s -o /tmp/_x290$$.obj >/tmp/_x290$$.out 2>&1
+rcx=$?
+if [ $rcx != 8 ]; then
+    echo "extrn_csect: FAIL -- expected RC 8, got $rcx"; fail=$((fail + 1))
+elif ! grep -q "3 Statements Flagged" /tmp/_x290$$.out; then
+    echo "extrn_csect: FAIL -- IFOX00 flags all three occurrences, including the resume"
+    grep -i "flagged" /tmp/_x290$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_x290$$.obj tests/ref/extrn_csect.obj <<'PY'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80)
+            if d[i+1:i+4] != b"\xc5\xd5\xc4"]           # END excluded: the IDR differs
+a, b = body(sys.argv[1]), body(sys.argv[2])
+if a != b:
+    print("extrn_csect: FAIL -- deck differs from IFOX00 in %d of %d cards"
+          % (sum(1 for x, y in zip(a, b) if x != y), len(b)))
+    sys.exit(1)
+print("extrn_csect: OK (deck byte-identical to IFOX00: one PC of 20 bytes, "
+      "the named section at x'18', DC A(C) relocated against the ER)")
+PY
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_x290$$.obj /tmp/_x290$$.out
+
+# ------------------------------------------------------------- unnamed_dsect --
+# An unnamed DSECT must not share the implicit private code's symbol. It used
+# to take `""', so it marked the private code as a DSECT and defined the symbol
+# without an ESD entry -- and a later unnamed control section then emitted TXT
+# under ESDID 0. That is the malformed deck #290 warned about, and no oracle is
+# needed to reject it: every TXT must name an ESDID the ESD declares.
+#
+# What this scores, measured rather than assumed: it PASSES on the binary before
+# #290 (there is no unnamed control section to reuse the symbol yet) and FAILS on
+# the naive #290 -- the rejection without this separation -- with
+# `TXT names an ESDID the ESD does not declare: [(0, 8)]'. On that same binary
+# extrn_csect above is green, which is the whole reason both tests exist: the
+# byte-identity fixture carries no unnamed DSECT, so it cannot see this at all.
+cat > /tmp/_ud$$.s <<'EOF'
+T        CSECT
+         EXTRN X
+         DC    A(X)
+         DSECT
+D1       DS    XL8
+X        CSECT
+         DC    F'7'
+         END
+EOF
+./as370 /tmp/_ud$$.s -o /tmp/_ud$$.obj >/dev/null 2>&1
+python3 - /tmp/_ud$$.obj <<'PY'
+import sys
+def be(b): return int.from_bytes(b, 'big')
+d = open(sys.argv[1], 'rb').read()
+ids, txt = set(), []
+for i in range(0, len(d), 80):
+    c = d[i:i+80]
+    if c[1:4] == b"\xc5\xe2\xc4":                        # ESD
+        n = be(c[10:12]); eid = be(c[14:16])
+        for off in range(16, 16 + n, 16):
+            if len(c[off:off+16]) < 16: break
+            ids.add(eid); eid += 1
+    elif c[1:4] == b"\xe3\xe7\xe3":                      # TXT
+        txt.append((be(c[14:16]), be(c[5:8])))
+orphan = [t for t in txt if t[0] not in ids]
+if orphan:
+    print("unnamed_dsect: FAIL -- TXT names an ESDID the ESD does not declare: %s" % (orphan,))
+    sys.exit(1)
+print("unnamed_dsect: OK (private code keeps its own ESD entry; no orphan TXT)")
+PY
+[ $? = 0 ] || fail=$((fail + 1))
+rm -f /tmp/_ud$$.s /tmp/_ud$$.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
