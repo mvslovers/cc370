@@ -1,0 +1,85 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 08.40 09/11/26
+T         SD  0001 000000 000020
+OTHER     SD  0002 000020 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.40 09/11/26
+                                      1 * cc370#362 / #26: an operand that is not SIMPLY RELOCATABLE. IFOX00
+                                      2 * answers IFO217 RELOCATABILITY ERROR NEAR OPERAND COLUMN n at
+                                      3 * severity 12; as370 has no such check and assembles something.
+                                      4 *
+                                      5 * Predictions, written down before the oracle was asked, and one of
+                                      6 * the three was WRONG:
+                                      7 *   predicted  both flagged statements produce IFO217
+                                      8 *   measured   they produce DIFFERENT messages -- IFO217 for the
+                                      9 *              multiply, IFO213 COMPLEXLY RELOCATABLE EXPRESSION for
+                                     10 *              the two unpaired terms. One check, two diagnostics.
+                                     11 *   predicted  IFOX00 zeroes the instruction, four bytes 00000000
+                                     12 *   measured   correct, both statements
+                                     13 *   predicted  rc 12
+                                     14 *   measured   correct, 2 statements flagged, highest severity 12
+                                     15 * The fixture caught that only because it carries two DIFFERENT bad
+                                     16 * expressions. With one shape it would have confirmed the wrong half
+                                     17 * of the prediction and hidden IFO213 entirely.
+                                     18 *
+                                     19 * IFO213 OCCURS NOWHERE IN THE CORPUS -- 0 of 926 diagnostic files,
+                                     20 * against IFO217 at 75 and IFO188 at 282 as instrument controls. So
+                                     21 * for IFO213 this fixture is not the first check, it is the ONLY one
+                                     22 * that will ever exist here, and the tree gate cannot see a wrong
+                                     23 * message at all. Hence two more shapes rather than one construction:
+                                     24 *   FLDX-OTHER  predicted IFO213 -- a pair that does not cancel
+                                     25 *               because the two symbols are in different sections
+                                     26 *   0-FLDX      predicted IFO213 -- a single unpaired NEGATIVE term
+                                     27 * Both zeroed, per the measured behaviour of the other two.
+                                     28 *
+                                     29 * Oracle: MVSTK5-REF, JOB00034, 2026-09-11.
+                                     30 *   The two controls assemble normally, which is what proves the
+                                     31 *   fixture tests relocatability rather than a parse failure.
+                                     32 *
+                                     33 * as370 today, on a1b101d, flags NOTHING and emits 5810 0000 for the
+                                     34 * first: base 0, displacement 0, at rc 0. That is the #26 half.
+                                     35 *
+                                     36 * The two mechanisms #26 names, one card each:
+                                     37 *   FLDX*2-FLDX   relocatability lost across a multiply
+                                     38 *   (B-A)         a paren subterm spanning two control sections
+000000                               39 T        CSECT
+                            00000    40          USING T,12
+000000                               41 FLDX     DS    F
+000004                               42 FLDY     DS    F
+000008 5820 0004      00004          43          L     2,FLDY-FLDX        control: absolute difference, legal
+00000C 5830 C000      00000          44          L     3,FLDX             control: simply relocatable, legal
+000010 0000 0000      00000          45          L     1,FLDX*2-FLDX      relocatable across a multiply
+         *** ERROR ***
+000014 0000 0000      00000          46          L     4,FLDX+FLDY        two unpaired relocatable terms
+         *** ERROR ***
+000018 0000 0000      00000          47          L     5,FLDX-OTHER       paired across two control sections
+         *** ERROR ***
+00001C 0000 0000      00000          48          L     6,0-FLDX           one term, unpaired and negative
+         *** ERROR ***
+000020                               49 OTHER    CSECT
+000020                               50 OFLD     DS    F
+                                     51          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.40 09/11/26
+FLDX     00004 00000000 00041  00043 00044 00045 00045 00046 00047 00048
+FLDY     00004 00000004 00042  00043 00046
+OFLD     00004 00000020 00050
+OTHER    00001 00000020 00049  00047
+T        00001 00000000 00039  00040
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 08.40 09/11/26
+   45  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 9
+   46  IFO213      COMPLEXLY RELOCATABLE EXPRESSION NEAR OPERAND COLUMN 12
+   47  IFO213      COMPLEXLY RELOCATABLE EXPRESSION NEAR OPERAND COLUMN 13
+   48  IFO213      COMPLEXLY RELOCATABLE EXPRESSION NEAR OPERAND COLUMN 9
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     4
+HIGHEST SEVERITY WAS   12
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         51
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        85

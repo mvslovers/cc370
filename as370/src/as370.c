@@ -711,6 +711,14 @@ static const char *xp_; static int xrl_;   /* xrl_ = net relocation count of the
  * net to zero.  IFOX00 accepts the first and rejects the second with IFO206
  * (cc370#133); as370 accepted both silently at RC 0. */
 static int xsect_[64], xscnt_[64], xnsect_, xovf_;
+/* Relocatability, IFOX00's way. `xterms_' counts relocatable TERMS regardless of
+ * sign, which `xrl_' cannot: x_factor is called with sign 0 inside a product, so
+ * a relocatable operand of a multiply contributes nothing to xrl_ and FLDX*2
+ * reads as simply relocatable. That is the whole of cc370#362's first half.
+ * `xmulrel_' records that a product or quotient had a relocatable operand --
+ * IFO217 -- and xrl_class() separates absolute from simply from complexly
+ * relocatable, the last being IFO213. */
+static int xterms_, xmulrel_;
 /* 1 if every section's relocatable terms cancelled -- i.e. genuinely absolute
  * rather than merely net-zero across different sections. */
 static void xsect_tally(int sect, int sign) {
@@ -719,22 +727,65 @@ static void xsect_tally(int sect, int sign) {
     if (xnsect_ < 64) { xsect_[xnsect_] = sect; xscnt_[xnsect_] = sign; xnsect_++; }
     else xovf_ = 1;                      /* >64 distinct sections: prove nothing */
 }
+/* 0 absolute, 1 simply relocatable, 2 complexly relocatable.
+ * Measured against IFOX00 (tests/relocerr.s, MVSTK5-REF JOB00035): two unpaired
+ * terms, a pair spanning two control sections, and a single NEGATIVE unpaired
+ * term all answer IFO213 -- three shapes, because IFO213 appears nowhere in the
+ * 5,528-module corpus and this fixture is the only check that will ever exist
+ * for it here. */
+static int xrl_class(void) {
+    int k, ones = 0, other = 0;
+    if (xovf_) return 1;                 /* could not track: do not invent an error */
+    for (k = 0; k < xnsect_; k++) {
+        if (!xscnt_[k]) continue;
+        if (xscnt_[k] == 1) ones++; else other++;
+    }
+    if (!ones && !other) return 0;
+    if (ones == 1 && !other) return 1;
+    return 2;
+}
 static int xrl_paired(void) {
     int k;
     if (xovf_) return 1;                 /* could not track: do not invent an error */
     for (k = 0; k < xnsect_; k++) if (xscnt_[k]) return 0;
     return 1;
 }
+struct xrlsnap { int n; int c[64]; };
+static void xrl_snap(struct xrlsnap *s) {
+    int k; s->n = xnsect_;
+    for (k = 0; k < xnsect_ && k < 64; k++) s->c[k] = xscnt_[k];
+}
+static int xrl_moved(const struct xrlsnap *s) {
+    int k;
+    for (k = 0; k < xnsect_ && k < 64; k++)
+        if (xscnt_[k] != (k < s->n ? s->c[k] : 0)) return 1;
+    return 0;
+}
+/* Flip the sign of everything tallied since the snapshot. A parenthesised group
+ * that is SUBTRACTED contributes its terms negatively, and the group branch in
+ * x_factor negated the running total xrl_ while leaving the PER-SECTION tallies
+ * positive. `IOB-(CHPG1+17)' therefore tallied +2 in one section where the truth
+ * is 0, and read as complexly relocatable. Latent until something classified on
+ * the tallies; it cost three identities in one gate run (cc370#362). */
+static void xrl_negate_since(const struct xrlsnap *s) {
+    int k;
+    for (k = 0; k < xnsect_ && k < 64; k++) {
+        int was = (k < s->n ? s->c[k] : 0);
+        xscnt_[k] = was - (xscnt_[k] - was);
+    }
+}
 static long x_add(void);   /* fwd: additive expression (term +/- term ...) */
 static long x_factor(int sign) {
     while (*xp_ == ' ') xp_++;
     if (*xp_ == '(') {                                     /* grouping paren in factor position (e.g. 8+(64-1)); a '(' after a term is a subscript and is left to the caller */
-        xp_++; int before = xrl_; xrl_ = 0; long v = x_add(); int delta = xrl_;
+        xp_++; struct xrlsnap gb; xrl_snap(&gb);
+        int before = xrl_; xrl_ = 0; long v = x_add(); int delta = xrl_;
         xrl_ = before + (sign < 0 ? -delta : delta);
+        if (sign < 0) xrl_negate_since(&gb);   /* a SUBTRACTED group tallies negatively per section too */
         while (*xp_ == ' ') { xp_++; } if (*xp_ == ')') xp_++;
         return v;
     }
-    if (*xp_ == '*') { xp_++; xrl_ += sign; xsect_tally(cur_sect_id, sign); return lc; }   /* location counter: relocatable, and it belongs to the CURRENT section -- without that (*-HERE) would not pair and the valid case would be rejected */
+    if (*xp_ == '*') { xp_++; xrl_ += sign; xterms_++; xsect_tally(cur_sect_id, sign); return lc; }   /* location counter: relocatable, and it belongs to the CURRENT section -- without that (*-HERE) would not pair and the valid case would be rejected */
     if (*xp_ == '-') { xp_++; return -x_factor(-sign); }
     if (*xp_ == '+') { xp_++; return x_factor(sign); }
     if (isdigit((unsigned char)*xp_)) { char *end; long v = strtol(xp_, (char **)&end, 10); xp_ = end; return v; }
@@ -774,16 +825,31 @@ static long x_factor(int sign) {
                   * RC 0.  An ER has no section and is bucketed under 0 with the
                   * rest, so two DIFFERENT ERs still cancel here -- narrower than
                   * IFOX, and deliberately left that way rather than guessed. */
-                 xsect_tally(s->sect, sign);
+                 xterms_++; xsect_tally(s->sect, sign);
              }
              return s->val; }
     return 0;
 }
+/* Has the NET relocation changed? Counting relocatable terms is not the same
+ * question and answering the wrong one cost 331 identities in one gate run:
+ * `NOPR ((@ENDDATD-@DATD)*16)' encounters two relocatable terms inside the
+ * group and they PAIR, so the group is absolute and multiplying it is legal --
+ * IFOX00 is silent on it. What makes a factor relocatable is the net it leaves
+ * per section, which is exactly what the tallies hold. */
 static long x_term(int sign) {
+    struct xrlsnap b0; xrl_snap(&b0);
     long v = x_factor(sign);
+    int lrel = xrl_moved(&b0);           /* did the LEFT operand leave a net relocation? */
     for (;;) { while (*xp_ == ' ') xp_++;
-        if (*xp_ == '*') { xp_++; v *= x_factor(0); }       /* a product is absolute */
-        else if (*xp_ == '/') { xp_++; long r = x_factor(0); v = r ? v / r : 0; }
+        /* A product or quotient must have absolute operands. IFOX00 answers
+         * IFO217 RELOCATABILITY ERROR when either side is relocatable and zeroes
+         * the instruction; as370 evaluated it as though the product were simply
+         * absolute, so `L 1,FLDX*2-FLDX' assembled to base 0 at rc 0. */
+        if (*xp_ == '*') { xp_++; struct xrlsnap b1; xrl_snap(&b1); v *= x_factor(0);
+                           if (lrel || xrl_moved(&b1)) xmulrel_ = 1; lrel = 0; }
+        else if (*xp_ == '/') { xp_++; struct xrlsnap b1; xrl_snap(&b1); long r = x_factor(0);
+                                if (lrel || xrl_moved(&b1)) xmulrel_ = 1; lrel = 0;
+                                v = r ? v / r : 0; }
         else break; }
     return v;
 }
@@ -797,7 +863,7 @@ static long x_add(void) {
 }
 static long expr_val(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0;
     while (*xp_ == ' ') xp_++;
     if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; }   /* leading '(' = subscript with no displacement prefix */
     else { v = x_add(); if (reloc) *reloc = xrl_; }
@@ -816,7 +882,7 @@ static long expr_val(const char *e, int *reloc) {
  * which it would silently value at 0.  Same evaluator, without that guard. */
 static long expr_val_full(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0;
     while (*xp_ == ' ') xp_++;
     if (*xp_) { v = x_add(); if (reloc) *reloc = xrl_; }
     else if (reloc) *reloc = 0;
@@ -1199,9 +1265,46 @@ static long r_raw;    /* its un-reduced value (before USING subtraction); the di
  * called the subscript has already been located positionally, so there is
  * nothing left here for that guard to protect against -- and with it the
  * displacement came out ZERO, silently, at rc 0. */
+static void note_operr(const char *msg, int sev, int line);   /* fwd: the relocatability check below raises IFO217/IFO213 */
+static int g_disp_class, g_disp_mulrel;   /* how the last disp_val() relocated */
 static long disp_val(const char *e, int *reloc) {
     while (*e == ' ') e++;
-    return (*e == '(') ? expr_val_full(e, reloc) : expr_val(e, reloc);
+    long v = (*e == '(') ? expr_val_full(e, reloc) : expr_val(e, reloc);
+    g_disp_class = xrl_class(); g_disp_mulrel = xmulrel_;
+    return v;
+}
+/* Relocatability of a machine instruction's address operands -- IFOX00's two
+ * diagnostics, and it decides BYTES as well as a message, because IFOX00 zeroes
+ * the instruction exactly as the IFO188 path above does.
+ *
+ * Measured against IFOX00 (tests/relocerr.s, MVSTK5-REF JOB00035):
+ *   FLDX*2-FLDX  IFO217  relocatability lost inside a product
+ *   FLDX+FLDY    IFO213  two unpaired relocatable terms
+ *   FLDX-OTHER   IFO213  a pair spanning two control sections
+ *   0-FLDX       IFO213  one unpaired NEGATIVE term
+ * four statements flagged, highest severity 12, all four zeroed -- and the two
+ * controls beside them, FLDY-FLDX and FLDX, assemble normally, which is what
+ * shows the check tests relocatability rather than a parse failure.
+ *
+ * Three of those four shapes are IFO213, deliberately: IFO213 occurs in 0 of the
+ * 926 recorded diagnostics against IFO217's 75 modules, so the corpus cannot
+ * witness it and the fixture is the only check that will ever exist. One
+ * construction would have confirmed the shape it was built from. */
+static int scan_reloc_terms(const char *opnd, int line) {
+    char F[4][FLDW]; int nf = split_fields(opnd, F, 4), k, bad = 0;
+    for (k = 0; k < nf; k++) {
+        if (!F[k][0] || F[k][0] == '=') continue;   /* a literal carries no address expression here */
+        int rel = 0; char m[112];
+        (void)disp_val(F[k], &rel);
+        if (g_disp_mulrel) {
+            snprintf(m, sizeof m, "Relocatable operand of a multiply or divide (IFOX00 IFO217; instruction zeroed) - %.24s", F[k]);
+            note_operr(m, 12, line); bad = 1;
+        } else if (g_disp_class == 2) {
+            snprintf(m, sizeof m, "Complexly relocatable expression (IFOX00 IFO213; instruction zeroed) - %.24s", F[k]);
+            note_operr(m, 12, line); bad = 1;
+        }
+    }
+    return bad;
 }
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
     *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1; r_subempty = 0;
@@ -4467,6 +4570,10 @@ static void do_pass(int pass, char **lines, int nlines) {
             } else if (has_overlong_term(opnd)) {   /* operand symbol term >8 -> IFOX IFO236: zero the whole instruction (as IFO228/IFO209 do) */
                 note_ovlref(op, i); int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
                 lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
+            } else if (scan_reloc_terms(opnd, i)) {   /* not simply relocatable -> IFOX IFO217/IFO213: zero the whole instruction */
+                int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
+                lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
+                if (L == 6) { lrecs[i].a2 = 0; lrecs[i].hasa2 = 1; }
             } else if (scan_undef_terms(opnd, i)) {   /* undefined symbol term -> IFOX IFO188: zero the whole instruction */
                 int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
                 /* Both ADDR columns, not just the first: the oracle renders an SS
