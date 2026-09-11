@@ -1,0 +1,64 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 08.08 09/11/26
+          PC  0001 000000 00000C
+A         SD  0002 000010 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.08 09/11/26
+                                      1 * Does a LITERAL blank CSECT card RESUME the private code's counter
+                                      2 * or RESTART it at zero? cc370#290's oracle settled it only for a
+                                      3 * REJECTED NAMED section (it resumes, LOC 000004). The modules that
+                                      4 * would answer it for the blank card are the &CSECT family -- IFCE*
+                                      5 * and IFCS*, where the name substitutes to nothing -- and their
+                                      6 * IFOX00 references come from rc 12 runs, so they cannot arbitrate.
+                                      7 *
+                                      8 * Predictions, written down before the oracle was asked:
+                                      9 *   RESUME   PC is 12 bytes. TXT at 0 = C1, at 4 = C2, at 8 = C3.
+                                     10 *            A is chained after it at x'10' (12 rounded up).
+                                     11 *   RESTART  PC is 4 bytes. Three TXT records all at address 0,
+                                     12 *            each overwriting the last. A is chained at x'8'.
+                                     13 * The two differ in the ESD length AND in the TXT addresses, so no
+                                     14 * single byte decides it alone.
+                                     15 *
+                                     16 * as370 today does NEITHER, and the fixture found that rather than
+                                     17 * the author: measured on 0a6e868 it RESTARTS on the first blank
+                                     18 * card and RESUMES on every later one --
+                                     19 *   PC is 8 bytes; TXT C1 at 0, C2 at 0 (overwriting C1), C3 at 4.
+                                     20 * That is `opened' deciding: the first blank CSECT statement reads
+                                     21 * ++opened == 1 and resets the section's counter, the second reads 2
+                                     22 * and does not. A first blank card and a second cannot both be right,
+                                     23 * so this is a defect whichever way IFOX00 answers -- the oracle
+                                     24 * decides WHICH of the two as370 behaviours to keep, not whether
+                                     25 * there is something to fix.
+                                     26 * It is also why the fixture carries TWO blank cards. With one it
+                                     27 * would have read as a clean RESTART and proved the wrong thing.
+                                     28 *
+                                     29 * Control, true under both rules: A is an ordinary named section
+                                     30 * opened once and resumed once, so its two pieces must sit at its
+                                     31 * own 0 and 4. If they do not, the fixture is measuring something
+                                     32 * other than what it says.
+000000 C1C1C1C1                      33          DC    XL4'C1C1C1C1'      implicit private code, no CSECT yet
+000010                               34 A        CSECT
+000010 AAAAAAAA                      35          DC    XL4'AAAAAAAA'
+000004                               36          CSECT                    blank name: resume, or restart?
+000004 C2C2C2C2                      37          DC    XL4'C2C2C2C2'
+000014                               38 A        CSECT                    the control, resumed
+000014 A2A2A2A2                      39          DC    XL4'A2A2A2A2'
+000008                               40          CSECT                    and the blank one again
+000008 C3C3C3C3                      41          DC    XL4'C3C3C3C3'
+                                     42          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.08 09/11/26
+A        00001 00000010 00034  00038
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 08.08 09/11/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         42
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         7
+TOTAL RECORDS PRINTED                        64
