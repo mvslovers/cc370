@@ -10,9 +10,18 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-10 — all 48 open issues read
-against `origin/main` at `fd287d3`, one at a time, and every figure below
-re-derived on this host rather than carried forward. Twenty-five PRs merged since
+*Last reconciled against the tracker: 2026-09-11 — `as370 == IFOX00` stands at
+**5,431 of 5,528 (98.2 %)** at `a1b101d`, 97 modules still differing. Two merges
+took it there from 5,427: **#359** chained the implicit private-code section
+(+3) and **#360** closed **#290** (+1, `IECVHDET`). `mvs38src` ran the tree gate
+independently for the second and reported it in the shape this file should use
+from now on — *exactly one deck in 5,528 changed, it is `IECVHDET`, and it went
+DIFFER to IDENTICAL* — which excludes what `+1` cannot, that something else moved
+and cancelled. **The oracle is pinned**: MVSTK5-REF, frozen and proved (2,332 of
+2,332 members identical across a shutdown, a restart and a real IFOX00 run), so
+reference decks can be captured again. Before that, 2026-09-10 — all 48 open
+issues read against `origin/main` at `fd287d3`, one at a time, and every figure
+below re-derived on this host rather than carried forward. Twenty-five PRs merged since
 this file last looked (#311…#337 on the evening of 2026-09-09, #340…#357 on
 2026-09-10) and **none of them was recorded here**. `as370 == IFOX00` stands at
 **5,427 of 5,528 (98.2 %)** at `fd287d3` — deck body, END card excluded, 101
@@ -86,17 +95,17 @@ front of you, the second is nineteen-twentieths unattributable.
 | 2 | #37 | ld370 | silent — the AC does not survive `--pack` | nothing |
 | 3 | #97 | as370 | silent — a different object module | nothing |
 | 4 | #104 | as370 | silent — a swallowed build option | nothing |
-| 5 | #290 | as370 | silent — an `EXTRN`'d name opens a named section | nothing |
-| 6 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
-| 7 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 8 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
-| 9 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 10 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
-| 11 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
-| 12 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 5 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 7 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
+| 8 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 9 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
+| 10 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
+| 11 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 
-Twelve, not ten: **#39 and #35 leave** (closed and closing), and #290, #342,
-#184 and #241 arrive, because this file had never listed them.
+Eleven: **#290 leaves on 2026-09-11**, closed by #360 — it entered this table on
+2026-09-10 and was the first item the ranking produced work for. #39 and #35 left
+before it; #342, #184 and #241 arrived because this file had never listed them.
 
 **#56 was written into row 1 of this table during the pass and taken out again**,
 and the reason is worth keeping rather than quietly deleting. `opc_table.h:134`
@@ -271,37 +280,7 @@ debug build.
 Cheapest fix in either tool, and it must not wait for `SYSPARM` — adding that
 later does not help anyone who mistyped it in the meantime.
 
-### 5 · #290 — an `EXTRN`'d name that also names a section
-
-`EXTRN X` followed by `X CSECT` opens a *named* section at rc 0 here; IFOX00
-raises `IFO196` and opens **unnamed private code**, and the two produce different
-ESDs. Measured against the oracle, and the distinction is real rather than
-pedantic: `DC V(X)` followed by `X CSECT` *keeps* the name, so the rule is about
-`EXTRN` specifically and not about a prior reference in general.
-
-It has been carried unfixed on purpose since 2026-09-09, and the reason is worth
-keeping: **the obvious implementation produces a malformed deck** — TXT filed
-under an ESDID that has no ESD entry — and it reads `+0, closer 1, none lost` on
-a gate while doing it. `mvs38src`'s `deck_lint.py` is what catches that, and any
-attempt at this issue should be run through it before its gate line is believed.
-
-**It now has a named witness, and the witness is an acceptance case rather than
-an example.** `IECVHDET` codes `EXTRN IECVHIDT` at line 412 and `IECVHIDT CSECT`
-at 617; IFOX00's recorded diagnostics answer `IFO196 IECVHIDT HAS BEEN PREVIOUSLY
-DEFINED` and it opens unnamed private code at `0x408`, where as370 opens a named
-`SD`. **Three cards differ between the two decks and all three are this defect** —
-the ESD name field, the `DC A(IECVHIDT)` that as370 resolves to `0x0408` while
-IFOX00 leaves `0x0000` and relocates, and the RLD entries that shift with it. So
-#290 alone would make that deck byte-identical, and the TXT card is what separates
-a real fix from one that only renames the ESD entry.
-
-It surfaced sideways, which is the part worth generalising: two length instruments
-disagreed by thirteen modules, twelve of them explained, and **the thirteenth went
-the other way because a name-keyed comparison drops IFOX00's unnamed private code
-and so invents eight bytes that are not in the object.** A disagreement between
-two instruments is a place to look, not a reconciliation exercise.
-
-### 6 · #342 — a symbol from a macro-generated DSECT is recorded absolute
+### 5 · #342 — a symbol from a macro-generated DSECT is recorded absolute
 
 In `IEDQWIE` a symbol defined inside a DSECT that a macro generated comes out
 absolute rather than relocatable, so an SS operand written with an explicit
@@ -311,7 +290,7 @@ It sits this high because no measurement is owed before the work can start: the
 mechanism is one bookkeeping decision and the witness is a single named module.
 Everything below this line in the top class is waiting on something.
 
-### 7 · #89 — a forward reference in EQU resolves to 0
+### 6 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -322,7 +301,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 8 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 7 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the decision is which default*
 
@@ -347,7 +326,7 @@ mbt v2 links every ecosystem module through ld370, so how many of them actually
 want RENT decides whether inverting is a one-line change or a sweep across every
 `project.toml`. Do the survey before the decision.
 
-### 9 · #86 — the diagnostic recorders drop everything past 128 entries
+### 8 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -364,7 +343,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 10 · #184 — the attribute apostrophe, in the scans that decide diagnostics
+### 9 · #184 — the attribute apostrophe, in the scans that decide diagnostics
 
 *the last live member of the #35/#149/#218 family, and the one PR #347 says it
 did not close*
@@ -381,7 +360,7 @@ a correct diagnostic from a suppressed one on those three paths. Until one
 exists, a fix here is unfalsifiable by every instrument this project owns — the
 tree gate included.
 
-### 11 · #241 — twenty modules longer than IFOX00, one of them readable
+### 10 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -405,7 +384,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 12 · #23 — the corpus gate has an oracle-shaped hole
+### 11 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -776,6 +755,50 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-11 — two merges, none lost, 5,427 → 5,431 of 5,528 (98.2 %).** The
+  first work this file's ranking produced rather than recorded.
+
+  | PR | | gained |
+  |---|---|---|
+  | #359 | the implicit private-code section is chained (#358) | +3 |
+  | #360 | a name declared `EXTRN` may not name a control section (#290) | +1 |
+
+  **#290 took two prerequisites nobody had filed, and both were found by
+  measuring rather than by reading.** The issue itself warned that the obvious
+  implementation produces a malformed deck and asked whoever picked it up to
+  understand that first; the answer turned out to be two separate defects
+  underneath it.
+
+  *The implicit private-code section was never chained.* `assign_origins()` walks
+  `sect_ord` and only the `CSECT` handler appended to it, so private code kept
+  origin 0 and the first named section was assigned 0 as well — two sections
+  overlapping in one module. **The invariant that found it has no oracle in it at
+  all**: no two sections of one deck may overlap. IFOX00 produces no such deck in
+  5,528 and as370 produced five. Three of those five — `BNGCLOCL`, `BNGCMENU`,
+  `BNGCRMOT` — became byte-identical, and they are modules this file had written
+  off as unusable witnesses because their references come from rc 8 runs. They
+  were unusable for the question then being asked and decisive for a different
+  one, which is worth more than the +3.
+
+  *An unnamed `DSECT` took the private code's own symbol.* It marked that section
+  as a DSECT and defined the symbol without an `esd_add`, so the rejected control
+  section found it defined, emitted no ESD entry, and filed its TXT under ESDID 0.
+  That is the malformed deck, reproduced in three cards. `deck_lint` caught it the
+  moment the rejection landed without the separation.
+
+  **`IECVHDET` closed completely**, which is what made it an acceptance case
+  rather than an example: three cards differed with END excluded and all three
+  were this defect — the ESD name field, the `DC A(IECVHIDT)` as370 resolved to
+  `0x0408` where IFOX00 leaves `0x0000` and relocates, and the RLD behind it.
+
+  **Two method notes, both mine and both caught by a gate rather than by care.**
+  A first attempt routed section membership through `opened`, which also decides
+  whether a section's counter is reset; nine `IFCE`/`IFCS` modules moved *away*
+  from IFOX00 for a reason unrelated to chaining. And the provisional-oracle
+  comment added to the fixture ran to 73 columns, so `make test` went straight to
+  rc 2 — an over-long **comment card** in a fixture whose whole subject is what
+  IFOX00 does with a card.
 
 - **2026-09-10 — the tracker pass itself: 48 issues read, one closed, nine
   corrected.** No code changed. What it found is in the header; what it is worth
@@ -1546,6 +1569,18 @@ and mbt v2 has compiled, assembled *and* linked entirely on the host since
 
 Small things with no issue, recorded here so they are not lost twice.
 
+- **A literal blank `CSECT` card: does it resume its counter or restart it?**
+  Parked deliberately while #290 was fixed, and as370 answers **neither** rule
+  consistently — measured on `0a6e868` it RESTARTS on the first blank card and
+  RESUMES on every later one, because `opened` reads 1 then 2. A first blank card
+  and a second cannot both be right, **so this is a defect whichever way IFOX00
+  answers**; the oracle decides which of the two behaviours to keep, not whether
+  there is something to fix. The fixture is written with its three predictions
+  (`as370/tests/blank_csect.s`) and carries **two** blank cards on purpose: with
+  one it would have read as a clean RESTART and proved the wrong thing. The
+  `&CSECT` family — `IFCETRN6`, `IFCS5424` and the other `IFCE`/`IFCS` — is where
+  it bites, and those cannot arbitrate it: their IFOX00 references come from rc 12
+  runs. Waiting on a capture against the pinned oracle, not on a decision.
 - **`ld370 --help` does not exist** — it is parsed as a filename. as370 has one.
   Noted in `docs/ld370-iewl-divergences.md`.
 - **as370 has no `YFLAG` equivalent** — it emits Y-cons with no range check, the
