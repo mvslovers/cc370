@@ -1,0 +1,72 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.12 09/11/26
+A1        SD  0001 000000 000004
+B1        SD  0002 000008 000004
+T         SD  0003 000010 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.12 09/11/26
+                                      1 * cc370#362: IFOX00 raises IFO217 on 155 USING statements in the
+                                      2 * corpus, and every one of them has BOTH properties at once -- an
+                                      3 * undefined operand AND, potentially, a complex one. The corpus
+                                      4 * cannot separate them. Six cases, and the pairs that decide it are
+                                      5 * 1-against-2 and 3-against-4.
+                                      6 *
+                                      7 * Predictions, written before the oracle was asked. All six, the
+                                      8 * controls included: a control nobody predicted cannot surprise you.
+                                      9 *
+                                     10 *   1 USING UNDEF,2       predict IFO188 + IFO217   the corpus shape
+                                     11 *   2 USING DEFINED,3     predict SILENT            control
+                                     12 *   3 USING DEFINED*2,4   predict IFO217   the #363 rule, on USING
+                                     13 *   4 USING FLDA+FLDB,5   predict IFO213   two sections, as above
+                                     14 *   5 USING *,6           predict SILENT            control
+                                     15 *   6 USING 4096,7        predict SILENT            absolute USING
+                                     16 *
+                                     17 * What each answer would mean:
+                                     18 *   1 flags and 3 does not -> the 155 are an UNDEFINED-SYMBOL
+                                     19 *     diagnostic wearing IFO217's number, and #363's machinery is the
+                                     20 *     wrong tool for them.
+                                     21 *   1 and 3 both flag -> one relocatability check covers both, and
+                                     22 *     the work is to reach the USING path.
+000000                               23 A1       CSECT
+000000                               24 FLDA     DS    F
+000008                               25 B1       CSECT
+000008                               26 FLDB     DS    F
+000010                               27 T        CSECT
+000010                               28 DEFINED  DS    F
+000010                               29          USING UNDEF,2      1: undefined, otherwise simple
+         *** ERROR ***
+                            00010    30          USING DEFINED,3    2: defined and simple -- control
+000010                               31          USING DEFINED*2,4  3: defined, relocatable across a multiply
+         *** ERROR ***
+000010                               32          USING FLDA+FLDB,5  4: defined, two sections, complex
+         *** ERROR ***
+                            00014    33          USING *,6          5: the location counter -- control
+                            01000    34          USING 4096,7       6: absolute -- control
+                                     35          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.12 09/11/26
+A1       00001 00000000 00023
+B1       00001 00000008 00025
+DEFINED  00004 00000010 00028  00030 00031
+FLDA     00004 00000000 00024  00032
+FLDB     00004 00000008 00026  00032
+T        00001 00000010 00027
+UNDEF    ****UNDEFINED****     00029
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 09.12 09/11/26
+   29  IFO188      UNDEF IS AN UNDEFINED SYMBOL
+   29  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 6
+   31  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
+   31  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
+   32  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     3
+HIGHEST SEVERITY WAS   12
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         35
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         2
+TOTAL RECORDS PRINTED                        72
