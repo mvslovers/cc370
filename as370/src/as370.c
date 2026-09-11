@@ -254,7 +254,6 @@ static void note_sect_lc(long end) { sect_lc_of(cur_sect_id, end); }
 static long sect_org[MAXSECT];    /* absolute origin; 0 until assign_origins() runs between the passes */
 static long sect_rel[MAXSECT];    /* the section's OWN counter, always relative to its origin, in both passes */
 static long sect_len1[MAXSECT];   /* pass 1 length, captured before pass 2 clears sect_hwm */
-static int  sect_ord[MAXSECT], nsect_ord;   /* control sections in order of first definition -- the chaining order */
 static long start_base;           /* START operand: where the chain begins (rounded, like any origin) */
 /* The END literal pool belongs to the FIRST control section (#68).
  *
@@ -309,6 +308,27 @@ static int  is_dsect_id(int id) { return id > 0 && id < 256 && dsect_sect[id]; }
 /* A DSECT owns no address space, so its origin stays 0 and its symbols are
  * never relocated. In pass 1 every counter is relative, so the base is 0
  * there too; only pass 2 adds the origin that was chained in between. */
+/* Put a control section into the chaining order, once. assign_origins() walks
+ * sect_ord alone, so a section that never enters it keeps sect_org 0 -- the
+ * implicit private code then sat at origin 0 and the first named CSECT was
+ * assigned 0 as well, two sections overlapping in one module. Only the
+ * CSECT/START handler appended, so a section opened any other way was invisible
+ * to the chaining. No IFOX00 deck in 5,528 overlaps; as370 produced five.
+ *
+ * It does NOT go through `opened`, and that is the point. `opened` means "CSECT
+ * or DSECT statements naming this symbol within this pass", and the CSECT
+ * handler resets the section's own counter when it reads 1. Marking the
+ * implicit private code as opened here made a later unnamed CSECT look like a
+ * resume rather than an opening, which is a semantic change to a different
+ * question -- measured: it moved nine IFCE and IFCS modules away from IFOX00
+ * while gaining nothing. Membership is its own fact, so it gets its own test. */
+static int  sect_ord[MAXSECT], nsect_ord;
+static void chain_sect(int id) {
+    int k;
+    if (g_pass != 1 || id <= 0 || id >= MAXSECT) return;
+    for (k = 0; k < nsect_ord; k++) if (sect_ord[k] == id) return;
+    if (nsect_ord < MAXSECT) sect_ord[nsect_ord++] = id;
+}
 static long sect_base(int id) {
     if (g_pass != 2 || id <= 0 || id >= MAXSECT) return 0;
     return sect_org[id];
@@ -4412,6 +4432,16 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (cur_sect_id == 0 && !in_dsect && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG"))) {
             struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1;   /* code (or a leading EQU) with no CSECT: open the implicit private-code section so its ESD precedes a later ENTRY's LD */
             if (!pc->sect) { pc->sect = ++g_sectid; } esd_add(pc, ESD_SECT);
+            /* And CHAIN it. assign_origins() walks sect_ord alone, so a section
+             * that never enters it keeps sect_org 0 -- the implicit private code
+             * then sat at origin 0 and the first named CSECT was assigned 0 as
+             * well, two sections overlapping in one module. Measured against
+             * IFOX00 (tests/extrn_csect.s, JOB00221): the private code is 20
+             * bytes at 0 and the named section follows at x'18'. Only the
+             * CSECT/START handler appended, so every section opened any other
+             * way was invisible to the chaining -- and no IFOX00 deck in 5,528
+             * overlaps, while as370 produced five that did. */
+            chain_sect(pc->sect);
             cur_sect_id = pc->sect; if (pass == 2) cur_sect_esdid = pc->esdid;
             if (!first_ctl_sect) first_ctl_sect = cur_sect_id;   /* private code counts as a control section (IFOX FSTCSECT) */
         }
@@ -4617,7 +4647,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                 start_base = align8(expr_val(opnd, NULL));   /* only the FIRST section can be placed; the chain starts there */
             if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
                 int k, hassect = 0; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) hassect = 1;
-                if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT); }
+                if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT);
+                                chain_sect(pc->sect); }   /* chained here too: same reason as the site above */
             }
             struct sym *s = sym_get(lbl[0] ? lbl : "");
             if (!s->sect) s->sect = ++g_sectid;
@@ -4647,7 +4678,7 @@ static void do_pass(int pass, char **lines, int nlines) {
              * are actually assigned. */
             if (++s->opened == 1 && s->sect < MAXSECT) {
                 sect_rel[s->sect] = 0;
-                if (pass == 1 && nsect_ord < MAXSECT) sect_ord[nsect_ord++] = s->sect;   /* definition order = chaining order */
+                chain_sect(s->sect);   /* definition order = chaining order, and membership is decided in one place */
             }
             cur_sect_id = s->sect;
             lc = sect_base(cur_sect_id) + (cur_sect_id < MAXSECT ? sect_rel[cur_sect_id] : 0);
