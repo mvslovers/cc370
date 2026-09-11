@@ -792,16 +792,27 @@ Pointers only. The reasoning lives in the issues and their PRs.
   the same time and is **byte-identical to the DEV capture outside the END date**,
   so the provisional marking came off having been tested rather than assumed.
 
-  **The gate line on that merge is the entry worth keeping.** It read `+0` with
-  **nine decks further from IFOX00** — and all nine are IFOX00 `rc 12` runs,
-  already marked `comparable=no` in `mvs38src`'s `tool-diffs.tsv`. A distance from
-  a deck the assembler did not finish is a distance from a broken artefact, in
-  either direction. **The gate prints that verdict anyway, and it is the number a
-  human reads in a PR.** 933 modules in the tree have an `rc > 4` reference, so
-  this is a sixth of the corpus rather than an edge case. The instrument that does
-  attribute cause said the opposite — first divergence moved *later* on all nine
-  and earlier on none — but that argument was not needed once the references were
-  read.
+  **The gate line on that merge is the entry worth keeping, and it outlives the
+  PR.** It read `+0` with **five decks closer to IFOX00 and nine further** — and
+  every one of the fourteen that moved is an IFOX00 `rc 12` run, already marked
+  `comparable=no` in `mvs38src`'s `tool-diffs.tsv`. **Fourteen of fourteen**, so
+  the closer column was exactly as meaningless as the further one; this file first
+  recorded only the nine as doubtful, which was half the correction. A distance
+  from a deck the assembler did not finish is a distance from a broken artefact,
+  in either direction — and **the gate printed that verdict anyway, in the number
+  a human reads in a PR description.** 933 modules in the tree have an `rc > 4`
+  reference, a sixth of the corpus, so it was never an edge case.
+
+  `mvs38src` `495ca81` fixes it, and the two choices in it are worth copying. The
+  excluded modules are **named, not dropped** — a filter that quietly removes rows
+  is the next version of this defect — and **identity is not filtered at all**,
+  because reproducing a flagged run's deck byte for byte reproduces its error
+  behaviour too. Only distance needs the reference to be a statement. Re-run
+  against #361 the report now reads `closer 0, further 0` over 4,595 scoreable
+  modules with the fourteen named beside it: **the whole tree-wide effect of that
+  merge landed where nothing can score it.** The first-divergence run this file
+  cited — later on all nine, earlier on none — remains a true statement about each
+  prefix, and was not the argument that settled it.
 
 - **2026-09-11 — two merges, none lost, 5,427 → 5,431 of 5,528 (98.2 %).** The
   first work this file's ranking produced rather than recorded.
