@@ -1,11 +1,8 @@
-* PROVISIONAL ORACLE. tests/ref/extrn_csect.obj and the listing
-* beside it were captured 2026-09-10 from MVSCE-DEV, a development
-* machine and not a pinned reference. The deck is very likely right
-* -- this fixture calls no macro, so no SYSLIB member reaches it --
-* but IFOX00 itself was an input nobody controlled there. RECAPTURE
-* on the pinned oracle once one exists (MVSTK5-REF is being pinned)
-* and replace both files. Differing bytes are a finding, not a
-* fixture repair.
+* Oracle: MVSTK5-REF, the pinned reference, JOB00032 2026-09-11.
+* It began as a capture from MVSCE-DEV and was recaptured here once
+* REF was pinned. The two decks are byte-identical outside the END
+* card, which differs only in the assembly date -- so the DEV deck
+* was right, and we now also know that rather than assuming it.
 *
 * cc370#290 -- a name declared EXTRN may still name a CSECT. IFOX00
 * raises IFO196 and opens private code. What this fixture settles is

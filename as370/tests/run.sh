@@ -2934,9 +2934,9 @@ rm -f /tmp/_chain$$.s /tmp/_chain$$.obj
 #
 # Not in the byte-identity list above, because that loop requires RC < 8 and
 # this assembly is RC 8 on both sides -- which is itself part of what is
-# asserted. tests/ref/extrn_csect.obj is a real IFOX00 deck (JOB00221) --
-# and PROVISIONAL: it came from MVSCE-DEV, which is not a pinned reference.
-# See the header of tests/extrn_csect.s. Recapture on the pinned oracle.
+# asserted. tests/ref/extrn_csect.obj is a real IFOX00 deck, captured on the
+# pinned oracle MVSTK5-REF (JOB00032). The earlier provisional capture from
+# MVSCE-DEV was byte-identical to it outside the END date stamp.
 ./as370 tests/extrn_csect.s -o /tmp/_x290$$.obj >/tmp/_x290$$.out 2>&1
 rcx=$?
 if [ $rcx != 8 ]; then
