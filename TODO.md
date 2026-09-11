@@ -106,12 +106,16 @@ front of you, the second is nineteen-twentieths unattributable.
 | 5 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
 | 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
 | 7 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
-| 8 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 9 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
-| 10 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
-| 11 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 8 | #362 | as370 | silent under-reporting — 75 modules, all masked | nothing |
+| 9 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 10 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
+| 11 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
+| 12 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 
-Eleven: **#290 leaves on 2026-09-11**, closed by #360 — it entered this table on
+Twelve again: **#26 was carrying two defects and they are split** — #362 takes the
+loud half (`IFO217` never raised, 75 modules) and #26 keeps the silent one. Two
+defects cannot share a rank, and these want different code: a simply-relocatable
+check against a diagnostic. **#290 leaves on 2026-09-11**, closed by #360 — it entered this table on
 2026-09-10 and was the first item the ranking produced work for. #39 and #35 left
 before it; #342, #184 and #241 arrived because this file had never listed them.
 
@@ -229,6 +233,17 @@ other two lines in the issue body no longer describe the binary — `expr_sect` 
 been through #215, #216, #222 and #344 since — so **do not quote the body's
 second and third cases without re-running them**. The defect stands on its first
 case alone.
+
+**It stays at rank 1 after the split, and the measurement is the reason it needed
+one.** The corpus half — `IFO217` never raised — is #362 now: 75 modules, 193
+statements, and **0 of those statements lack a co-occurring `IFO188`**, so all 75
+already agree on the return code for a reason that has nothing to do with
+relocatability. What is left here has no witness in 5,528 modules at all, and the
+four decks that still differ are IFOX00 `rc 12` runs, so they cannot arbitrate in
+either direction. That is a fact about the corpus rather than about the defect:
+this file's own tie-break puts *wrongness readable off the source* above
+*wrongness that needs a measurement*, and the constructed case is wrong in front
+of you.
 
 It is complementary to #21, not overlapping: #21's fix relies on
 "IFOX-accepted ⇒ `expr_sect`-correct", which holds *because* these forms are
@@ -763,6 +778,30 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-11, second half — the oracle is pinned and the parked question is
+  answered.** MVSTK5-REF frozen, copied with 73 checksums, and proved: 2,332 of
+  2,332 members unchanged across a shutdown, a restart and now three assemblies.
+  Two captures came off it (`JOB00032`, `JOB00033`) and the snapshot after them
+  is 0 changed, 0 gone, 0 new.
+
+  **#361** — a literal blank `CSECT` card resumes the private code, and as370
+  restarted on the first card and resumed on every later one. Two behaviours for
+  one construct, so it was a defect before the oracle answered; the oracle only
+  decided which one to keep. `extrn_csect`'s provisional deck was recaptured at
+  the same time and is **byte-identical to the DEV capture outside the END date**,
+  so the provisional marking came off having been tested rather than assumed.
+
+  **The gate line on that merge is the entry worth keeping.** It read `+0` with
+  **nine decks further from IFOX00** — and all nine are IFOX00 `rc 12` runs,
+  already marked `comparable=no` in `mvs38src`'s `tool-diffs.tsv`. A distance from
+  a deck the assembler did not finish is a distance from a broken artefact, in
+  either direction. **The gate prints that verdict anyway, and it is the number a
+  human reads in a PR.** 933 modules in the tree have an `rc > 4` reference, so
+  this is a sixth of the corpus rather than an edge case. The instrument that does
+  attribute cause said the opposite — first divergence moved *later* on all nine
+  and earlier on none — but that argument was not needed once the references were
+  read.
 
 - **2026-09-11 — two merges, none lost, 5,427 → 5,431 of 5,528 (98.2 %).** The
   first work this file's ranking produced rather than recorded.
