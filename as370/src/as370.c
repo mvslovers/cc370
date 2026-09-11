@@ -4678,7 +4678,24 @@ static void do_pass(int pass, char **lines, int nlines) {
              * CSECT card does is a different question, deliberately untouched:
              * the modules that would answer it (&CSECT substituting to nothing,
              * IFCE and IFCS) have IFOX00 references from rc 12 runs. */
-            int resume_pc = rejected && s->sect < MAXSECT && sect_hwm[s->sect] > 0;
+            /* The private code is RESUMED whenever it already holds content,
+             * however it was opened -- a rejected name (#290) and a literal
+             * blank CSECT card are the same statement to IFOX00.
+             *
+             * `opened' cannot express this and that is the defect it caused.
+             * It counts CSECT/DSECT statements naming the symbol, and the
+             * implicit private code is opened by CONTENT rather than by a
+             * statement, so the first blank card read ++opened == 1 and reset
+             * the counter while every later one read 2 and did not. as370
+             * therefore restarted on the first blank card and resumed on the
+             * second -- two behaviours for one construct, and a defect
+             * whichever way the oracle answered.
+             *
+             * It answered RESUME, at rc 0 with no diagnostic
+             * (tests/blank_csect.s, MVSTK5-REF JOB00033): private code 12
+             * bytes with the three pieces at 0, 4 and 8, and the named section
+             * chained after it at x'10'. */
+            int resume_pc = (rejected || !lbl[0]) && s->sect < MAXSECT && sect_hwm[s->sect] > 0;
             /* Opening a control section other than the first closes the first
              * one: the END literal pool goes at its end (#68), so take the room
              * before this section's origin is fixed. */

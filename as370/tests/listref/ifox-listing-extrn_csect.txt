@@ -1,69 +1,78 @@
                                                EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
-SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.00 09/10/26
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 08.07 09/11/26
           PC  0001 000000 000014
 A         SD  0002 000018 00000C
 C         ER  0003
 E         ER  0004
                                                                                                                PAGE    2
-  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.00 09/10/26
-                                      1 * cc370#290 -- a name declared EXTRN may still name a CSECT. IFOX00
-                                      2 * raises IFO196 and opens private code. What this fixture settles is
-                                      3 * WHICH private code: one shared unnamed section, or one per name.
-                                      4 *
-                                      5 * Predictions, written down before the oracle was asked:
-                                      6 *   one blank ESD entry    -> the rejected sections join THE private
-                                      7 *                             code, the implicit one included
-                                      8 *   two blank entries      -> the rejected ones share a section that
-                                      9 *                             is not the implicit one
-                                     10 *   three blank entries    -> one unnamed section per rejected name
-                                     11 *
-                                     12 * Two controls inside the fixture, true under every candidate rule:
-                                     13 *   DC A(C) must be 00000000 with an RLD against C's ER. If it
-                                     14 *   resolves to a section address the name was not rejected at all.
-                                     15 *   A is an ordinary section, resumed once: its two pieces chain.
-000000 00000001                      16          DC    F'1'               implicit private code, no CSECT yet
-000018                               17 A        CSECT
-                                     18          EXTRN C
-                                     19          EXTRN E
-000018 00000000                      20          DC    A(C)               must relocate against the ER
-00001C AAAAAAAA                      21          DC    XL4'AAAAAAAA'
-000004                               22 C        CSECT                    rejected: C is an ER
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.07 09/11/26
+                                      1 * PROVISIONAL ORACLE. tests/ref/extrn_csect.obj and the listing
+                                      2 * beside it were captured 2026-09-10 from MVSCE-DEV, a development
+                                      3 * machine and not a pinned reference. The deck is very likely right
+                                      4 * -- this fixture calls no macro, so no SYSLIB member reaches it --
+                                      5 * but IFOX00 itself was an input nobody controlled there. RECAPTURE
+                                      6 * on the pinned oracle once one exists (MVSTK5-REF is being pinned)
+                                      7 * and replace both files. Differing bytes are a finding, not a
+                                      8 * fixture repair.
+                                      9 *
+                                     10 * cc370#290 -- a name declared EXTRN may still name a CSECT. IFOX00
+                                     11 * raises IFO196 and opens private code. What this fixture settles is
+                                     12 * WHICH private code: one shared unnamed section, or one per name.
+                                     13 *
+                                     14 * Predictions, written down before the oracle was asked:
+                                     15 *   one blank ESD entry    -> the rejected sections join THE private
+                                     16 *                             code, the implicit one included
+                                     17 *   two blank entries      -> the rejected ones share a section that
+                                     18 *                             is not the implicit one
+                                     19 *   three blank entries    -> one unnamed section per rejected name
+                                     20 *
+                                     21 * Two controls inside the fixture, true under every candidate rule:
+                                     22 *   DC A(C) must be 00000000 with an RLD against C's ER. If it
+                                     23 *   resolves to a section address the name was not rejected at all.
+                                     24 *   A is an ordinary section, resumed once: its two pieces chain.
+000000 00000001                      25          DC    F'1'               implicit private code, no CSECT yet
+000018                               26 A        CSECT
+                                     27          EXTRN C
+                                     28          EXTRN E
+000018 00000000                      29          DC    A(C)               must relocate against the ER
+00001C AAAAAAAA                      30          DC    XL4'AAAAAAAA'
+000004                               31 C        CSECT                    rejected: C is an ER
          *** ERROR ***
-000004 CCCCCCCC                      23          DC    XL4'CCCCCCCC'
-000008                               24 E        CSECT                    rejected: E is an ER
+000004 CCCCCCCC                      32          DC    XL4'CCCCCCCC'
+000008                               33 E        CSECT                    rejected: E is an ER
          *** ERROR ***
-000008 EEEEEEEEEEEEEEEE              25          DC    XL8'EEEEEEEEEEEEEEEE'
-000020                               26 A        CSECT                    ordinary resume, the control
-000020 A2A2A2A2                      27          DC    XL4'A2A2A2A2'
-000010                               28 C        CSECT                    rejected again: resume, or a third?
+000008 EEEEEEEEEEEEEEEE              34          DC    XL8'EEEEEEEEEEEEEEEE'
+000020                               35 A        CSECT                    ordinary resume, the control
+000020 A2A2A2A2                      36          DC    XL4'A2A2A2A2'
+000010                               37 C        CSECT                    rejected again: resume, or a third?
          *** ERROR ***
-000010 C2C2C2C2                      29          DC    XL4'C2C2C2C2'
-                                     30          END
+000010 C2C2C2C2                      38          DC    XL4'C2C2C2C2'
+                                     39          END
                                                   RELOCATION DICTIONARY                                        PAGE    3
-POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 15.00 09/10/26
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 08.07 09/11/26
  0002     0003      0C     000018
  
                                                   CROSS-REFERENCE                                              PAGE    4
-SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.00 09/10/26
-A        00001 00000018 00017  00026
-C        00001 00000000 00018  00020
-C        00001 00000004 00022  ****DUPLICATE****
-C        00001 00000010 00028  ****DUPLICATE****
-E        00001 00000000 00019
-E        00001 00000008 00024  ****DUPLICATE****
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.07 09/11/26
+A        00001 00000018 00026  00035
+C        00001 00000000 00027  00029
+C        00001 00000004 00031  ****DUPLICATE****
+C        00001 00000010 00037  ****DUPLICATE****
+E        00001 00000000 00028
+E        00001 00000008 00033  ****DUPLICATE****
                                                   ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
-STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 15.00 09/10/26
-   22  IFO196      C HAS BEEN PREVIOUSLY DEFINED
-   24  IFO196      E HAS BEEN PREVIOUSLY DEFINED
-   28  IFO196      C HAS BEEN PREVIOUSLY DEFINED
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 08.07 09/11/26
+   31  IFO196      C HAS BEEN PREVIOUSLY DEFINED
+   33  IFO196      E HAS BEEN PREVIOUSLY DEFINED
+   37  IFO196      C HAS BEEN PREVIOUSLY DEFINED
 NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     3
 HIGHEST SEVERITY WAS    8
 OPTIONS FOR THIS ASSEMBLY
   ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
   NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
   SYSPARM()
-WORK FILE BUFFER SIZE/NUMBER =19066/ 1
-TOTAL RECORDS READ FROM SYSTEM INPUT         30
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         39
 TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
 TOTAL RECORDS PUNCHED                         9
-TOTAL RECORDS PRINTED                        69
+TOTAL RECORDS PRINTED                        78
