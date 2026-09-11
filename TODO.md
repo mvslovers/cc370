@@ -99,23 +99,23 @@ front of you, the second is nineteen-twentieths unattributable.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #26 | as370 | silent — garbage bytes IFOX00 rejects | nothing |
-| 2 | #37 | ld370 | silent — the AC does not survive `--pack` | nothing |
-| 3 | #97 | as370 | silent — a different object module | nothing |
-| 4 | #104 | as370 | silent — a swallowed build option | nothing |
-| 5 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 1 | #37 | ld370 | silent — the AC does not survive `--pack` | nothing |
+| 2 | #97 | as370 | silent — a different object module | nothing |
+| 3 | #104 | as370 | silent — a swallowed build option | nothing |
+| 4 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 5 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing |
 | 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
 | 7 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
-| 8 | #362 | as370 | silent under-reporting — 75 modules, all masked | nothing |
-| 9 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 10 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
-| 11 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
-| 12 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 8 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 9 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
+| 10 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
+| 11 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 
-Twelve again: **#26 was carrying two defects and they are split** — #362 takes the
-loud half (`IFO217` never raised, 75 modules) and #26 keeps the silent one. Two
-defects cannot share a rank, and these want different code: a simply-relocatable
-check against a diagnostic. **#290 leaves on 2026-09-11**, closed by #360 — it entered this table on
+Eleven: **#26 closed on 2026-09-11**, fifteen hours after this file put it at
+rank 1 — and the split that preceded it is the entry worth reading, because the
+reason for it was wrong twice before it was right. **#362 moves UP to rank 5**,
+not because it grew but because measuring it showed what it is: 155 `USING`
+operands, not a diagnostic detail. **#290 leaves on 2026-09-11**, closed by #360 — it entered this table on
 2026-09-10 and was the first item the ranking produced work for. #39 and #35 left
 before it; #342, #184 and #241 arrived because this file had never listed them.
 
@@ -218,38 +218,7 @@ not.
 
 ---
 
-### 1 · #26 — operands IFOX00 rejects, assembled to garbage
-
-as370 has no "simply relocatable" check, so `L 1,FLDX*2-FLDX` assembles as an
-absolute base-0 reference and a paren subterm spanning two sections yields a
-garbage displacement. IFOX00 flags both IFO217, severity 12, and zeroes the
-instruction. Two mechanisms let them through: `expr_val` loses relocatability
-across a multiply, and `expr_sect` skips parenthesised content wholesale while
-`expr_val` evaluates it. Both verified against a real IFOX00.
-
-**Re-measured at `fd287d3`, and the first case is unchanged**: `L 1,FLDX*2-FLDX`
-gives `5810 0028`, byte for byte what the body reports, rc 0, no diagnostic. The
-other two lines in the issue body no longer describe the binary — `expr_sect` has
-been through #215, #216, #222 and #344 since — so **do not quote the body's
-second and third cases without re-running them**. The defect stands on its first
-case alone.
-
-**It stays at rank 1 after the split, and the measurement is the reason it needed
-one.** The corpus half — `IFO217` never raised — is #362 now: 75 modules, 193
-statements, and **0 of those statements lack a co-occurring `IFO188`**, so all 75
-already agree on the return code for a reason that has nothing to do with
-relocatability. What is left here has no witness in 5,528 modules at all, and the
-four decks that still differ are IFOX00 `rc 12` runs, so they cannot arbitrate in
-either direction. That is a fact about the corpus rather than about the defect:
-this file's own tie-break puts *wrongness readable off the source* above
-*wrongness that needs a measurement*, and the constructed case is wrong in front
-of you.
-
-It is complementary to #21, not overlapping: #21's fix relies on
-"IFOX-accepted ⇒ `expr_sect`-correct", which holds *because* these forms are
-IFOX-rejected.
-
-### 2 · #37 — the AC does not survive `--pack`
+### 1 · #37 — the AC does not survive `--pack`
 
 *half of this issue does not reproduce any more, and the half that does is the
 silent one*
@@ -279,7 +248,7 @@ indistinguishable from an authorized one until it runs, and then the first
 buffers are lost with the unclosed DCB. The symptom is "no output and an abend",
 with nothing pointing at the link step. It cost two deploy cycles.
 
-### 3 · #97 — an undeclared SET symbol produces a different object module
+### 2 · #97 — an undeclared SET symbol produces a different object module
 
 The risk of enforcing it was measured before the issue was filed and it is nil:
 an instrumented build found **0 modules** with an undeclared SET symbol across
@@ -291,7 +260,7 @@ the reference unsubstituted and the statement generates nothing — is the large
 half, because the substitution path has to distinguish "undeclared" from
 "declared but null", which today it does not.
 
-### 4 · #104 — an unrecognised option becomes the source filename
+### 3 · #104 — an unrecognised option becomes the source filename
 
 The argument loop ends in `else src = argv[ai];` with no validation, so a typo,
 an option from a build script, or an IFOX00 option as370 does not implement is
@@ -303,7 +272,7 @@ debug build.
 Cheapest fix in either tool, and it must not wait for `SYSPARM` — adding that
 later does not help anyone who mistyped it in the meantime.
 
-### 5 · #342 — a symbol from a macro-generated DSECT is recorded absolute
+### 4 · #342 — a symbol from a macro-generated DSECT is recorded absolute
 
 In `IEDQWIE` a symbol defined inside a DSECT that a macro generated comes out
 absolute rather than relocatable, so an SS operand written with an explicit
@@ -312,6 +281,39 @@ length loses its base register. Filed 2026-09-10 and unchanged at `fd287d3`.
 It sits this high because no measurement is owed before the work can start: the
 mechanism is one bookkeeping decision and the witness is a single named module.
 Everything below this line in the top class is waiting on something.
+
+### 5 · #362 — the relocatability rule is not applied to `USING`
+
+*measured into a different issue than the one that was filed*
+
+IFOX00 raises `IFO217` on **155 `USING` operands** in the corpus and as370 raises
+nothing. It was filed as a diagnostic that never fires, and both things measuring
+it established are larger than that.
+
+**It is a `USING` defect, not an instruction-operand one.** Classifying every
+`IFO217` statement by kind gives 155 `USING` against roughly ten machine
+instructions. #363 supplies the classifier and the zeroing and hooks the
+instruction path, so it cannot reach any of the 155 — which is why #363 closed
+#26 and left this untouched. *(Crude extractor: the 155 dominates, the tail is
+misalignment and should not be quoted.)*
+
+**One check covers both statements, and that was the open question.** Every
+corpus site has an undefined *and* a potentially complex operand at once, so the
+corpus cannot say which draws the message. `tests/usingreloc.s` can: a `USING`
+whose operand is **defined** but relocatable across a multiply flags anyway
+(`MVSTK5-REF JOB00036`). The rule genuinely applies on the `USING` path, so the
+work is to reach it rather than to invent a second rule.
+
+**And the message is chosen by the statement, not by the expression.** On a
+`USING`, IFOX00 answers `IFO217` for everything — including the two-section sum
+that gives `IFO213` in a machine operand. A fix reusing #363's classifier
+unchanged would put `IFO213` there: right severity, right behaviour, wrong
+message, and **nothing could catch it** — `IFO213` appears in 0 of the 926
+recorded corpus diagnostics.
+
+The 75 modules stay at rc 8 against IFOX00's 12 until this lands, and all 75
+already have byte-identical decks, so the return code is the only thing that will
+move.
 
 ### 6 · #89 — a forward reference in EQU resolves to 0
 
@@ -778,6 +780,37 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-11, third — #26 closed, and the ranking produced work for the third
+  time.** **#363** gave as370 a simply-relocatable check: `L 1,FLDX*2-FLDX`
+  assembled to base 0 at rc 0 and a pair spanning two sections to a displacement
+  of `x'FE0'`; IFOX00 zeroes the instruction and says which of two things went
+  wrong (`IFO217` inside a product, `IFO213` for a complexly relocatable
+  expression). Tree gate `+0 / LOST 0 / 0 closer / 0 further`.
+
+  **The fixture passed every version and the TREE caught both defects**, which
+  inverts the day's other lesson. Counting relocatable *terms* is not asking
+  whether a factor is relocatable — `NOPR ((@ENDDATD-@DATD)*16)` meets two terms
+  inside the group, they **pair**, so the group is absolute and the multiply is
+  legal. That cost **331 identities**. And a *subtracted* parenthesised group had
+  been tallying positively per section since those tallies existed, so
+  `IOB-(CHPG1+17)` came to `+2` where the truth is `0`; latent until something
+  classified on it, three more identities. Both were invisible to the fixture and
+  obvious to the corpus.
+
+  **Three corrections in one day on one issue, each from a measurement.** The
+  #26/#362 split was argued as "different code", corrected to "one
+  implementation closes both" when the oracle showed IFOX00 zeroes and diagnoses
+  from one decision, and corrected back when it turned out every corpus site is a
+  `USING` that the instruction path cannot reach. The split stands on the
+  evidence argument it was measured into, not the one that won it.
+
+  **CI caught what neither machine did.** `-Wmisleading-indentation` on two lines
+  of the new code, red on gcc, silent on clang — and `/usr/bin/gcc` here *is*
+  Apple clang. The conclusion drawn at the time, that a local build cannot
+  substitute for CI on this project, is **wrong**: `gcc-16` is installed at
+  `/opt/homebrew/bin/gcc-16` and `make tools HOSTCC=gcc-16` reproduces the failure
+  exactly. The instrument was on both machines and neither of us ran it.
 
 - **2026-09-11, second half — the oracle is pinned and the parked question is
   answered.** MVSTK5-REF frozen, copied with 73 checksums, and proved: 2,332 of
