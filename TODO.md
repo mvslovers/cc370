@@ -11,7 +11,15 @@ and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
 *Last reconciled against the tracker: 2026-09-11 — `as370 == IFOX00` stands at
-**5,431 of 5,528 (98.2 %)** at `a1b101d`, 97 modules still differing. Two merges
+**5,431 of 5,528 (98.2 %)** at `a1b101d`, 97 modules still differing — **and
+4,558 of those 5,431 are against a reference IFOX00 produced at rc ≤ 4**. The
+other 873 match a deck IFOX00 emitted from a run it flagged (772 at rc 8, 101 at
+rc 12). That does not weaken them: reproducing a flagged run's deck byte for byte
+means reproducing its error behaviour too, which is the stronger agreement. What
+it does weaken is any *distance* verdict on such a module — "closer to" or
+"further from" a deck the assembler did not finish is a distance from a broken
+artefact, and `mvs38src`'s `tool-diffs.tsv` has marked those `comparable=no` all
+along. Quote the split with the number. Two merges
 took it there from 5,427: **#359** chained the implicit private-code section
 (+3) and **#360** closed **#290** (+1, `IECVHDET`). `mvs38src` ran the tree gate
 independently for the second and reported it in the shape this file should use
