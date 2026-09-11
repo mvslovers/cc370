@@ -3010,5 +3010,40 @@ PY
 [ $? = 0 ] || fail=$((fail + 1))
 rm -f /tmp/_ud$$.s /tmp/_ud$$.obj
 
+# ---------------------------------------------------------------- relocerr --
+# cc370#26 / #362: an operand that is not simply relocatable. IFOX00 raises two
+# different messages and ZEROES the instruction, so this decides bytes as well.
+# Not in the byte-identity loop above because that requires RC < 8 and this is
+# RC 12 on both sides -- which is itself asserted. Oracle: MVSTK5-REF JOB00035.
+./as370 tests/relocerr.s -o /tmp/_rl$$.obj >/tmp/_rl$$.out 2>&1
+rcr=$?
+if [ $rcr != 12 ]; then
+    echo "relocerr: FAIL -- expected RC 12, got $rcr"; fail=$((fail + 1))
+elif ! grep -q "4 Statements Flagged" /tmp/_rl$$.out; then
+    echo "relocerr: FAIL -- four statements are flagged, two controls are not"
+    grep -i flagged /tmp/_rl$$.out; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO217' /tmp/_rl$$.out)" != 1 ] || [ "$(grep -c 'IFO213' /tmp/_rl$$.out)" != 3 ]; then
+    # the message must match the SHAPE. One IFO217 (the multiply) and three
+    # IFO213 (two unpaired terms, a cross-section pair, a lone negative term).
+    # Raising IFO217 for all four would pass every other check here: right
+    # severity, right zeroing, wrong message -- and IFO213 appears in 0 of the
+    # 926 recorded corpus diagnostics, so nothing else will ever catch it.
+    echo "relocerr: FAIL -- expected 1x IFO217 and 3x IFO213"
+    grep -cE 'IFO217|IFO213' /tmp/_rl$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_rl$$.obj tests/ref/relocerr.obj <<'PY'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]
+a, b = body(sys.argv[1]), body(sys.argv[2])
+if a != b:
+    print("relocerr: FAIL -- deck differs from IFOX00"); sys.exit(1)
+print("relocerr: OK (1x IFO217, 3x IFO213, four instructions zeroed, deck == IFOX00)")
+PY
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_rl$$.obj /tmp/_rl$$.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
