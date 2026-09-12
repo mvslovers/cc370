@@ -10,8 +10,8 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*2026-09-12 — `as370 == IFOX00` stands at **5,432 of 5,528 (98.2 %)** at
-`e53f404`, 96 modules still differing; #364 took the last one in `SYS1.LPALIB`
+*2026-09-12 — `as370 == IFOX00` stands at **5,433 of 5,528 (98.3 %)** with #366
+open in PR #367, **5,432** at `e53f404` on `main`, 96 modules still differing; #364 took the last one in `SYS1.LPALIB`
 that was ours rather than the source's — the largest target library, 2,343
 CSECTs, and of its 2,061 CSECTs carrying a finding that was the only place the
 two assemblers disagreed. **And `mvs38src` now quotes a second number over a
@@ -775,9 +775,34 @@ assemblers agree on 4,590.
 Smallest first, and that ordering is the lesson from #364 rather than a
 convenience: a two-card difference in a module nobody has opened is where a
 mechanism gets found, and `IGARPT01`'s 94 bytes turned out to be a whole
-evaluator path. `BLSR3270` is the severity-4 module #140 already knows about,
-so its reference is the weakest of the five. `HMASMTMD` is the only one whose
-card counts differ.
+evaluator path.
+
+**Measured the same day, and the list contains no new mechanism at all:**
+
+| | module | what it actually is |
+|---|---|---|
+| 1 | `IFNX2A` | **not a case** — the assembly TIME in the module's own text |
+| 2 | `IFNX4M` | **not a case** — the same |
+| 3 | `IFFAHA16` | **#366**, fixed — RLD order inside an `(R,P)` group |
+| 4 | `BLSR3270` | #140's severity-4 module; its reference is the weakest here |
+| 5 | `HMASMTMD` | #199's ESD half, already open and named in that issue |
+
+`IFNX2A` and `IFNX4M` carry an eyecatcher built from `&SYSTIME`, and the gate
+pins one `ASMTIME` for all 5,528 while IFOX00's runs had real clock times. Give
+each its own — `03.38` and `03.31`, from `state.tsv`, the same figure
+`ifox_compare.py` already uses — and both decks are byte-identical with nothing
+else changed. **The class is larger than those two: of the 95 modules whose
+decks still differ, 38 become byte-identical when re-assembled with the clock
+their own IFOX job ran at**, all of them `IFNX*`, `IFOX0*`, `BLSD*`,
+`IFCDIP00`, `IFCIOHND` and `IGC0007F` — `IFOX0A`–`IFOX0I` being IFOX00 itself,
+which stamps its own assembly time into its eyecatcher. The date is `09/07/26`
+on every one of them, so the time is the only variable.
+
+**That is an instrument finding, not an as370 defect**, and it belongs to
+`mvs38src`: `case_list.py` and `retest.py` mask the END card's stamp and not an
+eyecatcher's, so a module that assembles perfectly reads as a case. Reported;
+the fix is theirs. What it means here is that the honest residue after #366 is
+**57 modules, not 95**.
 
 **And the direction changed on 2026-09-12: Mike is building his own development
 on TSO, so TSO first and SMP second.** `mvssrc` profiled both against TK5's
