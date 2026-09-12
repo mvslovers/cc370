@@ -10,7 +10,19 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*Last reconciled against the tracker: 2026-09-11 — `as370 == IFOX00` stands at
+*2026-09-12 — `as370 == IFOX00` stands at **5,432 of 5,528 (98.2 %)** at
+`e53f404`, 96 modules still differing; #364 took the last one in `SYS1.LPALIB`
+that was ours rather than the source's — the largest target library, 2,343
+CSECTs, and of its 2,061 CSECTs carrying a finding that was the only place the
+two assemblers disagreed. **And `mvs38src` now quotes a second number over a
+narrower population — 4,590 of 4,595 — which is not this one and does not
+contradict it**: it excludes the 933 modules whose IFOX00 reference came from a
+run IFOX00 itself abandoned above severity 4, on the ground that a *case* needs
+a diagnosable reference. This file's number deliberately keeps them, because
+reproducing a flagged run's deck means reproducing its error behaviour. Both are
+right and neither may be quoted for the other's population; their
+`docs/cc370-cases.md` says so from the other side. Last reconciled against the
+tracker: 2026-09-11 — `as370 == IFOX00` stood at
 **5,431 of 5,528 (98.2 %)** at `a1b101d`, 97 modules still differing — **and
 4,558 of those 5,431 are against a reference IFOX00 produced at rc ≤ 4**. The
 other 873 match a deck IFOX00 emitted from a run it flagged (772 at rc 8, 101 at
@@ -743,6 +755,43 @@ Filed 2026-09-09/10 out of the macro-language work and never listed here.
   `-70 LOST` measurement, and that figure is now known to be an artefact of the
   run it came from. Re-derive before quoting it either way.
 
+## The five cases — `mvssrc`'s cut, and the smallest is first on purpose
+
+`work/measurements/cases-for-cc370.tsv` in `mvs38src`, produced by
+`tools/case_list.py` so it can be re-cut after any merge. Stamp differences are
+masked inside the comparison, and the 933 modules whose reference came from a
+run above severity 4 are excluded — see the population note at the head of this
+file before quoting the denominator. Over the 4,595 that remain, the two
+assemblers agree on 4,590.
+
+| | module | cards | differing | first | rc as370/IFOX00 |
+|---|---|---|---:|---|---|
+| 1 | `IFNX2A` | 105/105 | **2** | 49 TXT | 0 / 0 |
+| 2 | `IFNX4M` | 65/65 | **2** | 61 TXT | 0 / 0 |
+| 3 | `IFFAHA16` | 76/76 | 5 | 70 RLD | 0 / 0 |
+| 4 | `BLSR3270` | 156/156 | 88 | 0 ESD | 0 / **4** |
+| 5 | `HMASMTMD` | 275/**274** | 270 | 4 ESD | 0 / 0 |
+
+Smallest first, and that ordering is the lesson from #364 rather than a
+convenience: a two-card difference in a module nobody has opened is where a
+mechanism gets found, and `IGARPT01`'s 94 bytes turned out to be a whole
+evaluator path. `BLSR3270` is the severity-4 module #140 already knows about,
+so its reference is the weakest of the five. `HMASMTMD` is the only one whose
+card counts differ.
+
+**And the direction changed on 2026-09-12: Mike is building his own development
+on TSO, so TSO first and SMP second.** `mvssrc` profiled both against TK5's
+object before this file could rank anything around it, and the result is worth
+more than a ranking would have been — **228 TSO modules (`IKJ*`/`IKT*`) and 109
+SMP (`HMA*`), and zero as370 cases between them.** Everything open there is
+source work concentrated in two or three years, with SMP's 82 same-length
+differences the most tractable block they have found anywhere. `HMASMTMD` above
+is the single exception and it is an ESD/card-count case, not a code one. So the
+priority does **not** re-rank this file's queue — it tells us where not to spend
+time looking. Their profile: `docs/tso-and-smp.md`.
+
+---
+
 ## Populations — two left, and the question is whether they have a witness
 
 - **#193** — as370 and IFOX00 choosing different base registers. **2 → 1 at
@@ -781,7 +830,7 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
-- **2026-09-12 — #364, open in PR #365, not yet merged.** A `USING` whose base
+- **2026-09-12 — #364 landed (`e53f404`, PR #365).** A `USING` whose base
   operand is **parenthesised** was valued at 0: `expr_val` reads a leading `(`
   as a machine-operand subscript and returns without evaluating. `IGARPT01`
   writes `USING (IGARPT01+X'4B0'),R15` eight times, every displacement through
@@ -793,9 +842,13 @@ Pointers only. The reasoning lives in the issues and their PRs.
   stops on that `(` and `""` is the unnamed private code rather than a name;
   that half has no witness in the tree and needed its own module. Reach is one
   module, established lexically over the tree *and* the macro path before the
-  fix. Tree gate `5,431 → 5,432, gained IGARPT01, LOST 0, 0 further`; oracles
-  MVSTK5-REF `JOB00306`/`JOB00307`, macro snapshots either side 2,785 of 2,785
-  unchanged.
+  fix, so `+1` was a prediction met rather than a number read afterwards. Tree
+  gate `5,431 → 5,432, gained IGARPT01, LOST 0, 0 further`; `mvssrc` re-ran it
+  on its own tree with a control and reported the sharper form — exactly one
+  deck changed, it is `IGARPT01`, and it went **20 differing cards to 0** with
+  no masking. Oracles MVSTK5-REF `JOB00306`/`JOB00307` (`00304`/`00305`
+  discarded: renumbering a fixture's comment cards invalidates its committed
+  listing), macro snapshots either side 2,785 of 2,785 unchanged.
 
 - **2026-09-11, third — #26 closed, and the ranking produced work for the third
   time.** **#363** gave as370 a simply-relocatable check: `L 1,FLDX*2-FLDX`
