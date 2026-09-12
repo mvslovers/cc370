@@ -781,6 +781,22 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-12 — #364, open in PR #365, not yet merged.** A `USING` whose base
+  operand is **parenthesised** was valued at 0: `expr_val` reads a leading `(`
+  as a machine-operand subscript and returns without evaluating. `IGARPT01`
+  writes `USING (IGARPT01+X'4B0'),R15` eight times, every displacement through
+  R15 came out exactly the USING constant too high — 94 bytes, same deck
+  length, both assemblers silent — and `mvssrc` had it as the **only** case in
+  `SYS1.LPALIB` (2,343 CSECTs) where as370 disagrees with IFOX00 rather than
+  the source being short of something. The same statement also filed the
+  domain under the wrong **section**, because the scan for the base symbol
+  stops on that `(` and `""` is the unnamed private code rather than a name;
+  that half has no witness in the tree and needed its own module. Reach is one
+  module, established lexically over the tree *and* the macro path before the
+  fix. Tree gate `5,431 → 5,432, gained IGARPT01, LOST 0, 0 further`; oracles
+  MVSTK5-REF `JOB00306`/`JOB00307`, macro snapshots either side 2,785 of 2,785
+  unchanged.
+
 - **2026-09-11, third — #26 closed, and the ranking produced work for the third
   time.** **#363** gave as370 a simply-relocatable check: `L 1,FLDX*2-FLDX`
   assembled to base 0 at rc 0 and a pair spanning two sections to a displacement
