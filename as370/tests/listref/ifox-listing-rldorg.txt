@@ -1,0 +1,92 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 11.52 09/12/26
+T         SD  0001 000000 00002A
+EXT       ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 11.52 09/12/26
+                                      1 * cc370#366: the order of RLD entries within one (R,P) group.
+                                      2 *
+                                      3 * IFFAHA16 builds a 256-word branch table indexed by EBCDIC
+                                      4 * character code, and it fills the slots with `ORG ADDR+C'x'*4'
+                                      5 * followed by `DC A(CODEnn)'. The location counter therefore walks
+                                      6 * the table in CHARACTER order, not in address order, and as370
+                                      7 * recorded the relocations in the order it met them. IFOX00 emits
+                                      8 * them in ascending ADDRESS order within each (R,P) group.
+                                      9 *
+                                     10 * Same relocations, same flags, same object image -- only the RLD
+                                     11 * cards differ, which is why nothing that rebuilds the image can
+                                     12 * see it. Measured over the recorded corpus: of 3,021 IFOX00 decks
+                                     13 * carrying relocations, 3,021 ascend by address within each group
+                                     14 * and none does otherwise. Of as370's, exactly one did not, and it
+                                     15 * is IFFAHA16.
+                                     16 *
+                                     17 * Predictions, before the oracle was asked:
+                                     18 *   1  the four A-cons emit RLD entries at 000,004,008,00C
+                                     19 *      in that order, whatever order the ORGs wrote them
+                                     20 *   2  the two V-cons do the same at 010,014 -- the V path shares
+                                     21 *      the table, so a fix that sorts only A-cons fails here
+                                     22 *   3  the two groups stay in the order as370 already writes them:
+                                     23 *      the section's own (R=P=1) group first, the ER's after it.
+                                     24 *      Grouping is not what changes; only the order within a group
+                                     25 *
+                                     26 * Case 3 is the control. The sort gains a third key and keeps the
+                                     27 * first two, so a fix that sorted globally by address would merge
+                                     28 * the two groups and fail here while passing 1 and 2.
+                                     29 *
+                                     30 * Pre-fix (e53f404) the A-con entries come out 00C,004,008,000 and
+                                     31 * the V-cons 014,010 -- emission order, and both groups otherwise
+                                     32 * correct.
+000000                               33 T        CSECT
+000000                               34 TAB      DS    4F
+000010                      0000C    35          ORG   TAB+12
+00000C 00000024                      36          DC    A(C4)
+000010                      00004    37          ORG   TAB+4
+000004 0000001C                      38          DC    A(C2)
+000008                      00008    39          ORG   TAB+8
+000008 00000020                      40          DC    A(C3)
+00000C                      00000    41          ORG   TAB
+000000 00000018                      42          DC    A(C1)
+000004                      00010    43          ORG
+000010                               44 VTAB     DS    2F
+000018                      00014    45          ORG   VTAB+4
+000014 00000000                      46          DC    V(EXT)
+000018                      00010    47          ORG   VTAB
+000010 00000000                      48          DC    V(EXT)
+000014                      00018    49          ORG
+000018                               50 C1       DS    F
+00001C                               51 C2       DS    F
+000020                               52 C3       DS    F
+000024                               53 C4       DS    F
+000028 07FE                          54          BR    14
+000000                               55          END   T
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 11.52 09/12/26
+ 0001     0001      0C     000000
+ 0001     0001      0C     000004
+ 0001     0001      0C     000008
+ 0001     0001      0C     00000C
+ 0001     0002      1C     000010
+ 0001     0002      1C     000014
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.52 09/12/26
+C1       00004 00000018 00050  00042
+C2       00004 0000001C 00051  00038
+C3       00004 00000020 00052  00040
+C4       00004 00000024 00053  00036
+T        00001 00000000 00033  00055
+TAB      00004 00000000 00034  00035 00037 00039 00041
+VTAB     00004 00000010 00044  00045 00047
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 11.52 09/12/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         55
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         9
+TOTAL RECORDS PRINTED                        92
