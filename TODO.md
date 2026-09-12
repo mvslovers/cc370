@@ -111,17 +111,24 @@ front of you, the second is nineteen-twentieths unattributable.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #37 | ld370 | silent — the AC does not survive `--pack` | nothing |
-| 2 | #97 | as370 | silent — a different object module | nothing |
-| 3 | #104 | as370 | silent — a swallowed build option | nothing |
-| 4 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
-| 5 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing |
-| 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 7 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
-| 8 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 9 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
-| 10 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
-| 11 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 1 | #97 | as370 | silent — a different object module | nothing |
+| 2 | #104 | as370 | silent — a swallowed build option | nothing |
+| 3 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 4 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing |
+| 5 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 6 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
+| 7 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 8 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
+| 9 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
+| 10 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+
+**#37 left the table on 2026-09-12** (PR #368, open). Its own header here —
+*the AC does not survive `--pack`* — was a mis-description, and measuring it is
+what showed that: the AC **does** survive a bare pack when the flag is repeated
+there, which is how libc370's authorized probes are built. The half that cannot
+be repaired from the command line is the **entry point**, and `--entry` was
+being accepted and silently dropped by `--pack` on top of it. See the entry in
+*Recently landed*.
 
 Eleven: **#26 closed on 2026-09-11**, fifteen hours after this file put it at
 rank 1 — and the split that preceded it is the entry worth reading, because the
@@ -230,10 +237,10 @@ not.
 
 ---
 
-### 1 · #37 — the AC does not survive `--pack`
+### ~~1~~ · #37 — a bare `.lm` pack loses the entry point, not the AC — **PR #368, open**
 
-*half of this issue does not reproduce any more, and the half that does is the
-silent one*
+*half of this issue did not reproduce, the half that did was silent, and naming
+it "the AC" was wrong in a way only measuring it could show*
 
 **The driver half is gone, and it was measured rather than assumed.**
 `-Wl,--ac,1` does reach ld370 at `fd287d3` — `-###` shows `"--ac" "1"` in its
@@ -259,6 +266,19 @@ indistinguishable from an authorized one until it runs, and then the first
 `MODESET KEY=ZERO` ends the step **S047** with an empty SYSPRINT, because stdio
 buffers are lost with the unclosed DCB. The symptom is "no output and an abend",
 with nothing pointing at the link step. It cost two deploy cycles.
+
+**Measured 2026-09-12, and the paragraph above needs one correction of its own.**
+`--ac`, `--norent` and `--noreus` given on the *pack* command **do** reach a bare
+member — `build_userdata()` applies them on exactly that path — so "attributes
+that cannot survive" was too broad, and a diagnostic saying it would have been
+wrong for libc370's own probe recipes (`jcl/tstracau.jcl:26`), which pack a bare
+`.lm` with `--ac 1` and work. The **entry point** is the half that is genuinely
+unrecoverable: two links differing only in entry point produce **byte-identical**
+bare members over three trials once the IDR link-time stamp at `0x127..0x128` is
+masked, and the entire difference is two directory bytes (`PDS2EP0`, `PDS2EPA`).
+And `--entry` was the same defect one flag further along — the parser accepts it,
+the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
+packed at rc 0 in silence.
 
 ### 2 · #97 — an undeclared SET symbol produces a different object module
 
@@ -883,6 +903,23 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-12, second — #37, open in PR #368, not yet merged.** `ld370 --pack`
+  of a **bare** `.lm` wrote entry 0 and this command's attributes and said
+  nothing; it now says so, and packing the `-iebcopy` form stays silent because
+  nothing is lost there. `--entry` is fixed with it: the parser accepted it and
+  the pack path returned before entry resolution, so `--pack --entry NOSUCHSY`
+  packed at rc 0 without a word — and a warning reading *"entry 0"* while that
+  flag stayed silently dropped would send the reader straight to the thing that
+  does nothing. **A warning and not a refusal, measured rather than cautious:**
+  twelve `--pack` sites in `ld370/tests/run.sh` and one in `run_2mem_mvs.py`
+  pack a bare member on purpose, every one shaped `if "$LD" --pack …`, and CI
+  runs the suite on every push — a non-zero rc fails on the commit that adds it.
+  Every production path is already clean; mbt's three sites can only pass
+  `build/NAME.iebcopy`. Diagnostics only: eight pack variants and the link path
+  byte-identical before and after. The new case is the suite's **first stderr
+  assertion** — four of its six assertions fail on the pre-fix binary and two
+  are controls that must pass both ways (rc still 0; the `-iebcopy` form silent).
 
 - **2026-09-12 — #364 landed (`e53f404`, PR #365).** A `USING` whose base
   operand is **parenthesised** was valued at 0: `expr_val` reads a leading `(`

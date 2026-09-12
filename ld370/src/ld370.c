@@ -1506,9 +1506,16 @@ int main(int argc, char **argv)
      *   uppercased) unless given explicitly as NAME=FILE.  --pack only ever emits a
      *   container, so with neither flag it defaults to -xmit. --- */
     if (npack) {
-        struct umember *m = calloc((size_t)npack, sizeof *m); int rc = 0;
+        struct umember *m = calloc((size_t)npack, sizeof *m); int rc = 0, nbare = 0;
         if (!m) { fprintf(stderr, "ld370: out of memory\n"); return 1; }
         if (!outfile) { fprintf(stderr, "ld370: --pack needs -o OUT (base name)\n"); return 2; }
+        /* --entry is accepted by the parser and never reaches this block's exit:
+         * entry resolution runs in the link path, which --pack returns before.
+         * So `--entry NOSUCHSY' packed at rc 0 with no word said -- the same
+         * silent-drop the warning below exists for, one flag further along. */
+        if (entryname)
+            fprintf(stderr, "ld370: warning: --entry is ignored by --pack; a member's entry "
+                            "point comes from its -iebcopy directory\n");
         if (!want_unload && !want_xmit) want_xmit = 1;   /* container-only: default to xmit */
         for (i = 0; i < npack; i++) {
             char *spec = packspec[i], *eq = strchr(spec, '=');
@@ -1554,8 +1561,35 @@ int main(int argc, char **argv)
                 member_name(m[i].name, name); m[i].bytes = buf; m[i].len = n;
                 m[i].modlen = member_modlen(buf, n);
                 m[i].entry = 0;
+                /* A bare member is packed at entry 0 and at THIS command's
+                 * attributes, and nothing in the output says which of those
+                 * were the module's own.  An unauthorized module is
+                 * indistinguishable from an authorized one until it runs, and
+                 * then the first MODESET ends the step S047 with an empty
+                 * SYSPRINT -- the stdio buffers go with the unclosed DCB -- so
+                 * the symptom is "no output and an abend" with nothing pointing
+                 * at the link (cc370#37, two deploy cycles).  Say it here
+                 * instead.  A warning and not a refusal: this is a documented
+                 * working path -- --ac/--norent/--noreus DO apply on it, which
+                 * is how libc370's authorized probes are built -- and thirteen
+                 * call sites in our own suites pack bare members on purpose,
+                 * where the directory metadata is not what is under test. */
+                nbare++;
+                fprintf(stderr, "ld370: warning: '%s' is a bare load module: packing %s at "
+                                "entry 0, AC %d%s%s\n", file, mvs_nm(m[i].name), apfcode,
+                        no_rent ? ", not RENT" : "", no_reus ? ", not REUS" : "");
             }
         }
+        /* Once, however many bare members there were: the entry point is the
+         * half that cannot be repaired from the command line at all.  --ac and
+         * the attribute flags can simply be given again here; --entry cannot --
+         * see the note below, it is not honoured by --pack. */
+        if (nbare)
+            fprintf(stderr,
+                "ld370: note: a bare member carries no directory, so its entry point and\n"
+                "       attributes are not in it. Build it with -iebcopy and pack that:\n"
+                "           ld370 -o NAME --name NAME obj... -iebcopy\n"
+                "           ld370 --pack NAME=NAME.iebcopy -o OUT -xmit\n");
         if (want_unload) rc = write_unload_mem(with_suffix(unlbuf, sizeof unlbuf, outfile, ".iebcopy"), m, npack);
         if (!rc && want_xmit) rc = write_xmit(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), m, npack, dsn);
         for (i = 0; i < npack; i++) free((void *)m[i].bytes);
@@ -1578,9 +1612,17 @@ int main(int argc, char **argv)
                 "             [--ac N] [--norent] [--noreus] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
-                "       ld370 --pack M1.lm [M2.lm ...] -o OUT [-xmit] [-iebcopy]\n"
+                "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
+                "             [--ac N] [--norent] [--noreus] [--blocksize N]\n"
                 "         pack pre-built member(s) into OUT.xmit / OUT.iebcopy (no linking);\n"
                 "         member name = file basename, or NAME=FILE to set it; default -xmit.\n"
+                "         Pack each member's .iebcopy, NOT its bare .lm: the entry point, the\n"
+                "         AC and RENT/REUS live in the PDS directory, which only the .iebcopy\n"
+                "         form carries --\n"
+                "             ld370 -o NAME --name NAME obj... -iebcopy\n"
+                "             ld370 --pack NAME=NAME.iebcopy -o OUT -xmit\n"
+                "         A bare member packs at entry 0 (--entry is not honoured here) and\n"
+                "         takes --ac/--norent/--noreus from THIS command, not from its build.\n"
                 "         --blocksize N sets the target library BLKSIZE (default 15040;\n"
                 "         use the SAME value when building and packing a module).\n");
         return 2;

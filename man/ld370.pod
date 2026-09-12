@@ -100,12 +100,22 @@ Each I<member> may be a bare load module (e.g. F<.lm>) or a single-member
 B<-iebcopy> image. A bare member carries no PDS2 directory metadata: the module
 length is recomputed from its CESD, but the entry point, the APF authorization
 code (B<AC>) and the B<RENT>/B<REUS>/B<REFR>/... attributes live only in the
-directory and cannot be recovered --- entry is assumed 0, the rest defaulted. A
-single-member B<-iebcopy> is B<self-describing>: its whole directory entry is
-carried through (only the relocated text TTR is re-stamped), so the entry point,
-length, AC and attributes all survive. B<Pack any member that needs a non-zero
-entry, a non-zero AC or non-default attributes from its> B<-iebcopy>, not its
-bare F<.lm>.
+directory and cannot be recovered. A single-member B<-iebcopy> is
+B<self-describing>: its whole directory entry is carried through (only the
+relocated text TTR is re-stamped), so the entry point, length, AC and attributes
+all survive. B<Pack any member that needs a non-zero entry, a non-zero AC or
+non-default attributes from its> B<-iebcopy>, not its bare F<.lm>.
+
+The two halves of what a bare member loses are not equally repairable, and only
+one of them can be given again here. B<--ac>, B<--norent> and B<--noreus> on the
+B<--pack> command do apply to a bare member, so an authorized module can be
+packed from one by repeating the flag. The B<entry point> cannot: it is packed
+as B<0>, and B<--entry> is B<not honoured by> B<--pack> --- it is accepted and
+ignored, since entry resolution belongs to the link. Packing a bare member
+therefore warns, naming the entry and the attributes actually applied; packing
+its B<-iebcopy> is silent, because nothing is lost. A module whose real entry is
+0 packs losslessly from a bare member, but the member cannot tell you which case
+you are in, which is why the warning does not try to guess.
 
 A member's name comes from its F<.iebcopy> directory, or (for a bare member) the
 file's basename with the extension stripped and uppercased. Override either with
