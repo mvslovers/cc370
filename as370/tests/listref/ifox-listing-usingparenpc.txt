@@ -1,0 +1,69 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 11.10 09/12/26
+          PC  0001 000000 000002
+T         SD  0002 000008 000050
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 11.10 09/12/26
+                                      1 * cc370#364, the other half of the same statement: which SECTION a
+                                      2 * parenthesised USING domain is filed under.
+                                      3 *
+                                      4 * The base expression's leading symbol decides that, and the scan
+                                      5 * that finds it stops at the first delimiter -- of which '(' is one.
+                                      6 * So `USING (T+X'10'),2' named NOTHING, and "" is not a name: it is
+                                      7 * the unnamed private-code section, which sym_get("") enters in
+                                      8 * do_pass. In a module that HAS one, the domain was therefore filed
+                                      9 * under the private code, using_for lost its same-section preference
+                                     10 * for an operand in T, and the operand assembled with no base at all.
+                                     11 *
+                                     12 * Two cards of private code before the first CSECT are what make the
+                                     13 * blank name resolve; without them sym_find("") answers nothing and
+                                     14 * the misfiling is invisible -- which is why tests/usingparen.s, the
+                                     15 * IGARPT01 shape, cannot see this and needs its own module.
+                                     16 *
+                                     17 * Predictions, before the oracle was asked:
+                                     18 *   1  L 1,FIELD under USING (T+X'10'),2   base 2, disp FIELD-X'10'
+                                     19 *   2  L 1,FIELD under USING T+X'10',2     identical bytes to 1
+                                     20 *
+                                     21 * Same self-proving invariant as usingparen.s: one expression, two
+                                     22 * spellings, so the two instructions must assemble alike whatever
+                                     23 * the addresses turn out to be.
+                                     24 *
+                                     25 * Pre-fix (4ca0353) case 1 is 0000 0000 at rc 8 -- as370 flags its
+                                     26 * own IFO209 and zeroes the instruction -- where case 2 assembles
+                                     27 * 5810 203C. With only the base-VALUE half of the fix it is STILL
+                                     28 * 0000 0000 at rc 8: the base is then right and the domain is still
+                                     29 * filed under the private code, so using_for never offers it.
+000000 07FE                          30          BR    14
+000000                               31 D        DSECT
+000000                               32 DFLD     DS    F
+000008                               33 T        CSECT
+                            00000    34          USING D,12
+                            00018    35          USING (T+X'10'),2
+000008 5810 203C      00054          36          L     1,FIELD
+                                     37          DROP  2
+                            00018    38          USING T+X'10',2
+00000C 5810 203C      00054          39          L     1,FIELD
+                                     40          DROP  2
+000010 07FE                          41          BR    14
+000014                               42          DS    16F
+000054                               43 FIELD    DS    F
+000008                               44          END   T
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 11.10 09/12/26
+D        00001 00000000 00031  00034
+DFLD     00004 00000000 00032
+FIELD    00004 00000054 00043  00036 00039
+T        00001 00000008 00033  00035 00038 00044
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 11.10 09/12/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         44
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        69
