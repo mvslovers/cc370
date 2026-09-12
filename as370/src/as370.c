@@ -4904,10 +4904,33 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * its save area -- set the base 8 bytes low and every displacement
                  * through that register came out 8 too high, silently.  IGG019GC
                  * and IGG019GD carry it; IBM's own shipped object agrees with
-                 * IFOX00 against us there (cc370#275). */
-                long base = (F[0][0] == '*' && !F[0][1]) ? lc : expr_val(F[0], &brel);
+                 * IFOX00 against us there (cc370#275).
+                 *
+                 * And the operand IS an expression, leading parenthesis and
+                 * all.  expr_val reads a leading `(' as a machine-operand
+                 * subscript and returns 0 without evaluating anything, so
+                 * `USING (IGARPT01+X'4B0'),R15' -- a GODOWNTO entry point at
+                 * a fixed module offset -- set the base to 0 and every
+                 * displacement through R15 came out exactly the USING
+                 * constant too high.  Silent on both sides; 94 bytes in the
+                 * one LPALIB module that carries it (cc370#364).
+                 * expr_val_full is the same evaluator without that guard, as
+                 * at the DC duplication factor and in eval_reg. */
+                long base = (F[0][0] == '*' && !F[0][1]) ? lc : expr_val_full(F[0], &brel);
                 int isabs = 0, bsect = cur_sect_id;
-                if (!(F[0][0] == '*' && !F[0][1])) { char nm[64]; int n = 0; const char *e = F[0]; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = sym_find(nm);
+                /* The SECTION the domain belongs to is the base expression's
+                 * leading symbol, and finding it has to survive the same
+                 * parenthesis.  A leading `(' is a delimiter, so the scan
+                 * below stopped on it and named nothing -- and "" is not a
+                 * name, it is the unnamed private-code section (sym_get("")
+                 * in do_pass).  In a module that has one, `USING (T+X'10'),2'
+                 * therefore filed the domain under the PRIVATE CODE and an
+                 * operand in T lost its same-section base entirely: IFO209
+                 * and a zeroed instruction where the unparenthesised form
+                 * assembles.  So skip a leading `(' to reach the symbol, and
+                 * never look up the empty name -- ENTRY already states that
+                 * rule for the same reason. */
+                if (!(F[0][0] == '*' && !F[0][1])) { char nm[64]; int n = 0; const char *e = F[0]; while (*e == '(' || *e == ' ') e++; while (*e && !strchr("+-*/(), ", *e) && n < 63) nm[n++] = *e++; nm[n] = 0; struct sym *bs = nm[0] ? sym_find(nm) : NULL;
                     if (bs) bsect = bs->sect;
                     /* An ABSOLUTE domain -- `GSPCB EQU 0' with its fields as
                      * absolute EQUs, the pre-DSECT way of mapping a control

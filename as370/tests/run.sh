@@ -727,6 +727,16 @@ rm -f /tmp/_au.$$
 # OWN counter, origins are chained from the FINAL lengths, and the END
 # literal pool counts toward the first section's length before the later
 # ones are placed behind it. Nothing else in this corpus resumes a section.
+# usingparen / usingparenpc are the #364 oracles: a USING whose base operand
+# is PARENTHESISED. Both halves of the statement read it wrongly -- the value
+# through expr_val's leading-'(' subscript guard, the SECTION through a name
+# scan that stops on the same '(' and then looks up "" (the unnamed private
+# code). Each module writes the SAME expression twice, parenthesised and not,
+# so the two instructions must assemble alike whatever the addresses are; the
+# second module carries private code before the first CSECT, because without
+# it sym_find("") answers nothing and the section half is invisible.
+#   main 4ca0353     5810 2050 / 5810 2040, and 0000 0000 at rc 8
+#   IFOX00, this     both forms alike, silent, rc 0 (JOB00304, JOB00305)
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
@@ -739,7 +749,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
          litdup pool contsev align blankcont litscale litpz litlist \
          adcon aliasext attrdup regexpr sconabs fpopc droplist \
-         tattr_expr endpool dsectpool blank_csect; do
+         tattr_expr endpool dsectpool blank_csect usingparen usingparenpc; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
