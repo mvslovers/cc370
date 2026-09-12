@@ -179,6 +179,58 @@ else
     echo "  FAIL: pack-from-iebcopy directory differs from single-link"; fails=$((fails + 1))
 fi
 
+# cc370#37: a bare .lm packs at entry 0 and at THIS command's attributes, and
+# until now said nothing.  The cost is not the AC alone -- an unauthorized module
+# is indistinguishable from an authorized one until it runs, and then the first
+# MODESET ends the step S047 with an EMPTY SYSPRINT, because the stdio buffers go
+# with the unclosed DCB.  So the symptom is "no output and an abend" with nothing
+# pointing at the link step; it cost two deploy cycles.
+#
+# A WARNING and not a refusal, and the reason is measured rather than cautious:
+# twelve --pack call sites in THIS file and one in run_2mem_mvs.py pack a bare
+# member on purpose (the geometry and multi-block-directory families, where the
+# directory metadata is not what is under test), every one of them shaped
+# `if "$LD" --pack ...`, so a non-zero rc would fail CI on the commit that added
+# it.  The rc assertion below is that control, not a formality.
+#
+# The three cases separate what the message must say.  A bare member gets the
+# warning; the .iebcopy form must stay SILENT (it loses nothing, and a warning
+# there would be noise on the path everything in mbt takes); and the AC in the
+# text must be the one actually applied -- --ac DOES work on the bare path, which
+# is how libc370's authorized probes are built, so a message that said
+# "attributes cannot survive" would be wrong for exactly those callers.
+printf '\n=== --pack of a bare .lm warns (entry 0 + the AC in force), .iebcopy stays silent ===\n'
+pw_fails=0
+pw=$("$LD" --pack "NZENT=$TMP/nzent_lnk" -o "$TMP/pw_bare" -iebcopy 2>&1 >/dev/null)
+pw_rc=$?
+case "$pw" in
+    *"bare load module"*) echo "  OK: bare .lm is diagnosed" ;;
+    *) echo "  FAIL: bare .lm packed silently: [$pw]"; pw_fails=1 ;;
+esac
+if [ "$pw_rc" -eq 0 ]; then echo "  OK: it is a warning, rc still 0 (the suite's own bare packs keep working)"
+else echo "  FAIL: bare .lm pack now exits $pw_rc -- that breaks 13 call sites"; pw_fails=1; fi
+case "$pw" in
+    *"entry 0"*) echo "  OK: the message names the entry point, the half no flag can repair" ;;
+    *) echo "  FAIL: the message does not name the entry: [$pw]"; pw_fails=1 ;;
+esac
+pwa=$("$LD" --pack "NZENT=$TMP/nzent_lnk" --ac 1 -o "$TMP/pw_ac" -iebcopy 2>&1 >/dev/null)
+case "$pwa" in
+    *"AC 1"*) echo "  OK: it reports the AC actually applied (--ac works on the bare path)" ;;
+    *) echo "  FAIL: --ac 1 not reflected in the warning: [$pwa]"; pw_fails=1 ;;
+esac
+pwi=$("$LD" --pack "NZENT=$TMP/nzent_lnk.iebcopy" -o "$TMP/pw_ieb" -iebcopy 2>&1 >/dev/null)
+if [ -z "$pwi" ]; then echo "  OK: the .iebcopy form is silent (nothing is lost, nothing is said)"
+else echo "  FAIL: .iebcopy pack warned: [$pwi]"; pw_fails=1; fi
+# --entry is parsed and then never reaches the pack path: `--entry NOSUCHSY'
+# packed at rc 0 with no word said.  Same silent drop, one flag further along --
+# and it is what makes the entry half unrepairable from the command line.
+pwe=$("$LD" --pack "NZENT=$TMP/nzent_lnk.iebcopy" --entry NOSUCHSY -o "$TMP/pw_e" -iebcopy 2>&1 >/dev/null)
+case "$pwe" in
+    *"--entry is ignored"*) echo "  OK: --entry with --pack is diagnosed instead of dropped" ;;
+    *) echo "  FAIL: --entry silently ignored by --pack: [$pwe]"; pw_fails=1 ;;
+esac
+[ "$pw_fails" -eq 0 ] || fails=$((fails + 1))
+
 # large-RLD object keeps its exported LD symbols.  parse_object used fixed
 # rld[512]/ld[64] arrays with no bounds check; an object with >512 RLD items
 # (large C cores -- rexx370's irx#pars/bcom/bifs/bvm) overflowed rld[] into the
