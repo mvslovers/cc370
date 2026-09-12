@@ -10,8 +10,8 @@ owner — the issue thread, the PR, a reference document — this file points at
 and stops. A copy of a tracker is wrong the first time someone closes something,
 and the only defence that works is to hold nothing worth going stale.
 
-*2026-09-12 — `as370 == IFOX00` stands at **5,433 of 5,528 (98.3 %)** with #366
-open in PR #367, **5,432** at `e53f404` on `main`, 96 modules still differing; #364 took the last one in `SYS1.LPALIB`
+*2026-09-12 — `as370 == IFOX00` stands at **5,433 of 5,528 (98.3 %)** at
+`1146d58`, 96 modules still differing; #364 took the last one in `SYS1.LPALIB`
 that was ours rather than the source's — the largest target library, 2,343
 CSECTs, and of its 2,061 CSECTs carrying a finding that was the only place the
 two assemblers disagreed. **And `mvs38src` now quotes a second number over a
@@ -783,7 +783,7 @@ evaluator path.
 |---|---|---|
 | 1 | `IFNX2A` | **not a case** — the assembly TIME in the module's own text |
 | 2 | `IFNX4M` | **not a case** — the same |
-| 3 | `IFFAHA16` | **#366**, fixed — RLD order inside an `(R,P)` group |
+| 3 | `IFFAHA16` | **#366**, fixed and merged — RLD order inside an `(R,P)` group |
 | 4 | `BLSR3270` | #140's severity-4 module; its reference is the weakest here |
 | 5 | `HMASMTMD` | #199's ESD half, already open and named in that issue |
 
@@ -801,10 +801,37 @@ jobs started at **29 distinct times**, so the time is the only variable and no
 single pinned `ASMTIME` can ever match more than a few of them.
 
 **That is an instrument finding, not an as370 defect**, and it belongs to
-`mvs38src`: `case_list.py` and `retest.py` mask the END card's stamp and not an
-eyecatcher's, so a module that assembles perfectly reads as a case. Reported;
-the fix is theirs. What it means here is that the honest residue after #366 is
-**57 modules, not 95**.
+`mvs38src`: `case_list.py` and `retest.py` masked the END card's stamp and not
+an eyecatcher's, so a module that assembles perfectly read as a case. Reported
+and **fixed the same day** — `case_list.py` now re-assembles each candidate
+with the clock its own IFOX00 job ran at, and their case list is three:
+`IFFAHA16` (merged), `BLSR3270`, `HMASMTMD`. What it means here is that the
+honest residue after #366 is **57 modules by this file's count, three by their
+stricter cut**, and neither is a ranking of the other.
+
+**A second inequality of the same family, found on 2026-09-12 and NOT fixed.**
+`mvssrc` noticed that `gate.sh` passes ten `-I` directories and
+`ifox_compare.py` eight — no `erep-set`, no `amaclib-live` — and flagged it
+rather than editing a tool under another session's running measurement.
+`module-table.tsv`, the table this file reads, comes off `ifox_compare.py`.
+Measured here, same binary, both paths over all 5,528:
+
+**33 decks change with the path**, every one of them EREP (`IFCE*`/`IFCS*`),
+and no return code changes at all. Scored against the reference:
+
+| | 10 dirs (`gate.sh`) | 8 dirs (`ifox_compare.py`) |
+|---|---:|---:|
+| card count equals the reference | **9** of 33 | 1 of 33 |
+| card count within 2 | **21** of 33 | 2 of 33 |
+
+So the eight-directory decks are drastically short — the EREP macros are
+simply not there — and every verdict recorded for those 33 is measured against
+an input the oracle did not have. `IFCE33XX` is the sharpest instance: **1
+differing card of 97 on the correct path, 61 on the wrong one.** Nothing in
+any headline moves, because all 33 have an IFOX00 reference at rc 12 and are
+inside the excluded 933 — but their `first_diff` and class in
+`module-table.tsv` are not attributable, and any class work that reads that
+table must re-measure them first.
 
 **And the direction changed on 2026-09-12: Mike is building his own development
 on TSO, so TSO first and SMP second.** `mvssrc` profiled both against TK5's
