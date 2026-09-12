@@ -5829,9 +5829,24 @@ static void emit_obj(FILE *f) {
         } while (pos < el);
       } }
 
-    /* group relocations by (pos, rel) so same-target entries are adjacent (packing), like IFOX */
+    /* group relocations by (pos, rel) so same-target entries are adjacent
+     * (packing), like IFOX -- and order them by ADDRESS inside the group, which
+     * IFOX also does and as370 did not.  The location counter does not have to
+     * walk a table in address order: IFFAHA16 fills a 256-word branch table with
+     * `ORG ADDR+C'x'*4' + `DC A(CODEnn)', so the slots are written in CHARACTER
+     * order, and the relocations came out in the order they were met.  Same
+     * entries, same flags, same object image -- only the RLD cards differ, so
+     * nothing that rebuilds the image can see it (cc370#366, the RLD member of
+     * #199).  Measured over the recorded corpus: of 3,021 IFOX00 decks carrying
+     * relocations, 3,021 ascend by address within each group and none does
+     * otherwise; of as370's, exactly one did not.
+     *
+     * The sort stays STABLE and the address is the LAST key.  A paired
+     * expression puts a + and a - entry at the same address, and stability is
+     * what keeps those two in the order they were emitted; sorting globally by
+     * address instead would merge the groups and break the packing. */
     { int a, b; for (a = 1; a < nrel; a++) { struct reloc t = rels[a]; b = a - 1;
-        while (b >= 0 && (rels[b].pos > t.pos || (rels[b].pos == t.pos && rels[b].rel > t.rel))) { rels[b + 1] = rels[b]; b--; }
+        while (b >= 0 && (rels[b].pos > t.pos || (rels[b].pos == t.pos && (rels[b].rel > t.rel || (rels[b].rel == t.rel && rels[b].addr > t.addr))))) { rels[b + 1] = rels[b]; b--; }
         rels[b + 1] = t; } }
     { k = 0; while (k < nrel) {
         cinit(c); cname(c, "RLD"); int off = 16, prevflag = -1; long pr = -1, pp = -1;
@@ -5918,8 +5933,8 @@ static void a_esd_section(void) {
 static void a_rld_section(void) {
     int k; char ln[128], b[16];
     if (nrel == 0) return;
-    { int a2, b2; for (a2 = 1; a2 < nrel; a2++) { struct reloc t = rels[a2]; b2 = a2 - 1;   /* group by (pos,rel) like the object RLD */
-        while (b2 >= 0 && (rels[b2].pos > t.pos || (rels[b2].pos == t.pos && rels[b2].rel > t.rel))) { rels[b2 + 1] = rels[b2]; b2--; }
+    { int a2, b2; for (a2 = 1; a2 < nrel; a2++) { struct reloc t = rels[a2]; b2 = a2 - 1;   /* by (pos,rel,addr) exactly as the object RLD -- the listing's RLD section claims to be column-exact to SYSPRINT, so it cannot order them differently from the deck it describes */
+        while (b2 >= 0 && (rels[b2].pos > t.pos || (rels[b2].pos == t.pos && (rels[b2].rel > t.rel || (rels[b2].rel == t.rel && rels[b2].addr > t.addr))))) { rels[b2 + 1] = rels[b2]; b2--; }
         rels[b2 + 1] = t; } }
     a_newpage("RELOCATION DICTIONARY", "POS.ID   REL.ID   FLAGS   ADDRESS");
     for (k = 0; k < nrel; k++) {

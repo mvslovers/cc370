@@ -737,6 +737,15 @@ rm -f /tmp/_au.$$
 # it sym_find("") answers nothing and the section half is invisible.
 #   main 4ca0353     5810 2050 / 5810 2040, and 0000 0000 at rc 8
 #   IFOX00, this     both forms alike, silent, rc 0 (JOB00304, JOB00305)
+# rldorg is the #366 oracle: RLD entries are ordered by ADDRESS inside their
+# (R,P) group, not by the order the assembler met them. The ORGs fill the two
+# tables out of address order the way IFFAHA16's 256-word branch table does;
+# the second table is V-cons, because the V path shares the same sort and a fix
+# that reached only A-cons would pass the first table and fail the second. The
+# two groups must also stay in the order they already have -- that is the
+# control against sorting globally by address, which would merge them.
+#   main e53f404      A-cons 00C 004 008 000, V-cons 014 010 (emission order)
+#   IFOX00, this      000 004 008 00C then 010 014, groups unmoved
 for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9 sample10 \
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
@@ -749,7 +758,8 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
          litdup pool contsev align blankcont litscale litpz litlist \
          adcon aliasext attrdup regexpr sconabs fpopc droplist \
-         tattr_expr endpool dsectpool blank_csect usingparen usingparenpc; do
+         tattr_expr endpool dsectpool blank_csect usingparen usingparenpc \
+         rldorg; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
