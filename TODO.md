@@ -796,7 +796,9 @@ decks still differ, 38 become byte-identical when re-assembled with the clock
 their own IFOX job ran at**, all of them `IFNX*`, `IFOX0*`, `BLSD*`,
 `IFCDIP00`, `IFCIOHND` and `IGC0007F` — `IFOX0A`–`IFOX0I` being IFOX00 itself,
 which stamps its own assembly time into its eyecatcher. The date is `09/07/26`
-on every one of them, so the time is the only variable.
+on all thirty-eight END cards — measured, not sampled — and the thirty-eight
+jobs started at **29 distinct times**, so the time is the only variable and no
+single pinned `ASMTIME` can ever match more than a few of them.
 
 **That is an instrument finding, not an as370 defect**, and it belongs to
 `mvs38src`: `case_list.py` and `retest.py` mask the END card's stamp and not an
