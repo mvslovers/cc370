@@ -125,7 +125,7 @@ front of you, the second is nineteen-twentieths unattributable.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #97 | as370 | silent — a different object module | nothing |
+| 1 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on a new issue) |
 | 2 | #104 | as370 | silent — a swallowed build option | nothing |
 | 3 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
 | 4 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — reopened 2026-09-13 |
@@ -298,15 +298,38 @@ packed at rc 0 in silence.
 
 ### 1 · #97 — an undeclared SET symbol produces a different object module
 
-The risk of enforcing it was measured before the issue was filed and it is nil:
-an instrumented build found **0 modules** with an undeclared SET symbol across
-826 ecosystem modules and 277 real IBM ones. Nothing relies on the leniency.
+*the assignment side landed on 2026-09-13; what is left is smaller than the
+issue says and one third of it is blocked on something the issue never named*
 
-Two halves, and the first is worth doing alone: the *diagnostic* is a check at
-`SETA`/`SETB`/`SETC` and at the reference site. The *code effect* — IFOX leaves
-the reference unsubstituted and the statement generates nothing — is the larger
-half, because the substitution path has to distinguish "undeclared" from
-"declared but null", which today it does not.
+**The risk was nil and is now measured over both corpora**: 0 of the 5,528
+MVSBLD modules assign to an undeclared SET symbol, `IFO006` appears in 0 of the
+926 recorded corpus diagnostics, libc370's 28 hand-written modules are clean,
+and the issue's own count over 826 ecosystem plus 277 IBM modules was 0. So the
+tree is a pure false-positive detector for this check, and the gate said so:
+`gained 0 / LOST 0 / rc CLEAN -> FLAGGED 0 / as370 alone flags 0`, measured
+against a baseline binary built from `main` — the only comparison that measures
+one commit rather than everything since the promoted state.
+
+**The oracle answered the two questions no corpus could** (`MVSTK5-REF`
+JOB00309/JOB00310, `tests/undeclset.s`, eight predictions and all eight held):
+an undeclared assignment in **open code** is flagged, and XF checks the
+dictionary at macro **definition** time as well as in the expansion — the
+macro's two cards draw `IFO006` twice each.
+
+**What is left, and the guard in `run.sh` pins all three numbers so that closing
+any of it fails loudly rather than drifting:**
+
+- the **definition-time** check: as370 flags 2 statements where XF flags 6
+- the **code effect** — XF generates nothing for a statement carrying an
+  undeclared symbol. It is not ten bytes too many: `'/TIGHT//P///'` against our
+  `'/LOOSE//TIGHT//P//O///'`, and only **3 of the 12 bytes** land at the same
+  address, because every later symbol moves
+- the **reference site**, which the issue proposes in the same breath as the
+  assignment site and which is **not safe today**: as370 reaches `vref`'s "names
+  nothing" path 6,387 times under a real name in 771 of the 5,528 modules,
+  12,015 of those inside library-macro expansions, where IFOX00 raises nothing
+  at all. Those are as370 failing to resolve what XF resolves; a diagnostic
+  there would report our own gap as the source's error. It wants its own issue
 
 ### 2 · #104 — an unrecognised option becomes the source filename
 
@@ -944,6 +967,16 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-13 — #97's assignment side.** `LCLx`/`GBLx` now mark the SET row
+  declared and `SETA`/`SETB`/`SETC` ask, so a symbol nothing declares draws
+  `IFO006` at severity 8 instead of being assigned in silence at rc 0. The fact
+  that was missing is *declared*: a row is created on the first **assignment**,
+  so presence answers "does this hold a value" and never answered "did anything
+  declare it" — which is why `set_find` could not see this. The value is still
+  stored, so no deck moves; the oracle, the three numbers the `run.sh` guard
+  pins, and the reference side that is **not** safe to check are in the rank-1
+  section above.
 
 - **2026-09-12, second — #37, PR #368 merged that day; the issue closed
   2026-09-13.** `ld370 --pack` of a **bare** `.lm` wrote entry 0 and this
