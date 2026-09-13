@@ -6172,6 +6172,26 @@ static int count_flagged_stmts(int nlines) {
 int main(int argc, char **argv) {
     const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
     if (argc == 1) { usage(stdout); return 0; }            /* bare invocation: show usage, RC 0 */
+    /* cc370#104: an argument the loop below does not recognise used to fall
+     * through to `src = argv[ai]', so a typo, a flag from a build script or an
+     * IFOX00 option as370 does not implement became the source filename and was
+     * overwritten by the next one -- silently, at rc 0. `-a listing.txt' spells
+     * it out: `-a' turns listings on and the path becomes the source, until the
+     * real source overrides it, and nothing is said.
+     *
+     * What XF does, from its own scan: an option that is not in PARMTAB sets
+     * JINVOPT and the scan CONTINUES (ifox0d.asm:232) -- the option is ignored,
+     * the assembly runs, and at the end the invalid-option test prints IFO258
+     * `INVALID ASSEMBLER OPTION ON EXEC CARD -- OPTION IGNORED' and sets
+     * SEVCDE to X'10' (ifnx6b.asm:338-346, message text at :930). So: report,
+     * ignore, keep going, return 16. That is also what as370 already returns
+     * for a source file it cannot open, so the two agree.
+     *
+     * A SECOND positional argument has no XF analogue -- there is one SYSIN --
+     * and it is the same silent swallow from the other side: the extra name
+     * replaced the source without a word. It is reported and ignored, and the
+     * FIRST name is the one assembled. */
+    int optsev = 0;
     for (ai = 1; ai < argc; ai++) {
         if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
         else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", AS370_NAME, AS370_VER_H, __DATE__); return 0; }
@@ -6195,6 +6215,14 @@ int main(int argc, char **argv) {
             } }
             if (*p == '=' && p[1]) alst_fn = p + 1;        /* =FILE (must be the last sub-option) */
             if (!sel) { a_esd = a_rld = 1; }               /* bare -a -> LIST(MAX): every section we produce */
+        }
+        else if (argv[ai][0] == '-' && argv[ai][1]) {
+            fprintf(stderr, "as370: invalid option '%s' - option ignored (IFOX00 IFO258)\n", argv[ai]);
+            optsev = 16;
+        }
+        else if (src) {
+            fprintf(stderr, "as370: more than one source file - '%s' ignored, assembling '%s'\n", argv[ai], src);
+            optsev = 16;
         }
         else src = argv[ai];
     }
@@ -6460,5 +6488,8 @@ int main(int argc, char **argv) {
     if (!errors && max_sev) errors = 1;
     if (errors)
         fprintf(stderr, " Assembler Done   %d Statement%s Flagged / %3d was Highest Severity\n", errors, errors == 1 ? "" : "s", max_sev);
-    return errors ? max_sev : 0;   /* RC: 0 = clean (silent), else the highest IFOX severity seen (8 = error, 12 = severe). */
+    /* A command-line error is not a flagged STATEMENT, so it is merged here and
+     * not into max_sev: folding it in would make the line above claim a
+     * statement was flagged when none was (cc370#104). */
+    { int rc = errors ? max_sev : 0; if (optsev > rc) rc = optsev; return rc; }   /* RC: 0 = clean (silent), else the highest IFOX severity seen (8 = error, 12 = severe, 16 = the invocation). */
 }

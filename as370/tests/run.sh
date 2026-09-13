@@ -3104,5 +3104,39 @@ else
 fi
 rm -f /tmp/_us$$.obj /tmp/_us$$.out
 
+# ------------------------------------------------------------------ badopt --
+# cc370#104: an argument the parser does not recognise fell through to
+# `src = argv[ai]', so a typo or a build-script flag became the source filename
+# and was overwritten by the next one -- silently, at rc 0.
+#
+# XF's own scan is the model: an option not in PARMTAB sets JINVOPT and the scan
+# CONTINUES (ifox0d.asm:232); at the end IFO258 `INVALID ASSEMBLER OPTION ON
+# EXEC CARD -- OPTION IGNORED' is printed and SEVCDE becomes X'10'
+# (ifnx6b.asm:338-346, text at :930). Report, ignore, keep going, return 16.
+#
+# The two controls are the point: a false positive here breaks every build, and
+# `-a=FILE' is the form that `-a FILE' was silently mistaken for.
+printf "T        CSECT\n         END\n" > /tmp/_bo$$.s
+./as370 --bogus -o /tmp/_bo$$.obj /tmp/_bo$$.s >/tmp/_bo$$.out 2>&1
+rcb=$?
+./as370 /tmp/_bo$$.s /tmp/_bo$$.s -o /tmp/_bo$$.obj >/tmp/_bo2$$.out 2>&1
+rcb2=$?
+./as370 -a=/tmp/_bo$$.lst -o /tmp/_bo$$.obj /tmp/_bo$$.s >/tmp/_bo3$$.out 2>&1
+rcb3=$?
+if [ $rcb != 16 ]; then
+    echo "badopt: FAIL -- an unknown option must give RC 16, got $rcb"; fail=$((fail + 1))
+elif ! grep -q "IFO258" /tmp/_bo$$.out; then
+    echo "badopt: FAIL -- the diagnostic must name IFO258"; cat /tmp/_bo$$.out; fail=$((fail + 1))
+elif [ $rcb2 != 16 ] || ! grep -q "more than one source file" /tmp/_bo2$$.out; then
+    echo "badopt: FAIL -- a second source file must be reported, RC 16 (got $rcb2)"
+    cat /tmp/_bo2$$.out; fail=$((fail + 1))
+elif [ $rcb3 != 0 ] || [ -s /tmp/_bo3$$.out ] || [ ! -s /tmp/_bo$$.lst ]; then
+    echo "badopt: FAIL -- -a=FILE must stay silent at RC 0 and write the listing (got $rcb3)"
+    cat /tmp/_bo3$$.out; fail=$((fail + 1))
+else
+    echo "badopt: OK (unknown option and a second source file -> IFO258, RC 16; -a=FILE silent)"
+fi
+rm -f /tmp/_bo$$.s /tmp/_bo$$.obj /tmp/_bo$$.lst /tmp/_bo$$.out /tmp/_bo2$$.out /tmp/_bo3$$.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
