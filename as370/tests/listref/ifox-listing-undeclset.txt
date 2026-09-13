@@ -1,0 +1,106 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.11 09/13/26
+T         SD  0001 000000 00000C
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.11 09/13/26
+                                      1 * cc370#97: Assembler XF requires a variable symbol to be declared
+                                      2 * with LCLx/GBLx. as370 accepts an undeclared one, assigns it and
+                                      3 * substitutes it, at rc 0 -- so the same source produces a DIFFERENT
+                                      4 * object module, not merely a missing message.
+                                      5 *
+                                      6 * Predictions, written before the oracle was asked. The controls were
+                                      7 * predicted too: a control nobody predicted cannot surprise you.
+                                      8 * MEASURED on MVSTK5-REF afterwards -- ALL EIGHT HELD.
+                                      9 *
+                                     10 *   1 &LOOSE SETC, undeclared, in a macro   IFO006 sev 8, TWICE --
+                                     11 *                                           definition AND expansion
+                                     12 *   2 DC C'/&LOOSE/'   the reference        IFO006 twice, NOTHING
+                                     13 *                                           generated, LOOSEDC undef
+                                     14 *   3 LCLC &TIGHT + SETC                    SILENT            control
+                                     15 *   4 DC C'/&TIGHT/'                        SILENT, 7 bytes   control
+                                     16 *   5 DC C'/&PARM/'    a macro parameter    SILENT, 3 bytes   control
+                                     17 *   6 &OSET SETC, undeclared, in OPEN CODE  IFO006 once
+                                     18 *   7 DC C'/&OSET/'    in open code         IFO006, nothing generated
+                                     19 *   8 LCLC &ODECL, declared and never set   SILENT, 2 bytes   control
+                                     20 *
+                                     21 * IFOX00: 6 statements flagged, severity 8, rc 8, section 12 bytes --
+                                     22 * /TIGHT/ + /P/ + //. The macro's two cards are flagged in the
+                                     23 * DEFINITION and the same two again in the EXPANSION, so XF checks the
+                                     24 * dictionary at definition time as well; the open-code pair is flagged
+                                     25 * once each, there being no definition to flag. No statement number is
+                                     26 * quoted here on purpose: editing this comment renumbers them, which is
+                                     27 * what invalidates a committed listing. LOOSEDC and OPENDC appear in no
+                                     28 * cross-reference entry -- a statement carrying an undeclared symbol
+                                     29 * generates NOTHING.
+                                     30 *
+                                     31 * 3/4 against 1/2 separate "undeclared" from "declared". 8 against 2
+                                     32 * separates it from "declared but NULL", and that pair is the fixture's
+                                     33 * point: &ODECL is declared and empty, substitutes to nothing and the
+                                     34 * statement ASSEMBLES at 2 bytes, while &LOOSE is undeclared, is not
+                                     35 * substituted at all and the statement generates nothing. The
+                                     36 * substitution path does not have that distinction today.
+                                     37 *
+                                     38 * as370 at the #97 assignment-side fix: rc 8 and severity 8 agree, and
+                                     39 * TWO statements are flagged where XF flags six -- the assignment in
+                                     40 * each scope. What is left is the DEFINITION-time check (XF flags the
+                                     41 * macro's cards before any call) and the reference side, which is the
+                                     42 * issue's second half: the deck is 22 bytes against IFOX00's 12,
+                                     43 * because LOOSEDC and OPENDC are still generated here.
+                                     44          MACRO
+                                     45 &NAME    UNDECL
+                                     46 &LOOSE   SETC  'LOOSE'
+         *** ERROR ***
+                                     47 LOOSEDC  DC    C'/&LOOSE/'
+         *** ERROR ***
+                                     48          MEND
+                                     49          MACRO
+                                     50 &NAME    DECL  &PARM
+                                     51          LCLC  &TIGHT
+                                     52 &TIGHT   SETC  'TIGHT'
+                                     53 TIGHTDC  DC    C'/&TIGHT/'
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.11 09/13/26
+                                     54 PARMDC   DC    C'/&PARM/'
+                                     55          MEND
+000000                               56 T        CSECT
+                                     57          LCLC  &ODECL
+                                     58          UNDECL
+                                     59+&LOOSE   SETC  'LOOSE'
+         *** ERROR ***
+                                     60+LOOSEDC  DC    C'/&LOOSE/'
+         *** ERROR ***
+                                     61          DECL  P
+000000 61E3C9C7C8E361                62+TIGHTDC  DC    C'/TIGHT/'
+000007 61D761                        63+PARMDC   DC    C'/P/'
+                                     64 &OSET    SETC  'O'
+         *** ERROR ***
+                                     65 OPENDC   DC    C'/&OSET/'
+         *** ERROR ***
+                                     66 ODECLDC  DC    C'/&ODECL/'
+00000A 6161                          67+ODECLDC  DC    C'//'
+                                     68          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.11 09/13/26
+ODECLDC  00002 0000000A 00067
+PARMDC   00003 00000007 00063
+T        00001 00000000 00056
+TIGHTDC  00007 00000000 00062
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 12.11 09/13/26
+   46  IFO006      UNDEFINED VARIABLE SYMBOL &LOOSE
+   47  IFO006      UNDEFINED VARIABLE SYMBOL &LOOSE
+   59  IFO006      UNDEFINED VARIABLE SYMBOL &LOOSE
+   60  IFO006      UNDEFINED VARIABLE SYMBOL &LOOSE
+   64  IFO006      UNDEFINED VARIABLE SYMBOL &OSET
+   65  IFO006      UNDEFINED VARIABLE SYMBOL &OSET
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     6
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         63
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                       106

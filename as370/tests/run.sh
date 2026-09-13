@@ -3065,5 +3065,44 @@ PY
 fi
 rm -f /tmp/_rl$$.obj /tmp/_rl$$.out
 
+# --------------------------------------------------------------- undeclset --
+# cc370#97: a SET symbol nothing declares. IFOX00 raises IFO006 at severity 8
+# on every use and generates no object code for the statement; as370 took the
+# assignment silently at rc 0 and substituted it, so the same source produced a
+# different object module.
+#
+# This guards the ASSIGNMENT side, which is what is implemented. The oracle
+# (tests/ref/undeclset.obj, tests/listref/ifox-listing-undeclset.txt) flags SIX
+# statements and punches TWELVE bytes; as370 flags TWO -- the assignment in
+# each scope -- and punches 22, because the reference is still substituted.
+# The difference is the issue's second half plus the definition-time check, and
+# the numbers below are asserted so that closing either one fails here and has
+# to be re-read rather than drifting past unnoticed.
+./as370 tests/undeclset.s -o /tmp/_us$$.obj >/tmp/_us$$.out 2>&1
+rcu=$?
+# the SD item's length: ESD data starts at col 17, the item is name(8) type(1)
+# address(3) blank(1) length(3), so the length is at offset 29 of the card.
+ifox_len=$(python3 -c "d=open('tests/ref/undeclset.obj','rb').read();print(int.from_bytes(d[29:32],'big'))")
+ours_len=$(python3 -c "d=open('/tmp/_us$$.obj','rb').read();print(int.from_bytes(d[29:32],'big'))")
+if [ $rcu != 8 ]; then
+    echo "undeclset: FAIL -- expected RC 8, got $rcu"; fail=$((fail + 1))
+elif ! grep -q "2 Statements Flagged" /tmp/_us$$.out; then
+    echo "undeclset: FAIL -- the two undeclared assignments are flagged, the six controls are not"
+    grep -i flagged /tmp/_us$$.out; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO006' /tmp/_us$$.out)" != 2 ] \
+     || ! grep -q '&LOOSE is an undefined variable symbol' /tmp/_us$$.out \
+     || ! grep -q '&OSET is an undefined variable symbol' /tmp/_us$$.out; then
+    echo "undeclset: FAIL -- expected IFO006 on &LOOSE (in a macro) and &OSET (open code)"
+    grep 'IFO006' /tmp/_us$$.out; fail=$((fail + 1))
+elif [ "$ifox_len" != 12 ]; then
+    echo "undeclset: FAIL -- the committed IFOX00 deck should be 12 bytes, it is $ifox_len"; fail=$((fail + 1))
+elif [ "$ours_len" != 22 ]; then
+    # 22 -> 12 is the second half landing, not a regression. Re-read the case.
+    echo "undeclset: FAIL -- our section is $ours_len bytes, expected 22 (IFOX00: $ifox_len)"; fail=$((fail + 1))
+else
+    echo "undeclset: OK (RC 8, IFO006 on both assignments; 22 bytes against IFOX00's 12 -- #97 half two open)"
+fi
+rm -f /tmp/_us$$.obj /tmp/_us$$.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
