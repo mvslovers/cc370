@@ -125,16 +125,15 @@ front of you, the second is nineteen-twentieths unattributable.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on a new issue) |
-| 2 | #104 | as370 | silent — a swallowed build option | nothing |
-| 3 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
-| 4 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — reopened 2026-09-13 |
-| 5 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 6 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
-| 7 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 8 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
-| 9 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
-| 10 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 1 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on #370's neighbour) |
+| 2 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 3 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — reopened 2026-09-13 |
+| 4 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 5 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
+| 6 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 7 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
+| 8 | #241 | as370 | silent — twenty modules, one of them readable | nothing |
+| 9 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 
 **#37 left the table on 2026-09-12** (PR #368, merged that day; the issue
 closed 2026-09-13). Its own header here —
@@ -331,19 +330,38 @@ any of it fails loudly rather than drifting:**
   at all. Those are as370 failing to resolve what XF resolves; a diagnostic
   there would report our own gap as the source's error. It wants its own issue
 
-### 2 · #104 — an unrecognised option becomes the source filename
+### ~~#104~~ — an unrecognised option becomes the source filename — **fixed 2026-09-13**
 
-The argument loop ends in `else src = argv[ai];` with no validation, so a typo,
-an option from a build script, or an IFOX00 option as370 does not implement is
-silently swallowed. Measured: `as370 --sysparm=DEBUG` returns rc 0 and assembles
-the *production* branch of an `AIF ('&SYSPARM' EQ 'DEBUG')`, because `&SYSPARM`
-is not implemented either. The caller gets a production build believing it is a
-debug build.
+*the decision this was waiting on came out of IFOX00's own scan, and the
+issue's demonstration had gone stale on its own*
 
-Cheapest fix in either tool, and it must not wait for `SYSPARM` — adding that
-later does not help anyone who mistyped it in the meantime.
+The loop ended in `else src = argv[ai];`, so anything unrecognised became the
+source filename and was overwritten by the next argument, at rc 0.
 
-### 3 · #342 — a symbol from a macro-generated DSECT is recorded absolute
+**What XF does, read from the source rather than assumed:** an option not in
+`PARMTAB` sets `JINVOPT` and the scan **continues** (`ifox0d.asm:232`); at the
+end the invalid-option test prints `IFO258 INVALID ASSEMBLER OPTION ON EXEC CARD
+-- OPTION IGNORED` and sets `SEVCDE` to `X'10'` (`ifnx6b.asm:338-346`, text at
+`:930`). Report, ignore, keep going, return 16 — which is what as370 already
+returned for a source file it cannot open, so the two agree instead of inventing
+a third convention. The roadmap item *derive the PARM= option set and its
+RC/severity from the IFOX sources* is settled for this case.
+
+**The issue's own demonstration is obsolete**: `--sysparm=` is implemented now,
+so its example assembles the DEBUG branch and the deck reads `DBUG`. The defect
+needed an invented option to show. And the second half of it was never written
+down: a **second positional argument** silently replaced the source, which is
+what `-a listing.txt` does — `-a` turns listings on and the path becomes the
+source. `-a=FILE` is the form that was meant, and the suite holds it as a
+control.
+
+**Acceptance in the strong form**: the same 5,528 modules through the same
+environment, binary before and after — **0 differing return codes, 0 differing
+deck SHAs**. Not one byte moved. Callers are unaffected too: the cc370 driver
+passes the assembler only `-o <out> <in>` (`-###`), and mbt's rule is
+`$(AS) $(ASFLAGS) -o $@ $<` with `ASFLAGS` empty.
+
+### 2 · #342 — a symbol from a macro-generated DSECT is recorded absolute
 
 In `IEDQWIE` a symbol defined inside a DSECT that a macro generated comes out
 absolute rather than relocatable, so an SS operand written with an explicit
@@ -353,7 +371,7 @@ It sits this high because no measurement is owed before the work can start: the
 mechanism is one bookkeeping decision and the witness is a single named module.
 Everything below this line in the top class is waiting on something.
 
-### 4 · #362 — the relocatability rule is not applied to `USING`
+### 3 · #362 — the relocatability rule is not applied to `USING`
 
 *measured into a different issue than the one that was filed — and closed for a
 day and a half while the work had not started*
@@ -411,7 +429,7 @@ four — `IEAVTPER`, `IECIOSAM`, `IECVMAP`, `IECVXURT` — carry a byte differen
 their own, same length and already counted among the 96 still differing, and this
 fix does not touch it.
 
-### 5 · #89 — a forward reference in EQU resolves to 0
+### 4 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -422,7 +440,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 6 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 5 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the decision is which default*
 
@@ -447,7 +465,7 @@ mbt v2 links every ecosystem module through ld370, so how many of them actually
 want RENT decides whether inverting is a one-line change or a sweep across every
 `project.toml`. Do the survey before the decision.
 
-### 7 · #86 — the diagnostic recorders drop everything past 128 entries
+### 6 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -464,7 +482,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 8 · #184 — the attribute apostrophe, in the scans that decide diagnostics
+### 7 · #184 — the attribute apostrophe, in the scans that decide diagnostics
 
 *the last live member of the #35/#149/#218 family, and the one PR #347 says it
 did not close*
@@ -481,7 +499,7 @@ a correct diagnostic from a suppressed one on those three paths. Until one
 exists, a fix here is unfalsifiable by every instrument this project owns — the
 tree gate included.
 
-### 9 · #241 — twenty modules longer than IFOX00, one of them readable
+### 8 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -505,7 +523,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 10 · #23 — the corpus gate has an oracle-shaped hole
+### 9 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -967,6 +985,17 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-13, second — #104.** An argument the parser did not recognise became
+  the source filename and was overwritten by the next one, at rc 0. XF's scan
+  settles what to do instead — not in `PARMTAB` sets `JINVOPT`, the scan
+  continues, and the end-of-assembly test prints `IFO258` at severity 16 — so
+  as370 reports, ignores, keeps going and returns 16, the code it already
+  returned for an unopenable source. A second positional argument is covered
+  with it, which is the half nobody had written down and the one that bites:
+  `-a listing.txt` made the path the source. Acceptance in the strong form:
+  5,528 modules, same environment, binary before and after, **0 differing return
+  codes and 0 differing deck SHAs**.
 
 - **2026-09-13 — #97's assignment side.** `LCLx`/`GBLx` now mark the SET row
   declared and `SETA`/`SETB`/`SETC` ask, so a symbol nothing declares draws
@@ -1958,6 +1987,29 @@ against. Their call and their stage-1 direction — but it is the strongest
 argument yet for a reference system that is pinned rather than live, and for us
 it is the reason `#345` (`-am`, the macro and copy code source summary) stopped
 being a listing nicety.
+
+**The instrument is shared, and on 2026-09-13 it moved twice in one afternoon.**
+Two gate runs of ours came back with lost identities that no code of ours
+caused, and both were `mvs38src` improving something that is an INPUT to both
+gates:
+
+- `gate-worker.sh` now applies a per-module `ASMDATES` table (`17e9ae6`, 17:08)
+  so 37 modules assemble with the date **IBM's shipped object** carries. Right
+  for their oracle; wrong for `retest.py`, which compares against
+  `ifox-run/decks` — decks IFOX00 produced on 2026-09-07 **with the pinned
+  stamp**. Mixing the two manufactured a `-45`. Run ours with
+  `ASMDATES=/dev/null` until the reference is re-derived.
+- `work/macros/mirror/IGGCP14` was corrected (`ed5cf4f`, `e3fda5d`, 16:45) —
+  two transcription errors, nine `IGG019*` modules gained against IBM's object.
+  Our reference decks were assembled with the *uncorrected* macro, so the same
+  nine go the other way here. That produced a `-9`.
+
+Neither is a regression and neither figure is wrong; they are measured against
+different oracles. **A gate result is only a verdict when both runs saw the same
+macros and the same date rule** — so gate the baseline binary *now*, in the
+environment the change is measured in, rather than reusing yesterday's objdir.
+Better still, compare deck SHAs between the two runs directly: it answers "did
+this commit move anything" without an oracle in the middle at all.
 
 **MVS 3.8j source recovery** (`mvs38src`) is a *consumer*, not a half: it needs
 #109–#113 and #115 and files them here, but it decides nothing about cc370 beyond
