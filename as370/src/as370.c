@@ -1734,7 +1734,11 @@ static char g_sysect[9] = "";
  * array records the base name and creates no row, which is what makes declaring
  * &SW(4000) free. `eset' distinguishes an element that was assigned the empty
  * string from one never assigned, which the declared default depends on. */
-struct setrow { char name[20]; char val[VALSZ]; char (*elem)[VALSZ]; unsigned char *eset; int nelem; };
+/* DECLARED is not the same fact as "has a row". A row is created on the first
+ * assignment, so presence answers "does this symbol hold a value" and cannot
+ * answer "did an LCLx/GBLx ever declare it" -- which is the question IFO006
+ * asks, and the reason cc370#97 was invisible from set_find alone. */
+struct setrow { char name[20]; char val[VALSZ]; char (*elem)[VALSZ]; unsigned char *eset; int nelem; int declared; };
 /* Local SET symbols per macro context. 256 was too small by a little: IFCEOAK1
  * needs 295, IFCEXXXF 303, IFCSXXXG 288 -- and the ones that reach these numbers
  * only reach them once N'&SYSLIST stops cutting their loops short, so the old
@@ -1864,6 +1868,14 @@ static void set_put(struct ctx *c, const char *n, const char *v) {
     char *slot = (idx < 0) ? r->val : row_elem(r, idx, 1);
     if (!slot) return;
     scopy(slot, v, VALSZ - 1);
+}
+/* the row a canonical name lives in, whether or not it holds a value. set_find
+ * answers with the VALUE and returns NULL for a declared-but-null SETC, so it
+ * cannot separate "declared and empty" from "never declared" (cc370#97). */
+static struct setrow *set_row(struct ctx *c, const char *n) {
+    char b[20]; set_split(n, b);
+    int g = is_global(n);
+    return row_find(g ? g_sr : c->sr, g ? g_nset : c->nset, b);
 }
 /* release a context's array element vectors (the rows themselves are inline) */
 static void set_free(struct ctx *c) {
@@ -3115,6 +3127,44 @@ static int g_sysndx;
  * the symbol global (shared via the global store) without clobbering a value the
  * symbol already holds; LCLx (re)initialises a local. Used by both the macro
  * expander and open-code processing so &FUNC set in open code reaches the macros. */
+/* cc370#97: Assembler XF requires a variable symbol to be DECLARED -- LCLA/
+ * LCLB/LCLC or the GBL forms -- and raises IFO006 UNDEFINED VARIABLE SYMBOL at
+ * severity 8 on every use of one that is not (erms.asm:15, raised from the
+ * dictionary lookup at ifnx1j.asm:860 under IBM's own comment FLAG UNDECLARED
+ * VAR SYMB; SEV6 EQU 8, jermsgcd.asm:33). as370 took the assignment, created
+ * the row and substituted the value at rc 0, so the same source produced a
+ * DIFFERENT object module and said nothing about it.
+ *
+ * Measured over the whole corpus before it was enforced, from both sides:
+ * NO module of the 5,528 in MVSBLD assigns to an undeclared SET symbol, and
+ * IFOX00 raises IFO006 in 0 of the 926 recorded corpus diagnostics. The tree is
+ * therefore a pure false-positive detector for this check -- a module it flags
+ * is this code being wrong, not a find -- and the ecosystem measurement in the
+ * issue (826 modules, plus 277 IBM ones) agrees at 0.
+ *
+ * This is the ASSIGNMENT site only. The reference site is the same issue's
+ * other half and is NOT safe today: as370 reaches vref's "names nothing" path
+ * 6,387 times under a real name in 771 of the 5,528 modules -- 12,015 of those
+ * inside library-macro expansions -- where IFOX00 raises nothing at all. Those
+ * are places as370 fails to resolve what XF resolves, and a diagnostic there
+ * would report our own gap as the source's error.
+ *
+ * The value is still stored, so this changes the message and the return code
+ * and not one byte of any deck. Leaving the reference unsubstituted -- XF
+ * generates no object code for the statement at all -- is the issue's second
+ * half and waits on the oracle. */
+static void check_declared(struct ctx *c, const char *name) {
+    /* The question is about the BASE name -- `&A(&I)' is declared by `LCLA
+     * &A(10)' -- so the subscript is never evaluated here. Taking the canonical
+     * form instead would evaluate it a second time, on a statement whose own
+     * path evaluates it once. */
+    char b[20]; base_of(name, b);
+    struct setrow *r = set_row(c, b);
+    if (r && r->declared) return;
+    int a; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], b)) return;   /* LCLx &A(n) */
+    char m[96]; snprintf(m, sizeof m, "%s is an undefined variable symbol - nothing declares it (IFOX00 IFO006)", b);
+    note_operr(m, 8, g_ca_slot);
+}
 static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *opnd) {
     if (!strncmp(op, "GBL", 3) || !strncmp(op, "LCL", 3)) {
         int isg = (op[0] == 'G'); char fl[24][FLDW]; int nf = split_fields(opnd, fl, 24), j;
@@ -3122,12 +3172,13 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
             if (lp) { if (c->narr < 48) { int b2 = (int)(lp - fl[j]); if (b2 > 19) b2 = 19; memcpy(c->arrb[c->narr], fl[j], b2); c->arrb[c->narr][b2] = 0; c->arrnum[c->narr] = (op[3] != 'C'); c->narr++; }
                        if (isg) mark_global(fl[j]); }  /* array */
             else if (isg) { mark_global(fl[j]); if (!set_find(c, fl[j])) set_put(c, fl[j], op[3] == 'C' ? "" : "0"); }
-            else set_put(c, fl[j], op[3] == 'C' ? "" : "0"); }
+            else set_put(c, fl[j], op[3] == 'C' ? "" : "0");
+            { struct setrow *dr = set_row(c, fl[j]); if (dr) dr->declared = 1; } }   /* cc370#97 */
         return 1;
     }
-    if (!strcmp(op, "SETA")) { long v = eval_seta(c, opnd); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, nb); return 1; }
-    if (!strcmp(op, "SETB")) { int v = opnd[0] == '(' ? eval_cond(c, opnd + 1) : (int)eval_seta(c, opnd); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v ? "1" : "0"); return 1; }
-    if (!strcmp(op, "SETC")) { char v[VALSZ]; eval_setc(c, opnd, v, sizeof v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
+    if (!strcmp(op, "SETA")) { check_declared(c, lbl); long v = eval_seta(c, opnd); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, nb); return 1; }
+    if (!strcmp(op, "SETB")) { check_declared(c, lbl); int v = opnd[0] == '(' ? eval_cond(c, opnd + 1) : (int)eval_seta(c, opnd); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v ? "1" : "0"); return 1; }
+    if (!strcmp(op, "SETC")) { check_declared(c, lbl); char v[VALSZ]; eval_setc(c, opnd, v, sizeof v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
     if (!strcmp(op, "ANOP")) return 1;
     return 0;
 }
