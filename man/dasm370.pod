@@ -114,34 +114,23 @@ B<A C<BALR Rn,0> whose register is never used as a base is not claimed as a
 prologue.> It is reported, because it happened, as C<pattern> with
 C<note=balr-not-used-as-base>.
 
-=head2 What C<prologue> can and cannot mean
-
-B<It detects the idiom, not the declaration.> C<BALR Rn,0> is a run-time fact and
+B<What C<prologue> can and cannot mean: it detects the idiom, not the
+declaration.> C<BALR Rn,0> is a run-time fact and
 C<USING> is an assembly-time one, and B<an object records the first and cannot
-record the second>. Three measured consequences, none of them repairable here:
-
-=over 4
-
-=item *
+record the second>. Three measured consequences, none of them repairable here.
 
 C<IGG08113> writes C<BALR R15,0> and then C<B 32(,R15)> by hand, with no C<USING>
 anywhere. The idiom is present and the addressability is not --- and from the
 object B<those are the same bytes>.
-
-=item *
 
 C<IECVERPL> establishes R10 a second time at C<X'246'> with no C<USING> beside
 it, so the assembly resolved everything against R10 = 0 throughout. The candidate
 is a true statement about the code and B<a false one as a hint>: applying it would
 resolve displacements against an origin the assembly never used.
 
-=item *
-
 A data area holding C<X'0510'> is C<BALR 1,0> to anything reading bytes. Only
 reachability (issue #383) can say that nothing branches there; an opcode gate
 cannot. C<dasm370/tests/infer.s> pins one deliberately.
-
-=back
 
 The C<R2 == 0> guard is correct and does separate the idiom from a call ---
 C<BALR R1,R15> is C<X'051F'> and never reaches it. What it cannot separate is an
