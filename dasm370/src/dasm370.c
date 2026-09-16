@@ -73,6 +73,8 @@ static int nld;
 
 static int  end_has_entry;                    /* the END card names one, and in OUR section */
 static long end_entry;
+static long sect_org;                         /* a bound member's section origin; 0 for a deck */
+static int  from_member;
 static long sect_len;                         /* the ESD-declared length */
 static int  sect_esdid;
 static char sect_name[9];
@@ -361,6 +363,12 @@ static void emit_adcon(long a, const struct rlditem *r)
     long v = 0;
     int i;
     for (i = 0; i < r->len; i++) v = (v << 8) | img[a + i];
+    /* In a bound member the adcon has been RELOCATED: its value is the final
+     * address and not the offset a deck carries.  A target in this section is
+     * therefore `value - origin'; an EXTERNAL one has been resolved to wherever
+     * the binder put it, and that address is not an addend -- reassembling it
+     * as one would write a number where a deck holds a relocatable zero. */
+    if (from_member) v -= sect_org;
     if (lab[a]) label_name(a, l); else l[0] = 0;
     /* A(...) and V(...) ALIGN to a fullword; the length-modified forms do not.
      * An adcon that does not sit on a fullword boundary is ordinary -- IECVERPL
@@ -385,7 +393,7 @@ static void emit_adcon(long a, const struct rlditem *r)
          * RLD item naming PC, which is `A(PC+X'A70')' and not `V(PC)'.  Writing
          * V(...) there loses the addend -- two bytes, in the middle of a field
          * nothing else reports on. */
-        if (v == 0) {
+        if (v == 0 || from_member) {
             if (aligned) snprintf(opnd, sizeof opnd, "V(%s)", esdname[r->r]);
             else snprintf(opnd, sizeof opnd, "VL%d(%s)", r->len, esdname[r->r]);
         } else {
@@ -402,6 +410,118 @@ static void emit_adcon(long a, const struct rlditem *r)
     emit(l, "DC", opnd, rem);
 }
 
+/* ------------------------------------------------------- a bound member -- */
+
+/* The 772 CSECTs with an object and no source are mostly reachable ONLY from a
+ * bound member: there is no deck to read.  So this path exists to REACH them,
+ * and not to measure the decoder -- a deck round trip has one reader on each
+ * side and nothing in between, and that is what the acceptance runs on.  Here
+ * the binder sits in the middle, so a failure could be its slicing or our
+ * decode, and two instruments in one number is what a week of this taught us
+ * not to build.
+ *
+ * Three things differ from a deck and each one moves bytes if it is missed:
+ *
+ *  - Addresses are MODULE-absolute.  A section's bytes are img[org, org+len)
+ *    and an RLD item's address is absolute too; both come back section-relative.
+ *  - An address constant has been RELOCATED.  Its value is an address, not the
+ *    offset a deck carries, so a target in this section is `value - org'.
+ *  - Segments deliberately SHARE addresses, so the image is built per segment
+ *    and the section sliced from its OWN -- the defect cc370#372 fixed in
+ *    cmplmd370, arriving here as a requirement rather than as a bug.
+ */
+struct cesd_ctx { const char *want; int pos; };
+
+static int cesd_cb(const struct lmod_esd *e, void *ctx)
+{
+    struct cesd_ctx *c = ctx;
+    char nm[9];
+    name_of(e->name, nm);
+    if (e->esdid > 0 && e->esdid < MAXESD) {
+        memcpy(esdname[e->esdid], nm, 9);
+        esdtype[e->esdid] = e->type;
+    }
+    if (e->type == LMOD_LR && nld < 256) {          /* an LD becomes an LR when bound */
+        ld[nld].addr = e->addr;
+        ld[nld].owner = (int)e->len;                /* the owning entry's id */
+        memcpy(ld[nld].name, nm, 9);
+        nld++;
+    }
+    if (!sect_esdid && obj_is_section(e->type)
+        && (!c->want || !strcmp(nm, c->want))) {
+        sect_esdid = e->esdid;
+        sect_org = e->addr;
+        sect_len = e->len;
+        c->pos = e->seg;
+        memcpy(sect_name, nm, 9);
+    }
+    return 1;
+}
+
+static int mrld_cb(const struct obj_rld *r, void *ctx)
+{
+    (void)ctx;
+    if (nrld >= MAXRLD || r->p != sect_esdid) return 1;
+    rld[nrld].addr = r->addr - sect_org;
+    rld[nrld].len = obj_rld_len(r->flag);
+    rld[nrld].r = r->r;
+    if (rld[nrld].addr >= 0 && rld[nrld].addr < sect_len) nrld++;
+    return 1;
+}
+
+static int load_member(const unsigned char *m, long n, const char *want, int allow_incomplete)
+{
+    struct cesd_ctx cc;
+    struct lmod_info info;
+    struct lmod_iter it;
+    struct lmod_item r;
+    long pend = -1;
+    int cs = 1, segend = 0, want_seg;
+
+    lmod_scan(m, n, &info);
+    if ((info.anomalies & LMOD_IMAGE_INCOMPLETE) && !allow_incomplete) {
+        fprintf(stderr, "dasm370: the image is incomplete (%s); --allow-incomplete to read it anyway\n",
+                lmod_anom_name(info.anomalies & LMOD_IMAGE_INCOMPLETE));
+        return 2;
+    }
+    cc.want = want; cc.pos = 0;
+    lmod_cesd_walk(m, n, cesd_cb, &cc);
+    if (!sect_esdid) return 0;
+    if (sect_len > MAXSECT_BYTES) {
+        fprintf(stderr, "dasm370: %s is %ld bytes, over the %ld this build holds\n",
+                sect_name, sect_len, MAXSECT_BYTES);
+        return 16;
+    }
+    want_seg = info.nseg ? (cc.pos ? cc.pos : 1) : 0;
+
+    lmod_iter_init(&it, m, n);
+    while (lmod_iter_next(&it, &r) == 1) {
+        if (r.kind == LMOD_CTL) {
+            pend = (r.flags & LMOD_CTL_TEXT) ? mvs_be24(m + r.off + 9) : -1;
+            segend = (r.flags & LMOD_CTL_SEGEND) && !(r.flags & LMOD_CTL_END);
+            if (pend < 0 && segend) { cs++; segend = 0; }
+            if (r.flags & LMOD_CTL_RLD) {
+                long idl = mvs_be16(m + r.off + 4), rl = mvs_be16(m + r.off + 6);
+                long dat = r.off + 16 + idl;
+                if (rl > 0 && dat + rl <= n) obj_rld_items(m + dat, rl, mrld_cb, NULL);
+            }
+        } else if (r.kind == LMOD_TEXT) {
+            if ((!info.nseg || cs == want_seg) && pend >= 0) {
+                long lo = pend, hi = pend + r.len, j;
+                for (j = lo; j < hi; j++)
+                    if (j >= sect_org && j < sect_org + sect_len) {
+                        img[j - sect_org] = m[r.off + (j - lo)];
+                        cov[j - sect_org] = 1;
+                    }
+            }
+            pend = -1;
+            if (segend) { cs++; segend = 0; }
+        }
+    }
+    from_member = 1;
+    return 1;
+}
+
 /* ------------------------------------------------------------------ run -- */
 
 static void usage(FILE *o)
@@ -410,6 +530,8 @@ static void usage(FILE *o)
 "Usage: dasm370 [options...] deck.obj\n"
 " Options:\n"
 "  --csect NAME       disassemble this control section (default: the only one)\n"
+"  --allow-incomplete read a bound member whose record stream the reader could\n"
+"                     not finish (by default that is refused, not guessed at)\n"
 "  --isa SET          app|s370|s360|full -- accepted; only `full' is implemented\n"
 "  --format card|free card (the default) writes 80-column records with sequence\n"
 "                     numbers in 73-80 and column 72 left blank\n"
@@ -426,7 +548,7 @@ static void usage(FILE *o)
 int main(int argc, char **argv)
 {
     const char *src = NULL, *want = NULL, *outfn = NULL;
-    int ai, i;
+    int ai, i, allow_incomplete = 0;
     unsigned char *deck;
     long dn, ncards, c;
     long maxaddr = 0;
@@ -436,6 +558,7 @@ int main(int argc, char **argv)
         if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
         else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", DASM_NAME, DASM_VER, __DATE__); return 0; }
         else if (!strcmp(argv[ai], "--csect") && ai + 1 < argc) want = argv[++ai];
+        else if (!strcmp(argv[ai], "--allow-incomplete")) allow_incomplete = 1;
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) outfn = argv[++ai];
         else if (!strcmp(argv[ai], "--isa") && ai + 1 < argc) {
             const char *v = argv[++ai];
@@ -475,7 +598,18 @@ int main(int argc, char **argv)
         fclose(f);
         if (got != dn) { fprintf(stderr, "dasm370: %s: short read\n", src); return 16; }
     }
-    if (dn % 80) { fprintf(stderr, "dasm370: %s is not a deck of 80-byte cards\n", src); return 16; }
+    /* An object deck is a multiple of 80 bytes whose cards begin X'02'; anything
+     * else is read as a bound member.  Both sniffs are the ones cmplmd370 uses
+     * and neither is a guess about the content. */
+    if (dn % 80 || dn == 0 || deck[0] != 0x02) {
+        int k = load_member(deck, dn, want, allow_incomplete);
+        if (k == 0) {
+            fprintf(stderr, "dasm370: no section named %s in %s\n", want ? want : "(any)", src);
+            return 2;
+        }
+        if (k != 1) return k;
+        goto emit_source;
+    }
     ncards = dn / 80;
 
     /* Pass 1: the ESD.  Sections first, because the RLD and the TXT are keyed
@@ -530,9 +664,9 @@ int main(int argc, char **argv)
     for (c = 0; c < ncards; c++) obj_rld_walk(deck + c * 80, dasm_rld_cb, NULL);
 
     /* The END card's entry point.  It is neither text nor a relocation, so
-     * neither half of the comparison sees it -- and it is what the linkage
+     * neither half of the acceptance sees it -- and it is what the linkage
      * editor resolves a module's entry from, so a disassembly that drops it
-     * produces a deck that is byte-equal in everything measured and not an
+     * produces a deck that is byte-equal in everything measured and is not an
      * equivalent.  Found by the caller against 23 of 30 modules.
      * An entry in ANOTHER section is not ours to name: IEHPROG1's END points
      * into IEHPROG6, id 11, and a bare END is right there. */
@@ -553,20 +687,24 @@ int main(int argc, char **argv)
         fprintf(stderr, "dasm370: %s: TXT reaches %06lX, past the ESD length %06lX\n",
                 sect_name, (unsigned long)maxaddr, (unsigned long)sect_len);
 
-    /* Pass 3: what has a name.  Only two things do at this stage -- the section
-     * itself and an A-con target inside it.  Branch targets need a USING to
-     * resolve D(B) at all, and an inferred USING is #382's problem precisely
-     * because a wrong one produces symbols that are plausible, consistent and
-     * false while the bytes stay put. */
+emit_source:
+    /* Labels: the section's start, an ENTRY, and an A-con target inside it.
+     * Branch targets need a USING to resolve D(B) at all, and an inferred one is
+     * #382's problem precisely because a wrong one produces symbols that are
+     * plausible, consistent and false while the bytes stay put. */
     lab[0] = 1;
     if (end_has_entry && end_entry >= 0 && end_entry < sect_len) lab[end_entry] = 1;
     for (i = 0; i < nld; i++)
-        if (ld[i].owner == sect_esdid && ld[i].addr >= 0 && ld[i].addr < sect_len)
+        if (ld[i].owner == sect_esdid && ld[i].addr - (from_member ? sect_org : 0) >= 0
+            && ld[i].addr - (from_member ? sect_org : 0) < sect_len) {
+            ld[i].addr -= (from_member ? sect_org : 0);
             lab[ld[i].addr] = 1;
+        }
     for (i = 0; i < nrld; i++) {
         if (rld[i].r == sect_esdid && rld[i].len == 4) {
             long v = 0; int k;
             for (k = 0; k < 4; k++) v = (v << 8) | img[rld[i].addr + k];
+            if (from_member) v -= sect_org;
             if (v >= 0 && v < sect_len) lab[v] = 1;
         }
     }
