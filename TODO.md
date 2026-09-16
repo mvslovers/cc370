@@ -673,6 +673,20 @@ and so do the 5,528 deck files themselves. Run in two environments, because whic
 one is used moves the absolute figure by 147 — see the next paragraph — and
 `+0/-0` in one of them says nothing about the other.
 
+**And the first draft of its own header was wrong in the expensive direction.**
+It told a reader to resolve a displacement by scanning on `(sect, value)`. An
+absolute EQU keeps the section its card was written in while holding no address
+in it — as370's EQU handler says so itself, *"its section is dead weight,
+expr_sect and using_for both skip S_ABS"* — and every real module writes
+`R0 EQU 0` … `R15 EQU 15` inside a CSECT, so that recipe answers `LA 1,R4(,12)`:
+a symbol that is plausible, consistent and false, and one the bytes cannot
+contradict. The column was always right; the recipe was not. `fa04bbe` corrects
+it in the three places that state it — the `#note` header, the man page and the
+fixture's checker — and adds the two controls that answer the EQU on the old
+rule. The scan is `sect`, `defined=1`, **type not `ABS`**, nearest value at or
+below the target, and that clause belongs in `mvs38src`'s
+`docs/dasm370-interface.md` too.
+
 **The gate's two halves no longer agree about the environment, and that is worth
 more than this change's own number.** `gate.sh` defaults to the per-module
 `asmdate.tsv` and `sysparm.tsv` override tables; `retest.py` compares against the
