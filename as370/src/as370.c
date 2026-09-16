@@ -4681,7 +4681,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc, ao1 = r_addrok, se1 = r_subempty; long raw1 = r_raw;
                     resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc, ao2 = r_addrok, se2 = r_subempty; long raw2 = r_raw;
-                    int twol = (o->op & 0xF0) == 0xF0 && o->op != 0xF0;   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths */
+                    int twol = opc_ss_two_length(o->op);   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths; the predicate is in opc_table.h, where the decoder reads it too */
                     /* SRP is the third shape in the X'Fx' group and neither predicate
                      * covers it: one length in the HIGH nibble, and an IMMEDIATE -- the
                      * rounding digit I3 -- in the low one, from a third operand. It used
@@ -4689,7 +4689,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * across the whole byte, so `SRP P1(8),1,0` came out F0 07 where
                      * IFOX00 emits F0 70: the length reaches the machine as the rounding
                      * digit and vice versa, and I3 was never parsed at all (#64). */
-                    int srp = (o->op == 0xF0);
+                    int srp = opc_ss_srp(o->op);
                     /* An OMITTED length is not a length of zero. `MVC A(,5),B' writes
                      * the subscript list for its base and leaves the length field
                      * empty, and IFOX00 then uses the IMPLIED length -- L' of the

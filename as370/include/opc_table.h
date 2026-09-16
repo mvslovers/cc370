@@ -85,6 +85,32 @@ struct opc {
     int dec;    /* enum opc_dec */
 };
 
+/* The SS operand shape is a property of the OPCODE, not a list.
+ *
+ * Three shapes share F_SS and the table cannot tell them apart, because it does
+ * not have to -- the opcode decides:
+ *
+ *   D1(L,B1),D2(B2)          one length, the whole byte      MVC, CLC, TR, ...
+ *   D1(L1,B1),D2(L2,B2)      two 4-bit lengths               X'Fx' except X'F0'
+ *   D1(L1,B1),D2(B2),I3      one length and an immediate     SRP, X'F0'
+ *
+ * SRP is the one that punishes a guess: its length sits in the HIGH nibble and
+ * the rounding digit I3 -- a third operand -- in the low one. Reading it as a
+ * single-length SS writes the length across the whole byte, so `SRP P1(8),1,0'
+ * comes out F0 07 where IFOX00 emits F0 70: the length reaches the machine as
+ * the rounding digit and vice versa (cc370#64).
+ *
+ * These live here rather than in either tool because a decoder has to apply the
+ * same predicate the encoder does, and a second copy of a rule this small is the
+ * drift #374 moved the table here to prevent.
+ *
+ * `static inline' and not plain `static': a translation unit that includes the
+ * header without assembling or disassembling SS -- tests/opcinv.c is one --
+ * draws -Wunused-function on a plain static, and CI is -Werror. The test found
+ * that on the first build, which is the third-consumer property doing its job. */
+static inline int opc_ss_two_length(int op) { return (op & 0xF0) == 0xF0 && op != 0xF0; }
+static inline int opc_ss_srp(int op)        { return op == 0xF0; }
+
 static const struct opc optab[] = {
     { "AR", F_RR, 0x1A, 0, 1, OPD_PRIMARY },
     { "ADR", F_RR, 0x2A, 0, 1, OPD_PRIMARY },
