@@ -25,7 +25,7 @@ cc -O2 -Wall -Wextra -Werror -Icommon/include \
 # proprietary is committed.  Each one stood for a real refusal or a real
 # silent error before #372.
 MK=cmplmd370/tests/mkmember.py
-for k in overlay trailing sym flagtype; do
+for k in overlay trailing sym flagtype truncated; do
     python3 "$MK" "$k" "$TMP/$k.bin" || exit 99
 done
 python3 "$MK" deck:ROOT:11:0x40    "$TMP/ROOT.obj"    || exit 99
@@ -80,6 +80,21 @@ if $C --json --csect ONESECT "$TMP/ONESECT.obj" "$TMP/trailing.bin" 2>/dev/null 
 then pass "trailing bytes do not make the image incomplete"
 else fail "trailing bytes do not make the image incomplete"
 fi
+
+# An image the reader could not finish must not yield a verdict by default:
+# the bytes that ARE there may match, and that is not the same as a match.
+python3 "$MK" deck:CHOPPED:99:0x20 "$TMP/CHOPPED.obj" || exit 99
+$C --csect CHOPPED "$TMP/CHOPPED.obj" "$TMP/truncated.bin" >/dev/null 2>&1
+if [ $? -eq 2 ]; then pass "an incomplete image is refused, not compared"
+else fail "an incomplete image is refused, not compared"; fi
+if $C --json --csect CHOPPED "$TMP/CHOPPED.obj" "$TMP/truncated.bin" 2>/dev/null \
+     | grep -q '"image_incomplete": true'
+then pass "--json says WHY it was refused"
+else fail "--json says WHY it was refused"
+fi
+$C --allow-incomplete --csect CHOPPED "$TMP/CHOPPED.obj" "$TMP/truncated.bin" >/dev/null 2>&1
+if [ $? -ne 2 ]; then pass "--allow-incomplete compares it anyway"
+else fail "--allow-incomplete compares it anyway"; fi
 
 if [ ! -f "$FIX/BLSUZZ2R.obj" ]; then
     echo "SKIP: corpus fixtures ($FIX not present; set CMPLMD_FIXTURES)"

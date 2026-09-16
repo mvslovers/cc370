@@ -13,6 +13,7 @@ overlay   two segments whose sections SHARE an address, which is the whole
 trailing  a well-formed module with bytes after the MODEND record
 sym       a SYM record ahead of the CESD, which used to end the walk at -1
 flagtype  a CESD whose SD entry keeps an edit-time control bit (X'20')
+truncated a member whose last record runs past the end of the image
 """
 import sys
 
@@ -96,6 +97,13 @@ def build(kind):
         m = cesd([("FLAGGED", 0x20, 0x00, 1, 0x20)])
         m += ctl_text(0x00, bytes([0x3C]) * 0x20, segend=True, modend=True)
         return m
+    if kind == "truncated":
+        # A member whose last record claims more bytes than are there.  The
+        # walk cannot finish, so the image is INCOMPLETE and a verdict drawn
+        # from it would be drawn from records nobody read.
+        m = cesd([("CHOPPED", 0x00, 0x00, 1, 0x20)])
+        m += ctl_text(0x00, bytes([0x99]) * 0x20, segend=True, modend=True)
+        return m[:-8]
     if kind.startswith("deck:"):
         _, nm, fill, ln = kind.split(":")
         return deck(nm, bytes([int(fill, 16)]) * int(ln, 0))
