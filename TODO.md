@@ -625,9 +625,11 @@ because two startups share one name.
 **2026-09-16 — #372 landed on `feat/obj370-scatter-overlay`, and the shape of it
 matters more than the count.** `cmplmd370` could not compare 143 of TK5's bound
 target members. That read as one gap and was four, and **two of them did not
-refuse — they answered.** The CESD type byte was tested whole, so 147
+refuse — they answered.** The CESD type byte was tested whole, so 149
 storage-owning entries carrying an edit-time control bit were invisible (all 24
-of `IEANUC01`'s nucleus proper, X'20' over an SD); the overlay image was built
+of `IEANUC01`'s nucleus proper, X'20' over an SD) — 135 X'20', 12 X'80' and 2
+X'14', re-counted 2026-09-16 over the same 2,396 members with the reader's own
+predicate, where this file and `obj370.h` both said 147; the overlay image was built
 flat, so a section was compared against whichever segment wrote last; the walk
 ran past MODEND; and `X'40'` SYM records ended it at −1, with the CESD scan
 starting at offset 0 where a TEST-linked module puts SYM first.

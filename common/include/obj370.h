@@ -220,8 +220,12 @@ enum {
 
 /* The high nibble of the type byte carries edit-time control bits that a
  * finished module is supposed to have cleared, and 21 of TK5's 2,396 bound
- * target members do not: 147 storage-owning entries arrive with X'20', X'80'
- * or X'14'.  `type` is therefore the LOW NIBBLE -- the same convention as
+ * target members do not: 149 storage-owning entries arrive flagged -- 135 with
+ * X'20', 12 with X'80' and 2 with X'14'.  The breakdown is written out because
+ * this number was 147 until it was counted: that is the X'20' + X'80' subtotal,
+ * and the two X'14' are both in HEWLF064 (ESDIDs 108 and 109, segment 1), the
+ * one overlay member in the library.  `obj_is_section' has always been
+ * SD | PC | CM, so a PC was never excluded -- only miscounted.  `type` is therefore the LOW NIBBLE -- the same convention as
  * struct obj_esd -- and `typebyte` keeps the raw byte so a caller can report
  * what it saw.  Testing the whole byte silently loses those sections: every
  * CSECT of IEANUC01's nucleus proper (ESDIDs 1-24, all X'20') was invisible to
