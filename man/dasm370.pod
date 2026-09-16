@@ -1,0 +1,119 @@
+=head1 NAME
+
+dasm370 - disassemble a control section of an OS/360 object deck
+
+=head1 SYNOPSIS
+
+B<dasm370> [I<options>] I<deck.obj>
+
+=head1 DESCRIPTION
+
+B<dasm370> turns one control section of an object deck back into assembler
+source that L<as370(1)> can assemble again. It is the first stage of the source
+recovery the B<mvs38src> project needs: a CSECT for which an object exists and
+no source is not repairable, and disassembly is the only route to a module that
+can be built.
+
+B<The decoder is as370's own opcode table, inverted.> It includes
+F<as370/include/opc_table.h> rather than carrying a copy, so the disassembler
+agrees with the assembler by construction --- which is the property the round
+trip below depends on. A decoder built from a second copy of that data drifts
+silently: it still assembles, still compares, and disagrees about an instruction
+neither tool reports on.
+
+B<Nothing is emitted that does not reproduce its own bytes.> Every instruction is
+decoded, re-encoded from the decoded fields and compared against the bytes it
+came from; anything that does not reproduce itself is written as C<DC X'..'>.
+Re-encoding is necessary and not sufficient --- an operand also has to be one the
+assembler will accept --- so a decimal rounding digit above 9 or an instruction
+at an odd offset is data too.
+
+B<The RLD decides what is data before the decoder runs.> A field a relocation
+dictionary entry names is an address constant and is never decoded as an
+instruction. That is the one place an object-deck disassembler has ground truth,
+and asking it afterwards would be too late: a decoder that decodes first and
+relocates after has already produced a plausible instruction for every address
+constant in the module, and neither the bytes nor the round trip will object.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--csect> I<NAME>
+
+Disassemble this control section. The default is the first one in the deck.
+An unknown name is an error (exit 2), not an empty result.
+
+=item B<--format> B<card>|B<free>
+
+B<card>, the default, writes 80-column records with the sequence number in
+columns 73-80 and column 72 left blank, so the result drops straight into a
+fixed-format source library. B<free> writes the same statements without the
+padding, for reading.
+
+=item B<--isa> B<app>|B<s370>|B<s360>|B<full>
+
+Accepted; only B<full> is implemented, and any other value prints a note and
+behaves as B<full>. Problem-state against privileged is a per-mnemonic attribute
+F<opc_table.h> does not carry, and inventing it here would be the second copy the
+shared table exists to prevent.
+
+=item B<-o> I<FILE>
+
+Write to I<FILE> instead of standard output.
+
+=item B<-v>, B<--help>
+
+Print the version, or the usage.
+
+=back
+
+=head1 WHAT IT RECOVERS
+
+Instructions in every format as370 encodes; extended branch mnemonics from the
+implied mask, in the spelling IBM's own source uses more often; address constants
+from the RLD, as C<A(...)> and C<V(...)> --- or the length-modified forms where
+the field is not fullword-aligned, which is ordinary and moves every statement
+after it if written as C<A(...)>; C<ENTRY> statements from the deck's LD entries,
+which no comparison of section text can see; C<EXTRN> for everything the
+relocations point at that is not this section; and runs no TXT card covers as
+C<DS>, because a hole is not a zero.
+
+=head1 WHAT IT DOES NOT
+
+Branch targets are not labelled and no C<USING> is reconstructed. Resolving
+C<D(B)> at all needs a base register, and an inferred C<USING> is not "R12 holds
+X" but "from here until a C<DROP>, resolve C<D(12)> against X" --- get the
+lifetime wrong and every displacement in the wrong range resolves against the
+wrong section, producing symbols that are plausible, consistent and false while
+the bytes stay exactly where they were. That work is deliberately separate.
+
+Only one section is written per run, so a deck holding several needs one run
+each, and the result reassembles the section rather than the deck.
+
+=head1 THE ROUND TRIP, AND WHAT IT CANNOT SEE
+
+C<dasm370 -E<gt> as370 -E<gt> cmplmd370> is the acceptance gate: run it over a
+corpus and the disassembler is either right or it is not.
+
+It has one blind spot and it is worth stating, because it is where a
+disassembler's errors hide. B<A byte decoded as the wrong instruction that
+re-encodes to the same bytes passes it.> Swapping which of two spellings of one
+encoding is printed --- C<BE> for C<BZ> --- changes every listing and no byte.
+So exit 0 proves fidelity to the member and not correctness of the reading, and
+the suite asserts the mnemonics separately.
+
+=head1 EXIT STATUS
+
+B<0> a section was written, B<2> no such section, B<16> the invocation or the
+input is wrong.
+
+=head1 SEE ALSO
+
+L<as370(1)>, L<cmplmd370(1)>, L<file370(1)>
+
+=head1 AUTHOR
+
+The mvslovers community L<https://github.com/mvslovers/cc370>.
+
+=cut

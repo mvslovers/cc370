@@ -7,6 +7,7 @@ ar370/ar370
 file370/file370
 xmit370/xmit370
 cmplmd370/cmplmd370
+dasm370/dasm370
 /build/
 
 # stale in-tree build artifacts — the real GCC build is out-of-tree in /build/

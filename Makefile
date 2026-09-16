@@ -45,7 +45,7 @@ TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
 LIBEXEC := $(PREFIX)/libexec/$(TRIPLE)/$(VERSION)
 MANDIR  := $(PREFIX)/share/man/man1
 
-TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370 xmit370/xmit370 cmplmd370/cmplmd370
+TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370 xmit370/xmit370 cmplmd370/cmplmd370 dasm370/dasm370
 # shared format primitives (CP037 tables, CKD count field, NETDATA records)
 COMMON  := common/src/mvs370.c common/src/obj370.c
 COMMONH := common/include/mvs370.h common/include/obj370.h
@@ -67,7 +67,8 @@ DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: all tools compiler man install install-tools install-compiler install-man \
-        test test-as370 test-listref test-cc370 test-corpus test-xmit370 clean uninstall help
+        test test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 \
+        test-dasm370 clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler man
@@ -86,6 +87,10 @@ cmplmd370/cmplmd370: cmplmd370/src/cmplmd370.c $(COMMON) $(COMMONH)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ cmplmd370/src/cmplmd370.c $(COMMON)
 xmit370/xmit370: xmit370/src/xmit370.c $(COMMON) $(COMMONH)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ xmit370/src/xmit370.c $(COMMON)
+# dasm370 includes as370's opcode table -- it decodes from the table as370
+# encodes from, which is why -Ias370/include is here and not a mistake (#374).
+dasm370/dasm370: dasm370/src/dasm370.c as370/include/opc_table.h $(COMMON) $(COMMONH)
+	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ dasm370/src/dasm370.c $(COMMON)
 
 # --- man pages (one .pod per tool -> pod2man -> .1) -----------------------
 man: $(MAN1)
@@ -127,7 +132,7 @@ compiler: $(BUILD)/config.status
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370
+test: test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370
 
 test-as370:
 	@$(MAKE) -C as370 test
@@ -147,6 +152,9 @@ test-cc370: compiler
 test-xmit370: xmit370/xmit370
 	@sh xmit370/tests/run.sh
 
+test-dasm370: dasm370/dasm370 as370/as370
+	@sh dasm370/tests/run.sh
+
 test-cmplmd370: cmplmd370/cmplmd370
 	@sh cmplmd370/tests/run.sh
 
@@ -163,12 +171,14 @@ install-tools: tools
 	@install -m 755 file370/file370 $(TGTBIN)/file370
 	@install -m 755 cmplmd370/cmplmd370 $(TGTBIN)/cmplmd370
 	@install -m 755 xmit370/xmit370 $(TGTBIN)/xmit370
+	@install -m 755 dasm370/dasm370 $(TGTBIN)/dasm370
 	@ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370
 	@ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
 	@ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
 	@ln -sf ../$(TRIPLE)/bin/file370 $(BINDIR)/file370
 	@ln -sf ../$(TRIPLE)/bin/cmplmd370 $(BINDIR)/cmplmd370
 	@ln -sf ../$(TRIPLE)/bin/xmit370 $(BINDIR)/xmit370
+	@ln -sf ../$(TRIPLE)/bin/dasm370 $(BINDIR)/dasm370
 	@ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as
 	@ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld
 	@ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar
@@ -194,11 +204,12 @@ clean:
 
 uninstall:
 	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 $(BINDIR)/file370 \
-	      $(BINDIR)/xmit370 \
+	      $(BINDIR)/xmit370 $(BINDIR)/cmplmd370 $(BINDIR)/dasm370 \
 	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 $(TGTBIN)/file370 $(TGTBIN)/xmit370 \
+	      $(TGTBIN)/cmplmd370 $(TGTBIN)/dasm370 \
 	      $(LIBEXEC)/as $(LIBEXEC)/ld $(LIBEXEC)/ar $(LIBEXEC)/cc1 \
 	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1 \
-	      $(MANDIR)/file370.1 $(MANDIR)/xmit370.1
+	      $(MANDIR)/file370.1 $(MANDIR)/xmit370.1 $(MANDIR)/dasm370.1
 
 help:
 	@sed -n '1,30p' $(firstword $(MAKEFILE_LIST))
