@@ -3182,6 +3182,46 @@ elif ! python3 tests/symexp_check.py /tmp/_sx$$.tsv; then
 fi
 rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.out
 
+# ------------------------------------------------------------------ useexp --
+# cc370#393: the USING/DROP/PUSH/POP events as data. --sym exports the symbol
+# TABLE; usings[] is live STATE and holds nothing by the end of an assembly, so
+# the events have to be collected as they happen and there was no way to see
+# them at all. The listing cannot answer it either -- measured: a USING shows
+# its resolved base in ADDR2 and no location counter, and DROP, PUSH USING and
+# POP USING have no address column whatsoever.
+#
+# ON THE PRE-CHANGE BINARY (51034a4): `as370: invalid option '--usings=...'
+# - option ignored (IFOX00 IFO258)', RC 16, and no file. So every branch here
+# fails on it, and the hints block in dasm370 says why that is worth stating
+# rather than claiming the fixture proves something: an additive option cannot
+# score against a binary that rejects it.
+#
+# The checker's answers are written into tests/useexp_check.py BY HAND. An
+# expectation generated from the export's own output would agree with any
+# export at all.
+./as370 tests/useexp.s -o /tmp/_ue$$.obj --usings=/tmp/_ue$$.tsv >/tmp/_ue$$.out 2>&1
+rcu=$?
+./as370 tests/useexp.s -o /tmp/_ue2$$.obj >/dev/null 2>&1
+./as370 tests/useexp.s -o /dev/null --usings=- 2>/dev/null | head -1 > /tmp/_ue3$$.out
+./as370 tests/useexp.s -o /dev/null --usings=/nonexistent$$/x.tsv >/dev/null 2>&1
+rcu2=$?
+if [ $rcu != 0 ] || [ -s /tmp/_ue$$.out ]; then
+    echo "useexp: FAIL -- --usings must be silent at RC 0, got $rcu"
+    cat /tmp/_ue$$.out; fail=$((fail + 1))
+elif ! cmp -s /tmp/_ue$$.obj /tmp/_ue2$$.obj; then
+    echo "useexp: FAIL -- the deck moved with --usings; the export is output only"
+    fail=$((fail + 1))
+elif ! head -1 /tmp/_ue3$$.out | grep -q '^#as370-usings	1$'; then
+    echo "useexp: FAIL -- --usings=- must write the export to stdout"
+    cat /tmp/_ue3$$.out; fail=$((fail + 1))
+elif [ $rcu2 != 16 ]; then
+    echo "useexp: FAIL -- an unwritable --usings destination must give RC 16, got $rcu2"
+    fail=$((fail + 1))
+elif ! python3 tests/useexp_check.py /tmp/_ue$$.tsv; then
+    fail=$((fail + 1))
+fi
+rm -f /tmp/_ue$$.obj /tmp/_ue2$$.obj /tmp/_ue$$.tsv /tmp/_ue$$.out /tmp/_ue3$$.out
+
 # ------------------------------------------------------------------ opcinv --
 # cc370#374: the opcode table has to invert, because #112's disassembler reads
 # the same table as370 encodes from and a second copy would drift in silence.

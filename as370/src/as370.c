@@ -175,6 +175,52 @@ static long org_hwm;          /* highest lc reached in the current section (for 
 static int  in_dsect; static long main_lc; static int main_sect_id;   /* DSECT: dummy section, own counter, no TXT; main_* save the control section on first DSECT entry */
 struct uent { int reg; long base; int sect; int isabs; };   /* active USING ranges; isabs = the base operand was ABSOLUTE */
 static struct uent usings[32]; static int nusing;
+
+/* --usings=FILE: the USING/DROP/PUSH/POP events as data (cc370#393).
+ *
+ * usings[] above is live STATE, not a log: by the end of an assembly it holds
+ * whatever survived the last DROP or POP, so there is nothing left to export.
+ * The information exists only while the statement is being processed, which is
+ * why this is collected here and not written by a walk at the end the way
+ * --sym's is.
+ *
+ * ONE RECORD PER REGISTER, each carrying its OWN (sect, loc).  That is the
+ * whole design: a location counter that moves needs no record of its own,
+ * because no record is relative to another one, so ORG falls out for free.  And
+ * a USING may name up to sixteen registers assigned BY POSITION -- 115 of the
+ * 31,529 in the 5,538-module corpus do -- each with its own base 4096 apart, so
+ * the export writes what as370 computed rather than leaving a consumer to
+ * recompute value + 4096n.  That recomputation is exactly the inference this
+ * file exists to remove.
+ *
+ * Collected only when the option is given, and GROWN rather than capped.  The
+ * 32-entry cap on usings[] is the cautionary tale: 31 modules overflowed it and
+ * "lost every further USING without a word, IDA019R4 alone 130".  A silent drop
+ * here would be the same defect in the instrument built to measure it. */
+enum { UEV_USING, UEV_DROP, UEV_PUSH, UEV_POP };
+enum { UEB_STMT, UEB_POP, UEB_NOOP };
+struct uev { long seq, loc, value; int kind, sect, reg, valsect, valdsect, isabs, by; };
+static struct uev *uevs; static long nuev, uevcap;
+static const char *use_fn;                    /* NULL unless --usings= was given */
+
+static void uev_add(long seq, int kind, int sect, long loc, int reg,
+                    long value, int valsect, int valdsect, int isabs, int by) {
+    struct uev *u;
+    if (!use_fn) return;
+    if (nuev >= uevcap) {
+        long nc = uevcap ? uevcap * 2 : 256;
+        struct uev *t = realloc(uevs, (size_t)nc * sizeof *uevs);
+        /* Out of memory is reported and fatal, never a dropped event: an export
+         * that is quietly short is worse than one that is absent, because the
+         * gap is invisible to everything downstream. */
+        if (!t) { fprintf(stderr, "as370: out of memory collecting USING events\n"); exit(16); }
+        uevs = t; uevcap = nc;
+    }
+    u = &uevs[nuev++];
+    u->seq = seq; u->kind = kind; u->sect = sect; u->loc = loc; u->reg = reg;
+    u->value = value; u->valsect = valsect; u->valdsect = valdsect;
+    u->isabs = isabs; u->by = by;
+}
 static int  cur_sect_id, g_sectid;            /* section identity for USING resolution */
 /* Per-section content high-water mark.
  *
@@ -5021,6 +5067,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                       if (slot < 0) { if (nusing >= 32) break; slot = nusing++; }
                       usings[slot].reg = reg; usings[slot].base = base + 4096L * (j - 1);
                       usings[slot].sect = bsect; usings[slot].isabs = isabs;
+                      /* #393: the record is written HERE, inside the loop that
+                       * computes each register's own base, so nothing downstream
+                       * ever recomputes value + 4096n. */
+                      uev_add(i + 1, UEV_USING, cur_sect_id, lc, reg, usings[slot].base,
+                              bsect, is_dsect_id(bsect), isabs, UEB_STMT);
                   } }
                 lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
             }
@@ -5034,9 +5085,41 @@ static void do_pass(int pass, char **lines, int nlines) {
              * wrong bases in one module from one cap.  Sixteen is the ceiling by
              * construction: there are sixteen registers to drop. */
             if (pass == 2) { char F[16][FLDW]; int nf = split_fields(opnd, F, 16), j, k;
-                if (!nf) nusing = 0;                       /* DROP with no operand drops all */
-                else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0);
-                    for (k = 0; k < nusing; ) { if (usings[k].reg == r) { usings[k] = usings[--nusing]; } else k++; } } }
+                if (!nf) {                                 /* DROP with no operand drops all */
+                    /* UNREACHABLE TODAY -- cc370#394.  split_fields("") returns
+                     * 1, not 0: it emits one empty field before it stops.  So an
+                     * operandless DROP falls into the `else' below, evaluates the
+                     * empty field as 0 and drops REGISTER 0, and the comment on
+                     * this line has described behaviour the code does not have
+                     * for as long as it has been here.  Measured: `DROP 12' gives
+                     * IFO209 on the next operand and a bare `DROP' assembles
+                     * silently at rc 0.
+                     *
+                     * Left as it stands, and deliberately.  #393 is output-only
+                     * and its acceptance is that no deck moved; repairing this
+                     * here would move decks in whatever modules are affected, and
+                     * a shared-input PR that does both is one where a moved gate
+                     * names no cause.  The export reports what as370 DID -- a
+                     * `noop' on register 0 -- which is how the defect was found.
+                     * When #394 lands, this branch becomes live and already emits
+                     * one record per register actually dropped. */
+                    for (k = 0; k < nusing; k++)
+                        uev_add(i + 1, UEV_DROP, cur_sect_id, lc, usings[k].reg, usings[k].base,
+                                usings[k].sect, is_dsect_id(usings[k].sect), usings[k].isabs, UEB_STMT);
+                    nusing = 0;
+                }
+                else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0), hit = 0;
+                    for (k = 0; k < nusing; ) { if (usings[k].reg == r) {
+                            uev_add(i + 1, UEV_DROP, cur_sect_id, lc, r, usings[k].base,
+                                    usings[k].sect, is_dsect_id(usings[k].sect), usings[k].isabs, UEB_STMT);
+                            hit = 1; usings[k] = usings[--nusing]; } else k++; }
+                    /* A register the statement named and that held no domain
+                     * changes no lifetime -- but it is recorded as `noop' so
+                     * that EVERY written USING and DROP has at least one record.
+                     * The source-text control compares statements against the
+                     * log, and a statement with no records at all is a hole in
+                     * it that looks like agreement. */
+                    if (!hit) uev_add(i + 1, UEV_DROP, cur_sect_id, lc, r, 0, 0, 0, 0, UEB_NOOP); } }
         } else if (!strcmp(op, "REPRO")) {
             /* Nothing is assembled and the location counter does not move. All
              * this records is WHERE the card falls in the punch stream. */
@@ -5047,8 +5130,48 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "PUSH") || !strcmp(op, "POP")) {   /* PUSH/POP USING: save/restore the active USING table (PRINT etc. ignored) */
             if (pass == 2 && strstr(opnd, "USING")) {
                 static struct uent ustk[16][32]; static int ustkn[16], usp;
-                if (op[1] == 'U') { if (usp < 16) { memcpy(ustk[usp], usings, sizeof usings); ustkn[usp] = nusing; usp++; } }   /* PUSH */
-                else if (usp > 0) { usp--; memcpy(usings, ustk[usp], sizeof usings); nusing = ustkn[usp]; }                      /* POP */
+                if (op[1] == 'U') {                                                 /* PUSH */
+                    int ok = usp < 16;
+                    if (ok) { memcpy(ustk[usp], usings, sizeof usings); ustkn[usp] = nusing; usp++; }
+                    /* A PUSH past the sixteenth is dropped, and always was.  It
+                     * is recorded as `noop' rather than as nothing, so the one
+                     * case where a later POP restores the wrong table is visible
+                     * in the export instead of being invisible everywhere. */
+                    uev_add(i + 1, UEV_PUSH, cur_sect_id, lc, -1, 0, 0, 0, 0, ok ? UEB_STMT : UEB_NOOP);
+                } else {                                                            /* POP */
+                    struct uent old[32]; int oldn = nusing, q, w, ok = usp > 0;
+                    memcpy(old, usings, sizeof usings);
+                    if (ok) { usp--; memcpy(usings, ustk[usp], sizeof usings); nusing = ustkn[usp]; }
+                    uev_add(i + 1, UEV_POP, cur_sect_id, lc, -1, 0, 0, 0, 0, ok ? UEB_STMT : UEB_NOOP);
+                    /* WHAT THE POP DID, not merely that it happened: a DROP for
+                     * every domain that went and a USING for every one that
+                     * arrived or changed, marked `pop'.  A consumer replays the
+                     * file linearly and never maintains a stack of its own --
+                     * and a stack it maintained would be a second copy of the
+                     * assembler's, free to disagree in silence.
+                     *
+                     * This is the half no corpus can witness: exactly ONE module
+                     * tree-wide writes PUSH/POP and assembles identical
+                     * (IGG019V6). The fixtures carry it. */
+                    if (ok) {
+                        for (q = 0; q < oldn; q++) {
+                            for (w = 0; w < nusing; w++)
+                                if (usings[w].reg == old[q].reg && usings[w].base == old[q].base
+                                    && usings[w].sect == old[q].sect && usings[w].isabs == old[q].isabs) break;
+                            if (w == nusing)
+                                uev_add(i + 1, UEV_DROP, cur_sect_id, lc, old[q].reg, old[q].base,
+                                        old[q].sect, is_dsect_id(old[q].sect), old[q].isabs, UEB_POP);
+                        }
+                        for (w = 0; w < nusing; w++) {
+                            for (q = 0; q < oldn; q++)
+                                if (old[q].reg == usings[w].reg && old[q].base == usings[w].base
+                                    && old[q].sect == usings[w].sect && old[q].isabs == usings[w].isabs) break;
+                            if (q == oldn)
+                                uev_add(i + 1, UEV_USING, cur_sect_id, lc, usings[w].reg, usings[w].base,
+                                        usings[w].sect, is_dsect_id(usings[w].sect), usings[w].isabs, UEB_POP);
+                        }
+                    }
+                }
             }
         } else if (!strcmp(op, "CNOP")) {                      /* align with NOPR (0x0700) fill */
             char F[2][FLDW]; split_fields(opnd, F, 2);
@@ -6173,6 +6296,70 @@ static int emit_sym_export(const char *fn, const char *srcfn) {
     return 0;
 }
 
+/* --usings=FILE: the events, written where --sym's export is written and for the
+ * same reason -- past g_pass = 0 so nothing below can raise a diagnostic, and
+ * past emit_obj so the deck is already on disk whatever happens here. */
+static const char *uev_kind_name(int k) {
+    switch (k) {
+    case UEV_USING: return "USING";
+    case UEV_DROP:  return "DROP";
+    case UEV_PUSH:  return "PUSH";
+    case UEV_POP:   return "POP";
+    }
+    return "?";
+}
+static const char *uev_by_name(int b) {
+    switch (b) {
+    case UEB_STMT: return "stmt";   /* the statement itself */
+    case UEB_POP:  return "pop";    /* state a POP USING restored */
+    case UEB_NOOP: return "noop";   /* the statement named it and nothing changed */
+    }
+    return "?";
+}
+static int emit_use_export(const char *fn, const char *srcfn) {
+    FILE *f;
+    long i;
+    if (!strcmp(fn, "-")) f = stdout;
+    else if (!(f = fopen(fn, "w"))) { perror(fn); return 16; }
+    fputs("#as370-usings\t1\n", f);
+    fprintf(f, "#source\t%s\n", srcfn ? srcfn : "");
+    fputs("#note\tone record per USING/DROP/PUSH/POP EVENT, in the order the assembly reached\n"
+          "#note\tthem. Every record carries its own sect and loc, so nothing here is relative to\n"
+          "#note\tanything else and ORG needs no record of its own.\n"
+          "#note\tseq is the listing's statement number and is NOT A KEY: one statement can\n"
+          "#note\tproduce several records. A USING naming several registers assigns them BY\n"
+          "#note\tPOSITION -- `USING D,11,12,10' bases 11 at D, 12 at D+4096, 10 at D+8192 -- and\n"
+          "#note\teach gets its own record carrying its own value, already computed. Do not\n"
+          "#note\trecompute value + 4096n from a register's position in the operand.\n"
+          "#note\tloc is the location counter at the statement: where the event takes effect.\n"
+          "#note\tvalue is the base the register holds. valsect is the section that value is IN,\n"
+          "#note\twhich is NOT always sect -- a USING on a DSECT has the CSECT's loc and the\n"
+          "#note\tDSECT's valsect, and nothing in a listing distinguishes the two.\n"
+          "#note\tvaldsect=1 means the domain is a dummy section; abs=1 means it is ABSOLUTE (a\n"
+          "#note\tdefined absolute symbol, the pre-DSECT way of mapping a control block). An\n"
+          "#note\tabsolute domain is not an address: resolving an operand under one to a symbol\n"
+          "#note\twrites a name where the assembler reads a bare number.\n"
+          "#note\tby=stmt is the statement itself; by=pop is state a POP USING restored, emitted\n"
+          "#note\tso a reader replays this file linearly and never keeps a stack; by=noop is a\n"
+          "#note\tregister the statement named that held no domain, or a PUSH past the 16th, or\n"
+          "#note\ta POP with nothing pushed -- recorded so that every written statement has at\n"
+          "#note\tleast one record and a statement-keyed comparison has no holes.\n"
+          "#note\treg is -1 on PUSH and POP, which name no register.\n", f);
+    fputs("#columns\tseq\tkind\tsect\tsectname\tloc\treg\tvalue\tvalsect\tvalsectname\tvaldsect\tabs\tby\n", f);
+    for (i = 0; i < nuev; i++) {
+        struct uev *u = &uevs[i];
+        int owner  = (u->sect > 0 && u->sect < MAXSECT) ? sect_owner[u->sect] : 0;
+        int vowner = (u->valsect > 0 && u->valsect < MAXSECT) ? sect_owner[u->valsect] : 0;
+        fprintf(f, "%ld\t%s\t%d\t", u->seq, uev_kind_name(u->kind), u->sect);
+        if (owner) sym_name_out(f, syms[owner - 1].name);
+        fprintf(f, "\t%ld\t%d\t%ld\t%d\t", u->loc, u->reg, u->value, u->valsect);
+        if (vowner) sym_name_out(f, syms[vowner - 1].name);
+        fprintf(f, "\t%d\t%d\t%s\n", u->valdsect, u->isabs, uev_by_name(u->by));
+    }
+    if (f != stdout && fclose(f)) { perror(fn); return 16; }
+    return 0;
+}
+
 static void usage(FILE *o) {
     fputs(
 "Usage: as370 [options...] file\n"
@@ -6192,6 +6379,11 @@ static void usage(FILE *o) {
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
 "  --sym=FILE         write the symbol table to FILE as tab-separated data (- = stdout)\n"
+"  --usings=FILE      write the USING/DROP/PUSH/POP events to FILE as tab-separated\n"
+"                     data (- = stdout). One record per event and per base\n"
+"                     register, each carrying its own section and location\n"
+"                     counter, so a base register's lifetime is readable without\n"
+"                     inference\n"
 "  -v                 print as utility version\n"
 "\n"
 "macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros\n"
@@ -6265,6 +6457,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", AS370_NAME, AS370_VER_H, __DATE__); return 0; }
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strncmp(argv[ai], "--sym=", 6) && argv[ai][6]) sym_fn = argv[ai] + 6;   /* the symbol table as data; -a's `s'/`x' remain the human cross-reference pages */
+        else if (!strncmp(argv[ai], "--usings=", 9) && argv[ai][9]) use_fn = argv[ai] + 9;   /* the USING/DROP/PUSH/POP events as data (#393); usings[] is live state and holds nothing at the end */
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strncmp(argv[ai], "--sysparm=", 10)) scopy(g_sysparm, argv[ai] + 10, 95);   /* IFOX PARM=SYSPARM(...); default is the null string */
@@ -6551,6 +6744,7 @@ int main(int argc, char **argv) {
     }
     emit_listing_a(lines, nl);
     if (sym_fn) { int e = emit_sym_export(sym_fn, src); if (e > optsev) optsev = e; }   /* a destination that cannot be written is the invocation's error, like an unopenable source: rc 16 */
+    if (use_fn) { int e = emit_use_export(use_fn, src); if (e > optsev) optsev = e; }
     errors = count_flagged_stmts(nl);
     /* A severity without a statement cannot happen -- every recorder marks before
      * it prints -- but if a line index ever went out of range the RC would drop to
