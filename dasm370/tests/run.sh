@@ -94,6 +94,11 @@ want '^ +DC +V\(EXTNAME\)' "an external reference comes back as a V-con"
 want '^ +ENTRY +ENTRYPT' "the LD entry is recovered -- invisible to any comparison of TEXT"
 want '^ +EXTRN +EXTNAME' "and the ER with it"
 
+# The END card's entry point is neither text nor a relocation, so NEITHER half
+# of the acceptance sees it -- and it is what the linkage editor resolves a
+# module's entry from. 23 of 30 modules lost it before this assertion existed.
+want '^ +END +ENTRYPT' "the END card's entry point comes back, by the name it has"
+
 # A hole is a hole. cmplmd370 tells `covered with zero' from `never defined',
 # so a DS that came back as a DC would move a byte nobody wrote.
 want '^HOLE|^ +DS +XL7' "an uncovered run comes back as DS, not as DC X'00..'"

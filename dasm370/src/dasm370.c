@@ -71,6 +71,8 @@ struct lditem { long addr; int owner; char name[9]; };
 static struct lditem ld[256];
 static int nld;
 
+static int  end_has_entry;                    /* the END card names one, and in OUR section */
+static long end_entry;
 static long sect_len;                         /* the ESD-declared length */
 static int  sect_esdid;
 static char sect_name[9];
@@ -526,6 +528,21 @@ int main(int argc, char **argv)
         }
     }
     for (c = 0; c < ncards; c++) obj_rld_walk(deck + c * 80, dasm_rld_cb, NULL);
+
+    /* The END card's entry point.  It is neither text nor a relocation, so
+     * neither half of the comparison sees it -- and it is what the linkage
+     * editor resolves a module's entry from, so a disassembly that drops it
+     * produces a deck that is byte-equal in everything measured and not an
+     * equivalent.  Found by the caller against 23 of 30 modules.
+     * An entry in ANOTHER section is not ours to name: IEHPROG1's END points
+     * into IEHPROG6, id 11, and a bare END is right there. */
+    for (c = 0; c < ncards; c++) {
+        struct obj_end e;
+        if (obj_end_get(deck + c * 80, &e) && e.has_entry && e.entry_esdid == sect_esdid) {
+            end_has_entry = 1;
+            end_entry = e.entry_addr;
+        }
+    }
     /* The ESD's length is the section's length, and the issue says so: a section
      * is padded to what the ESD declares.  TXT reaching past it is not a longer
      * section, it is a deck to report on -- extending the section to the text
@@ -542,6 +559,7 @@ int main(int argc, char **argv)
      * because a wrong one produces symbols that are plausible, consistent and
      * false while the bytes stay put. */
     lab[0] = 1;
+    if (end_has_entry && end_entry >= 0 && end_entry < sect_len) lab[end_entry] = 1;
     for (i = 0; i < nld; i++)
         if (ld[i].owner == sect_esdid && ld[i].addr >= 0 && ld[i].addr < sect_len)
             lab[ld[i].addr] = 1;
@@ -627,7 +645,13 @@ int main(int argc, char **argv)
             }
         }
     }
-    emit("", "END", "", "");
+    if (end_has_entry && end_entry >= 0 && end_entry < sect_len) {
+        char t[16];
+        label_name(end_entry, t);
+        emit("", "END", t, "");
+    } else {
+        emit("", "END", "", "");
+    }
     if (outf != stdout) fclose(outf);
     return 0;
 }
