@@ -74,7 +74,15 @@ derived file records what actually resolved rather than what was intended.
 
 =item B<--anchors=>B<refuse>|B<report>
 
-What a failed C<[[verify]]> does. B<refuse>, the default, stops at the first one
+What a failed check does --- B<every> check, not only a failed C<[[verify]]>.
+Measured over the 2,292 length-differing CSECTs: of 634 refused applications,
+B<404> were a derived base's range overflowing a B<shorter> section --- which is
+the population's defining property rather than an error --- and B<158> were the
+label collision detector firing, which is a divergence report with both offsets
+in it. 562 of 634 were measurements being refused instead of reported. Under
+B<report> the base range is clamped and says so, a label or anchor past the end
+says the module is shorter, a collision is written with both offsets and the
+hint's name is B<dropped>, and the run continues. B<refuse>, the default, stops at the first one
 and writes nothing --- right for a hand-written hint file, where a failed
 assertion is a mistake. B<report> disassembles anyway and writes each failure as
 a comment at its offset.

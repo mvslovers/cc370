@@ -166,14 +166,22 @@ static void name_of(const unsigned char *e, char *out)
  * table named -- it is a table here and not a scalar.
  */
 
-#define MAXHLABEL 4096
-#define MAXHRANGE 1024
-#define MAXHBASE 64
+/* Sized for a DERIVED file over a real module, not for a hand-written one.
+ * --derive-hints writes one anchor per label, so these scale with the module's
+ * symbol count rather than with a human's patience: 61 of the caller's 2,292
+ * length-differing CSECTs hit the old 512 and 3 hit the old 64 bases, and a
+ * module refused for a build constant is one nobody can measure by any other
+ * route.  Overflow is still REPORTED either way -- see hint_flush -- because a
+ * cap that truncates in silence is as370's usings[32], which lost every further
+ * USING in 31 modules without a word. */
+#define MAXHLABEL 16384
+#define MAXHRANGE 4096
+#define MAXHBASE  256
 #define MAXHB     64
-#define MAXHVR    512
+#define MAXHVR    16384
 #define MAXKV     12
 
-struct hlabel { long at; char name[9]; int line; };
+struct hlabel { long at; char name[9]; int line; int dropped; };
 struct hrange { long at, len; int line; };
 struct hbase { int reg; long baseval; char basename[16]; int by_name; long from, to; int line; };
 struct hbytes { long at; unsigned char b[MAXHB]; int n; int kind; int line; };
@@ -196,6 +204,37 @@ static struct uev    uevs[2 * MAXHBASE]; static int nuev;
 struct afail { long at; int n; unsigned char want[MAXHB]; };
 static struct afail afails[MAXHVR]; static int nafail;
 static int anchor_report;
+
+/* A note is a refusal that --anchors=report turns into a measurement.
+ *
+ * report mode used to mean "a failed [[verify]] is recorded rather than fatal",
+ * and that was too narrow: measured by the caller over the 2,292, of 634 refused
+ * applications 404 were a derived base's range overflowing a SHORTER section --
+ * which is the population's defining property, not an error -- and 158 were the
+ * label collision detector firing, which is a divergence report with both
+ * offsets in it.  562 of 634 were measurements being refused instead of
+ * reported.  So under report EVERY detector reports: the run continues and the
+ * finding comes out as a comment, at its offset where it has one. */
+struct hnote { long at; int has_at; char text[220]; };
+static struct hnote hnotes[MAXHVR]; static int nhnote;
+static int herr(int line, const char *msg);            /* defined with the parser */
+
+static void hnote_add(long at, int has_at, const char *text)
+{
+    if (nhnote >= MAXHVR) return;
+    hnotes[nhnote].at = at; hnotes[nhnote].has_at = has_at;
+    snprintf(hnotes[nhnote].text, sizeof hnotes[0].text, "%.200s", text);
+    nhnote++;
+}
+
+/* Refuse, or record and carry on.  One place, so a detector added later cannot
+ * forget to honour the mode. */
+static int hrefuse(int line, const char *msg, long at, int has_at)
+{
+    if (!anchor_report) return herr(line, msg);
+    hnote_add(at, has_at, msg);
+    return 0;
+}
 static char  hprefix[4] = "L";
 static char  hisa[8];
 static const char *hfile;
@@ -544,10 +583,15 @@ static int hints_load(const char *fn)
 }
 
 
+/* A dropped label is one the module's own ESD contradicted, and it must not be
+ * reachable from here either: clearing lab[] alone left the name still findable,
+ * so the disassembly carried it at BOTH offsets -- the module's and the hint's --
+ * which is the duplicate symbol the collision detector exists to prevent,
+ * reintroduced by the detector's own report path. */
 static const char *hlab_name(long a)
 {
     int i;
-    for (i = 0; i < nhlab; i++) if (hlab[i].at == a) return hlab[i].name;
+    for (i = 0; i < nhlab; i++) if (hlab[i].at == a && !hlab[i].dropped) return hlab[i].name;
     return NULL;
 }
 
@@ -563,6 +607,12 @@ static int hin_data(long a)
     int i;
     for (i = 0; i < nhdata; i++) if (a >= hdata[i].at && a < hdata[i].at + hdata[i].len) return 1;
     return 0;
+}
+
+static int hnote_cmp(const void *x, const void *y)
+{
+    const struct hnote *p = x, *q = y;
+    return p->at < q->at ? -1 : p->at > q->at ? 1 : 0;
 }
 
 static int afail_cmp(const void *x, const void *y)
@@ -639,10 +689,24 @@ static void emit_comment(const char *text)
     char line[256];
     int n;
     if (scanning) return;
+    /* WRAPPED, not truncated.  These carry divergence reports with two offsets
+     * in them and are read by the hundred over a corpus; a note cut at column 71
+     * is a note whose second offset is gone.  Broken at a blank where there is
+     * one, so a hex number is never split. */
+    n = (int)strlen(text);
+    if (n > 69) {
+        int cut = 69;
+        while (cut > 40 && text[cut] != ' ') cut--;
+        if (text[cut] != ' ') cut = 69;
+        { char head[80];
+          memcpy(head, text, (size_t)cut); head[cut] = 0;
+          emit_comment(head); }
+        while (text[cut] == ' ') cut++;
+        emit_comment(text + cut);
+        return;
+    }
     memset(line, ' ', sizeof line);
     line[0] = '*';
-    n = (int)strlen(text);
-    if (n > 69) n = 69;
     memcpy(line + 2, text, (size_t)n);
     if (card_format) {
         char sq[16];
@@ -984,9 +1048,25 @@ static int hints_verify_patch(void)
     for (i = 0; i < nhver; i++) {
         struct hbytes *v = &hver[i];
         int L = hver_len(v);
-        if ((rc = hrange_ok(v->at, L, v->line, "verify")) != 0) return rc;
-        if (!hcovered(v->at, L))
-            return herr(v->line, "verify covers bytes no TXT card defined -- there is nothing there to assert");
+        /* An anchor past the end of a SHORTER module, or over bytes it never
+         * defined, says the module is shorter -- which under report is the
+         * measurement and not an error.  Same argument as the clamped base: the
+         * population is defined by its sections not matching ours. */
+        if (v->at < 0 || L <= 0 || v->at + L > sect_len) {
+            snprintf(hmsg, sizeof hmsg,
+                     "anchor at X'%lX' is past the end of %s (X'%lX' bytes) -- the module is "
+                     "SHORTER than the source these hints came from",
+                     (unsigned long)v->at, sect_name, (unsigned long)sect_len);
+            if ((rc = hrefuse(v->line, hmsg, 0, 0)) != 0) return rc;
+            continue;
+        }
+        if (!hcovered(v->at, L)) {
+            snprintf(hmsg, sizeof hmsg,
+                     "anchor at X'%lX' covers bytes no TXT card defined -- there is nothing "
+                     "there to assert", (unsigned long)v->at);
+            if ((rc = hrefuse(v->line, hmsg, 0, 0)) != 0) return rc;
+            continue;
+        }
         if (v->kind == 0) {
             if (memcmp(img + v->at, v->b, (size_t)L)) {
                 char got[2 * MAXHB + 1], wnt[2 * MAXHB + 1];
@@ -1054,10 +1134,15 @@ static int hints_bind(void)
     int i, j, rc;
 
     for (i = 0; i < nhlab; i++) {
+        int skip = 0;
         if (hlab[i].at < 0 || hlab[i].at >= sect_len) {
-            snprintf(hmsg, sizeof hmsg, "label at X'%lX' is outside %s (X'%lX' bytes)",
-                     (unsigned long)hlab[i].at, sect_name, (unsigned long)sect_len);
-            return herr(hlab[i].line, hmsg);
+            snprintf(hmsg, sizeof hmsg,
+                     "label `%s' at X'%lX' is past the end of %s (X'%lX' bytes) -- the module "
+                     "is SHORTER than the source these hints came from",
+                     hlab[i].name, (unsigned long)hlab[i].at, sect_name, (unsigned long)sect_len);
+            if ((rc = hrefuse(hlab[i].line, hmsg, 0, 0)) != 0) return rc;
+            hlab[i].dropped = 1;
+            continue;
         }
         for (j = 0; j < i; j++) {
             if (hlab[j].at == hlab[i].at) return herr(hlab[i].line, "two [[label]] entries name one offset");
@@ -1084,8 +1169,16 @@ static int hints_bind(void)
                          "`%s' is at X'%lX' in this module and X'%lX' in the hint file "
                          "-- the module has diverged from the source these hints came from",
                          hlab[i].name, (unsigned long)ld[j].addr, (unsigned long)hlab[i].at);
-                return herr(hlab[i].line, hmsg);
+                /* Under report this is one of the most useful things the tool
+                 * says: the module's own ENTRY names an offset our source does
+                 * not, with both numbers.  The hint label is then DROPPED rather
+                 * than applied -- the module's own name outranks it, and
+                 * emitting both would put one symbol at two offsets. */
+                if ((rc = hrefuse(hlab[i].line, hmsg, ld[j].addr, 1)) != 0) return rc;
+                skip = 1;
+                break;
             }
+        if (skip) { hlab[i].dropped = 1; continue; }
         lab[hlab[i].at] = 1;
         stbrk[hlab[i].at] = 1;
     }
@@ -1129,10 +1222,26 @@ static int hints_bind(void)
             u->to = u->from + 4096;
             if (u->to > sect_len) u->to = sect_len;
         }
-        if (u->from < 0 || u->to > sect_len || u->from >= sect_len) {
+        /* A derived base's `to' comes from OUR section; IBM's is a different
+         * length, which is what "length-differing" means -- so an overflowing
+         * range is the population's defining property and not an error.  It is
+         * 404 of the caller's 634 refused applications.  Under report the range
+         * is clamped to the section and the clamp is stated; under refuse it
+         * stays an error, which is right for a hand-written file. */
+        if (u->from < 0 || u->from >= sect_len || u->to > sect_len) {
             snprintf(hmsg, sizeof hmsg, "base from X'%lX' to X'%lX' is outside %s (X'%lX' bytes)",
                      (unsigned long)u->from, (unsigned long)u->to, sect_name, (unsigned long)sect_len);
-            return herr(u->line, hmsg);
+            if (u->from < 0 || u->from >= sect_len) {
+                if ((rc = hrefuse(u->line, hmsg, 0, 0)) != 0) return rc;
+                continue;                       /* nothing to clamp to: it begins outside */
+            }
+            if (!anchor_report) return herr(u->line, hmsg);
+            snprintf(hmsg, sizeof hmsg,
+                     "base reg %d runs to X'%lX' but %s is X'%lX' bytes -- clamped, and the "
+                     "section is SHORTER than the source these hints came from",
+                     u->reg, (unsigned long)u->to, sect_name, (unsigned long)sect_len);
+            hnote_add(0, 0, hmsg);
+            u->to = sect_len;
         }
         if (u->by_name) {
             /* A name has to resolve to an OFFSET or nothing below can be
@@ -1838,7 +1947,7 @@ static int derive_emit(FILE *o, const char *as, const char *asver, long assize,
 static void walk_section(void)
 {
     long a = 0;
-    int ev = 0, af = 0;
+    int ev = 0, af = 0, nt = 0;
 
     while (a < sect_len) {
         const struct rlditem *r;
@@ -1847,6 +1956,12 @@ static void walk_section(void)
          * the point of --anchors=report is to say WHERE the module and the
          * source derived from part company, and stopping at the first one
          * answers that with a return code instead of with an offset. */
+        /* A note that names an offset is written at it, beside the anchor
+         * failures, because a divergence report is only useful where it happened. */
+        while (nt < nhnote && hnotes[nt].has_at && hnotes[nt].at <= a) {
+            emit_comment(hnotes[nt].text);
+            nt++;
+        }
         while (af < nafail && afails[af].at <= a) {
             char t[320], got[2 * MAXHB + 1], wnt[2 * MAXHB + 1];   /* two 128-char hex strings fit; emit() trims to 69 */
             hexbytes(img + afails[af].at, afails[af].n, got);
@@ -1935,6 +2050,7 @@ static void walk_section(void)
             a += n;
         }
     }
+    while (nt < nhnote) { if (hnotes[nt].has_at) emit_comment(hnotes[nt].text); nt++; }
     /* A DROP whose `to' is the section's end has no statement to precede. */
     while (ev < nuev) {
         if (!uevs[ev].open) {
@@ -1961,10 +2077,11 @@ static void usage(FILE *o)
 "                     wrong macro library is a wrong one that looks right\n"
 "  -I DIR             macro library for --derive-hints (repeatable)\n"
 "  --as370 PATH       which as370 to run (default: beside this binary, then PATH)\n"
-"  --anchors=MODE     refuse (default) stops at the first failed [[verify]];\n"
-"                     report disassembles anyway and writes each failure as a\n"
-"                     comment at its offset, so the first one bounds where the\n"
-"                     module and the source the hints came from diverge\n"
+"  --anchors=MODE     refuse (default) stops at the first failed check; report\n"
+"                     disassembles anyway and writes EVERY finding as a comment\n"
+"                     at its offset -- a failed anchor, a base range clamped to\n"
+"                     a shorter section, a label the module names elsewhere --\n"
+"                     so the first failed anchor bounds the divergence\n"
 "  --hints FILE       read a hint file: labels, data and fill runs, base\n"
 "                     registers with a lifetime, and the VERIFY/REPLACE pair.\n"
 "                     A TOML subset, parsed here; anything outside the grammar\n"
@@ -2259,6 +2376,7 @@ emit_source:
      * offset so everything downstream of it is arithmetic. */
     if (hints_file && (rc = hints_bind()) != 0) return rc;
     if (nafail) qsort(afails, (size_t)nafail, sizeof afails[0], afail_cmp);
+    if (nhnote) qsort(hnotes, (size_t)nhnote, sizeof hnotes[0], hnote_cmp);
 
     /* Pass one, and only when a USING gives a branch target a meaning: decode
      * the section without writing it and label every BC target the USING
@@ -2289,6 +2407,23 @@ emit_source:
         snprintf(rem, sizeof rem, "%ld bytes, from %.40s", sect_len, src);
         emit(sect_name, "CSECT", "", rem);
     }
+    /* One line first, because a run over a whole population is read by the
+     * hundred: the detail below is what a script greps, this is what a person
+     * sees.  The counts are of findings, not of failures -- under report a
+     * finding IS the output. */
+    if (anchor_report && (nhnote || nafail)) {
+        char t[200];
+        snprintf(t, sizeof t, "HINTS REPORT: %d anchor(s) failed, %d note(s)", nafail, nhnote);
+        emit_comment(t);
+        if (nafail) {
+            snprintf(t, sizeof t, "HINTS REPORT: first failed anchor at %06lX -- the hints "
+                                  "hold below it, so that bounds the divergence",
+                     (unsigned long)afails[0].at);
+            emit_comment(t);
+        }
+    }
+    for (i = 0; i < nhnote; i++)
+        if (!hnotes[i].has_at) emit_comment(hnotes[i].text);
     for (i = 0; i < nld; i++)
         if (ld[i].owner == sect_esdid) emit("", "ENTRY", ld[i].name, "");
     /* Anything our relocations point at that is not this section is external to

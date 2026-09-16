@@ -537,6 +537,67 @@ fi
 [ $? = 16 ] && pass "--derive-hints WRITES a hint file and refuses to also read one" \
             || fail "--derive-hints WRITES a hint file and refuses to also read one"
 
+# ---- --anchors=report means report, for EVERY detector --------------------
+# Measured by the caller over the 2,292 length-differing CSECTs: of 634 refused
+# applications, 404 were a derived base's range overflowing a SHORTER section --
+# which is the population's defining property, not an error -- and 158 were the
+# label collision detector firing, which is a divergence report with both
+# offsets in it. 562 of 634 were measurements being refused instead of reported,
+# and fixing that took the usable population from 1,055 to 1,617.
+#
+# So: refuse stays the default and stays right for a hand-written file. Under
+# report every detector reports, the run continues, and the finding is a comment
+# at its offset where it has one.
+cat > "$T/short.s" <<'EOF'
+* a DERIVE section far shorter than the one the hints came from
+DERIVE   CSECT
+DERENT   BALR  12,0
+         USING *,12
+         BR    14
+         END   DERENT
+EOF
+"$A" "$T/short.s" -o "$T/short.obj" >/dev/null 2>&1
+rm -f "$T/sr.s"
+"$D" --hints "$DH.toml" "$T/short.obj" -o "$T/sr.s" >/dev/null 2>&1
+[ $? = 16 ] && [ ! -e "$T/sr.s" ] \
+    && pass "a shorter module still REFUSES by default -- a hand-written file's ranges are assertions" \
+    || fail "a shorter module still REFUSES by default"
+"$D" --anchors=report --format free --hints "$DH.toml" "$T/short.obj" -o "$T/sr.s" 2>/dev/null
+rcsr=$?
+srwant() { if grep -qE "$1" "$T/sr.s"; then pass "$2"; else fail "$2"; fi; }
+[ $rcsr = 0 ] && pass "under report a shorter module is disassembled anyway" \
+              || fail "under report a shorter module is disassembled anyway (rc $rcsr)"
+srwant '^\* HINTS REPORT: [0-9]+ anchor' "a summary line, because a run over a population is read by the hundred"
+srwant 'clamped, and' "a base overruning the section is CLAMPED and says so -- 404 of the caller's 634"
+srwant "anchor at X'1A' is past the end" "an anchor past the end is the measurement, not an error"
+srwant "label .LOOPTOP. at X'6' is past the end" "and so is a label past the end"
+
+# The collision detector under report: both offsets, and the hint label DROPPED.
+# Clearing lab[] alone left the name findable and the disassembly carried it at
+# BOTH offsets -- the duplicate symbol the detector exists to prevent,
+# reintroduced by the detector's own report path.
+"$D" --anchors=report --format free --hints "$DH.toml" "$T/moved.obj" -o "$T/mr.s" 2>/dev/null
+if grep -qE "^\* .DERENT. is at X'2' in this module and X'0' in the hint file" "$T/mr.s"; then
+    pass "under report a label collision is a divergence report with both offsets"
+else
+    fail "under report a label collision is a divergence report with both offsets"
+fi
+if [ "$(grep -c '^DERENT ' "$T/mr.s")" = 1 ]; then
+    pass "and the hint's name is dropped, so one symbol is not emitted at two offsets"
+else
+    fail "and the hint's name is dropped, so one symbol is not emitted at two offsets"
+    grep -n '^DERENT ' "$T/mr.s"
+fi
+# A note carries two offsets, so a note cut at column 71 is a note whose second
+# offset is gone. Wrapped, never truncated -- and still 80 columns in card form.
+"$D" --anchors=report --hints "$DH.toml" "$T/moved.obj" -o "$T/mc.s" 2>/dev/null
+if [ "$(awk '{ if (length($0) != 80) n++ } END { print n+0 }' "$T/mc.s")" = 0 ] \
+   && [ "$(awk '{ if (substr($0,72,1) != " ") n++ } END { print n+0 }' "$T/mc.s")" = 0 ]; then
+    pass "a wrapped comment is still 80 columns with column 72 blank"
+else
+    fail "a wrapped comment is still 80 columns with column 72 blank"
+fi
+
 # ---- refusals -------------------------------------------------------------
 "$D" --csect NOSUCHCS "$T/a.obj" -o /dev/null >/dev/null 2>&1
 [ $? = 2 ] && pass "an unknown --csect exits 2, not 0" || fail "an unknown --csect exits 2, not 0"
