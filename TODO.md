@@ -651,6 +651,44 @@ second's text — exit 1, no warning. TK5 holds exactly **one** overlay member
 (`HEWLF064`, 7 segments) and it was refused for another reason, so no wrong
 verdict was ever published from it here.
 
+**2026-09-16, fourth — #381 is done and #382 is in flight.** `dasm370` exists:
+deck or bound member in, one CSECT out, the decoder inverted from as370's own
+`opc_table.h` and not copied from it. Four invariants hold it up — nothing is
+emitted that does not reproduce its own bytes; re-encoding is *necessary and not
+sufficient* (an `SRP` rounding digit above 9, an instruction at an odd offset and
+a one-byte S opcode each re-encode perfectly and are still not instructions); the
+RLD set is built *before* the decoder runs, because a decoder that relocates
+afterwards has already produced a plausible instruction for every address
+constant; and `A(...)`/`V(...)` align where the length-modified forms do not.
+
+**And the round trip cannot see the thing a disassembler gets wrong.** A mutant
+of `opc_table.h` with `BE` and `BZ`'s `dec` swapped prints `BZ` and still
+reassembles byte-identically. That is why the suite asserts mnemonics separately,
+why the decoder's acceptance is 30 control CSECTs whose source we already have
+rather than the 66 that have none — those measure *reach*, not truth — and why
+#382's rules are each scored against a mutant of the current source.
+
+#382 adds `--hints`: a TOML subset parsed in-repo that carries labels, data and
+fill runs, base registers **with a lifetime**, and the `VERIFY`/`REPLACE` pair. A
+hint base is applied only because its writer asserted the range; an *inferred*
+one will be written to the file and never applied, because a base register
+attributed to the wrong range produces symbols that are plausible, consistent and
+false while the bytes stay put — so neither the round trip nor anything
+downstream can object.
+
+**`base` and `using` are two statements, and finding that out cost most of a
+day.** Both sessions had the key marked *undefined*, each having grepped its own
+repository, and it was documented all along in a third tree neither had searched
+— Pospischil's `mvs38dasm`, which Mike knew to look in. A `BASE` is a base
+register covering a range of **the CSECT itself**; a `USING` points a register at
+a **DSECT** and carries that mapping. Its `BASE` also carries a lifetime, with
+`to` defaulting to `from + 4096` — one base register's reach, so the default is
+the natural one. Read for the meaning of a word, never copied: that tree carries
+no licence statement, so the semantics are its and the file format is ours.
+`[[using]]` and `[[dsect]]` therefore refuse together, waiting on the symbol
+table `--derive-hints` brings. Neither instrument here was wrong; both were
+pointed at the wrong place, which is a third variety of today's shape.
+
 **2026-09-16, second — #373 is in flight on `feat/as370-sym-export`, and it is
 output only.** `as370 --sym=FILE` writes one tab-separated record per
 symbol-table entry: name, value, length, type, section and its name, DSECT
@@ -868,7 +906,7 @@ those do not already cover.
 | #109 | — | `libmvs370` **done** (#116, #119); `libobj370` **readers done** (#120, #121); **adoption of as370/ld370/ar370 open** |
 | #110 | — | `cmplmd370` — **built and accepted, and still open on one behaviour** (#122, #123, #124). Compare, `--clearrld`, `--csect`, `--difin`/`--difout`, `--json`, hole classification all work; `--difout` does **not** merge `--difin` forward, so a reviewed run cannot seed the next one — the property the issue asks `--difout` for. Worse, `--difin acc --difout acc` on a converged comparison leaves `acc` **zero bytes**: `difin_load()` runs before the output file is opened, and an identical section writes nothing. That is data loss in the obvious usage, and it is why this stays open |
 | #111 | #109 readers | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
-| #112 | #109 readers, #373, #374 | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
+| #112 | #109 readers, #373, #374 | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta. **Split into six sub-issues** — #381 the decoder core (**done**: #388, #389, #390), #382 the hints, #383 reachability, #384 `--align-diff`, #385 the repair contract, #386 macro emission. Each carries its own deliverable and acceptance with a pointer back to #112; the reasoning is not copied, so none of them goes stale when #112 moves |
 | #113 | *ownership only* | read a **foreign** IEBCOPY unload — an FB source library unloaded by MVS parses to zero members today |
 | #117 / #118 | — | measured defects **in the emitters**; they gate unifying them, and nothing else |
 

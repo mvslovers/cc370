@@ -17,6 +17,33 @@
 # The fixture is a SOURCE, tests/formats.s, and not a hand-built deck: as370 is
 # the encoder, so the bytes under test are the ones the assembler really emits
 # and there is one reader on each side of the comparison.
+#
+# THE HINTS BLOCK IS SCORED AGAINST MUTANTS, not against itself. Most of what
+# --hints adds is a RULE rather than a behaviour -- "VERIFY reads the original
+# bytes", "refuse, never skip", "write a symbol only where as370 would pick the
+# register the bytes name" -- and a rule cannot be demonstrated by a fixture
+# that passes. So each was mutated out of dasm370.c and the suite re-run:
+#
+#   sym_disp writes a symbol whatever register as370 would pick    2 fail
+#       ... including the DECK comparison under the overlap, which is the
+#       strong form: the symbol resolves to the same address and the
+#       assembler re-encodes it against a different base register.
+#   REPLACE applied BEFORE VERIFY                                  1 fail
+#       ... and only the LITERAL verify catches it. The date-shaped one does
+#       not: the patched bytes are a valid date too.
+#   an unknown key is skipped instead of refused                   1 fail
+#   the output file is opened before the hints are bound           4 fail
+#   the fill uniformity check is dropped                           1 fail
+#   two live bases on one register are allowed                     1 fail
+#   the `scanning' guard is removed from emit()                   10 fail
+#   the comment stripper cuts at the first `#' anywhere             1 fail
+#       ... `#', `$' and `@' are ALPHABETIC in Assembler XF, so R#SAVE is an
+#       ordinary label. This one was a real defect, found in review.
+#
+# Scored on 2026-09-16 with a rebuild guard on the binary's sha256. Without
+# one, two mutants ran against the same build -- make's mtime granularity is a
+# second and the harness rewrote the source faster than that -- and the second
+# score was the first mutant's, reported against the second mutant's name.
 cd "$(dirname "$0")/.." || exit 2
 D=./dasm370
 A=../as370/as370
@@ -120,6 +147,290 @@ if [ "$(awk '{ if (substr($0,73,8) !~ /^[0-9]{8}$/) n++ } END { print n+0 }' "$T
 else
     fail "card format: the sequence number is not in 73-80"
 fi
+
+# ---- hints (#382) ---------------------------------------------------------
+# Every hint file is written here rather than committed, so the thing being
+# asserted and the thing being read are one screen apart. The offsets are the
+# fixture's own: 0xD0 the mm/dd/yy date, 0xD8 the Julian one, 0xDE a 24-byte
+# uniform run, 0xF6 eight bytes that decode as four LRs and are not code.
+H="$T/h"
+hrun() {                       # hrun <file> <extra args...>; leaves rc in $hrc
+    rm -f "$T/out.s"
+    "$D" --format free --hints "$1" "$T/a.obj" -o "$T/out.s" >"$T/h.out" 2>&1
+    hrc=$?
+}
+hwant() { if grep -qE "$1" "$T/out.s"; then pass "$2"; else fail "$2"; sed -n 1,3p "$T/h.out"; fi; }
+hdeny() { if grep -qE "$1" "$T/out.s"; then fail "$2"; else pass "$2"; fi; }
+# A refusal has to leave NO file behind, not merely a non-zero rc: a half
+# written disassembly that assembles is the failure this whole tool is shaped
+# against. So the output is opened last and every refuse() asserts both.
+refuse() {                     # refuse <file> <what it proves>
+    hrun "$1"
+    if [ $hrc = 16 ] && [ ! -e "$T/out.s" ]; then pass "$2"
+    else fail "$2 (rc $hrc, output file $([ -e "$T/out.s" ] && echo left || echo absent))"
+         sed -n 1,2p "$T/h.out"; fi
+}
+
+cat > "$H.using" <<'EOF'
+prefix = "P"
+[[label]]
+at   = 0xAC
+name = "MVCTARG"
+[[base]]
+reg   = 12
+value = 0x2
+from  = 0x2
+to    = 0xB2
+EOF
+hrun "$H.using"
+[ $hrc = 0 ] && pass "a hint file with a [[base]] is accepted" || { fail "a hint file with a [[base]] is accepted"; cat "$T/h.out"; }
+hwant '^ +USING +P000002,12' "the USING statement is emitted where the file says the base begins"
+hwant '^ +DROP +12'          "and dropped where the file says it ends"
+hwant '^P0000A4 +BR +14'     "a BC target under the base gets a label -- nothing else in the module names it"
+hwant '^ +BE +P0000A4'       "and the branch names it instead of 162(0,12)"
+hwant '^ +EX +0,MVCTARG'     "a [[label]] outranks the manufactured name"
+hwant '^ +L +4,P000002\+X.E.\(1\)' "the index register survives symbolisation"
+hdeny '^ +BE +162'           "no branch is left numeric under the base"
+
+# The round trip, with the hints applied. This is the one that would catch a
+# symbol resolving to an address the assembler puts somewhere else.
+"$D" --hints "$H.using" "$T/a.obj" -o "$T/hc.s" 2>/dev/null
+"$A" "$T/hc.s" -o "$T/hc.obj" > "$T/hc.out" 2>&1
+if [ $? -ge 8 ]; then fail "the hinted disassembly does not assemble"; head -5 "$T/hc.out"
+else
+    head -c $n "$T/hc.obj" > "$T/hc.cut"
+    cmp -s "$T/a.cut" "$T/hc.cut" \
+        && pass "round trip with hints: the deck still reassembles byte-identically" \
+        || { fail "round trip with hints: the deck differs"; cmp "$T/a.cut" "$T/hc.cut" | head -3; }
+fi
+
+# TWO bases over one target, and the bytes name the register as370 would NOT
+# pick. R11 is a deliberate fiction -- nothing in the fixture loads it -- but
+# as370's rule is smallest displacement, so it wins the targets around X'A4'
+# and every base-12 operand there must come back NUMERIC. Drop the check in
+# as370_base_for() and this still looks right and the deck stops matching.
+cat > "$H.overlap" <<'EOF'
+[[base]]
+reg   = 12
+value = 0x2
+from = 0x2
+to   = 0xB2
+[[base]]
+reg   = 11
+value = 0x60
+from  = 0x2
+to    = 0xB2
+EOF
+hrun "$H.overlap"
+hwant '^ +BE +162\(0,12\)' "a second base that as370 would prefer forces the numeric form back"
+"$D" --hints "$H.overlap" "$T/a.obj" -o "$T/ov.s" 2>/dev/null
+"$A" "$T/ov.s" -o "$T/ov.obj" > /dev/null 2>&1
+head -c $n "$T/ov.obj" > "$T/ov.cut" 2>/dev/null
+cmp -s "$T/a.cut" "$T/ov.cut" \
+    && pass "and the deck is still byte-identical under the overlap" \
+    || fail "and the deck is still byte-identical under the overlap"
+
+# `to' may be omitted. The default is not a guess: one base register addresses
+# 4096 bytes, so that is where it stops on its own -- clamped to the section.
+# mvs38dasm's BASE statement documents the same default.
+cat > "$H.noto" <<'EOF'
+[[base]]
+reg   = 12
+value = 0x2
+from  = 0x2
+EOF
+hrun "$H.noto"
+[ $hrc = 0 ] && pass "a [[base]] without \`to' is accepted" || fail "a [[base]] without \`to' is accepted"
+hwant '^ +BE +L0000A4' "and reaches from + 4096, clamped to the section, so the whole of it resolves"
+hwant '^ +DROP +12'    "and the DROP still marks where the assertion stops"
+hwant '^L0000A4 +BR'   "the default prefix is L, since this file sets none"
+
+cat > "$H.dupreg" <<'EOF'
+[[base]]
+reg   = 12
+value = 0x2
+from  = 0x2
+to    = 0x80
+[[base]]
+reg   = 12
+value = 0x4
+from  = 0x40
+to    = 0xB2
+EOF
+refuse "$H.dupreg" "two live bases on one register are refused -- as370 holds one entry per register"
+
+cat > "$H.nolife" <<'EOF'
+[[base]]
+reg   = 12
+value = 0x2
+from  = 0x40
+to    = 0x40
+EOF
+refuse "$H.nolife" "a base whose range is empty is refused -- #112 has no form without a lifetime"
+
+# A label inside an instruction re-cuts it, and that is right: something enters
+# there, so the boundary we had was the wrong one.
+cat > "$H.midins" <<'EOF'
+[[label]]
+at   = 0x6
+name = "MIDDLE"
+EOF
+hrun "$H.midins"
+hwant '^ +DC +X.4130.'  "a [[label]] inside an instruction turns it into DC"
+hdeny '^ +LA +3,'       "and the instruction it split is gone"
+hwant '^MIDDLE +DC'     "with the label on the second half"
+
+# `#', `$' and `@' are ALPHABETIC to Assembler XF, so R#SAVE is an ordinary
+# label and IBM's source is full of them. A comment stripper that cuts at the
+# first `#' anywhere would take this file's name in half -- and --derive-hints
+# will write exactly such names out of real source.
+cat > "$H.hash" <<'EOF'
+[[label]]
+at   = 0x100
+name = "R#SAVE"     # and a real comment, after the value
+EOF
+hrun "$H.hash"
+hwant '^R#SAVE +DC' "a # inside a quoted name is part of the name, not the start of a comment"
+
+cat > "$H.data" <<'EOF'
+[[data]]
+at  = 0xF6
+len = 8
+EOF
+hrun "$H.data"
+hwant "^ +DC +X'1822188218831884'" "[[data]] stops a run decoding as instructions"
+hdeny '^ +LR +8,4' "and the LR it was decoding as is gone"
+
+cat > "$H.fill" <<'EOF'
+[[fill]]
+at  = 0xDE
+len = 24
+EOF
+hrun "$H.fill"
+hwant "^ +DC +24X'00'" "[[fill]] writes a duplication factor instead of two cards of hex"
+
+cat > "$H.fillbad" <<'EOF'
+[[fill]]
+at  = 0xD0
+len = 8
+EOF
+refuse "$H.fillbad" "a [[fill]] over a run that is not uniform is refused"
+
+cat > "$H.fillhole" <<'EOF'
+[[fill]]
+at  = 0xC5
+len = 4
+EOF
+refuse "$H.fillhole" "a [[fill]] over bytes no TXT defined is refused -- that run is a DS"
+
+# VERIFY and REPLACE. The order is the argument: VERIFY reads the ORIGINAL
+# bytes, which is the only reason REPLACE is safe. Patch the two halves in the
+# other order and the verify below passes on bytes it did not assert.
+cat > "$H.rep" <<'EOF'
+[[verify]]
+at   = 0xD0
+date = "mdy"
+[[replace]]
+at    = 0xD0
+bytes = "F0F161F0F161F7F0"
+EOF
+hrun "$H.rep"
+[ $hrc = 0 ] && pass "a REPLACE under a covering VERIFY is applied" || fail "a REPLACE under a covering VERIFY is applied"
+hwant 'F0F161F0F161F7F0' "and the patched bytes are what comes out"
+
+# The ORDER, pinned by a literal VERIFY rather than a date one. A date-shaped
+# verify cannot see the swap -- the patched bytes are a valid date too -- so it
+# would pass on a binary that patched first and asserted afterwards, which is
+# the one thing the pair exists to prevent.
+cat > "$H.order" <<'EOF'
+[[verify]]
+at    = 0xD0
+bytes = "F0F961F0F761F2F6"
+[[replace]]
+at    = 0xD0
+bytes = "F0F161F0F161F7F0"
+EOF
+hrun "$H.order"
+[ $hrc = 0 ] && pass "VERIFY reads the ORIGINAL bytes: assert-then-patch, not patch-then-assert" \
+             || { fail "VERIFY reads the ORIGINAL bytes: assert-then-patch, not patch-then-assert"; sed -n 1,2p "$T/h.out"; }
+
+cat > "$H.repbare" <<'EOF'
+[[replace]]
+at    = 0xD0
+bytes = "F0F161F0F161F7F0"
+EOF
+refuse "$H.repbare" "a REPLACE no VERIFY covers is refused -- an unasserted patch is the unsafe one"
+
+cat > "$H.verbad" <<'EOF'
+[[verify]]
+at    = 0xD0
+bytes = "0102030405060708"
+EOF
+refuse "$H.verbad" "a VERIFY mismatch refuses, and writes nothing"
+grep -q "the module holds F0F961F0F761F2F6" "$T/h.out" \
+    && pass "and the refusal prints what the module actually holds" \
+    || fail "and the refusal prints what the module actually holds"
+
+# Both date shapes, and each rejecting the other's. One shape alone is noisy
+# over 430 decks (#112), which is why there are two.
+cat > "$H.dmdy" <<'EOF'
+[[verify]]
+at   = 0xD0
+date = "mdy"
+EOF
+hrun "$H.dmdy"; [ $hrc = 0 ] && pass "date = \"mdy\" matches 09/07/26" || fail "date = \"mdy\" matches 09/07/26"
+cat > "$H.djul" <<'EOF'
+[[verify]]
+at   = 0xD8
+date = "julian"
+EOF
+hrun "$H.djul"; [ $hrc = 0 ] && pass "date = \"julian\" matches 26.250" || fail "date = \"julian\" matches 26.250"
+cat > "$H.dcross" <<'EOF'
+[[verify]]
+at   = 0xD8
+date = "mdy"
+EOF
+refuse "$H.dcross" "and mdy refuses the Julian one"
+cat > "$H.dcross2" <<'EOF'
+[[verify]]
+at   = 0xD0
+date = "julian"
+EOF
+refuse "$H.dcross2" "and julian refuses the mm/dd/yy one"
+
+# The grammar refuses; it does not skip. A hint silently ignored is a file that
+# looks applied and is not, which is the failure mode this format exists under.
+printf 'prefix = "P"\nnosuchkey = 3\n'        > "$H.badkey"
+refuse "$H.badkey" "an unknown key is refused, not ignored"
+printf '[[nosuchtable]]\nat = 0\n'            > "$H.badtab"
+refuse "$H.badtab" "an unknown table is refused"
+printf '[label]\nat = 0\n'                    > "$H.single"
+refuse "$H.single" "a single-bracket table is refused -- there is one way to write one"
+printf 'base = 0x10\n'                        > "$H.base"
+refuse "$H.base" "\`base' at the root says it is a table, rather than doing nothing"
+printf '[[using]]\nreg = 12\n'                > "$H.using2"
+refuse "$H.using2" "[[using]] says it is not implemented -- a USING points at a DSECT, [[base]] at this section"
+printf '[[label]]\nat = 0x10\nat = 0x20\n'    > "$H.dup"
+refuse "$H.dup" "a key given twice is refused"
+printf '[[label]]\nat = 0x10\n'               > "$H.noname"
+refuse "$H.noname" "a missing required key is refused"
+printf '[[label]]\nat = 0x10\nname = 3\n'     > "$H.wrongkind"
+refuse "$H.wrongkind" "a value of the wrong kind is refused"
+printf '[[label]]\nat = 0x9999\nname = "X"\n' > "$H.outside"
+refuse "$H.outside" "an offset outside the section is refused, not clamped"
+printf '[[label]]\n[[label]]\nat = 0\nname = "X"\n' > "$H.empty"
+refuse "$H.empty" "an EMPTY table is refused too -- skipping it is still skipping"
+printf 'nonsense\n'                           > "$H.junk"
+refuse "$H.junk" "a line that is not a comment, a header or key = value is refused"
+printf '[[dsect]]\nname = "TCB"\n'            > "$H.dsect"
+refuse "$H.dsect" "[[dsect]] says it is not implemented rather than doing nothing"
+printf 'prefix = "TOOLONG"\n'                 > "$H.prefix"
+refuse "$H.prefix" "a prefix longer than two characters is refused -- eight is all a symbol has"
+
+rm -f "$T/out.s"
+"$D" --hints "$T/does-not-exist" "$T/a.obj" -o "$T/out.s" >/dev/null 2>&1
+[ $? = 16 ] && [ ! -e "$T/out.s" ] && pass "a hint file that cannot be opened is refused" \
+                                   || fail "a hint file that cannot be opened is refused"
 
 # ---- refusals -------------------------------------------------------------
 "$D" --csect NOSUCHCS "$T/a.obj" -o /dev/null >/dev/null 2>&1

@@ -8,6 +8,16 @@
 * Keep every line under column 72.  A card that reaches it eats the
 * next card, statement and all, at severity 4 -- silently.
 *
+* The odd-looking displacements on the L and the ST are deliberate.
+* BALR 12,0 here makes R12 hold offset 2, so a fullword operand only
+* lands on a fullword boundary at a displacement of 4n+2.  It does
+* not matter while the operand is written D(B) -- as370 cannot check
+* an address it cannot resolve -- but the hints fixture gives R12 a
+* USING, and then it can: with 12 and 16 the reassembly is correct
+* and flagged IFO220.  That is the assembler gaining information,
+* not the disassembler losing any; the fixture simply has no reason
+* to make the point with a diagnostic in the test output.
+*
 FORMATS  CSECT
          ENTRY ENTRYPT
          EXTRN EXTNAME
@@ -15,8 +25,8 @@ ENTRYPT  BALR  12,0
          USING *,12
          LR    1,2                    RR
          LA    3,8(0,12)              RX
-         L     4,12(1,12)             RX indexed
-         ST    4,16(0,12)             RX
+         L     4,14(1,12)             RX indexed
+         ST    4,18(0,12)             RX
          LM    2,4,20(13)             RS three operands
          STM   14,12,12(13)           RS three operands
          SLL   5,4(0)                 RS shift, R3 zero
@@ -62,4 +72,13 @@ LITS     DC    C'ABCD'                plain text
          DC    X'0102030405'          plain bytes
 HOLE     DS    XL7                    a hole: covered by no TXT card
          DC    F'1'                   and text again after it
+*
+* For the hints fixture (#382).  None of it is reachable code; it is
+* here so the hint file has something real to point at.
+*
+DATEMDY  DC    C'09/07/26'            the &SYSDATE shape, for VERIFY
+DATEJUL  DC    C'26.250'              the Julian eyecatcher shape
+FILLRUN  DC    24X'00'                a uniform run, for [[fill]]
+DATARUN  DC    X'1822188218831884'    four LRs, and not code
+R#SAVE   DC    F'0'                   a name with a # in it
          END   ENTRYPT

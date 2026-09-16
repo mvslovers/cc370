@@ -44,6 +44,13 @@ constant in the module, and neither the bytes nor the round trip will object.
 Disassemble this control section. The default is the first one in the deck.
 An unknown name is an error (exit 2), not an empty result.
 
+=item B<--hints> I<FILE>
+
+Read a hint file: labels, data and fill runs, base registers with a lifetime,
+and the C<VERIFY>/C<REPLACE> pair. L</HINTS> has the grammar in full. Anything outside
+that grammar is B<refused>, with the line number, and nothing is written ---
+a hint silently ignored is a file that looks applied and is not.
+
 =item B<--format> B<card>|B<free>
 
 B<card>, the default, writes 80-column records with the sequence number in
@@ -79,14 +86,113 @@ which no comparison of section text can see; C<EXTRN> for everything the
 relocations point at that is not this section; and runs no TXT card covers as
 C<DS>, because a hole is not a zero.
 
+=head1 HINTS
+
+A hint file says what the bytes cannot. It is a subset of TOML, parsed in
+B<dasm370> itself with no dependency, and the grammar is deliberately small so
+that everything outside it can be refused rather than skipped:
+
+    # comment                to end of line; a blank line is ignored
+    key = value              at the ROOT, before any table header
+    [[table]]                begins one element of an array of tables
+    key = value              belonging to it
+
+A value is C<"a string"> or an integer, decimal or C<0x>-prefixed. A
+single-bracket C<[table]> is refused, so there is one way to write a table. An
+unknown table, an unknown key, a key given twice, a missing required key, a value
+of the wrong kind and an offset outside the section are each exit 16 naming the
+line --- and each leaves no output file, because the output is opened after every
+refusal.
+
+=over 4
+
+=item B<isa> = I<"s370">, B<prefix> = I<"P">  (at the root)
+
+As B<--isa>; the command line wins over the file. B<prefix> replaces the C<L> of
+a manufactured label such as C<L0000A4>, so two disassemblies can be assembled
+together. One or two characters: the name is the prefix plus six hex digits and a
+symbol holds eight.
+
+=item [[label]] B<at>, B<name>
+
+What the source called this offset. It outranks the C<ENTRY> name the module
+carries, which in turn outranks the manufactured one. A label inside an
+instruction re-cuts it --- that instruction becomes C<DC> --- which is right:
+something enters there, so the boundary was wrong.
+
+=item [[data]] B<at>, B<len>
+
+Do not decode this run as instructions.
+
+=item [[fill]] B<at>, B<len>
+
+One repeated byte, written with a duplication factor: C<DC 184X'00'> instead of
+twelve cards of hex. Refused unless the run is covered by a TXT card, uniform,
+free of relocations and free of labels --- each of which is arithmetic, because a
+fill that is wrong moves bytes.
+
+=item [[base]] B<reg>, B<value>, B<from> [, B<to>]
+
+A base register covering a range of B<this section> --- ordinary addressing,
+"where am I in my own CSECT". C<value> is what the register points at: a symbol
+(the section, an C<ENTRY> of it, or a C<[[label]]> in this file) or an offset.
+
+B<from> and B<to> are the lifetime, and B<there is no form without one>: a base
+register is not "R12 holds X" but "from here until it is dropped, resolve
+C<D(12)> against X". B<to> may be left out because there is a right default and
+it is not a guess --- one base register addresses 4096 bytes, so an omitted C<to>
+is C<from> + 4096, clamped to the section. An omitted C<to> is computed and an
+explicit one is asserted, so only an explicit one is refused for running off the
+end.
+
+A hint base is B<applied>, because its writer supplied the lifetime. It emits
+C<USING> and C<DROP> at those offsets, resolves C<D(B)> to a symbol within them,
+and labels the C<BC> targets it makes readable --- C<BC> alone, because that
+format is definitionally a branch, where an C<RX> instruction's second operand is
+data as often as it is a target.
+
+A symbol is written B<only where as370 would choose the register the bytes name>.
+The assembler's rule is the smallest displacement still in range and, on a tie,
+the higher register; where a second base would win, the numeric form stays. Two
+live bases on one register are refused, because as370 holds one entry per
+register and cannot be in that state.
+
+=item [[verify]] B<at>, B<bytes> | B<date>
+
+Assert the text. C<bytes> is hex; C<date> is C<"mdy"> for the C<mm/dd/yy> shape
+C<&SYSDATE> writes or C<"julian"> for the C<yy.ddd> one an eyecatcher carries.
+Both exist because one shape alone is noisy over the corpus.
+
+=item [[replace]] B<at>, B<bytes>
+
+Patch the text before disassembly --- the date and serial class. B<Every
+C<REPLACE> must be covered by a C<VERIFY>>, and the C<VERIFY> reads the original
+bytes: a patch applied to bytes nobody asserted is a patch applied to whatever
+the module happens to hold.
+
+=back
+
+C<[[using]]> and C<[[dsect]]> parse and refuse as not implemented. They are one
+thing, and C<[[base]]> is a different one: a C<USING> points a register at a
+B<DSECT> and carries that mapping, where a base covers the section itself.
+Resolving into a dummy section needs a symbol table, which C<--derive-hints>
+brings. C<base> written at the root refuses too, naming the table --- it is a
+table here, not a scalar.
+
+The split, the lifetime and the C<from> + 4096 default are as Pospischil's
+B<mvs38dasm> documents its own control statements. That tree carries no licence
+statement, so it is read for what a word means and never copied: the semantics
+are its, the file format is ours.
+
 =head1 WHAT IT DOES NOT
 
-Branch targets are not labelled and no C<USING> is reconstructed. Resolving
-C<D(B)> at all needs a base register, and an inferred C<USING> is not "R12 holds
-X" but "from here until a C<DROP>, resolve C<D(12)> against X" --- get the
-lifetime wrong and every displacement in the wrong range resolves against the
-wrong section, producing symbols that are plausible, consistent and false while
-the bytes stay exactly where they were. That work is deliberately separate.
+B<It infers nothing.> Without a hint file no C<USING> is reconstructed and no
+branch target is labelled, and an inferred C<USING> --- when one exists --- will
+be written to the hint file and never applied. The reason is not timidity: get a
+base register's lifetime wrong and every displacement in the wrong range resolves
+against the wrong section, producing symbols that are plausible, consistent and
+false while the bytes stay exactly where they were, so neither the round trip nor
+anything downstream of it can object.
 
 Only one section is written per run, so a deck holding several needs one run
 each, and the result reassembles the section rather than the deck.
@@ -102,6 +208,10 @@ re-encodes to the same bytes passes it.> Swapping which of two spellings of one
 encoding is printed --- C<BE> for C<BZ> --- changes every listing and no byte.
 So exit 0 proves fidelity to the member and not correctness of the reading, and
 the suite asserts the mnemonics separately.
+
+Most of what B<--hints> adds is a rule rather than a behaviour, and a rule cannot
+be shown by a fixture that passes. Each is therefore scored against a mutant of
+the current source, with the scores recorded in F<dasm370/tests/run.sh>.
 
 =head1 EXIT STATUS
 
