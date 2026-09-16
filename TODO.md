@@ -649,6 +649,47 @@ second's text — exit 1, no warning. TK5 holds exactly **one** overlay member
 (`HEWLF064`, 7 segments) and it was refused for another reason, so no wrong
 verdict was ever published from it here.
 
+**2026-09-16, second — #373 is in flight on `feat/as370-sym-export`, and it is
+output only.** `as370 --sym=FILE` writes one tab-separated record per
+symbol-table entry: name, value, length, type, section and its name, DSECT
+membership, ESDID, whether the symbol is defined and whether it is an ENTRY.
+Everything was already in `syms[]` — the issue is right that this is a writer and
+not a feature — and what was missing was any way out: `emit_listing_a` produces
+three SYSPRINT pages and nothing else, and `-a`'s `s`/`x` letters had been parsed
+into `a_xref` and read nowhere.
+
+It is deliberately **not** a section of that listing. `tests/listref` compares the
+stream character for character against committed IFOX00 references, so a
+machine-readable block inside it would either break that comparison or have to be
+filtered out again by every reader. `s` and `x` keep meaning the human
+cross-reference pages and still produce nothing; "wire it to the already-accepted
+`-asx` letter" is read as *no second spelling for the export*, which `--sym` is.
+
+**Measured in the strong form #104 used.** 5,528 modules, two binaries built from
+`63f372f` and from the branch head, one environment at a time: **every deck
+byte-identical, every return code equal, nothing gained and nothing lost**. The
+gate `.tsv` rows (module, rc, deck-present, sha256) compare equal as whole files,
+and so do the 5,528 deck files themselves. Run in two environments, because which
+one is used moves the absolute figure by 147 — see the next paragraph — and
+`+0/-0` in one of them says nothing about the other.
+
+**The gate's two halves no longer agree about the environment, and that is worth
+more than this change's own number.** `gate.sh` defaults to the per-module
+`asmdate.tsv` and `sysparm.tsv` override tables; `retest.py` compares against the
+IFOX00 run of 2026-09-07, which saw one pinned date and a null `SYSPARM`. So
+applying an override costs the module its IFOX identity, and it costs exactly
+that and nothing else: all **36** modules named in `asmdate.tsv` and all **111**
+in `sysparm.tsv`. Measured on the *baseline's own commit* — `1f1e6a0`, the one
+`ifox-run/as370` was recorded from — **5,275** with the gate defaults, **5,386**
+with dates only, **5,422** with neither, against the recorded **5,431**. The
+tables are not at fault: they are matched to IBM's shipped objects, which is the
+other comparison. What is at fault is that nothing says the two instruments want
+different inputs, so the comparability control the runbook asks for silently does
+not come back `+0/-0` on this host. A residual **9** — `IGG019HP`,
+`IGG019JN`–`JT` — is explained by neither table and is not measured here.
+Reported to `mvs38src`. Quote the environment with every tree figure from now on,
+the way the macro path already has to be quoted.
+
 `lmod_scan()` is the contract that came out of it: a reader that cannot account
 for a member says so **with a reason** — `trailing-bytes`, `unknown-record`,
 `record-past-end`, `no-modend` — and an INCOMPLETE image is refused rather than
@@ -724,7 +765,7 @@ those do not already cover.
 | #109 | — | `libmvs370` **done** (#116, #119); `libobj370` **readers done** (#120, #121); **adoption of as370/ld370/ar370 open** |
 | #110 | — | `cmplmd370` — **built and accepted, and still open on one behaviour** (#122, #123, #124). Compare, `--clearrld`, `--csect`, `--difin`/`--difout`, `--json`, hole classification all work; `--difout` does **not** merge `--difin` forward, so a reviewed run cannot seed the next one — the property the issue asks `--difout` for. Worse, `--difin acc --difout acc` on a converged comparison leaves `acc` **zero bytes**: `difin_load()` runs before the output file is opened, and an identical section writes nothing. That is data loss in the obvious usage, and it is why this stays open |
 | #111 | #109 readers | `idrdump370` — translator/ZAP IDRs and eyecatchers per CSECT. The ZAP record is the only way to see a module was modified after assembly |
-| #112 | #109 readers | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
+| #112 | #109 readers, #373, #374 | `dasm370` — a disassembler as370 can reassemble, plus an alignment diff that classifies insertion/deletion rather than reporting a byte delta |
 | #113 | *ownership only* | read a **foreign** IEBCOPY unload — an FB source library unloaded by MVS parses to zero members today |
 | #117 / #118 | — | measured defects **in the emitters**; they gate unifying them, and nothing else |
 
@@ -1026,6 +1067,8 @@ Pointers only. The reasoning lives in the issues and their PRs.
   three-stage `dasm370` spec with a caller-measured population (800 CSECTs with
   an object and no source, 772 usable), and `#373`/`#374` filed as its other two
   prerequisites — the as370 symbol export and one shared invertible opcode table.
+  **#373 is in flight** on `feat/as370-sym-export`; see the format-library
+  section above for what it emits and what the gate says about it.
 
 - **2026-09-13, second — #104.** An argument the parser did not recognise became
   the source filename and was overwritten by the next one, at rc 0. XF's scan
