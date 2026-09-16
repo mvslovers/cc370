@@ -3151,6 +3151,11 @@ rm -f /tmp/_bo$$.s /tmp/_bo$$.obj /tmp/_bo$$.lst /tmp/_bo$$.out /tmp/_bo2$$.out 
 #
 # The checker resolves the fixture's displacements out of the export and is the
 # part that can be wrong: the answers are written into tests/symexp.s by hand.
+# Its two controls are the ones that cost a reader a false symbol rather than a
+# missing one -- offset 8 means TCBFSA in TCB and PARMPTR in the CSECT, and
+# neither TCBLEN nor R12 is an address although both carry a section. The first
+# draft of the header told a reader to scan on (sect, value) alone, which
+# answers R4 for 4(,12) in every module that writes R0 EQU 0 .. R15 EQU 15.
 # Here: silence, RC 0, the deck NOT moving, `-' as the destination, and a
 # destination that cannot be opened being the invocation's error the way an
 # unopenable source already is.

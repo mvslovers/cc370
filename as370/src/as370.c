@@ -6171,11 +6171,18 @@ static int emit_sym_export(const char *fn, const char *srcfn) {
     fputs("#as370-sym\t1\n", f);
     fprintf(f, "#source\t%s\n", srcfn ? srcfn : "");
     fputs("#note\tone record per as370 symbol-table entry, in as370's own order (first definition\n"
-          "#note\tor first reference). Not sorted: sort by (sect, value) to resolve a displacement.\n"
+          "#note\tor first reference), not sorted.\n"
           "#note\tvalue and length are decimal. value is section-relative for a symbol in a DSECT\n"
           "#note\tand absolute -- the section origin already added -- for any other defined symbol.\n"
+          "#note\tTo resolve a displacement: among the records whose sect is the addressed\n"
+          "#note\tsection's, with defined=1 AND type not ABS, take the nearest value at or below\n"
+          "#note\tthe target. ABS is excluded because an absolute EQU keeps the section its card\n"
+          "#note\twas written in while holding no address in it -- every module writes R0 EQU 0\n"
+          "#note\tthrough R15 EQU 15 inside a CSECT, and a scan that keeps them answers R4 for\n"
+          "#note\t4(,12). as370 skips ABS in the same two places, expr_sect and using_for.\n"
           "#note\tWhere defined=0 the symbol was referenced and never defined: value and length say\n"
           "#note\tnothing and the record must be skipped by anything scanning for an address.\n"
+          "#note\tsect 0 is no section at all -- an external reference, or a symbol never defined.\n"
           "#note\tAn empty name is a section the source never named: the implicit private code\n"
           "#note\t(type PC) or an unnamed DSECT (dsect=1). sectname is empty for the same reason.\n", f);
     fputs("#columns\tname\tvalue\tlength\ttype\tsect\tsectname\tdsect\tesdid\tdefined\tentry\n", f);

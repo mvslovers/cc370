@@ -42,9 +42,14 @@ def one(name):
 
 
 def resolve(sect, target):
-    """The scan #373 exists for: nearest defined symbol at or below target."""
+    """The scan #373 exists for: nearest addressable symbol at or below target.
+
+    ABS is out. An absolute EQU keeps the section its card was written in and
+    holds no address in it, which is exactly what R0 EQU 0 .. R15 EQU 15 are in
+    every real module.
+    """
     cand = [r for r in rows if r["sect"] == sect and r["defined"] == "1"
-            and int(r["value"]) <= target]
+            and r["type"] != "ABS" and int(r["value"]) <= target]
     return max(cand, key=lambda r: int(r["value"])) if cand else None
 
 
@@ -64,6 +69,19 @@ if tcb and sym:
     b = resolve(sym["sect"], 8)
     check(b and b["name"] == "PARMPTR",
           f"offset 8 of SYMEXP resolved to {b and b['name']!r}, expected PARMPTR")
+    # An EQU is written inside a section and is not an address in it. TCBLEN
+    # holds 16 and TCBTCB is the field at 12; R12 holds 12 and PARMPTR is the
+    # fullword at 8. Every real module writes R0..R15 that way, so a scan that
+    # takes them for addresses answers `LA 1,R4(,12)' -- a symbol that is
+    # plausible, consistent and false.
+    c = resolve(tcb["sect"], 16)
+    check(c and c["name"] == "TCBTCB",
+          f"16 in TCB resolved to {c and c['name']!r}, expected TCBTCB "
+          "(TCBLEN is an ABS EQU, not an address)")
+    d = resolve(sym["sect"], 12)
+    check(d and d["name"] == "PARMPTR",
+          f"12 in SYMEXP resolved to {d and d['name']!r}, expected PARMPTR "
+          "(R12 is a register EQU, not an address)")
     check(tcb["dsect"] == "1" and sym["dsect"] == "0",
           "TCB must be a DSECT and SYMEXP must not")
     check(sym["type"] == "SD" and sym["esdid"] != "0",
@@ -93,4 +111,4 @@ if bad:
         print("symexp:", m)
     sys.exit(1)
 print("symexp: OK (8(4,13) -> TCBFSA, the CSECT's own 8 -> PARMPTR, "
-      "ABS EQU, undefined ER, unnamed DSECT)")
+      "TCBLEN and R12 not taken for addresses, undefined ER, unnamed DSECT)")

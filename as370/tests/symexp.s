@@ -13,8 +13,14 @@
 * and PARMPTR for the other -- or the same name for both, which is
 * the failure worth catching.
 *
-* An unnamed DSECT is here for the name rendering, an EQU for a
-* value that is absolute rather than an address, and an EXTRN for a
+* Two EQUs carry the second control.  TCBLEN holds 16 and TCBTCB is
+* the field at 12; R12 holds 12 and PARMPTR is the fullword at 8.
+* An absolute EQU keeps the section its card was written in and holds
+* no address in it, so a scan that takes them for addresses answers
+* TCBLEN for 16 and R12 for 12 -- and R0 EQU 0 through R15 EQU 15 is
+* what every real module writes.
+*
+* An unnamed DSECT is here for the name rendering and an EXTRN for a
 * record whose value means nothing because it is never defined.
 *
 TCB      DSECT
@@ -26,6 +32,8 @@ TCBLEN   EQU   *-TCB                  16, and absolute
          DSECT                        no name: invent none
 UNPARM   DS    F
 SYMEXP   CSECT
+R12      EQU   12                     a register EQU, as every
+*                                     real module writes it
          EXTRN EXTSYM
          USING TCB,13
          USING *,15

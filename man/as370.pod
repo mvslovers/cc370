@@ -48,10 +48,13 @@ header, and a destination that cannot be opened is an error of the invocation
 This is data, not the listing: the C<s> and C<x> sub-options of B<-a> remain the
 human cross-reference pages that B<IFOX00> prints, and still produce nothing.
 Values are decimal, and are section-relative for a symbol in a DSECT and
-absolute for any other defined symbol --- so a displacement such as
-C<8(4,13)> under C<USING TCB,13> is resolved by taking the nearest value at or
-below 8 among the records of TCB's section. Where C<defined> is 0 the symbol was
-referenced and never defined, and its value says nothing.
+absolute for any other defined symbol. A displacement such as C<8(4,13)> under
+C<USING TCB,13> is resolved by taking the nearest value at or below 8 among the
+records of TCB's section whose C<defined> is 1 and whose type is not C<ABS>. An
+absolute EQU keeps the section its card was written in while holding no address
+in it --- every module writes C<R0 EQU 0> through C<R15 EQU 15> inside a CSECT,
+and a scan that keeps them answers C<R4> for C<4(,12)>. Where C<defined> is 0 the
+symbol was referenced and never defined, and its value says nothing.
 
 =item B<-v>
 
