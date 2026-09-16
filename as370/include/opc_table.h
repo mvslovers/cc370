@@ -1,173 +1,261 @@
-    { "AR", F_RR, 0x1A, 0 },
-    { "ADR", F_RR, 0x2A, 0 },
-    { "AER", F_RR, 0x3A, 0 },
-    { "ALR", F_RR, 0x1E, 0 },
-    { "AUR", F_RR, 0x3E, 0 },
-    { "AWR", F_RR, 0x2E, 0 },
-    { "AXR", F_RR, 0x36, 0 },
-    { "BALR", F_RR, 0x05, 0 },
-    { "BASR", F_RR, 0x0D, 0 },
-    { "BASSM", F_RR, 0x0C, 0 },
-    { "BSM", F_RR, 0x0B, 0 },
-    { "BCR", F_RR, 0x07, 0 },
-    { "BCTR", F_RR, 0x06, 0 },
-    { "CDR", F_RR, 0x29, 0 },
-    { "CER", F_RR, 0x39, 0 },
-    { "CLR", F_RR, 0x15, 0 },
-    { "CLCL", F_RR, 0x0F, 0 },
-    { "CR", F_RR, 0x19, 0 },
-    { "DDR", F_RR, 0x2D, 0 },
-    { "DER", F_RR, 0x3D, 0 },
-    { "DR", F_RR, 0x1D, 0 },
-    { "HDR", F_RR, 0x24, 0 },
-    { "HER", F_RR, 0x34, 0 },
-    { "LCDR", F_RR, 0x23, 0 },
-    { "LCER", F_RR, 0x33, 0 },
-    { "LCR", F_RR, 0x13, 0 },
-    { "LDR", F_RR, 0x28, 0 },
-    { "LER", F_RR, 0x38, 0 },
-    { "LNDR", F_RR, 0x21, 0 },
-    { "LNER", F_RR, 0x31, 0 },
-    { "LNR", F_RR, 0x11, 0 },
-    { "LPDR", F_RR, 0x20, 0 },
-    { "LPER", F_RR, 0x30, 0 },
-    { "LPR", F_RR, 0x10, 0 },
-    { "LR", F_RR, 0x18, 0 },
-    { "LRDR", F_RR, 0x25, 0 },
-    { "LRER", F_RR, 0x35, 0 },
-    { "LTDR", F_RR, 0x22, 0 },
-    { "LTER", F_RR, 0x32, 0 },
-    { "LTR", F_RR, 0x12, 0 },
-    { "MDR", F_RR, 0x2C, 0 },
-    { "MER", F_RR, 0x3C, 0 },
-    { "MR", F_RR, 0x1C, 0 },
-    { "MVCL", F_RR, 0x0E, 0 },
-    { "MXDR", F_RR, 0x27, 0 },
-    { "MXR", F_RR, 0x26, 0 },
-    { "NR", F_RR, 0x14, 0 },
-    { "OR", F_RR, 0x16, 0 },
-    { "SDR", F_RR, 0x2B, 0 },
-    { "SER", F_RR, 0x3B, 0 },
-    { "SLR", F_RR, 0x1F, 0 },
-    { "SPM", F_RR, 0x04, 0 },
-    { "SR", F_RR, 0x1B, 0 },
-    { "SUR", F_RR, 0x3F, 0 },
-    { "SWR", F_RR, 0x2F, 0 },
-    { "SXR", F_RR, 0x37, 0 },
-    { "XR", F_RR, 0x17, 0 },
-    { "A", F_RX, 0x5A, 0 },
-    { "AD", F_RX, 0x6A, 0 },
-    { "AE", F_RX, 0x7A, 0 },
-    { "AH", F_RX, 0x4A, 0 },
-    { "AL", F_RX, 0x5E, 0 },
-    { "AU", F_RX, 0x7E, 0 },
-    { "AW", F_RX, 0x6E, 0 },
-    { "BAL", F_RX, 0x45, 0 },
-    { "BAS", F_RX, 0x4D, 0 },
-    { "BC", F_RX, 0x47, 0 },
-    { "BCT", F_RX, 0x46, 0 },
-    { "C", F_RX, 0x59, 0 },
-    { "CD", F_RX, 0x69, 0 },
-    { "CE", F_RX, 0x79, 0 },
-    { "CH", F_RX, 0x49, 0 },
-    { "CL", F_RX, 0x55, 0 },
-    { "CVB", F_RX, 0x4F, 0 },
-    { "CVD", F_RX, 0x4E, 0 },
-    { "D", F_RX, 0x5D, 0 },
-    { "DD", F_RX, 0x6D, 0 },
-    { "DE", F_RX, 0x7D, 0 },
-    { "EX", F_RX, 0x44, 0 },
-    { "IC", F_RX, 0x43, 0 },
-    { "L", F_RX, 0x58, 0 },
-    { "LA", F_RX, 0x41, 0 },
-    { "LAE", F_RX, 0x51, 0 },
-    { "LD", F_RX, 0x68, 0 },
-    { "LE", F_RX, 0x78, 0 },
-    { "LH", F_RX, 0x48, 0 },
-    { "LRA", F_RX, 0xB1, 0 },
-    { "M", F_RX, 0x5C, 0 },
-    { "MD", F_RX, 0x6C, 0 },
-    { "ME", F_RX, 0x7C, 0 },
-    { "MH", F_RX, 0x4C, 0 },
-    { "MS", F_RX, 0x71, 0 },
-    { "MXD", F_RX, 0x67, 0 },
-    { "N", F_RX, 0x54, 0 },
-    { "O", F_RX, 0x56, 0 },
-    { "S", F_RX, 0x5B, 0 },
-    { "SD", F_RX, 0x6B, 0 },
-    { "SE", F_RX, 0x7B, 0 },
-    { "SH", F_RX, 0x4B, 0 },
-    { "SL", F_RX, 0x5F, 0 },
-    { "ST", F_RX, 0x50, 0 },
-    { "STC", F_RX, 0x42, 0 },
-    { "STD", F_RX, 0x60, 0 },
-    { "STE", F_RX, 0x70, 0 },
-    { "STH", F_RX, 0x40, 0 },
-    { "SU", F_RX, 0x7F, 0 },
-    { "SW", F_RX, 0x6F, 0 },
-    { "X", F_RX, 0x57, 0 },
-    { "BXH", F_RS, 0x86, 0 },
-    { "BXLE", F_RS, 0x87, 0 },
-    { "CDS", F_RS, 0xBB, 0 },
-    { "CLCLE", F_RS, 0xA9, 0 },
-    { "CLM", F_RS, 0xBD, 0 },
-    { "CS", F_RS, 0xBA, 0 },
-    { "ICM", F_RS, 0xBF, 0 },
-    { "LAM", F_RS, 0x9A, 0 },
-    { "LCTL", F_RS, 0xB7, 0 },
-    { "LM", F_RS, 0x98, 0 },
-    { "MVCLE", F_RS, 0xA8, 0 },
-    { "SIGP", F_RS, 0xAE, 0 },
-    { "STAM", F_RS, 0x9B, 0 },
-    { "STCM", F_RS, 0xBE, 0 },
-    { "STCTL", F_RS, 0xB6, 0 },
-    { "STM", F_RS, 0x90, 0 },
-    { "TRACE", F_RS, 0x99, 0 },
-    { "SLA", F_RS, 0x8B, 0 },
-    { "SLDA", F_RS, 0x8F, 0 },
-    { "SLDL", F_RS, 0x8D, 0 },
-    { "SLL", F_RS, 0x89, 0 },
-    { "SRA", F_RS, 0x8A, 0 },
-    { "SRDA", F_RS, 0x8E, 0 },
-    { "SRDL", F_RS, 0x8C, 0 },
-    { "SRL", F_RS, 0x88, 0 },
-    { "BRXH", F_SI, 0x84, 0 },
-    { "BRXLE", F_SI, 0x85, 0 },
-    { "CLI", F_SI, 0x95, 0 },
-    { "MC", F_SI, 0xAF, 0 },
-    { "MVI", F_SI, 0x92, 0 },
-    { "NI", F_SI, 0x94, 0 },
-    { "OI", F_SI, 0x96, 0 },
-    { "STNSM", F_SI, 0xAC, 0 },
-    { "STOSM", F_SI, 0xAD, 0 },
-    { "TM", F_SI, 0x91, 0 },
-    { "XI", F_SI, 0x97, 0 },
-    { "AP", F_SS, 0xFA, 0 },
-    { "CLC", F_SS, 0xD5, 0 },
-    { "CP", F_SS, 0xF9, 0 },
-    { "DP", F_SS, 0xFD, 0 },
-    { "ED", F_SS, 0xDE, 0 },
-    { "EDMK", F_SS, 0xDF, 0 },
-    { "LMD", F_SS, 0xEF, 0 },
-    { "MVC", F_SS, 0xD2, 0 },
-    { "MVCIN", F_SS, 0xE8, 0 },
-    { "MVCK", F_SS, 0xD9, 0 },
-    { "MVCP", F_SS, 0xDA, 0 },
-    { "MVCS", F_SS, 0xDB, 0 },
-    { "MVN", F_SS, 0xD1, 0 },
-    { "MVO", F_SS, 0xF1, 0 },
-    { "MVZ", F_SS, 0xD3, 0 },
-    { "NC", F_SS, 0xD4, 0 },
-    { "OC", F_SS, 0xD6, 0 },
-    { "PACK", F_SS, 0xF2, 0 },
-    { "PLO", F_SS, 0xEE, 0 },
-    { "SP", F_SS, 0xFB, 0 },
-    { "SRP", F_SS, 0xF0, 0 },
-    { "TR", F_SS, 0xDC, 0 },
-    { "TRT", F_SS, 0xDD, 0 },
-    { "UNPK", F_SS, 0xF3, 0 },
-    { "XC", F_SS, 0xD7, 0 },
-    { "ZAP", F_SS, 0xF8, 0 },
+/* The opcode table -- one file, and the only place either direction reads it.
+ *
+ * It used to be a bare initializer body: 200 brace pairs with no guard, no
+ * struct and no sentinel, legal only inside the array in as370.c, with a
+ * further 35 entries and the sentinel written after the #include.  That is
+ * fine while as370 is the only consumer, because as370 only ever ENCODES --
+ * op_find() keys on the mnemonic and never asks what a byte means.
+ *
+ * #112's disassembler asks exactly that, and a decoder built from a second
+ * copy of this data can drift from the assembler silently: it would still
+ * assemble, still compare, and disagree about an instruction neither tool
+ * reports on.  So the table carries what inversion needs, and both tools
+ * include this file (cc370#374).
+ *
+ * Two fields exist for the decoder and the encoder ignores both.
+ *
+ * `opw' is the opcode WIDTH IN BYTES, and it is here because the data cannot
+ * be asked.  The encoder writes o->op as a big-endian halfword, so a ONE-byte
+ * S-format opcode is spelled <op>00 -- TS is 0x9300 -- while SIO really is the
+ * two bytes 0x9C00 and SIOF really is 0x9C01.  Both have a zero low byte and
+ * they are not the same thing.  Exactly three entries are one-byte spelled as
+ * a halfword: SSM, LPSW and TS.
+ *
+ * `dec' says which mnemonic a decoder should print for a byte pattern that
+ * several entries claim.  OPD_PRIMARY is the one to print; OPD_ALIAS is a
+ * legal spelling of the same encoding that loses; OPD_NEVER must not be
+ * produced at all.
+ *
+ * WHICH SPELLING WINS IS MEASURED, NOT PREFERRED.  Counted over the operation
+ * field of the 5,528 MVSBLD modules -- comment cards and continuations
+ * excluded -- IBM's own source uses the compare spelling more often in every
+ * one of the twelve pairs:
+ *
+ *   BE    34446 : BZ    32011      BER    203 : BZR    196
+ *   BNE   44853 : BNZ   25651      BNER    86 : BNZR    47
+ *   BH     4895 : BP     1066      BHR     17 : BPR      4
+ *   BL     4777 : BM     1062      BLR     12 : BMR      6
+ *   BNH   10897 : BNP    1324      BNHR     9 : BNPR     2
+ *   BNL    6569 : BNM     447      BNLR     4 : BNMR     2
+ *
+ * Two margins are thin -- BE/BZ is 52 %, BER/BZR is 51 % -- and they are thin
+ * because the choice is genuinely contextual: BZ after an arithmetic
+ * instruction says what the programmer meant and BE says what the mask is.
+ * A decoder cannot know which; it can know what the corpus writes.
+ *
+ * #112's own text illustrates the rule with `47 8 -> BZ'.  The point it makes
+ * -- an extended mnemonic rather than BC 8 -- is what `dec' implements; which
+ * of BE and BZ comes out is the measurement above, and it is BE.
+ *
+ * BC and BCR are ALIAS for the same reason and not because they are rare:
+ * they cover all sixteen masks, so for a mask a pseudo names, the pseudo
+ * wins, and for masks 3, 5, 6, 9, 10 and 12 -- which no pseudo names -- they
+ * are the only entry left and the decoder falls through to them.
+ *
+ * BRXH and BRXLE are NEVER.  X'84' and X'85' are WRD and RDD on System/370
+ * and BRXH/BRXLE on ESA/390; the target is MVS 3.8j, and the corpus contains
+ * zero of either ESA mnemonic against zero WRD/RDD as well -- neither is
+ * written in this source, but only one pair can be right for a module a
+ * System/370 ran.  Decoding X'84' as BRXH would be an instruction from an
+ * architecture the module predates.
+ *
+ * The deliberate gaps stay gaps: some IFOX00 mnemonics are absent rather than
+ * guessed (cc370#51 has the delta).
+ */
+#ifndef AS370_OPC_TABLE_H
+#define AS370_OPC_TABLE_H
+
+/* F_S0: the S opcode space with NO operand.  IFOX00's own table is the
+ * authority -- ifnx5m.asm describes every operand-bearing mnemonic with an
+ * OPND card ahead of its OPCD (206 of them), and exactly two entries carry an
+ * OPCD alone: IPK X'B20B' and PTLB X'B20D' (ifnx5m.asm:1562-1563).  With no
+ * operand the rest of the card is a remark, so the operand field must not be
+ * read at all. */
+enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC, F_S, F_S0 };
+
+/* What a decoder should do with an entry when several claim one encoding. */
+enum opc_dec { OPD_PRIMARY, OPD_ALIAS, OPD_NEVER };
+
+struct opc {
+    const char *name;
+    int fmt;
+    int op;     /* opcode; a one-byte S-format opcode is spelled <op>00 */
+    int m1;     /* implied mask for the branch pseudos, else 0 */
+    int opw;    /* opcode width in BYTES: 1 or 2 */
+    int dec;    /* enum opc_dec */
+};
+
+static const struct opc optab[] = {
+    { "AR", F_RR, 0x1A, 0, 1, OPD_PRIMARY },
+    { "ADR", F_RR, 0x2A, 0, 1, OPD_PRIMARY },
+    { "AER", F_RR, 0x3A, 0, 1, OPD_PRIMARY },
+    { "ALR", F_RR, 0x1E, 0, 1, OPD_PRIMARY },
+    { "AUR", F_RR, 0x3E, 0, 1, OPD_PRIMARY },
+    { "AWR", F_RR, 0x2E, 0, 1, OPD_PRIMARY },
+    { "AXR", F_RR, 0x36, 0, 1, OPD_PRIMARY },
+    { "BALR", F_RR, 0x05, 0, 1, OPD_PRIMARY },
+    { "BASR", F_RR, 0x0D, 0, 1, OPD_PRIMARY },
+    { "BASSM", F_RR, 0x0C, 0, 1, OPD_PRIMARY },
+    { "BSM", F_RR, 0x0B, 0, 1, OPD_PRIMARY },
+    { "BCR", F_RR, 0x07, 0, 1, OPD_ALIAS   },
+    { "BCTR", F_RR, 0x06, 0, 1, OPD_PRIMARY },
+    { "CDR", F_RR, 0x29, 0, 1, OPD_PRIMARY },
+    { "CER", F_RR, 0x39, 0, 1, OPD_PRIMARY },
+    { "CLR", F_RR, 0x15, 0, 1, OPD_PRIMARY },
+    { "CLCL", F_RR, 0x0F, 0, 1, OPD_PRIMARY },
+    { "CR", F_RR, 0x19, 0, 1, OPD_PRIMARY },
+    { "DDR", F_RR, 0x2D, 0, 1, OPD_PRIMARY },
+    { "DER", F_RR, 0x3D, 0, 1, OPD_PRIMARY },
+    { "DR", F_RR, 0x1D, 0, 1, OPD_PRIMARY },
+    { "HDR", F_RR, 0x24, 0, 1, OPD_PRIMARY },
+    { "HER", F_RR, 0x34, 0, 1, OPD_PRIMARY },
+    { "LCDR", F_RR, 0x23, 0, 1, OPD_PRIMARY },
+    { "LCER", F_RR, 0x33, 0, 1, OPD_PRIMARY },
+    { "LCR", F_RR, 0x13, 0, 1, OPD_PRIMARY },
+    { "LDR", F_RR, 0x28, 0, 1, OPD_PRIMARY },
+    { "LER", F_RR, 0x38, 0, 1, OPD_PRIMARY },
+    { "LNDR", F_RR, 0x21, 0, 1, OPD_PRIMARY },
+    { "LNER", F_RR, 0x31, 0, 1, OPD_PRIMARY },
+    { "LNR", F_RR, 0x11, 0, 1, OPD_PRIMARY },
+    { "LPDR", F_RR, 0x20, 0, 1, OPD_PRIMARY },
+    { "LPER", F_RR, 0x30, 0, 1, OPD_PRIMARY },
+    { "LPR", F_RR, 0x10, 0, 1, OPD_PRIMARY },
+    { "LR", F_RR, 0x18, 0, 1, OPD_PRIMARY },
+    { "LRDR", F_RR, 0x25, 0, 1, OPD_PRIMARY },
+    { "LRER", F_RR, 0x35, 0, 1, OPD_PRIMARY },
+    { "LTDR", F_RR, 0x22, 0, 1, OPD_PRIMARY },
+    { "LTER", F_RR, 0x32, 0, 1, OPD_PRIMARY },
+    { "LTR", F_RR, 0x12, 0, 1, OPD_PRIMARY },
+    { "MDR", F_RR, 0x2C, 0, 1, OPD_PRIMARY },
+    { "MER", F_RR, 0x3C, 0, 1, OPD_PRIMARY },
+    { "MR", F_RR, 0x1C, 0, 1, OPD_PRIMARY },
+    { "MVCL", F_RR, 0x0E, 0, 1, OPD_PRIMARY },
+    { "MXDR", F_RR, 0x27, 0, 1, OPD_PRIMARY },
+    { "MXR", F_RR, 0x26, 0, 1, OPD_PRIMARY },
+    { "NR", F_RR, 0x14, 0, 1, OPD_PRIMARY },
+    { "OR", F_RR, 0x16, 0, 1, OPD_PRIMARY },
+    { "SDR", F_RR, 0x2B, 0, 1, OPD_PRIMARY },
+    { "SER", F_RR, 0x3B, 0, 1, OPD_PRIMARY },
+    { "SLR", F_RR, 0x1F, 0, 1, OPD_PRIMARY },
+    { "SPM", F_RR, 0x04, 0, 1, OPD_PRIMARY },
+    { "SR", F_RR, 0x1B, 0, 1, OPD_PRIMARY },
+    { "SUR", F_RR, 0x3F, 0, 1, OPD_PRIMARY },
+    { "SWR", F_RR, 0x2F, 0, 1, OPD_PRIMARY },
+    { "SXR", F_RR, 0x37, 0, 1, OPD_PRIMARY },
+    { "XR", F_RR, 0x17, 0, 1, OPD_PRIMARY },
+    { "A", F_RX, 0x5A, 0, 1, OPD_PRIMARY },
+    { "AD", F_RX, 0x6A, 0, 1, OPD_PRIMARY },
+    { "AE", F_RX, 0x7A, 0, 1, OPD_PRIMARY },
+    { "AH", F_RX, 0x4A, 0, 1, OPD_PRIMARY },
+    { "AL", F_RX, 0x5E, 0, 1, OPD_PRIMARY },
+    { "AU", F_RX, 0x7E, 0, 1, OPD_PRIMARY },
+    { "AW", F_RX, 0x6E, 0, 1, OPD_PRIMARY },
+    { "BAL", F_RX, 0x45, 0, 1, OPD_PRIMARY },
+    { "BAS", F_RX, 0x4D, 0, 1, OPD_PRIMARY },
+    { "BC", F_RX, 0x47, 0, 1, OPD_ALIAS   },
+    { "BCT", F_RX, 0x46, 0, 1, OPD_PRIMARY },
+    { "C", F_RX, 0x59, 0, 1, OPD_PRIMARY },
+    { "CD", F_RX, 0x69, 0, 1, OPD_PRIMARY },
+    { "CE", F_RX, 0x79, 0, 1, OPD_PRIMARY },
+    { "CH", F_RX, 0x49, 0, 1, OPD_PRIMARY },
+    { "CL", F_RX, 0x55, 0, 1, OPD_PRIMARY },
+    { "CVB", F_RX, 0x4F, 0, 1, OPD_PRIMARY },
+    { "CVD", F_RX, 0x4E, 0, 1, OPD_PRIMARY },
+    { "D", F_RX, 0x5D, 0, 1, OPD_PRIMARY },
+    { "DD", F_RX, 0x6D, 0, 1, OPD_PRIMARY },
+    { "DE", F_RX, 0x7D, 0, 1, OPD_PRIMARY },
+    { "EX", F_RX, 0x44, 0, 1, OPD_PRIMARY },
+    { "IC", F_RX, 0x43, 0, 1, OPD_PRIMARY },
+    { "L", F_RX, 0x58, 0, 1, OPD_PRIMARY },
+    { "LA", F_RX, 0x41, 0, 1, OPD_PRIMARY },
+    { "LAE", F_RX, 0x51, 0, 1, OPD_PRIMARY },
+    { "LD", F_RX, 0x68, 0, 1, OPD_PRIMARY },
+    { "LE", F_RX, 0x78, 0, 1, OPD_PRIMARY },
+    { "LH", F_RX, 0x48, 0, 1, OPD_PRIMARY },
+    { "LRA", F_RX, 0xB1, 0, 1, OPD_PRIMARY },
+    { "M", F_RX, 0x5C, 0, 1, OPD_PRIMARY },
+    { "MD", F_RX, 0x6C, 0, 1, OPD_PRIMARY },
+    { "ME", F_RX, 0x7C, 0, 1, OPD_PRIMARY },
+    { "MH", F_RX, 0x4C, 0, 1, OPD_PRIMARY },
+    { "MS", F_RX, 0x71, 0, 1, OPD_PRIMARY },
+    { "MXD", F_RX, 0x67, 0, 1, OPD_PRIMARY },
+    { "N", F_RX, 0x54, 0, 1, OPD_PRIMARY },
+    { "O", F_RX, 0x56, 0, 1, OPD_PRIMARY },
+    { "S", F_RX, 0x5B, 0, 1, OPD_PRIMARY },
+    { "SD", F_RX, 0x6B, 0, 1, OPD_PRIMARY },
+    { "SE", F_RX, 0x7B, 0, 1, OPD_PRIMARY },
+    { "SH", F_RX, 0x4B, 0, 1, OPD_PRIMARY },
+    { "SL", F_RX, 0x5F, 0, 1, OPD_PRIMARY },
+    { "ST", F_RX, 0x50, 0, 1, OPD_PRIMARY },
+    { "STC", F_RX, 0x42, 0, 1, OPD_PRIMARY },
+    { "STD", F_RX, 0x60, 0, 1, OPD_PRIMARY },
+    { "STE", F_RX, 0x70, 0, 1, OPD_PRIMARY },
+    { "STH", F_RX, 0x40, 0, 1, OPD_PRIMARY },
+    { "SU", F_RX, 0x7F, 0, 1, OPD_PRIMARY },
+    { "SW", F_RX, 0x6F, 0, 1, OPD_PRIMARY },
+    { "X", F_RX, 0x57, 0, 1, OPD_PRIMARY },
+    { "BXH", F_RS, 0x86, 0, 1, OPD_PRIMARY },
+    { "BXLE", F_RS, 0x87, 0, 1, OPD_PRIMARY },
+    { "CDS", F_RS, 0xBB, 0, 1, OPD_PRIMARY },
+    { "CLCLE", F_RS, 0xA9, 0, 1, OPD_PRIMARY },
+    { "CLM", F_RS, 0xBD, 0, 1, OPD_PRIMARY },
+    { "CS", F_RS, 0xBA, 0, 1, OPD_PRIMARY },
+    { "ICM", F_RS, 0xBF, 0, 1, OPD_PRIMARY },
+    { "LAM", F_RS, 0x9A, 0, 1, OPD_PRIMARY },
+    { "LCTL", F_RS, 0xB7, 0, 1, OPD_PRIMARY },
+    { "LM", F_RS, 0x98, 0, 1, OPD_PRIMARY },
+    { "MVCLE", F_RS, 0xA8, 0, 1, OPD_PRIMARY },
+    { "SIGP", F_RS, 0xAE, 0, 1, OPD_PRIMARY },
+    { "STAM", F_RS, 0x9B, 0, 1, OPD_PRIMARY },
+    { "STCM", F_RS, 0xBE, 0, 1, OPD_PRIMARY },
+    { "STCTL", F_RS, 0xB6, 0, 1, OPD_PRIMARY },
+    { "STM", F_RS, 0x90, 0, 1, OPD_PRIMARY },
+    { "TRACE", F_RS, 0x99, 0, 1, OPD_PRIMARY },
+    { "SLA", F_RS, 0x8B, 0, 1, OPD_PRIMARY },
+    { "SLDA", F_RS, 0x8F, 0, 1, OPD_PRIMARY },
+    { "SLDL", F_RS, 0x8D, 0, 1, OPD_PRIMARY },
+    { "SLL", F_RS, 0x89, 0, 1, OPD_PRIMARY },
+    { "SRA", F_RS, 0x8A, 0, 1, OPD_PRIMARY },
+    { "SRDA", F_RS, 0x8E, 0, 1, OPD_PRIMARY },
+    { "SRDL", F_RS, 0x8C, 0, 1, OPD_PRIMARY },
+    { "SRL", F_RS, 0x88, 0, 1, OPD_PRIMARY },
+    { "BRXH", F_SI, 0x84, 0, 1, OPD_NEVER   },
+    { "BRXLE", F_SI, 0x85, 0, 1, OPD_NEVER   },
+    { "CLI", F_SI, 0x95, 0, 1, OPD_PRIMARY },
+    { "MC", F_SI, 0xAF, 0, 1, OPD_PRIMARY },
+    { "MVI", F_SI, 0x92, 0, 1, OPD_PRIMARY },
+    { "NI", F_SI, 0x94, 0, 1, OPD_PRIMARY },
+    { "OI", F_SI, 0x96, 0, 1, OPD_PRIMARY },
+    { "STNSM", F_SI, 0xAC, 0, 1, OPD_PRIMARY },
+    { "STOSM", F_SI, 0xAD, 0, 1, OPD_PRIMARY },
+    { "TM", F_SI, 0x91, 0, 1, OPD_PRIMARY },
+    { "XI", F_SI, 0x97, 0, 1, OPD_PRIMARY },
+    { "AP", F_SS, 0xFA, 0, 1, OPD_PRIMARY },
+    { "CLC", F_SS, 0xD5, 0, 1, OPD_PRIMARY },
+    { "CP", F_SS, 0xF9, 0, 1, OPD_PRIMARY },
+    { "DP", F_SS, 0xFD, 0, 1, OPD_PRIMARY },
+    { "ED", F_SS, 0xDE, 0, 1, OPD_PRIMARY },
+    { "EDMK", F_SS, 0xDF, 0, 1, OPD_PRIMARY },
+    { "LMD", F_SS, 0xEF, 0, 1, OPD_PRIMARY },
+    { "MVC", F_SS, 0xD2, 0, 1, OPD_PRIMARY },
+    { "MVCIN", F_SS, 0xE8, 0, 1, OPD_PRIMARY },
+    { "MVCK", F_SS, 0xD9, 0, 1, OPD_PRIMARY },
+    { "MVCP", F_SS, 0xDA, 0, 1, OPD_PRIMARY },
+    { "MVCS", F_SS, 0xDB, 0, 1, OPD_PRIMARY },
+    { "MVN", F_SS, 0xD1, 0, 1, OPD_PRIMARY },
+    { "MVO", F_SS, 0xF1, 0, 1, OPD_PRIMARY },
+    { "MVZ", F_SS, 0xD3, 0, 1, OPD_PRIMARY },
+    { "NC", F_SS, 0xD4, 0, 1, OPD_PRIMARY },
+    { "OC", F_SS, 0xD6, 0, 1, OPD_PRIMARY },
+    { "PACK", F_SS, 0xF2, 0, 1, OPD_PRIMARY },
+    { "PLO", F_SS, 0xEE, 0, 1, OPD_PRIMARY },
+    { "SP", F_SS, 0xFB, 0, 1, OPD_PRIMARY },
+    { "SRP", F_SS, 0xF0, 0, 1, OPD_PRIMARY },
+    { "TR", F_SS, 0xDC, 0, 1, OPD_PRIMARY },
+    { "TRT", F_SS, 0xDD, 0, 1, OPD_PRIMARY },
+    { "UNPK", F_SS, 0xF3, 0, 1, OPD_PRIMARY },
+    { "XC", F_SS, 0xD7, 0, 1, OPD_PRIMARY },
+    { "ZAP", F_SS, 0xF8, 0, 1, OPD_PRIMARY },
 
     /* ---- S/370 instructions absent from this table until #51 ----------------
      * The table above was built from what the ecosystem corpus happened to use.
@@ -185,40 +273,67 @@
      * encoding -- turning a clean "undefined operation code" RC 8 into silently
      * wrong bytes, which is the failure mode this table exists to avoid. They
      * stay documented gaps -- see #51, which lists the full IFOX00 delta. */
-    { "MP", F_SS, 0xFC, 0 },               /* multiply decimal -- same shape as DP X'FD' */
-    { "SSK", F_RR, 0x08, 0 },
-    { "ISK", F_RR, 0x09, 0 },
+    { "MP", F_SS, 0xFC, 0, 1, OPD_PRIMARY },               /* multiply decimal -- same shape as DP X'FD' */
+    { "SSK", F_RR, 0x08, 0, 1, OPD_PRIMARY },
+    { "ISK", F_RR, 0x09, 0, 1, OPD_PRIMARY },
     /* Write/Read Direct. X'84'/X'85' are also claimed by the ESA/390 BRXH/BRXLE
      * entries above -- a genuine architecture reuse of the opcode, not a typo.
      * op_find() keys on the mnemonic and as370 only ever encodes, never decodes,
      * so the two coexist without ambiguity. */
-    { "WRD", F_SI, 0x84, 0 },
-    { "RDD", F_SI, 0x85, 0 },
+    { "WRD", F_SI, 0x84, 0, 1, OPD_PRIMARY },
+    { "RDD", F_SI, 0x85, 0, 1, OPD_PRIMARY },
     /* S format, 4 bytes. A ONE-byte opcode is written here as <op>00: the
      * encoder emits o->op as a big-endian halfword, so 0x9300 produces the
      * 93 00 B2 D2D2 that TS wants. The X'B2xx' group is already two bytes. */
-    { "SSM", F_S, 0x8000, 0 },
-    { "LPSW", F_S, 0x8200, 0 },
-    { "TS", F_S, 0x9300, 0 },
-    { "SIO", F_S, 0x9C00, 0 },
-    { "SIOF", F_S, 0x9C01, 0 },
-    { "TIO", F_S, 0x9D00, 0 },
-    { "CLRIO", F_S, 0x9D01, 0 },
-    { "HIO", F_S, 0x9E00, 0 },
-    { "HDV", F_S, 0x9E01, 0 },
-    { "TCH", F_S, 0x9F00, 0 },
-    { "CLRCH", F_S, 0x9F01, 0 },
-    { "CONCS", F_S, 0xB200, 0 },
-    { "DISCS", F_S, 0xB201, 0 },
-    { "STIDP", F_S, 0xB202, 0 },
-    { "STIDC", F_S, 0xB203, 0 },
-    { "SCK", F_S, 0xB204, 0 },
-    { "SCKC", F_S, 0xB206, 0 },
-    { "STCKC", F_S, 0xB207, 0 },
-    { "SPT", F_S, 0xB208, 0 },
-    { "STPT", F_S, 0xB209, 0 },
-    { "PTLB", F_S0, 0xB20D, 0 },   /* no operand -- see F_S0 in as370.c */
-    { "SPX", F_S, 0xB210, 0 },
-    { "STPX", F_S, 0xB211, 0 },
-    { "STAP", F_S, 0xB212, 0 },
-    { "RRB", F_S, 0xB213, 0 },
+    { "SSM", F_S, 0x8000, 0, 1, OPD_PRIMARY },
+    { "LPSW", F_S, 0x8200, 0, 1, OPD_PRIMARY },
+    { "TS", F_S, 0x9300, 0, 1, OPD_PRIMARY },
+    { "SIO", F_S, 0x9C00, 0, 2, OPD_PRIMARY },
+    { "SIOF", F_S, 0x9C01, 0, 2, OPD_PRIMARY },
+    { "TIO", F_S, 0x9D00, 0, 2, OPD_PRIMARY },
+    { "CLRIO", F_S, 0x9D01, 0, 2, OPD_PRIMARY },
+    { "HIO", F_S, 0x9E00, 0, 2, OPD_PRIMARY },
+    { "HDV", F_S, 0x9E01, 0, 2, OPD_PRIMARY },
+    { "TCH", F_S, 0x9F00, 0, 2, OPD_PRIMARY },
+    { "CLRCH", F_S, 0x9F01, 0, 2, OPD_PRIMARY },
+    { "CONCS", F_S, 0xB200, 0, 2, OPD_PRIMARY },
+    { "DISCS", F_S, 0xB201, 0, 2, OPD_PRIMARY },
+    { "STIDP", F_S, 0xB202, 0, 2, OPD_PRIMARY },
+    { "STIDC", F_S, 0xB203, 0, 2, OPD_PRIMARY },
+    { "SCK", F_S, 0xB204, 0, 2, OPD_PRIMARY },
+    { "SCKC", F_S, 0xB206, 0, 2, OPD_PRIMARY },
+    { "STCKC", F_S, 0xB207, 0, 2, OPD_PRIMARY },
+    { "SPT", F_S, 0xB208, 0, 2, OPD_PRIMARY },
+    { "STPT", F_S, 0xB209, 0, 2, OPD_PRIMARY },
+    { "PTLB", F_S0, 0xB20D, 0, 2, OPD_PRIMARY },   /* no operand -- see F_S0 in as370.c */
+    { "SPX", F_S, 0xB210, 0, 2, OPD_PRIMARY },
+    { "STPX", F_S, 0xB211, 0, 2, OPD_PRIMARY },
+    { "STAP", F_S, 0xB212, 0, 2, OPD_PRIMARY },
+    { "RRB", F_S, 0xB213, 0, 2, OPD_PRIMARY },
+    /* extended branches: BC (RX, op 0x47) / BCR (RR-ish, op 0x07) with implied mask */
+    { "B",    F_BC, 0x47, 15, 1, OPD_PRIMARY }, { "NOP",  F_BC, 0x47,  0, 1, OPD_PRIMARY },
+    { "BE",   F_BC, 0x47,  8, 1, OPD_PRIMARY }, { "BNE",  F_BC, 0x47,  7, 1, OPD_PRIMARY },
+    { "BH",   F_BC, 0x47,  2, 1, OPD_PRIMARY }, { "BL",   F_BC, 0x47,  4, 1, OPD_PRIMARY },
+    { "BNH",  F_BC, 0x47, 13, 1, OPD_PRIMARY }, { "BNL",  F_BC, 0x47, 11, 1, OPD_PRIMARY },
+    { "BZ",   F_BC, 0x47,  8, 1, OPD_ALIAS   }, { "BNZ",  F_BC, 0x47,  7, 1, OPD_ALIAS   },
+    { "BP",   F_BC, 0x47,  2, 1, OPD_ALIAS   }, { "BM",   F_BC, 0x47,  4, 1, OPD_ALIAS   },
+    { "BO",   F_BC, 0x47,  1, 1, OPD_PRIMARY }, { "BNO",  F_BC, 0x47, 14, 1, OPD_PRIMARY },
+    { "BNP",  F_BC, 0x47, 13, 1, OPD_ALIAS   }, { "BNM",  F_BC, 0x47, 11, 1, OPD_ALIAS   },
+    { "IPK",  F_S0, 0xB20B, 0, 2, OPD_PRIMARY }, { "SPKA", F_S, 0xB20A, 0, 2, OPD_PRIMARY },
+    { "STCK", F_S,  0xB205, 0, 2, OPD_PRIMARY },
+    { "SVC",  F_SVC, 0x0A, 0, 1, OPD_PRIMARY },
+    { "BR",   F_BR, 0x07, 15, 1, OPD_PRIMARY }, { "NOPR", F_BR, 0x07,  0, 1, OPD_PRIMARY },
+    { "BER",  F_BR, 0x07,  8, 1, OPD_PRIMARY }, { "BNER", F_BR, 0x07,  7, 1, OPD_PRIMARY },
+    { "BHR",  F_BR, 0x07,  2, 1, OPD_PRIMARY }, { "BLR",  F_BR, 0x07,  4, 1, OPD_PRIMARY },
+    { "BNHR", F_BR, 0x07, 13, 1, OPD_PRIMARY }, { "BNLR", F_BR, 0x07, 11, 1, OPD_PRIMARY },
+    { "BZR",  F_BR, 0x07,  8, 1, OPD_ALIAS   }, { "BNZR", F_BR, 0x07,  7, 1, OPD_ALIAS   },
+    { "BPR",  F_BR, 0x07,  2, 1, OPD_ALIAS   }, { "BMR",  F_BR, 0x07,  4, 1, OPD_ALIAS   },
+    { "BOR",  F_BR, 0x07,  1, 1, OPD_PRIMARY }, { "BNOR", F_BR, 0x07, 14, 1, OPD_PRIMARY },
+    /* BNP and BNM had their BC forms above and not their BR ones. The pair is
+     * the same masks -- 13 and 11 -- and IGG0203A and IGC0009D use them
+     * (cc370#298). */
+    { "BNPR", F_BR, 0x07, 13, 1, OPD_ALIAS   }, { "BNMR", F_BR, 0x07, 11, 1, OPD_ALIAS   },
+    { NULL, 0, 0, 0, 0, OPD_NEVER }
+};
+
+#endif /* AS370_OPC_TABLE_H */

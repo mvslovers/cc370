@@ -3182,5 +3182,29 @@ elif ! python3 tests/symexp_check.py /tmp/_sx$$.tsv; then
 fi
 rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.out
 
+# ------------------------------------------------------------------ opcinv --
+# cc370#374: the opcode table has to invert, because #112's disassembler reads
+# the same table as370 encodes from and a second copy would drift in silence.
+#
+# tests/opcinv.c is compiled here rather than run through as370, and that is
+# the point: it is the SECOND file to #include opc_table.h, so the header
+# staying self-contained is tested by this line existing. as370 only ever
+# encodes -- op_find() keys on the mnemonic -- so nothing in the assembler
+# would notice if it stopped.
+#
+# The scores against the pre-#374 shape of the table are in opcinv.c's own
+# comment: 52 failures with every entry PRIMARY, 17 with the duplicate BCT.
+if cc -O2 -Wall -Wextra -Werror -Iinclude -o /tmp/_oi$$ tests/opcinv.c 2>/tmp/_oi$$.err
+then
+    if /tmp/_oi$$ > /tmp/_oi$$.out 2>&1
+    then echo "opcinv: OK$(sed -n 's/^opcinv: OK//p' /tmp/_oi$$.out)"
+    else echo "opcinv: FAIL"; cat /tmp/_oi$$.out; fail=$((fail + 1))
+    fi
+else
+    echo "opcinv: FAIL -- opc_table.h is not includable on its own"
+    cat /tmp/_oi$$.err; fail=$((fail + 1))
+fi
+rm -f /tmp/_oi$$ /tmp/_oi$$.out /tmp/_oi$$.err
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
