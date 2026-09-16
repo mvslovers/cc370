@@ -44,6 +44,53 @@ constant in the module, and neither the bytes nor the round trip will object.
 Disassemble this control section. The default is the first one in the deck.
 An unknown name is an error (exit 2), not an empty result.
 
+=item B<--derive-hints> I<SRC>
+
+Assemble I<SRC> with L<as370(1)> and write out what it found, as a hint file: the
+labels the source named and the base registers with the lifetimes the assembly
+gave them. **A translator, not an analysis** --- it reads as370's C<--sym> and
+C<--usings> exports and writes a third file; nothing here is inferred.
+
+It takes B<-I>, and B<records the list in the file it writes>. A hint set derived
+against the wrong macro library is a wrong hint set that looks entirely right, so
+the file announces which library built it rather than leaving that visible only to
+someone who happens to diff two runs.
+
+B<The offsets are the source's.> Applied to a module that has diverged from it,
+a label past the first divergence names the wrong bytes --- symbolically,
+consistently, and without moving one, so no round trip objects. That is what the
+anchors are for.
+
+=item B<-I> I<DIR>
+
+A macro library for B<--derive-hints>. Repeatable, and order is preserved.
+
+=item B<--as370> I<PATH>
+
+Which B<as370> to run. The default is the one beside this binary --- the install
+layout puts them in one directory --- and then whatever C<PATH> finds. In the
+build tree they are siblings and neither applies, which is why this exists; the
+derived file records what actually resolved rather than what was intended.
+
+=item B<--anchors=>B<refuse>|B<report>
+
+What a failed C<[[verify]]> does. B<refuse>, the default, stops at the first one
+and writes nothing --- right for a hand-written hint file, where a failed
+assertion is a mistake. B<report> disassembles anyway and writes each failure as
+a comment at its offset.
+
+B<A derived file's anchors exist to find the divergence, not to guard against
+it.> Measured over 909 length-differing modules: a median of 9 divergence points
+per module, the first at median offset C<X'14'> and at 2.1 % of the section, with
+65 % diverging inside the first tenth. So an anchor at a base register's
+establishing point --- typically offset 2, after a C<BALR> --- checks the one
+place that never moves, passes, and leaves every later label wrong; and an anchor
+per label block would refuse essentially everything. Anchors are therefore
+written densely, and what is worth having is neither a pass nor a refusal but a
+B<location>: the first failure bounds where the module and the source part
+company. Across a set of modules that is a table of offsets; a refusal would give
+one bit each.
+
 =item B<--hints> I<FILE>
 
 Read a hint file: labels, data and fill runs, base registers with a lifetime,
@@ -171,6 +218,16 @@ bytes: a patch applied to bytes nobody asserted is a patch applied to whatever
 the module happens to hold.
 
 =back
+
+B<A derived label that disagrees with the module's own name refuses, naming both
+offsets.> An C<ENTRY> in the ESD is the module's statement about where something
+B<is>; a derived C<[[label]]> is our source's statement about where it B<was>.
+One symbol at two offsets means the module has diverged, and reporting it beats
+emitting both names and letting as370 report a duplicate symbol far from the
+cause. It fires on 18 % of the length-differing population --- 409 of 2,292 carry
+named offsets at all --- so it complements the anchors rather than replacing
+them, but where it fires it is the better instrument, because the name is the
+module's own.
 
 C<[[using]]> and C<[[dsect]]> parse and refuse as not implemented. They are one
 thing, and C<[[base]]> is a different one: a C<USING> points a register at a

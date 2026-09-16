@@ -30,6 +30,9 @@
  */
 #include <ctype.h>
 #include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,7 +71,7 @@ static int dasm_rld_cb(const struct obj_rld *r, void *ctx);
 static unsigned char img[MAXSECT_BYTES];      /* the section's text */
 static unsigned char cov[MAXSECT_BYTES];      /* 1 = a TXT card covered it */
 static unsigned char lab[MAXSECT_BYTES];      /* 1 = something names this offset */
-static unsigned char brk[MAXSECT_BYTES];      /* 1 = a statement must start here */
+static unsigned char stbrk[MAXSECT_BYTES];    /* 1 = a statement must start here */
 static struct rlditem rld[MAXRLD];
 static int nrld;
 static char esdname[MAXESD][9];               /* ESDID -> name, for V-cons */
@@ -184,6 +187,15 @@ static struct hbase hbas[MAXHBASE];   static int nhbas;
 static struct hbytes hver[MAXHVR];     static int nhver;
 static struct hbytes hrep[MAXHVR];     static int nhrep;
 static struct uev    uevs[2 * MAXHBASE]; static int nuev;
+/* A failed anchor is a MEASUREMENT under --anchors=report and an error under
+ * --anchors=refuse, and which it is depends on what the file is.  In a
+ * hand-written hint file a failed assertion is a mistake and stopping is right.
+ * In a derived one applied across the 2,292 length-differing modules the failure
+ * IS the result -- it says where our source and IBM's object part company -- and
+ * a refusal yields one bit per module where the run exists to collect a number. */
+struct afail { long at; int n; unsigned char want[MAXHB]; };
+static struct afail afails[MAXHVR]; static int nafail;
+static int anchor_report;
 static char  hprefix[4] = "L";
 static char  hisa[8];
 static const char *hfile;
@@ -553,6 +565,12 @@ static int hin_data(long a)
     return 0;
 }
 
+static int afail_cmp(const void *x, const void *y)
+{
+    const struct afail *p = x, *q = y;
+    return p->at < q->at ? -1 : p->at > q->at ? 1 : 0;
+}
+
 static int uev_cmp(const void *x, const void *y)
 {
     const struct uev *p = x, *q = y;
@@ -601,6 +619,35 @@ static void emit(const char *label, const char *op, const char *opnd, const char
         char s[16];
         sprintf(s, "%08ld", seq);
         memcpy(line + 72, s, 8);
+        fwrite(line, 1, 80, outf);
+        fputc('\n', outf);
+        seq += 100;
+    } else {
+        int e = 71;
+        while (e > 0 && line[e - 1] == ' ') e--;
+        fwrite(line, 1, (size_t)e, outf);
+        fputc('\n', outf);
+    }
+    nline++;
+}
+
+/* A comment card: `*' in column 1, and in card format still exactly 80 columns
+ * with the sequence number in 73-80 and column 72 blank.  A comment that reached
+ * column 72 would eat the next card exactly as a statement does. */
+static void emit_comment(const char *text)
+{
+    char line[256];
+    int n;
+    if (scanning) return;
+    memset(line, ' ', sizeof line);
+    line[0] = '*';
+    n = (int)strlen(text);
+    if (n > 69) n = 69;
+    memcpy(line + 2, text, (size_t)n);
+    if (card_format) {
+        char sq[16];
+        sprintf(sq, "%08ld", seq);
+        memcpy(line + 72, sq, 8);
         fwrite(line, 1, 80, outf);
         fputc('\n', outf);
         seq += 100;
@@ -943,6 +990,17 @@ static int hints_verify_patch(void)
         if (v->kind == 0) {
             if (memcmp(img + v->at, v->b, (size_t)L)) {
                 char got[2 * MAXHB + 1], wnt[2 * MAXHB + 1];
+                if (anchor_report) {
+                    /* Recorded at its offset and the disassembly written anyway.
+                     * The FIRST failure bounds the divergence: everything before
+                     * it held, so the hint set is good up to there. */
+                    if (nafail < MAXHVR) {
+                        afails[nafail].at = v->at; afails[nafail].n = L;
+                        memcpy(afails[nafail].want, v->b, (size_t)L);
+                        nafail++;
+                    }
+                    continue;
+                }
                 hexbytes(img + v->at, L, got);
                 hexbytes(v->b, L, wnt);
                 snprintf(hmsg, sizeof hmsg, "verify failed at X'%lX': the module holds %s, not %s",
@@ -1005,13 +1063,36 @@ static int hints_bind(void)
             if (hlab[j].at == hlab[i].at) return herr(hlab[i].line, "two [[label]] entries name one offset");
             if (!strcmp(hlab[j].name, hlab[i].name)) return herr(hlab[i].line, "two [[label]] entries share a name");
         }
+        /* THE MODULE'S OWN NAMES OUTRANK A DERIVED ONE, and disagreeing with
+         * them is a finding rather than a nuisance.  An ENTRY in the ESD is
+         * IBM's statement about where something IS; a derived [[label]] is our
+         * source's statement about where it WAS.  When they name one symbol at
+         * two offsets the module has diverged, and that is worth reporting at
+         * its offset -- where without this check the two names would both be
+         * emitted and as370 would report a duplicate symbol a long way from the
+         * cause.
+         *
+         * Measured by the caller: 409 of the 2,292 length-differing modules
+         * carry named offsets at all, about three apiece, so this fires on 18 %
+         * of the target population and is silent on the rest.  A complement to
+         * the anchors and not a substitute -- but where it does fire it is the
+         * better instrument, because an ENTRY name is the module's own. */
+        for (j = 0; j < nld; j++)
+            if (ld[j].owner == sect_esdid && !strcmp(ld[j].name, hlab[i].name)
+                && ld[j].addr != hlab[i].at) {
+                snprintf(hmsg, sizeof hmsg,
+                         "`%s' is at X'%lX' in this module and X'%lX' in the hint file "
+                         "-- the module has diverged from the source these hints came from",
+                         hlab[i].name, (unsigned long)ld[j].addr, (unsigned long)hlab[i].at);
+                return herr(hlab[i].line, hmsg);
+            }
         lab[hlab[i].at] = 1;
-        brk[hlab[i].at] = 1;
+        stbrk[hlab[i].at] = 1;
     }
     for (i = 0; i < nhdata; i++) {
         if ((rc = hrange_ok(hdata[i].at, hdata[i].len, hdata[i].line, "data")) != 0) return rc;
-        brk[hdata[i].at] = 1;
-        if (hdata[i].at + hdata[i].len < sect_len) brk[hdata[i].at + hdata[i].len] = 1;
+        stbrk[hdata[i].at] = 1;
+        if (hdata[i].at + hdata[i].len < sect_len) stbrk[hdata[i].at + hdata[i].len] = 1;
     }
     for (i = 0; i < nhfill; i++) {
         long at = hfill[i].at, n = hfill[i].len, k;
@@ -1036,8 +1117,8 @@ static int hints_bind(void)
                 snprintf(hmsg, sizeof hmsg, "fill would swallow the label at X'%lX'", (unsigned long)(at + k));
                 return herr(hfill[i].line, hmsg);
             }
-        brk[at] = 1;
-        if (at + n < sect_len) brk[at + n] = 1;
+        stbrk[at] = 1;
+        if (at + n < sect_len) stbrk[at + n] = 1;
     }
     for (i = 0; i < nhbas; i++) {
         struct hbase *u = &hbas[i];
@@ -1110,11 +1191,11 @@ static int hints_bind(void)
                                  (unsigned long)ends[e], (unsigned long)hfill[k].at);
                         return herr(u->line, hmsg);
                     }
-                brk[ends[e]] = 1;
+                stbrk[ends[e]] = 1;
             }
         }
         lab[u->baseval] = 1;
-        brk[u->baseval] = 1;
+        stbrk[u->baseval] = 1;
         uevs[nuev].at = u->from; uevs[nuev].open = 1; uevs[nuev].u = i; nuev++;
         uevs[nuev].at = u->to;   uevs[nuev].open = 0; uevs[nuev].u = i; nuev++;
     }
@@ -1333,6 +1414,414 @@ static int load_member(const unsigned char *m, long n, const char *want, int all
     return 1;
 }
 
+/* --------------------------------------------------------------- derive -- */
+
+/* --derive-hints SRC: assemble the outdated source with as370 and write out what
+ * it found, as a hint file.
+ *
+ * IT IS A TRANSLATOR, NOT AN ANALYSIS, and that is only true because two exports
+ * landed first.  #373's --sym carries the symbol table with its sections and
+ * DSECT membership; #393's --usings carries every USING/DROP/PUSH/POP with its
+ * own (sect, loc) and each register's own base.  Nothing here infers anything:
+ * it reads two files and writes a third.  Before those existed the only route
+ * was scraping the printed listing -- which is what mvs38dasm does for its DSECT
+ * labels, and which cannot answer the USING question at all: a listing shows a
+ * USING's resolved base and no location counter, and DROP, PUSH and POP carry no
+ * address column whatever.
+ *
+ * WHAT THE OFFSETS ARE, because everything about using this depends on it.  They
+ * are OUR offsets, from OUR outdated source, and they are then applied to IBM's
+ * object.  That is the point -- reading IBM's bytes against our structure is how
+ * "which statement is missing here" stops being a day of hand work per module --
+ * and it is also where it goes wrong: past the first divergence a derived label
+ * names the wrong bytes.  Symbolic, consistent, false, and the round trip cannot
+ * object, because the bytes do not move.
+ *
+ * SO THE ANCHORS EXIST TO FIND THAT OFFSET, NOT TO GUARD AGAINST IT.  Measured
+ * by the caller over the 909 length-differing modules their runs place: a median
+ * of 9 divergence points per module, the first at median offset X'14' and at
+ * 2.1 % of the section, with 65 % diverging inside the first tenth.  Two schemes
+ * fail on those numbers and both were proposed here first:
+ *
+ *   - one anchor per derived base checks the one place that never moves.  A base
+ *     is established at the CSECT entry, typically offset 2 after a BALR, and
+ *     the first divergence is at X'14'.  The anchor sits BEFORE it, passes, and
+ *     every label after it is still wrong.
+ *   - one anchor per label block refuses essentially everything, since almost
+ *     every block head sits after some shift.
+ *
+ * What is worth having is neither a pass nor a refusal but a LOCATION: this hint
+ * set is good up to offset X, and X is where our source and IBM's object part
+ * company.  So anchors are written densely, at derived label offsets, and the
+ * report is the interval between the last one that held and the first that did
+ * not.  --anchors=report disassembles anyway and writes the failures in place;
+ * --anchors=refuse stops at the first, which is right for a hand-written file
+ * where a failed assertion really is an error and wrong for a run over 2,292
+ * modules whose whole purpose is to collect those offsets.
+ *
+ * WHAT IS NOT WRITTEN AS A TABLE.  A DSECT domain is dasm370's [[using]], which
+ * --hints refuses; an absolute domain has no representation here; and a domain
+ * whose value or establishing event is in another section has no meaning in this
+ * one.  All three are still worth recording, so they are written as `#' comments
+ * in a fixed, greppable shape.  A comment cannot be applied by accident, needs no
+ * grammar, and leaves the round trip exact -- and promoting one is a human's
+ * deliberate edit, which is what #112 means by written and never applied.
+ */
+
+#define MAXDSYM 8192
+#define MAXDEV  8192
+
+struct dsym { char name[16]; long value; int isrel; };
+struct dev  { long seq, loc, value; int isusing, isdrop, reg, valdsect, isabs, ours, valours; char valsect[16]; };
+
+static struct dsym dsyms[MAXDSYM]; static int ndsym;
+static struct dev  devs[MAXDEV];   static int ndev;
+
+/* The two exports are read BY COLUMN NAME and never by position.  A column added
+ * to either one in the middle would otherwise shift every field after it in
+ * silence, and this side would carry on reading plausible numbers out of the
+ * wrong columns -- which is the failure this whole file is written against, with
+ * a TSV in place of a listing. */
+struct tsv { char col[32][24]; int ncol; };
+
+static int tsv_idx(const struct tsv *t, const char *name)
+{
+    int i;
+    for (i = 0; i < t->ncol; i++) if (!strcmp(t->col[i], name)) return i;
+    return -1;
+}
+
+/* Returns a pointer into `line', which it modifies: the caller owns the line and
+ * the fields stay valid until the next line is read.  Deliberately NOT a static
+ * buffer -- two calls in one expression is the obvious use and a static one
+ * would quietly return the same text twice. */
+static char *tsv_get(char *line, int idx)
+{
+    char *p = line;
+    int i = 0;
+    if (idx < 0) return NULL;
+    for (;;) {
+        char *e = strchr(p, '\t');
+        if (i == idx) { if (e) *e = 0; return p; }
+        if (!e) return NULL;
+        p = e + 1; i++;
+    }
+}
+
+/* Read one export.  `want' is the section NAME and not its id: both exports
+ * carry as370's internal section number, which is not the ESDID and means
+ * nothing outside the run that produced it. */
+static int read_tsv(const char *fn, struct tsv *t, FILE **fp)
+{
+    char line[1024];
+    *fp = fopen(fn, "r");
+    if (!*fp) { perror(fn); return 16; }
+    t->ncol = 0;
+    while (fgets(line, sizeof line, *fp)) {
+        char *p;
+        if ((p = strchr(line, '\n'))) *p = 0;
+        if (strncmp(line, "#columns\t", 9)) continue;
+        p = line + 9;
+        while (p && t->ncol < 32) {
+            char *e = strchr(p, '\t');
+            if (e) *e = 0;
+            snprintf(t->col[t->ncol], sizeof t->col[0], "%.23s", p);   /* a column NAME, and gcc cannot bound a line */
+            t->ncol++;
+            p = e ? e + 1 : NULL;
+        }
+        return 0;
+    }
+    fprintf(stderr, "dasm370: %s: no #columns header -- not an as370 export\n", fn);
+    fclose(*fp); *fp = NULL;
+    return 16;
+}
+
+static int load_sym(const char *fn, const char *want)
+{
+    struct tsv t;
+    FILE *f;
+    char line[1024], b[1024];
+    int i_name, i_val, i_type, i_sn, i_def, rc;
+    if ((rc = read_tsv(fn, &t, &f)) != 0) return rc;
+    i_name = tsv_idx(&t, "name");  i_val = tsv_idx(&t, "value");
+    i_type = tsv_idx(&t, "type");  i_sn  = tsv_idx(&t, "sectname");
+    i_def  = tsv_idx(&t, "defined");
+    if (i_name < 0 || i_val < 0 || i_type < 0 || i_sn < 0 || i_def < 0) {
+        fprintf(stderr, "dasm370: %s: the export is missing a column this needs\n", fn);
+        fclose(f); return 16;
+    }
+#define FLD(ix) (snprintf(b, sizeof b, "%s", line), tsv_get(b, ix))
+    while (fgets(line, sizeof line, f)) {
+        char *p, nm[16];
+        long value;
+        if ((p = strchr(line, '\n'))) *p = 0;
+        if (line[0] == '#' || !line[0]) continue;
+        { char *v = FLD(i_def); if (!v || strcmp(v, "1")) continue; }   /* referenced, never defined */
+        { char *v = FLD(i_sn);  if (!v || strcmp(v, want)) continue; }  /* another section */
+        /* REL and LD only.  SD is the section itself and offset 0 already carries
+         * its name.  ABS is excluded for as370's own reason: an absolute EQU keeps
+         * the section its card was written in while holding no address in it, and
+         * every module writes R0 EQU 0 .. R15 EQU 15 inside a CSECT -- take those
+         * for labels and the disassembly names a register at every small offset. */
+        { char *v = FLD(i_type); if (!v || (strcmp(v, "REL") && strcmp(v, "LD"))) continue; }
+        { char *v = FLD(i_name); if (!v || !*v) continue;
+          snprintf(nm, sizeof nm, "%s", v); }
+        { char *v = FLD(i_val);  value = v ? strtol(v, NULL, 10) : 0; }
+        if (ndsym >= MAXDSYM) break;
+        snprintf(dsyms[ndsym].name, sizeof dsyms[0].name, "%s", nm);
+        dsyms[ndsym].value = value;
+        dsyms[ndsym].isrel = 1;
+        ndsym++;
+    }
+#undef FLD
+    fclose(f);
+    return 0;
+}
+
+static int load_usings(const char *fn, const char *want)
+{
+    struct tsv t;
+    FILE *f;
+    char line[1024];
+    int i_seq, i_kind, i_sn, i_loc, i_reg, i_val, i_vsn, i_vd, i_abs, i_by, rc;
+    if ((rc = read_tsv(fn, &t, &f)) != 0) return rc;
+    i_seq = tsv_idx(&t, "seq");   i_kind = tsv_idx(&t, "kind");
+    i_sn  = tsv_idx(&t, "sectname"); i_loc = tsv_idx(&t, "loc");
+    i_reg = tsv_idx(&t, "reg");   i_val  = tsv_idx(&t, "value");
+    i_vsn = tsv_idx(&t, "valsectname"); i_vd = tsv_idx(&t, "valdsect");
+    i_abs = tsv_idx(&t, "abs");   i_by   = tsv_idx(&t, "by");
+    if (i_seq < 0 || i_kind < 0 || i_sn < 0 || i_loc < 0 || i_reg < 0
+        || i_val < 0 || i_vsn < 0 || i_vd < 0 || i_abs < 0 || i_by < 0) {
+        fprintf(stderr, "dasm370: %s: the export is missing a column this needs\n", fn);
+        fclose(f); return 16;
+    }
+    while (fgets(line, sizeof line, f)) {
+        char b[1024], *p;
+        struct dev d;
+        if ((p = strchr(line, '\n'))) *p = 0;
+        if (line[0] == '#' || !line[0]) continue;
+        memset(&d, 0, sizeof d);
+#define FLD(ix) (snprintf(b, sizeof b, "%s", line), tsv_get(b, ix))
+        { char *v = FLD(i_by);   if (!v) continue;
+          /* by=noop changed nothing, so it opens and closes nothing.  by=pop is
+           * treated exactly like by=stmt -- that the export states what a POP
+           * did is the whole reason this side needs no stack of its own. */
+          if (!strcmp(v, "noop")) continue; }
+        { char *v = FLD(i_kind); if (!v) continue;
+          d.isusing = !strcmp(v, "USING"); d.isdrop = !strcmp(v, "DROP");
+          if (!d.isusing && !d.isdrop) continue; }       /* PUSH and POP move no domain themselves */
+        { char *v = FLD(i_seq);  d.seq = v ? strtol(v, NULL, 10) : 0; }
+        { char *v = FLD(i_loc);  d.loc = v ? strtol(v, NULL, 10) : 0; }
+        { char *v = FLD(i_reg);  d.reg = v ? (int)strtol(v, NULL, 10) : -1; }
+        { char *v = FLD(i_val);  d.value = v ? strtol(v, NULL, 10) : 0; }
+        { char *v = FLD(i_vd);   d.valdsect = v && !strcmp(v, "1"); }
+        { char *v = FLD(i_abs);  d.isabs = v && !strcmp(v, "1"); }
+        { char *v = FLD(i_sn);   d.ours = v && !strcmp(v, want); }
+        { char *v = FLD(i_vsn);  snprintf(d.valsect, sizeof d.valsect, "%s", v ? v : "");
+          d.valours = v && !strcmp(v, want); }
+#undef FLD
+        if (ndev >= MAXDEV) break;
+        devs[ndev++] = d;
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Run as370 over the source with both exports and a deck.  A host tool, so
+ * exec is ordinary here -- the no-fork rule in the root CLAUDE.md is about what
+ * runs ON MVS.  The deck is asked for because the section's declared length is
+ * needed and as370 is already running; it costs one more -o. */
+static int run_as370(const char *as, const char *src, char *const *incs, int ninc,
+                     const char *symf, const char *usef, const char *objf)
+{
+    char cmd[4096];
+    int n = 0, i, rc;
+    n += snprintf(cmd + n, sizeof cmd - (size_t)n, "'%s'", as);
+    for (i = 0; i < ninc; i++)
+        n += snprintf(cmd + n, sizeof cmd - (size_t)n, " -I '%s'", incs[i]);
+    n += snprintf(cmd + n, sizeof cmd - (size_t)n,
+                  " '%s' -o '%s' --sym='%s' --usings='%s' >/dev/null 2>&1",
+                  src, objf, symf, usef);
+    if (n >= (int)sizeof cmd) {
+        fprintf(stderr, "dasm370: the as370 command line is too long for this build\n");
+        return 16;
+    }
+    rc = system(cmd);
+    if (rc == -1) { fprintf(stderr, "dasm370: could not run %s\n", as); return 16; }
+    rc = WIFEXITED(rc) ? WEXITSTATUS(rc) : 16;
+    /* Severity 8 and above means the assembly did not produce a trustworthy
+     * deck, and a hint set derived from a failed assembly is worse than none:
+     * every symbol it did resolve looks exactly like one from a clean run. */
+    if (rc >= 8) {
+        fprintf(stderr, "dasm370: as370 ended rc %d on %s -- a hint set from a failed "
+                        "assembly cannot be told from one from a clean run\n", rc, src);
+        return 16;
+    }
+    return 0;
+}
+
+static int dsym_cmp(const void *a, const void *b)
+{
+    const struct dsym *x = a, *y = b;
+    if (x->value != y->value) return x->value < y->value ? -1 : 1;
+    return strcmp(x->name, y->name);
+}
+
+/* Write the hint file.
+ *
+ * The header records WHAT PRODUCED IT, and the `-I' list is the part that earns
+ * its place: a hint set derived against the wrong macro library is a wrong hint
+ * set that looks right, and here it says so in its own first lines instead of
+ * being visible only to someone who happens to diff two runs.
+ *
+ * Nothing in the header varies between two runs of the same inputs -- no
+ * timestamp, no temporary path -- because the round trip that accepts this file
+ * compares it byte for byte. */
+static int derive_emit(FILE *o, const char *as, const char *asver, long assize,
+                       const char *src, char *const *incs, int ninc,
+                       const char *sect, long seclen, int anchors)
+{
+    int i, j, nlab = 0, nbase = 0, nnote = 0, nanch = 0;
+
+    fprintf(o, "# derived by dasm370 --derive-hints\n");
+    fprintf(o, "#   source   %s\n", src);
+    fprintf(o, "#   section  %s  (X'%lX' bytes)\n", sect, (unsigned long)seclen);
+    fprintf(o, "#   as370    %s\n", as);
+    fprintf(o, "#   version  %s\n", asver);
+    fprintf(o, "#   size     %ld bytes\n", assize);
+    if (ninc == 0)
+        fprintf(o, "#   -I       (none)\n");
+    for (i = 0; i < ninc; i++)
+        fprintf(o, "#   -I       %s\n", incs[i]);
+    fprintf(o,
+"#\n"
+"# The as370 line identifies the INVOCATION, not the binary's content: a path, a\n"
+"# version string and a byte count are not a hash. Pin the binary externally if\n"
+"# that matters. The -I list is the one that catches the ordinary mistake --\n"
+"# a hint set derived against the wrong macro library is a wrong hint set that\n"
+"# looks right.\n"
+"#\n"
+"# THE OFFSETS BELOW ARE THIS SOURCE'S, applied to whatever module you point\n"
+"# dasm370 at. Past the first point where the two diverge, a label names the\n"
+"# wrong bytes and a base's range covers the wrong span -- symbolically,\n"
+"# consistently, and without moving a byte, so no round trip objects. The\n"
+"# [[verify]] anchors exist to FIND that offset rather than to guard against it:\n"
+"# with --anchors=report the disassembly is written anyway and each failed anchor\n"
+"# is a comment at its offset, so the first one bounds the divergence.\n"
+"#\n");
+
+    qsort(dsyms, (size_t)ndsym, sizeof dsyms[0], dsym_cmp);
+
+    for (i = 0; i < ndsym; i++) {
+        if (dsyms[i].value < 0 || dsyms[i].value >= seclen) {
+            fprintf(o, "# derived: kind=label name=%s value=0x%lX reason=outside-section\n",
+                    dsyms[i].name, (unsigned long)dsyms[i].value);
+            nnote++;
+            continue;
+        }
+        /* Several symbols can name one offset -- `A EQU *' beside `B DS 0F' is
+         * ordinary -- and two [[label]] entries on one offset is a file this
+         * tool's own parser refuses.  The first by name wins and the rest are
+         * recorded, because dropping them silently would make the file look
+         * complete and be short. */
+        if (i > 0 && dsyms[i - 1].value == dsyms[i].value) {
+            fprintf(o, "# derived: kind=label name=%s value=0x%lX reason=offset-already-named-by-%s\n",
+                    dsyms[i].name, (unsigned long)dsyms[i].value, dsyms[i - 1].name);
+            nnote++;
+            continue;
+        }
+        fprintf(o, "\n[[label]]\nat   = 0x%lX\nname = \"%s\"\n",
+                (unsigned long)dsyms[i].value, dsyms[i].name);
+        nlab++;
+    }
+
+    /* A base opens at a USING on a register and ends at the next USING or DROP
+     * on the SAME register -- a linear replay, which is possible only because
+     * the export already resolved what every POP did.  A stack kept here would
+     * be a second copy of the assembler's, free to disagree in silence. */
+    for (i = 0; i < ndev; i++) {
+        struct dev *u = &devs[i];
+        long to = seclen;
+        if (!u->isusing) continue;
+        /* A base whose VALUE lies outside this section covers nothing in it, and
+         * is ordinary rather than exotic: `USING D,11,10' on a section shorter
+         * than 4096 bytes bases 10 at D+4096, past the end.  It must not become
+         * a [[base]] -- this tool's own parser refuses one, so the file would be
+         * rejected by its own consumer, which the round trip is what catches. */
+        if (u->value < 0 || u->value >= seclen || u->loc < 0 || u->loc >= seclen) {
+            fprintf(o, "# derived: kind=using reg=%d value=0x%lX from=0x%lX"
+                       " evidence=assembly reason=outside-section\n",
+                    u->reg, (unsigned long)u->value, (unsigned long)u->loc);
+            nnote++;
+            continue;
+        }
+        if (u->valdsect || u->isabs || !u->ours || !u->valours) {
+            /* Three kinds this file cannot express, recorded rather than
+             * dropped: a DSECT domain is [[using]], which --hints refuses; an
+             * absolute domain is not an address at all; and one whose value or
+             * establishing statement is in another section has no meaning in
+             * this one. */
+            fprintf(o, "# derived: kind=using reg=%d value=0x%lX valsect=%s from=0x%lX"
+                       " dsect=%d abs=%d evidence=assembly reason=%s\n",
+                    u->reg, (unsigned long)u->value, u->valsect[0] ? u->valsect : "(none)",
+                    (unsigned long)u->loc, u->valdsect, u->isabs,
+                    u->valdsect ? "dsect-domain" : u->isabs ? "absolute-domain" : "other-section");
+            nnote++;
+            continue;
+        }
+        for (j = i + 1; j < ndev; j++)
+            if (devs[j].reg == u->reg) {
+                /* A DROP written in ANOTHER section has a loc in the wrong
+                 * coordinate system, so the range simply runs to the end here. */
+                to = devs[j].ours ? devs[j].loc : seclen;
+                break;
+            }
+        if (to > seclen) to = seclen;
+        if (to <= u->loc) {
+            fprintf(o, "# derived: kind=using reg=%d value=0x%lX from=0x%lX to=0x%lX"
+                       " evidence=assembly reason=empty-range\n",
+                    u->reg, (unsigned long)u->value, (unsigned long)u->loc, (unsigned long)to);
+            nnote++;
+            continue;
+        }
+        fprintf(o, "\n[[base]]\nreg   = %d\nvalue = 0x%lX\nfrom  = 0x%lX\nto    = 0x%lX\n",
+                u->reg, (unsigned long)u->value, (unsigned long)u->loc, (unsigned long)to);
+        nbase++;
+    }
+
+    /* The anchors, and their BYTES come from the deck this same as370 run
+     * produced -- read back through dasm370's own deck reader, so there is one
+     * reader on each side and nothing in between.  Four bytes: enough to
+     * discriminate, short enough that an anchor asserts the statement AT the
+     * label and not the one after it.  Only where all four are covered by a TXT
+     * card, because --hints refuses a verify over bytes no card defined and a
+     * file this tool writes must be one it accepts. */
+    if (anchors) {
+        fprintf(o, "\n# Anchors, dense, at derived label offsets. Anything sparser checks the\n"
+                   "# one place that never moves: a base is established at the CSECT entry,\n"
+                   "# typically offset 2 after a BALR, and the first divergence is at a\n"
+                   "# median offset of X'14' -- so a per-base anchor sits BEFORE the\n"
+                   "# divergence, passes, and leaves every later label wrong. Measured over\n"
+                   "# 909 modules: median 9 divergence points, the first at 2.1%% of the\n"
+                   "# section, 65%% inside the first tenth.\n");
+        for (i = 0; i < ndsym; i++) {
+            char hx[16];
+            long at = dsyms[i].value;
+            if (at < 0 || at + 4 > seclen) continue;
+            if (i > 0 && dsyms[i - 1].value == at) continue;
+            if (!cov[at] || !cov[at + 1] || !cov[at + 2] || !cov[at + 3]) continue;
+            hexbytes(img + at, 4, hx);
+            fprintf(o, "\n[[verify]]\nat    = 0x%lX\nbytes = \"%s\"\n",
+                    (unsigned long)at, hx);
+            nanch++;
+        }
+    }
+
+    fprintf(o, "\n# %d label(s), %d base(s), %d anchor(s), %d note(s)\n",
+            nlab, nbase, nanch, nnote);
+    return 0;
+}
+
 /* ------------------------------------------------------------- the walk -- */
 
 /* One pass over the section.  It runs TWICE when the hint file carries a USING:
@@ -1349,13 +1838,26 @@ static int load_member(const unsigned char *m, long n, const char *want, int all
 static void walk_section(void)
 {
     long a = 0;
-    int ev = 0;
+    int ev = 0, af = 0;
 
     while (a < sect_len) {
         const struct rlditem *r;
         long fl;
+        /* A failed anchor, written where it failed.  The disassembly continues:
+         * the point of --anchors=report is to say WHERE the module and the
+         * source derived from part company, and stopping at the first one
+         * answers that with a return code instead of with an offset. */
+        while (af < nafail && afails[af].at <= a) {
+            char t[320], got[2 * MAXHB + 1], wnt[2 * MAXHB + 1];   /* two 128-char hex strings fit; emit() trims to 69 */
+            hexbytes(img + afails[af].at, afails[af].n, got);
+            hexbytes(afails[af].want, afails[af].n, wnt);
+            snprintf(t, sizeof t, "ANCHOR FAILED %06lX module %s derived %s",
+                     (unsigned long)afails[af].at, got, wnt);
+            emit_comment(t);
+            af++;
+        }
         /* `<= a' and not `== a': every offset an event sits on was marked in
-         * brk[] and refused where it could not begin a statement, so this should
+         * stbrk[] and refused where it could not begin a statement, so this should
          * always land exactly.  Late is still better than lost. */
         while (ev < nuev && uevs[ev].at <= a) {
             const struct hbase *u = &hbas[uevs[ev].u];
@@ -1373,7 +1875,7 @@ static void walk_section(void)
         }
         if (!cov[a]) {                             /* a hole is a hole, not a zero */
             long n = 1;
-            while (a + n < sect_len && !cov[a + n] && !lab[a + n] && !brk[a + n]) n++;
+            while (a + n < sect_len && !cov[a + n] && !lab[a + n] && !stbrk[a + n]) n++;
             emit_ds_hole(a, n);
             a += n;
             continue;
@@ -1397,7 +1899,7 @@ static void walk_section(void)
                 && reencode_ok(o, img + a, len)
                 && operands(o, img + a, a, opnd, sizeof opnd)) {
                 int k, split = 0;
-                for (k = 1; k < len; k++) if (lab[a + k] || brk[a + k]) split = 1;
+                for (k = 1; k < len; k++) if (lab[a + k] || stbrk[a + k]) split = 1;
                 for (k = 0; k < len; k++) if (!cov[a + k]) split = 1;
                 if (!split) {
                     char l[LABBUF], rem[32];
@@ -1427,7 +1929,7 @@ static void walk_section(void)
         }
         {                                          /* nothing else fits: DC */
             long n = 1;
-            while (a + n < sect_len && cov[a + n] && !lab[a + n] && !brk[a + n]
+            while (a + n < sect_len && cov[a + n] && !lab[a + n] && !stbrk[a + n]
                    && !rld_at(a + n) && !hfill_at(a + n) && n < 16) n++;
             emit_dc_hex(a, (int)n);
             a += n;
@@ -1452,6 +1954,17 @@ static void usage(FILE *o)
 "Usage: dasm370 [options...] deck.obj\n"
 " Options:\n"
 "  --csect NAME       disassemble this control section (default: the only one)\n"
+"  --derive-hints SRC assemble SRC with as370 and write out what it found as a\n"
+"                     hint file: its labels, and its base registers with the\n"
+"                     lifetimes the assembly gave them.  Takes -I, and records\n"
+"                     the list in the file -- a hint set derived against the\n"
+"                     wrong macro library is a wrong one that looks right\n"
+"  -I DIR             macro library for --derive-hints (repeatable)\n"
+"  --as370 PATH       which as370 to run (default: beside this binary, then PATH)\n"
+"  --anchors=MODE     refuse (default) stops at the first failed [[verify]];\n"
+"                     report disassembles anyway and writes each failure as a\n"
+"                     comment at its offset, so the first one bounds where the\n"
+"                     module and the source the hints came from diverge\n"
 "  --hints FILE       read a hint file: labels, data and fill runs, base\n"
 "                     registers with a lifetime, and the VERIFY/REPLACE pair.\n"
 "                     A TOML subset, parsed here; anything outside the grammar\n"
@@ -1482,6 +1995,10 @@ static void usage(FILE *o)
 int main(int argc, char **argv)
 {
     const char *src = NULL, *want = NULL, *outfn = NULL, *hints_file = NULL, *isa_cli = NULL;
+    const char *derive_src = NULL, *as370_path = NULL;
+    char *incs[64]; int ninc = 0;
+    char tsym[512], tuse[512], tobj[512], asver[128];
+    long assize = 0;
     int ai, i, rc, allow_incomplete = 0;
     unsigned char *deck;
     long dn, ncards, c;
@@ -1494,6 +2011,18 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[ai], "--csect") && ai + 1 < argc) want = argv[++ai];
         else if (!strcmp(argv[ai], "--allow-incomplete")) allow_incomplete = 1;
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];
+        else if (!strcmp(argv[ai], "--derive-hints") && ai + 1 < argc) derive_src = argv[++ai];
+        else if (!strcmp(argv[ai], "--as370") && ai + 1 < argc) as370_path = argv[++ai];
+        else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) {
+            if (ninc >= 64) { fprintf(stderr, "dasm370: too many -I directories for this build\n"); return 16; }
+            incs[ninc++] = argv[++ai];
+        }
+        else if (!strncmp(argv[ai], "--anchors=", 10)) {
+            const char *v = argv[ai] + 10;
+            if (!strcmp(v, "report")) anchor_report = 1;
+            else if (!strcmp(v, "refuse")) anchor_report = 0;
+            else { fprintf(stderr, "dasm370: --anchors=%s is not report or refuse\n", v); return 16; }
+        }
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) outfn = argv[++ai];
         else if (!strcmp(argv[ai], "--isa") && ai + 1 < argc) {
             isa_cli = argv[++ai];
@@ -1516,7 +2045,58 @@ int main(int argc, char **argv)
         else if (src) { fprintf(stderr, "dasm370: more than one input file\n"); return 16; }
         else src = argv[ai];
     }
-    if (!src) { usage(stderr); return 16; }
+    /* --derive-hints reads a SOURCE and writes a hint file; it takes no deck of
+     * its own, because it assembles one.  Mixing the two would be two tools in
+     * one invocation with one -o between them. */
+    if (derive_src && src) {
+        fprintf(stderr, "dasm370: --derive-hints takes a source and assembles its own deck; "
+                        "do not also give one\n");
+        return 16;
+    }
+    if (derive_src && hints_file) {
+        fprintf(stderr, "dasm370: --derive-hints writes a hint file; it does not read one\n");
+        return 16;
+    }
+    if (!src && !derive_src) { usage(stderr); return 16; }
+
+    if (derive_src) {
+        const char *tmp = getenv("TMPDIR"); char asbuf[512];
+        struct stat st;
+        FILE *vp;
+        if (!tmp || !*tmp) tmp = "/tmp";
+        snprintf(tsym, sizeof tsym, "%s/dasm370-%d.sym", tmp, (int)getpid());
+        snprintf(tuse, sizeof tuse, "%s/dasm370-%d.use", tmp, (int)getpid());
+        snprintf(tobj, sizeof tobj, "%s/dasm370-%d.obj", tmp, (int)getpid());
+        /* Which as370: the one named, else the one beside this binary -- the
+         * install layout puts them in one directory -- else whatever PATH finds.
+         * In the BUILD tree they are siblings and neither of the last two is
+         * right, which is why --as370 exists and why the header records what
+         * actually resolved rather than what was intended. */
+        if (!as370_path) {
+            const char *sl = strrchr(argv[0], '/');
+            if (sl) {
+                snprintf(asbuf, sizeof asbuf, "%.*sas370", (int)(sl - argv[0] + 1), argv[0]);
+                if (!access(asbuf, X_OK)) as370_path = asbuf;
+            }
+        }
+        if (!as370_path) as370_path = "as370";
+        asver[0] = 0;
+        {
+            char vc[600];
+            snprintf(vc, sizeof vc, "'%s' -v 2>/dev/null", as370_path);
+            if ((vp = popen(vc, "r")) != NULL) {
+                if (fgets(asver, sizeof asver, vp)) {
+                    char *nl = strchr(asver, '\n'); if (nl) *nl = 0;
+                }
+                pclose(vp);
+            }
+        }
+        if (!asver[0]) snprintf(asver, sizeof asver, "(could not run %.90s -v)", as370_path);
+        if (!stat(as370_path, &st)) assize = (long)st.st_size;
+        if ((rc = run_as370(as370_path, derive_src, incs, ninc, tsym, tuse, tobj)) != 0) return rc;
+        src = tobj;                      /* read it back through our own deck reader */
+    }
+
 
     /* The file is read before the module, so a malformed hint file is refused
      * before anything else has happened -- and before the output is opened, so a
@@ -1634,6 +2214,19 @@ int main(int argc, char **argv)
         fprintf(stderr, "dasm370: %s: TXT reaches %06lX, past the ESD length %06lX\n",
                 sect_name, (unsigned long)maxaddr, (unsigned long)sect_len);
 
+    if (derive_src) {
+        FILE *o;
+        if ((rc = load_sym(tsym, sect_name)) != 0) return rc;
+        if ((rc = load_usings(tuse, sect_name)) != 0) return rc;
+        o = outfn ? fopen(outfn, "w") : stdout;
+        if (!o) { perror(outfn); return 16; }
+        rc = derive_emit(o, as370_path, asver, assize, derive_src, incs, ninc,
+                         sect_name, sect_len, 1);
+        if (o != stdout && fclose(o)) { perror(outfn); rc = 16; }
+        remove(tsym); remove(tuse); remove(tobj);
+        return rc;
+    }
+
 emit_source:
     /* VERIFY, then REPLACE, and both before a single label is derived: the
      * derivation reads the image (an A-con's target comes out of the bytes), so
@@ -1665,6 +2258,7 @@ emit_source:
      * checked against the section, and each USING's base is resolved to an
      * offset so everything downstream of it is arithmetic. */
     if (hints_file && (rc = hints_bind()) != 0) return rc;
+    if (nafail) qsort(afails, (size_t)nafail, sizeof afails[0], afail_cmp);
 
     /* Pass one, and only when a USING gives a branch target a meaning: decode
      * the section without writing it and label every BC target the USING
@@ -1690,7 +2284,9 @@ emit_source:
 
     {
         char rem[64];
-        snprintf(rem, sizeof rem, "%ld bytes, from %s", sect_len, src);
+        /* %.40s: the remark is trimmed to the card anyway, and since --derive-hints
+         * makes `src' a bounded array gcc can now see the arithmetic and says so. */
+        snprintf(rem, sizeof rem, "%ld bytes, from %.40s", sect_len, src);
         emit(sect_name, "CSECT", "", rem);
     }
     for (i = 0; i < nld; i++)

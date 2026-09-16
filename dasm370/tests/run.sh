@@ -432,6 +432,111 @@ rm -f "$T/out.s"
 [ $? = 16 ] && [ ! -e "$T/out.s" ] && pass "a hint file that cannot be opened is refused" \
                                    || fail "a hint file that cannot be opened is refused"
 
+# ---- --derive-hints (#382, PR B) ------------------------------------------
+# A TRANSLATOR, not an analysis: run as370, read --sym (#373) and --usings
+# (#393), write a hint file. That is only possible because those two exports
+# exist; before them the only route was scraping the printed listing, which is
+# what mvs38dasm does for DSECT labels and which cannot answer the USING
+# question at all.
+#
+# ON THE PRE-CHANGE BINARY (63a988d): `invalid option '--derive-hints'', rc 16.
+# An additive option cannot score against a binary that rejects it, so the
+# assertions below are what carry this -- plus the two acceptances from #382
+# that CANNOT be faked: the round trip, and the wrong -I pair.
+DH="$T/dh"
+"$D" --derive-hints tests/derive.s --as370 "$A" -o "$DH.toml" 2>"$T/dh.err"
+if [ $? = 0 ] && [ -s "$DH.toml" ]; then pass "--derive-hints writes a hint file"
+else fail "--derive-hints writes a hint file"; cat "$T/dh.err"; fi
+dwant() { if grep -qE "$1" "$DH.toml"; then pass "$2"; else fail "$2"; fi; }
+dwant '^name = "LOOPTOP"'   "a label the source named comes back"
+dwant '^at   = 0x6'         "at the offset as370 gave it"
+dwant '^reg   = 12'         "the base register, with a lifetime"
+dwant '^from  = 0x2'        "from where it was established"
+dwant 'reason=dsect-domain' "a DSECT domain is a COMMENT, not a [[base]] -- [[using]] is refused"
+dwant '^\[\[verify\]\]'     "anchors are written"
+dwant '^#   -I ' "the -I list is IN the file, so a wrong macro library announces itself"
+
+# Deterministic: two runs of the same inputs must be byte-identical, or the
+# round-trip acceptance below cannot mean anything.
+"$D" --derive-hints tests/derive.s --as370 "$A" -o "$DH.2" 2>/dev/null
+cmp -s "$DH.toml" "$DH.2" && pass "two derive runs of one source are byte-identical" \
+                          || fail "two derive runs of one source are byte-identical"
+
+# #382's first acceptance, in its strongest available form: derive from x.s,
+# apply to OUR OWN deck of x.s, and the disassembly must both carry the source's
+# names AND reassemble to the bytes it came from.
+"$A" tests/derive.s -o "$T/dv.obj" >/dev/null 2>&1
+"$D" --format free --hints "$DH.toml" "$T/dv.obj" -o "$T/dv.s" 2>/dev/null
+if grep -qE '^LOOPTOP +L +2,COUNTER' "$T/dv.s" && grep -qE '^ +BNE +LOOPTOP' "$T/dv.s"; then
+    pass "applied to its own module the disassembly reads in the source's own names"
+else
+    fail "applied to its own module the disassembly reads in the source's own names"
+    sed -n 1,12p "$T/dv.s"
+fi
+"$D" --hints "$DH.toml" "$T/dv.obj" -o "$T/dv2.s" 2>/dev/null
+"$A" "$T/dv2.s" -o "$T/dv2.obj" >/dev/null 2>&1
+dn=$(( ($(wc -c < "$T/dv.obj") / 80 - 1) * 80 ))
+head -c $dn "$T/dv.obj" > "$T/dv.cut"; head -c $dn "$T/dv2.obj" > "$T/dv2.cut"
+cmp -s "$T/dv.cut" "$T/dv2.cut" && pass "round trip: derived hints applied still reassemble byte-identically" \
+                                || fail "round trip: derived hints applied still reassemble byte-identically"
+
+# #382's third acceptance, and the one that cannot be faked. PAD expands to a
+# different LENGTH in maclib-a and maclib-b, so every label after it shifts. A
+# hint set derived against the wrong library is a wrong hint set that looks
+# entirely right -- so the two files must differ VISIBLY.
+"$D" --derive-hints tests/derivemac.s --as370 "$A" -I tests/maclib-a -o "$T/ma.toml" 2>/dev/null
+"$D" --derive-hints tests/derivemac.s --as370 "$A" -I tests/maclib-b -o "$T/mb.toml" 2>/dev/null
+if cmp -s "$T/ma.toml" "$T/mb.toml"; then
+    fail "a hint set derived against the wrong -I is visibly different"
+else
+    pass "a hint set derived against the wrong -I is visibly different"
+fi
+grep -q 'maclib-a' "$T/ma.toml" && grep -q 'maclib-b' "$T/mb.toml" \
+    && pass "and each file names the library it was built with" \
+    || fail "and each file names the library it was built with"
+
+# The anchors. Applied to the OTHER library's module, they must locate the
+# divergence -- which for these two is the macro at X'6'.
+"$A" tests/derivemac.s -I tests/maclib-b -o "$T/mb.obj" >/dev/null 2>&1
+rm -f "$T/an.s"
+"$D" --hints "$T/ma.toml" "$T/mb.obj" -o "$T/an.s" >/dev/null 2>&1
+if [ $? = 16 ] && [ ! -e "$T/an.s" ]; then
+    pass "--anchors=refuse is the default: a failed anchor refuses and writes nothing"
+else
+    fail "--anchors=refuse is the default: a failed anchor refuses and writes nothing"
+fi
+"$D" --anchors=report --format free --hints "$T/ma.toml" "$T/mb.obj" -o "$T/an.s" 2>/dev/null
+rcan=$?
+if [ $rcan = 0 ] && grep -q '^\* ANCHOR FAILED 000006' "$T/an.s"; then
+    pass "--anchors=report disassembles anyway and names the divergence at its offset"
+else
+    fail "--anchors=report disassembles anyway and names the divergence at its offset (rc $rcan)"
+    sed -n 1,8p "$T/an.s"
+fi
+
+# The module's own names outrank a derived one, and disagreeing with them is a
+# finding. 409 of the caller's 2,292 length-differing modules carry named
+# offsets, so this fires on 18 % of the target population and is silent on the
+# rest -- a complement to the anchors, not a substitute.
+sed 's/^DERENT   BALR  12,0$/         BALR  12,0\
+DERENT   DS    0H/' tests/derive.s > "$T/moved.s"
+"$A" "$T/moved.s" -o "$T/moved.obj" >/dev/null 2>&1
+rm -f "$T/mv.s"
+"$D" --hints "$DH.toml" "$T/moved.obj" -o "$T/mv.s" >"$T/mv.err" 2>&1
+if [ $? = 16 ] && [ ! -e "$T/mv.s" ] && grep -q "X'2' in this module and X'0' in the hint file" "$T/mv.err"; then
+    pass "an ENTRY at a different offset than the derived label refuses, naming both"
+else
+    fail "an ENTRY at a different offset than the derived label refuses, naming both"
+    cat "$T/mv.err"
+fi
+
+"$D" --derive-hints tests/derive.s --as370 "$A" "$T/dv.obj" >/dev/null 2>&1
+[ $? = 16 ] && pass "--derive-hints with a deck as well is refused -- it assembles its own" \
+            || fail "--derive-hints with a deck as well is refused -- it assembles its own"
+"$D" --derive-hints tests/derive.s --as370 "$A" --hints "$DH.toml" >/dev/null 2>&1
+[ $? = 16 ] && pass "--derive-hints WRITES a hint file and refuses to also read one" \
+            || fail "--derive-hints WRITES a hint file and refuses to also read one"
+
 # ---- refusals -------------------------------------------------------------
 "$D" --csect NOSUCHCS "$T/a.obj" -o /dev/null >/dev/null 2>&1
 [ $? = 2 ] && pass "an unknown --csect exits 2, not 0" || fail "an unknown --csect exits 2, not 0"
