@@ -68,7 +68,11 @@ static enum fmt detect(const unsigned char *b, long n)
         b[5] == 0xD9 && b[6] == 0xF0 && b[7] == 0xF1)
         return F_XMIT;                                            /* "INMR01" at offset 2 */
     if (n >= 4 && obj_card_type(b) != OBJ_OTHER) return F_OBJ;
-    if (n >= 1 && (b[0] == 0x20 || b[0] == 0x28)) return F_LMOD;  /* first record = CESD */
+    /* First record is the CESD -- unless the module was linked with TEST, in
+     * which case the SYM records come first (docs/load-module-format.md
+     * section 2), and a sniff that only knows X'20' calls the member "data". */
+    if (n >= 1 && (b[0] == 0x20 || b[0] == 0x28)) return F_LMOD;
+    if (n >= 8 && (b[0] & 0xf0) == 0x40) return F_LMOD;           /* leading SYM */
     return F_UNKNOWN;
 }
 
@@ -210,7 +214,9 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
 /* walk the byte-0 record stream; counts by type, notes the trailing MODEND */
 static void show_lmod(const char *path, const unsigned char *b, long n, int v)
 {
-    int ncesd = 0, nidr = 0, nctl = 0, ntext = 0, nrld = 0, nscat = 0, last_modend = 0, bad = 0;
+    int ncesd = 0, nidr = 0, nctl = 0, ntext = 0, nrld = 0, nscat = 0, nsym = 0;
+    int last_modend = 0, bad = 0;
+    struct lmod_info info;
 
     if (v) printf("%s:\n", path);          /* header printed after the summary below */
 
@@ -225,6 +231,7 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v)
             case LMOD_CESD: kind = "CESD";    ncesd++; break;
             case LMOD_IDR:  kind = "IDR";     nidr++;  break;
             case LMOD_SCATTER: kind = "scatter"; nscat++; break;
+            case LMOD_SYM:  kind = "SYM";     nsym++;  break;
             case LMOD_TEXT: kind = "text";    ntext++; break;
             default:        kind = "control"; nctl++;
                             if (r.flags & LMOD_CTL_RLD) nrld++;
@@ -237,19 +244,20 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v)
         }
         if (rc < 0) bad = 1;
     }
+    lmod_scan(b, n, &info);
 
     /* the summary line goes first when not verbose; when verbose it was preceded
      * by the record dump, so print it as a trailing total either way. */
     if (!v) printf("%s: ", path);
     else    printf("  ");
-    if (nscat) printf("MVS load module member -- %d CESD, %d IDR, %d scatter, "
-                      "%d text record(s), %d control, %d w/RLD%s, %ld bytes%s\n",
-           ncesd, nidr, nscat, ntext, nctl, nrld, last_modend ? ", MODEND" : "", n,
-           bad ? " (TRUNCATED/unrecognized record)" : "");
-    else printf("MVS load module member -- %d CESD, %d IDR, %d text record(s), "
-           "%d control, %d w/RLD%s, %ld bytes%s\n",
-           ncesd, nidr, ntext, nctl, nrld, last_modend ? ", MODEND" : "", n,
-           bad ? " (TRUNCATED/unrecognized record)" : "");
+    printf("MVS load module member -- %d CESD, %d IDR, ", ncesd, nidr);
+    if (nscat) printf("%d scatter, ", nscat);
+    if (nsym)  printf("%d SYM, ", nsym);
+    if (info.nseg > 1) printf("%d overlay segments, ", info.nseg);
+    printf("%d text record(s), %d control, %d w/RLD%s, %ld bytes",
+           ntext, nctl, nrld, last_modend ? ", MODEND" : "", n);
+    if (info.trailing) printf(" (+%ld after MODEND)", info.trailing);
+    printf("%s\n", bad ? " (TRUNCATED/unrecognized record)" : "");
 }
 
 /* ====================================================================== */

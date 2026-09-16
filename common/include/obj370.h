@@ -137,13 +137,15 @@ enum lmod_kind {
     LMOD_IDR,           /* identification record (translator / SPZAP / LKED)  */
     LMOD_CTL,           /* control (and RLD) record                          */
     LMOD_TEXT,          /* the pure-text record a control record announces    */
-    LMOD_SCATTER        /* scatter/translation record (SCTR or OVLY modules)  */
+    LMOD_SCATTER,       /* scatter/translation record (SCTR or OVLY modules)  */
+    LMOD_SYM            /* SYM record: TESTRAN data, or ESD card images       */
 };
 
 /* Control-record byte-0 bits. */
-enum { LMOD_CTL_TEXT = 0x01,    /* a text record follows this one   */
-       LMOD_CTL_RLD  = 0x02,    /* this record carries RLD items    */
-       LMOD_CTL_END  = 0x08 };  /* MODEND: last control record      */
+enum { LMOD_CTL_TEXT   = 0x01,  /* a text record follows this one   */
+       LMOD_CTL_RLD    = 0x02,  /* this record carries RLD items    */
+       LMOD_CTL_SEGEND = 0x04,  /* last control record of an overlay segment */
+       LMOD_CTL_END    = 0x08 };/* MODEND: last control record      */
 
 struct lmod_item {
     enum lmod_kind kind;
@@ -155,22 +157,84 @@ struct lmod_item {
 struct lmod_iter {
     const unsigned char *m;
     long n, p, pending;         /* pending = length of an announced text record */
+    int  done;                  /* MODEND seen; the module ends there */
 };
 
 void lmod_iter_init(struct lmod_iter *it, const unsigned char *m, long n);
 /* 1 = item returned, 0 = end of member, -1 = malformed (unknown record type or
- * a length running past the end).  A caller that stops early just stops. */
+ * a length running past the end).  A caller that stops early just stops.
+ *
+ * The walk ENDS at the MODEND control record (and the text record it announces)
+ * rather than at the physical end of the image, because that is where the
+ * module ends -- there is no end-of-module record, the last control record
+ * carries X'08' (docs/load-module-format.md section 2), and IEWFETCH stops
+ * there too.  One member of TK5's 2,396 carries 28 bytes past it, and walking
+ * on turned those into "malformed load-module record stream" for all 22 of
+ * HEWLF064's CSECTs -- a refusal to read a module that is perfectly readable.
+ * Use lmod_scan() to find out that they are there. */
 int  lmod_iter_next(struct lmod_iter *it, struct lmod_item *out);
+
+/* ---- what a walk of the whole member found ----
+ * The reader's contract for a member it cannot fully account for is to say SO,
+ * with a reason -- not to hand back a partial result that looks like any other
+ * (mvslovers/cc370#372).  A boolean tells a bulk run how many results to
+ * distrust; a reason tells it which.
+ */
+enum {
+    LMOD_ANOM_TRAILING  = 0x01, /* bytes follow the MODEND record        */
+    LMOD_ANOM_BADREC    = 0x02, /* a record type the reader does not know */
+    LMOD_ANOM_BADLEN    = 0x04, /* a record length runs past the image    */
+    LMOD_ANOM_NOMODEND  = 0x08  /* the stream ran out before MODEND       */
+};
+/* LMOD_ANOM_BADREC and LMOD_ANOM_BADLEN mean the image is INCOMPLETE: records
+ * after the break were never seen.  TRAILING and NOMODEND do not -- everything
+ * the reader returned is real; something else is also present, or the end
+ * marker is missing. */
+#define LMOD_IMAGE_INCOMPLETE (LMOD_ANOM_BADREC | LMOD_ANOM_BADLEN)
+
+struct lmod_info {
+    int  anomalies;             /* bitmask of LMOD_ANOM_*      */
+    long nrec;                  /* records walked              */
+    long modend_off;            /* offset of MODEND, -1 if none */
+    long trailing;              /* bytes after the module ends */
+    int  nseg;                  /* highest CESDSEG seen; 0 = not an overlay */
+    int  has_scatter, has_sym;
+};
+/* Walk a member and describe it.  Returns the anomaly bitmask (0 = clean). */
+int lmod_scan(const unsigned char *m, long n, struct lmod_info *info);
+/* Short name for one anomaly bit ("trailing-bytes", ...); NULL if none set. */
+const char *lmod_anom_name(int bit);
 
 /* ---- the composite ESD inside a load module ----
  * Same 16-byte item shape as an object deck's ESD, but the records are the
  * LMOD_CESD ones and there is no per-card ESDID numbering: an entry's position
  * in the stream IS its id, counting from 1.
  */
+/* Composite type codes that the object-deck set (OBJ_SD ...) does not cover:
+ * an LD becomes an LR when bound, and a deleted entry becomes a Null. */
+enum {
+    LMOD_LR   = 0x03,           /* label reference: 2-byte owning id at +14 */
+    LMOD_NULL = 0x07,           /* deleted / null entry                     */
+    LMOD_PR   = 0x06            /* pseudo-register (external dummy section) */
+};
+
+/* The high nibble of the type byte carries edit-time control bits that a
+ * finished module is supposed to have cleared, and 21 of TK5's 2,396 bound
+ * target members do not: 147 storage-owning entries arrive with X'20', X'80'
+ * or X'14'.  `type` is therefore the LOW NIBBLE -- the same convention as
+ * struct obj_esd -- and `typebyte` keeps the raw byte so a caller can report
+ * what it saw.  Testing the whole byte silently loses those sections: every
+ * CSECT of IEANUC01's nucleus proper (ESDIDs 1-24, all X'20') was invisible to
+ * cmplmd370 and to ld370's member_modlen, which is 24 of the 143 target
+ * members cmplmd370 could not read. */
+enum { LMOD_ESD_FLAGS = 0xf0 };
+
 struct lmod_esd {
-    const unsigned char *name;  /* 8 bytes, EBCDIC (not copied) */
-    int  type;                  /* full type byte, not just the low nibble */
+    const unsigned char *name;  /* 8 bytes, EBCDIC (not copied); may be blank */
+    int  type;                  /* LOW NIBBLE of the type byte (OBJ_SD, ...) */
+    int  typebyte;              /* the raw byte, control bits included       */
     int  esdid;                 /* 1-based position in the CESD */
+    int  seg;                   /* CESDSEG: overlay segment number, 0 if none */
     long addr;                  /* section origin, or an LR's address */
     long len;                   /* section length, or an LR's owning ESDID */
 };

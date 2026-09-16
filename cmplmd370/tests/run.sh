@@ -19,8 +19,73 @@ fail() { echo "FAIL: $1"; fails=$((fails + 1)); }
 cc -O2 -Wall -Wextra -Werror -Icommon/include \
    -o cmplmd370/cmplmd370 cmplmd370/src/cmplmd370.c common/src/*.c || exit 99
 
+# --- record-reader cases, on members we build ourselves -----------------
+# These need no corpus: mkmember.py assembles each member from the layout in
+# docs/load-module-format.md, so the cases run everywhere and nothing
+# proprietary is committed.  Each one stood for a real refusal or a real
+# silent error before #372.
+MK=cmplmd370/tests/mkmember.py
+for k in overlay trailing sym flagtype; do
+    python3 "$MK" "$k" "$TMP/$k.bin" || exit 99
+done
+python3 "$MK" deck:ROOT:11:0x40    "$TMP/ROOT.obj"    || exit 99
+python3 "$MK" deck:SEGA:AA:0x20    "$TMP/SEGA.obj"    || exit 99
+python3 "$MK" deck:SEGB:BB:0x20    "$TMP/SEGB.obj"    || exit 99
+python3 "$MK" deck:ONESECT:5A:0x20 "$TMP/ONESECT.obj" || exit 99
+python3 "$MK" deck:WITHSYM:7E:0x20 "$TMP/WITHSYM.obj" || exit 99
+python3 "$MK" deck:FLAGGED:3C:0x20 "$TMP/FLAGGED.obj" || exit 99
+
+# An SD whose type byte kept an edit-time control bit (X'20').  Testing the
+# whole byte made the section invisible: "no section named FLAGGED", exit 2.
+# 21 of TK5's 2,396 bound target members carry these, IEANUC01's entire
+# nucleus among them.
+if $C --csect FLAGGED "$TMP/FLAGGED.obj" "$TMP/flagtype.bin" >/dev/null 2>&1
+then pass "CESD type byte X'20' over an SD is still a section"
+else fail "CESD type byte X'20' over an SD is still a section"
+fi
+
+# Overlay: ROOT in segment 1, SEGA and SEGB BOTH at 0x40 in segments 2 and 3.
+# One flat image is last-writer-wins, so SEGA used to be compared against
+# SEGB's text -- silently, with an ordinary verdict.  All three must match.
+for sc in ROOT SEGA SEGB; do
+    if $C --csect $sc "$TMP/$sc.obj" "$TMP/overlay.bin" >/dev/null 2>&1
+    then pass "overlay: $sc sliced from its OWN segment"
+    else fail "overlay: $sc sliced from its OWN segment"
+    fi
+done
+
+# A module linked with TEST leads with its SYM records, not its CESD.  The
+# walk used to end at -1 there and the CESD was never reached.
+if $C --csect WITHSYM "$TMP/WITHSYM.obj" "$TMP/sym.bin" >/dev/null 2>&1
+then pass "SYM records ahead of the CESD do not end the walk"
+else fail "SYM records ahead of the CESD do not end the walk"
+fi
+
+# Bytes after MODEND: the module ends at MODEND, so this is a reportable
+# anomaly and NOT a reason to refuse a verdict.  One TK5 member has 28 of them
+# and all 22 of its CSECTs were "malformed load-module record stream".
+if $C --csect ONESECT "$TMP/ONESECT.obj" "$TMP/trailing.bin" >/dev/null 2>&1
+then pass "bytes after MODEND still yield a verdict"
+else fail "bytes after MODEND still yield a verdict"
+fi
+if $C --json --csect ONESECT "$TMP/ONESECT.obj" "$TMP/trailing.bin" 2>/dev/null \
+     | grep -q '"trailing_bytes": 28' &&
+   $C --json --csect ONESECT "$TMP/ONESECT.obj" "$TMP/trailing.bin" 2>/dev/null \
+     | grep -q '"anomalies": "trailing-bytes"'
+then pass "--json names the anomaly and counts the trailing bytes"
+else fail "--json names the anomaly and counts the trailing bytes"
+fi
+if $C --json --csect ONESECT "$TMP/ONESECT.obj" "$TMP/trailing.bin" 2>/dev/null \
+     | grep -q '"image_incomplete": false'
+then pass "trailing bytes do not make the image incomplete"
+else fail "trailing bytes do not make the image incomplete"
+fi
+
 if [ ! -f "$FIX/BLSUZZ2R.obj" ]; then
-    echo "SKIP: fixtures ($FIX not present; set CMPLMD_FIXTURES)"
+    echo "SKIP: corpus fixtures ($FIX not present; set CMPLMD_FIXTURES)"
+    echo ""
+    echo "$fails failure(s)"
+    [ "$fails" -eq 0 ] || exit 1
     exit 0
 fi
 

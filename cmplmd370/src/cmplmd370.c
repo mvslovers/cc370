@@ -39,12 +39,15 @@ struct sect {
     unsigned char *relo;        /* 1 per byte covered by an address constant */
     unsigned char *made;        /* 1 where a TXT card actually put something   */
     unsigned char *ign;         /* 1 where --difin says to ignore              */
+    int seg;                    /* overlay segment (CESDSEG); 0 when not overlaid */
 };
 
 struct side {
     struct sect s[MAXSECT];
     int n;
     int id2sect[65536];         /* ESDID -> index into s[]; -1 for none */
+    int is_lmod;                /* this side came from a bound member */
+    struct lmod_info info;      /* what the record walk could account for */
 };
 
 static void die(const char *m, const char *a)
@@ -54,7 +57,7 @@ static void die(const char *m, const char *a)
 }
 
 static struct sect *sect_add(struct side *sd, const unsigned char *nm8,
-                             long org, long len, int esdid)
+                             long org, long len, int esdid, int seg)
 {
     struct sect *s;
     if (sd->n >= MAXSECT) die("too many sections", NULL);
@@ -63,6 +66,7 @@ static struct sect *sect_add(struct side *sd, const unsigned char *nm8,
     strncpy(s->name, mvs_nm(nm8), sizeof s->name - 1);
     s->org = org;
     s->len = len;
+    s->seg = seg;
     s->bytes = calloc((size_t)(len > 0 ? len : 1), 1);
     s->relo  = calloc((size_t)(len > 0 ? len : 1), 1);
     s->made  = calloc((size_t)(len > 0 ? len : 1), 1);
@@ -108,7 +112,7 @@ static int mark_relo(const struct obj_rld *r, void *ctx)
 
 static int deck_esd(const struct obj_esd *e, void *ctx)
 {
-    if (obj_is_section(e->type)) sect_add(ctx, e->name, e->addr, e->len, e->esdid);
+    if (obj_is_section(e->type)) sect_add(ctx, e->name, e->addr, e->len, e->esdid, 0);
     return 1;
 }
 
@@ -152,9 +156,14 @@ static void load_deck(struct side *sd, const unsigned char *b, long n)
 
 static int lmod_sect(const struct lmod_esd *e, void *ctx)
 {
-    /* Full type byte: a bound CESD uses 00/04/05 for the storage-owning kinds. */
-    if (e->type == 0x00 || e->type == 0x04 || e->type == 0x05)
-        sect_add(ctx, e->name, e->addr, e->len, e->esdid);
+    /* The LOW NIBBLE, not the whole byte.  A finished module is supposed to
+     * carry no edit-time control bits, and 21 of TK5's 2,396 bound target
+     * members do: IEANUC01's nucleus proper is 24 entries of X'20' over an SD,
+     * and testing the byte made every one of them invisible -- "no section
+     * named IGFPEXIT", exit 2, on a module that holds it at 0x021F80.  See
+     * LMOD_ESD_FLAGS in obj370.h. */
+    if (obj_is_section(e->type))
+        sect_add(ctx, e->name, e->addr, e->len, e->esdid, e->seg);
     return 1;
 }
 
@@ -164,10 +173,16 @@ static void load_lmod(struct side *sd, const unsigned char *m, long n)
     struct lmod_item r;
     unsigned char *img;
     long imglen = 0, pend = -1;
-    int rc, i;
+    int rc, i, nseg, want;
 
     side_init(sd);
+    sd->is_lmod = 1;
+    /* Ask the reader what it could account for BEFORE using what it returns.
+     * A member the walk cannot finish still yields sections and still compares;
+     * saying so is the difference between a verdict and a guess (#372). */
+    lmod_scan(m, n, &sd->info);
     lmod_cesd_walk(m, n, lmod_sect, sd);
+    nseg = sd->info.nseg;                    /* 0 when the module is not overlaid */
 
     for (i = 0; i < sd->n; i++)
         if (sd->s[i].org + sd->s[i].len > imglen) imglen = sd->s[i].org + sd->s[i].len;
@@ -192,29 +207,56 @@ static void load_lmod(struct side *sd, const unsigned char *m, long n)
     img = calloc((size_t)(imglen > 0 ? imglen : 1), 1);
     if (!img) die("out of memory", NULL);
 
+    /* RLDs first, and ONCE.  They are per-section, not per-segment, and the
+     * image below is rebuilt once per segment -- marking them inside that loop
+     * would mark them n times. */
+    lmod_iter_init(&it, m, n);
+    while ((rc = lmod_iter_next(&it, &r)) == 1)
+        if (r.kind == LMOD_CTL && (r.flags & LMOD_CTL_RLD)) {
+            long idl = mvs_be16(m + r.off + 4), rl = mvs_be16(m + r.off + 6);
+            long dat = r.off + 16 + idl;
+            if (rl > 0 && dat + rl <= n) obj_rld_items(m + dat, rl, mark_relo, sd);
+        }
+    /* rc < 0 used to die here.  It still means the image is incomplete, but
+     * that is now reported through sd->info rather than by exiting from inside
+     * a loader -- so --json keeps its shape and a caller learns WHY. */
+    (void)rc;
+
     /* Reassemble the module image, then slice each section out of it: a control
      * record carries the load address (24-bit at +9) of the text record that
-     * follows it, and the RLD items sit after its ID/length list. */
-    lmod_iter_init(&it, m, n);
-    while ((rc = lmod_iter_next(&it, &r)) == 1) {
-        if (r.kind == LMOD_CTL) {
-            pend = (r.flags & LMOD_CTL_TEXT) ? mvs_be24(m + r.off + 9) : -1;
-            if (r.flags & LMOD_CTL_RLD) {
-                long idl = mvs_be16(m + r.off + 4), rl = mvs_be16(m + r.off + 6);
-                long dat = r.off + 16 + idl;
-                if (rl > 0 && dat + rl <= n) obj_rld_items(m + dat, rl, mark_relo, sd);
+     * follows it.
+     *
+     * ONE IMAGE PER OVERLAY SEGMENT, because the segments deliberately SHARE
+     * addresses.  HEWLF064 has seven: segments 2, 3 and 4 all begin at
+     * 0x001090 and 5, 6 and 7 all begin at 0x0020C0.  Flattening them into a
+     * single image is last-writer-wins, so the sections of every segment but
+     * the last one at a given address were compared against another segment's
+     * text -- silently, with an ordinary verdict and an ordinary exit code.
+     * Segments are written in order and each ends at a control record carrying
+     * SEGEND (X'04'); CESDSEG says which segment a section belongs to. */
+    for (want = nseg ? 1 : 0; want <= nseg; want++) {
+        int cs = 1, segend = 0;
+        memset(img, 0, (size_t)(imglen > 0 ? imglen : 1));
+        pend = -1;
+        lmod_iter_init(&it, m, n);
+        while (lmod_iter_next(&it, &r) == 1) {
+            if (r.kind == LMOD_CTL) {
+                pend = (r.flags & LMOD_CTL_TEXT) ? mvs_be24(m + r.off + 9) : -1;
+                /* MODEND is also a segment end, but nothing follows it. */
+                segend = (r.flags & LMOD_CTL_SEGEND) && !(r.flags & LMOD_CTL_END);
+                if (pend < 0 && segend) { cs++; segend = 0; }
+            } else if (r.kind == LMOD_TEXT) {
+                if ((!nseg || cs == want) && pend >= 0 && pend + r.len <= imglen)
+                    memcpy(img + pend, m + r.off, (size_t)r.len);
+                pend = -1;
+                if (segend) { cs++; segend = 0; }
             }
-        } else if (r.kind == LMOD_TEXT) {
-            if (pend >= 0 && pend + r.len <= imglen)
-                memcpy(img + pend, m + r.off, (size_t)r.len);
-            pend = -1;
         }
+        for (i = 0; i < sd->n; i++)
+            if (sd->s[i].seg == want && sd->s[i].org >= 0
+                && sd->s[i].org + sd->s[i].len <= imglen)
+                memcpy(sd->s[i].bytes, img + sd->s[i].org, (size_t)sd->s[i].len);
     }
-    if (rc < 0) die("malformed load-module record stream", NULL);
-
-    for (i = 0; i < sd->n; i++)
-        if (sd->s[i].org >= 0 && sd->s[i].org + sd->s[i].len <= imglen)
-            memcpy(sd->s[i].bytes, img + sd->s[i].org, (size_t)sd->s[i].len);
     free(img);
 }
 
@@ -400,6 +442,45 @@ static void report_text(const struct result *r, const struct sect *a,
                r->nc - TEXTCLU);
 }
 
+/* ---- what the reader could not account for ----
+ * Rendered the same way in both output modes, because a caller that filters on
+ * a reason can only do so if the reason is always there.  #372: a boolean says
+ * how many results to distrust, a reason says which. */
+static void anom_list(const struct lmod_info *in, char *buf, size_t cap)
+{
+    static const int bits[] = { LMOD_ANOM_TRAILING, LMOD_ANOM_BADREC,
+                                LMOD_ANOM_BADLEN, LMOD_ANOM_NOMODEND };
+    size_t k = 0;
+    int i;
+    buf[0] = 0;
+    for (i = 0; i < 4; i++) {
+        const char *nm;
+        if (!(in->anomalies & bits[i])) continue;
+        nm = lmod_anom_name(bits[i]);
+        if (k && k + 2 < cap) { buf[k++] = ','; buf[k++] = ' '; buf[k] = 0; }
+        if (k + strlen(nm) + 1 < cap) { strcpy(buf + k, nm); k += strlen(nm); }
+    }
+}
+
+static void report_reader(const struct lmod_info *in, int json, const char *fb)
+{
+    char names[128];
+    anom_list(in, names, sizeof names);
+    if (json) {
+        printf("  \"reader\": {\"records\": %ld, \"segments\": %d, "
+               "\"scatter\": %s, \"sym\": %s, \"trailing_bytes\": %ld, "
+               "\"image_incomplete\": %s, \"anomalies\": \"%s\"},\n",
+               in->nrec, in->nseg,
+               in->has_scatter ? "true" : "false", in->has_sym ? "true" : "false",
+               in->trailing,
+               (in->anomalies & LMOD_IMAGE_INCOMPLETE) ? "true" : "false",
+               names);
+    } else if (in->anomalies) {
+        printf("  reader: %s (%s)%s\n", fb, names,
+               (in->anomalies & LMOD_IMAGE_INCOMPLETE) ? "  IMAGE INCOMPLETE" : "");
+    }
+}
+
 static void report_json(const struct result *r, const struct sect *a,
                         const struct sect *b, int first)
 {
@@ -461,9 +542,13 @@ static void usage(FILE *f)
       "                 then a 6-hex offset and a 2-hex length per record)\n"
       "  --difout FILE  write the differences found, in that same format\n"
       "  --json         machine-readable result on stdout, all clusters\n"
+      "  --allow-incomplete  compare anyway when the reference's record stream\n"
+      "                 could not be walked to its end (default: refuse, exit 2)\n"
       "  -v             report identical sections and list clusters\n"
       "\n"
-      "Exit 0 ONLY on identity; 1 on any difference; 2 on a usage or format error.\n");
+      "Exit 0 ONLY on identity; 1 on any difference; 2 on a usage or format error.\n"
+      "A reference whose image is INCOMPLETE is refused rather than compared: the\n"
+      "bytes that are there may well match, and that is not the same as a match.\n");
 }
 
 int main(int argc, char **argv)
@@ -472,6 +557,8 @@ int main(int argc, char **argv)
     const char *difin = NULL, *difoutp = NULL;
     FILE *difout = NULL;
     int clearrld = 1, verbose = 0, json = 0, i, rc = 0, npair = 0, firstj = 1;
+    int allow_incomplete = 0;
+    static int pair[MAXSECT], bused[MAXSECT];
     unsigned char *ba, *bb;
     long na, nb;
     static struct side A, B;
@@ -483,6 +570,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--difin") && i + 1 < argc) difin = argv[++i];
         else if (!strcmp(argv[i], "--difout") && i + 1 < argc) difoutp = argv[++i];
         else if (!strcmp(argv[i], "--json")) json = 1;
+        else if (!strcmp(argv[i], "--allow-incomplete")) allow_incomplete = 1;
         else if (!strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { usage(stdout); return 0; }
         else if (argv[i][0] == '-') { fprintf(stderr, "cmplmd370: unknown option %s\n", argv[i]); usage(stderr); return 2; }
@@ -498,7 +586,10 @@ int main(int argc, char **argv)
     if (na < 4 || obj_card_type(ba) == OBJ_OTHER) die("not an object deck", fa);
     load_deck(&A, ba, na);
 
-    if (nb >= 1 && (bb[0] & 0xf0) == 0x20) load_lmod(&B, bb, nb);
+    /* A bound member leads with its CESD, or with a SYM record when it was
+     * linked with TEST (docs/load-module-format.md section 2). */
+    if (nb >= 1 && ((bb[0] & 0xf0) == 0x20 || (nb >= 8 && (bb[0] & 0xf0) == 0x40)))
+        load_lmod(&B, bb, nb);
     else if (nb >= 4 && obj_card_type(bb) != OBJ_OTHER) load_deck(&B, bb, nb);
     else die("reference is neither a load module nor an object deck", fb);
 
@@ -510,20 +601,53 @@ int main(int argc, char **argv)
         printf("  \"clearrld\": %s,\n", clearrld ? "true" : "false");
         printf("  \"difin\": %s%s%s,\n", difin ? "\"" : "null",
                difin ? difin : "", difin ? "\"" : "");
+        if (B.is_lmod) report_reader(&B.info, 1, fb);
         printf("  \"sections\": [");
     } else {
         printf("%s vs %s%s%s\n", fa, fb, clearrld ? "" : "  (adcons compared)",
                difin ? "  (difin applied)" : "");
+        if (B.is_lmod) report_reader(&B.info, 0, fb);
+    }
+
+    /* ---- pair the sections ----
+     * By NAME, with one exception that the name rule cannot express: an
+     * UNNAMED section.  as370 and cc370 put code in a bare CSECT, which is an
+     * ESD type-04 private-code entry with a blank name, and the linkage editor
+     * names it after the member -- so the deck says "" and the bound module
+     * says IFCE0115, and pairing by name gives "not in the reference" for a
+     * section that is plainly there.  15 of TK5's 16 remaining unreadable
+     * CSECTs are exactly this.
+     *
+     * The exception is taken only where it is UNAMBIGUOUS: an unnamed section
+     * pairs with the one section left over on the other side, never with one
+     * of several.  Positional pairing beyond that would be the ESDID guess
+     * this tool exists not to make. */
+    {
+        int k;
+        for (i = 0; i < A.n; i++) {
+            pair[i] = -1;
+            if (!A.s[i].name[0]) continue;
+            for (k = 0; k < B.n; k++)
+                if (!bused[k] && !strcmp(B.s[k].name, A.s[i].name)) {
+                    pair[i] = k; bused[k] = 1; break;
+                }
+        }
+        for (i = 0; i < A.n; i++) {
+            int cand = -1, ncand = 0;
+            if (pair[i] >= 0 || A.s[i].name[0]) continue;
+            for (k = 0; k < B.n; k++) if (!bused[k]) { cand = k; ncand++; }
+            if (ncand == 1) { pair[i] = cand; bused[cand] = 1; }
+        }
     }
 
     for (i = 0; i < A.n; i++) {
-        struct sect *b2 = NULL;
+        struct sect *b2 = pair[i] >= 0 ? &B.s[pair[i]] : NULL;
         struct result r;
-        const char *label = A.s[i].name[0] ? A.s[i].name : "(private)";
-        int k;
-        if (only && strcmp(A.s[i].name, only)) continue;
-        for (k = 0; k < B.n; k++)
-            if (!strcmp(B.s[k].name, A.s[i].name)) { b2 = &B.s[k]; break; }
+        /* An unnamed section is reported under the name it was paired to, so a
+         * caller can ask for it by the name the module uses. */
+        const char *label = A.s[i].name[0] ? A.s[i].name
+                          : (b2 && b2->name[0] ? b2->name : "(private)");
+        if (only && strcmp(label, only)) continue;
         if (!b2) {
             memset(&r, 0, sizeof r);
             r.name = label; r.paired = 0; r.len_new = A.s[i].len;
@@ -551,8 +675,22 @@ int main(int argc, char **argv)
          * that omits a field without saying so is the same defect as one that
          * truncates a list without saying so. */
         const char *err = NULL;
-        char errbuf[64];
-        if (only && !npair) {
+        char errbuf[160];
+        if (B.is_lmod && (B.info.anomalies & LMOD_IMAGE_INCOMPLETE)
+            && !allow_incomplete) {
+            /* The peer's rule, and the reason it is a refusal rather than a
+             * footnote: a section sliced out of an image the reader could not
+             * finish may match byte for byte and still not be a match, because
+             * the records after the break were never seen.  Reporting that as
+             * "identical" with a flag would put it on a scoreboard that no
+             * counter written before the flag existed knows to read. */
+            char names[128];
+            anom_list(&B.info, names, sizeof names);
+            snprintf(errbuf, sizeof errbuf,
+                     "reference image incomplete (%s); --allow-incomplete to compare anyway",
+                     names);
+            err = errbuf; rc = 2;
+        } else if (only && !npair) {
             snprintf(errbuf, sizeof errbuf, "no section named %s", only);
             err = errbuf; rc = 2;
         } else if (!npair && !rc) {

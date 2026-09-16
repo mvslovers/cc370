@@ -135,6 +135,7 @@ int obj_end_get(const unsigned char *card, struct obj_end *e)
  * show_lmod already duplicated statement for statement:
  *   0x2x  CESD     8 + count at +6
  *   0x8x  IDR      byte at +1, plus one
+ *   0x4x  SYM      4 + count at +2..3
  *   0x1x  SCATTER  4 + count at +1..3
  *   0x0x  CTL      16 + count at +4 + count at +6, and if bit 0x01 is set a
  *                  pure text record of the length at +14 follows it
@@ -148,11 +149,17 @@ int obj_end_get(const unsigned char *card, struct obj_end *e)
  * (HEWLFOUT.ASM:973-984), so the record is 4 + count and several may follow
  * each other because the data is segmented into <=1024-byte records.
  *
- * SYM records and anything else remain malformed rather than guessed at.
+ * The scatter record carries no program text -- it is the loader's translation
+ * and scatter tables, written once between the IDRs and the first control
+ * record (docs/load-module-format.md section 2) -- so a consumer building a
+ * module image is RIGHT to skip it, and the four in IEANUC01 sit exactly there.
+ *
+ * SYM records are framed since #372; anything else remains malformed rather
+ * than guessed at.
  */
 void lmod_iter_init(struct lmod_iter *it, const unsigned char *m, long n)
 {
-    it->m = m; it->n = n; it->p = 0; it->pending = 0;
+    it->m = m; it->n = n; it->p = 0; it->pending = 0; it->done = 0;
 }
 
 int lmod_iter_next(struct lmod_iter *it, struct lmod_item *out)
@@ -169,6 +176,7 @@ int lmod_iter_next(struct lmod_iter *it, struct lmod_item *out)
         it->pending = 0;
         return 1;
     }
+    if (it->done) return 0;                  /* MODEND, and its text, are past */
     if (p >= it->n) return 0;
     if (p + 8 > it->n) return -1;
 
@@ -183,12 +191,24 @@ int lmod_iter_next(struct lmod_iter *it, struct lmod_item *out)
     } else if (hi == 0x10) {
         out->kind = LMOD_SCATTER;
         blen = 4 + mvs_be24(m + p + 1);
+    } else if (hi == 0x40) {
+        /* SYM record (HEWLFSYM.ASM:78,113-128): X'40', a flag byte, a halfword
+         * data count, 4-byte header.  Written only for a TEST-attribute link,
+         * so neither cc370 nor as370 produces one -- which is why the walk used
+         * to end at -1 on a member that carries one, and the caller reported a
+         * malformed record stream for a module that is perfectly well formed.
+         * Flag bit X'80' means the data is ESD CARD IMAGES rather than TESTRAN
+         * symbol data (HEWLFSYM.ASM:14-18). */
+        out->kind = LMOD_SYM;
+        out->flags = m[p + 1];
+        blen = 4 + mvs_be16(m + p + 2);
     } else if (hi == 0x00) {
         if (p + 16 > it->n) return -1;
         out->kind = LMOD_CTL;
         out->flags = b0;
         blen = 16 + mvs_be16(m + p + 4) + mvs_be16(m + p + 6);
         if (b0 & LMOD_CTL_TEXT) it->pending = mvs_be16(m + p + 14);
+        if (b0 & LMOD_CTL_END)  it->done = 1;   /* nothing follows the MODEND */
     } else {
         return -1;
     }
@@ -198,27 +218,98 @@ int lmod_iter_next(struct lmod_iter *it, struct lmod_item *out)
     return 1;
 }
 
+static int scan_seg(const struct lmod_esd *e, void *ctx)
+{
+    int *mx = ctx;
+    if (e->seg > *mx) *mx = e->seg;
+    return 1;
+}
+
+const char *lmod_anom_name(int bit)
+{
+    switch (bit) {
+        case LMOD_ANOM_TRAILING: return "trailing-bytes";
+        case LMOD_ANOM_BADREC:   return "unknown-record";
+        case LMOD_ANOM_BADLEN:   return "record-past-end";
+        case LMOD_ANOM_NOMODEND: return "no-modend";
+        default:                 return NULL;
+    }
+}
+
+int lmod_scan(const unsigned char *m, long n, struct lmod_info *info)
+{
+    struct lmod_iter it;
+    struct lmod_item r;
+    struct lmod_info z;
+    int rc;
+
+    memset(&z, 0, sizeof z);
+    z.modend_off = -1;
+
+    /* The highest CESDSEG says whether this is an overlay, and of how many
+     * segments.  Via lmod_cesd_walk, NOT a raw scan from offset 0: a TEST-linked
+     * member leads with its SYM records, and a scan that assumes the CESD is
+     * first reports nseg = 0 for it -- which then slices every section out of
+     * the wrong image and hands back a member of zeroes. */
+    lmod_cesd_walk(m, n, scan_seg, &z.nseg);
+
+    lmod_iter_init(&it, m, n);
+    while ((rc = lmod_iter_next(&it, &r)) == 1) {
+        z.nrec++;
+        if (r.kind == LMOD_SCATTER) z.has_scatter = 1;
+        else if (r.kind == LMOD_SYM) z.has_sym = 1;
+        else if (r.kind == LMOD_CTL && (r.flags & LMOD_CTL_END)) z.modend_off = r.off;
+    }
+    if (rc < 0) {
+        /* The walk stopped early.  Which of the two it was is worth keeping
+         * apart: an unknown record type is a gap in this reader, a length
+         * running past the image is a damaged or truncated member. */
+        long p = it.p;
+        int hi = (p < n) ? (m[p] & 0xf0) : -1;
+        int known = (hi == 0x00 || hi == 0x10 || hi == 0x20 ||
+                     hi == 0x40 || hi == 0x80);
+        z.anomalies |= (p + 8 <= n && !known) ? LMOD_ANOM_BADREC : LMOD_ANOM_BADLEN;
+    } else {
+        if (z.modend_off < 0) z.anomalies |= LMOD_ANOM_NOMODEND;
+        else if (it.p < n) { z.trailing = n - it.p; z.anomalies |= LMOD_ANOM_TRAILING; }
+    }
+    if (info) *info = z;
+    return z.anomalies;
+}
+
 int lmod_cesd_walk(const unsigned char *m, long n,
                    int (*fn)(const struct lmod_esd *e, void *ctx), void *ctx)
 {
-    long p = 0;
+    struct lmod_iter it;
+    struct lmod_item r;
     int id = 0, reported = 0;
 
-    /* The CESD records are the leading ones; the first non-CESD ends the walk. */
-    while (p + 8 <= n && (m[p] & 0xf0) == 0x20) {
-        long cnt = mvs_be16(m + p + 6), it;
-        for (it = 8; it + 16 <= 8 + cnt && p + it + 16 <= n; it += 16) {
-            const unsigned char *e = m + p + it;
+    /* The CESD records lead the member -- but not necessarily from offset 0:
+     * a module linked with TEST puts its SYM records first
+     * (docs/load-module-format.md section 2).  Scanning from 0 for X'2x' found
+     * nothing at all on such a member, so every section was "not in the
+     * reference".  Walk the record stream instead and take the CESD records
+     * wherever they are; the first non-CESD record after them ends the walk,
+     * because an ESDID is a POSITION and a gap would silently renumber every
+     * section after it. */
+    lmod_iter_init(&it, m, n);
+    while (lmod_iter_next(&it, &r) == 1) {
+        long k;
+        if (r.kind == LMOD_SYM) continue;            /* still ahead of the CESD */
+        if (r.kind != LMOD_CESD) break;
+        for (k = 8; k + 16 <= r.len && r.off + k + 16 <= n; k += 16) {
+            const unsigned char *e = m + r.off + k;
             struct lmod_esd x;
             x.name = e;
-            x.type = e[8];
-            x.esdid = ++id;              /* position IS the id, counting from 1 */
+            x.typebyte = e[8];
+            x.type = e[8] & 0x0f;    /* see LMOD_ESD_FLAGS in obj370.h */
+            x.esdid = ++id;          /* position IS the id, counting from 1 */
+            x.seg  = e[12];          /* CESDSEG; 0 when not an overlay */
             x.addr = mvs_be24(e + 9);
             x.len  = mvs_be24(e + 13);
             reported++;
             if (fn && !fn(&x, ctx)) return reported;
         }
-        p += 8 + cnt;
     }
     return reported;
 }

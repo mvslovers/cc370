@@ -761,10 +761,11 @@ static int split_member(const unsigned char *m, long n, struct lmblock **out)
 static int modlen_cesd(const struct lmod_esd *e, void *ctx)
 {
     long *maxend = ctx;
-    /* Full type byte here, not the low nibble: a load module's CESD carries
-     * 0x00/0x04/0x05 for the sections that own storage, and this is what the
-     * original scan tested. */
-    if (e->type == 0x00 || e->type == 0x04 || e->type == 0x05) {
+    /* The low nibble: this used to test the whole byte, which under-reports the
+     * module length for any member whose CESD kept its edit-time control bits
+     * -- IEANUC01 would have come back 0, its whole nucleus being X'20' over an
+     * SD.  See LMOD_ESD_FLAGS in obj370.h (#372). */
+    if (obj_is_section(e->type)) {
         long end = e->addr + e->len;
         if (end > *maxend) *maxend = end;
     }
