@@ -683,7 +683,11 @@ int main(int argc, char **argv)
          * that omits a field without saying so is the same defect as one that
          * truncates a list without saying so. */
         const char *err = NULL;
-        char errbuf[160];
+        /* 128 for anom_list's four names plus the 56-character sentence around
+         * them, rounded up.  It was 160, which snprintf would have TRUNCATED --
+         * gcc says so under _FORTIFY_SOURCE and clang does not, so the Mac
+         * builds clean and CI does not. */
+        char errbuf[256];
         if (B.is_lmod && (B.info.anomalies & LMOD_IMAGE_INCOMPLETE)
             && !allow_incomplete) {
             /* The peer's rule, and the reason it is a refusal rather than a
