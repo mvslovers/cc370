@@ -104,8 +104,11 @@ reader still has to account for.
 
 =back
 
-B<In practice this is one kind plus two rarities.> Measured over the 30 control
-CSECTs: 344 C<pattern>, 28 C<prologue>, B<2> C<rld>. So the usual output is a
+B<In practice this is one kind plus two rarities.> Measured over the 772
+no-source CSECTs, which are the population this mode exists for and which are
+readable only as bound members: 772 ran, B<606 produced candidates>, 5,126 in
+all --- 4,690 C<pattern> (91 %), 408 C<prologue> (8 %), B<28> C<rld> (1 %). The
+same proportions hold on a 30-CSECT deck sample: 344 / 28 / 2. So the usual output is a
 list of registers a reader must still account for, which is the honest and
 useful thing for a section with no source --- but it is not three kinds in
 balance, and reading the list above without that number would suggest it is.
@@ -130,7 +133,10 @@ resolve displacements against an origin the assembly never used.
 
 A data area holding C<X'0510'> is C<BALR 1,0> to anything reading bytes. Only
 reachability (issue #383) can say that nothing branches there; an opcode gate
-cannot. C<dasm370/tests/infer.s> pins one deliberately.
+cannot. The real case is worse than the hex form suggests: C<ICKTR02> carries
+C<DC F'01296'>, and B<decimal 1296 is C<X'00000510'> > --- the low half of an
+ordinary fullword constant is the idiom, on a card nobody would suspect.
+C<dasm370/tests/infer.s> pins both forms deliberately.
 
 The C<R2 == 0> guard is correct and does separate the idiom from a call ---
 C<BALR R1,R15> is C<X'051F'> and never reaches it. What it cannot separate is an

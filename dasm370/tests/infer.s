@@ -28,8 +28,16 @@ INFENT   BALR  12,0
 * R2 == 0 guard excludes it and this pins that.
          BALR  1,15
          DS    0F
-* PHANTOM is data that reads as BALR 1,0 to anything working from
-* bytes.  Only reachability (#383) can say nothing branches there.
+* Two phantoms, one mechanism: data that reads as BALR 1,0 to
+* anything working from bytes.  Only reachability (#383) can say
+* nothing branches there.
+*
+* DECPHAN is the instructive one and it is the real case.  ICKTR02
+* carries DC F'01296' -- and decimal 1296 is X'00000510', so the
+* low half of an ordinary fullword constant IS the idiom.  Nobody
+* reading that card would suspect it.  The hex form below is the
+* same mechanism written where a reader might look for it.
+DECPHAN  DC    F'1296'
 PHANTOM  DC    X'05100000'
 APTR     DC    A(TARGET)
 TARGET   DC    F'1'

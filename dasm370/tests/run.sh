@@ -614,7 +614,7 @@ fi
 iwant() { if grep -qE "$1" "$T/inf.toml"; then pass "$2"; else fail "$2"; fi; }
 iwant 'reg=12 value=0x2 at=0x0 evidence=prologue' \
       "BALR 12,0 is a PROLOGUE base -- exact about where, silent about how long"
-iwant 'reg=9 value=0x24 at=0x2 evidence=rld' \
+iwant 'reg=9 value=0x28 at=0x2 evidence=rld' \
       "a register loaded from an A-con the RLD resolves into this section is RLD evidence"
 iwant 'reg=7 value=\? at=\? evidence=pattern .*no-origin-found' \
       "a register used as a base with no origin is a PATTERN -- a question, not an answer"
@@ -627,19 +627,30 @@ iwant 'reg=5 .*evidence=pattern used=no note=balr-not-used-as-base' \
 # The R2 == 0 guard: BALR 1,15 is X'051F' and is a call, not addressability.
 # The caller's ICKTR02 case was read as this guard failing; it is not -- the
 # guard is correct, and what produced that candidate is the line below.
-if grep -qE 'reg=1 value=0x1E at=0x1C evidence=prologue' "$T/inf.toml"; then
-    pass "a PHANTOM prologue: X'0510' in DATA reads as BALR 1,0 and is reported as one"
+# TWO phantoms, one mechanism, and the DECIMAL one is the real case: ICKTR02
+# carries DC F'01296', and decimal 1296 is X'00000510' -- the low half of an
+# ordinary fullword constant IS the idiom. Nobody reading that card would
+# suspect it, which is the whole reason it is in the fixture and not merely
+# described. The hex form beside it is the same mechanism written where a
+# reader might think to look.
+if grep -qE 'reg=1 value=0x20 at=0x1E evidence=prologue' "$T/inf.toml"; then
+    pass "a DECIMAL phantom: DC F'1296' is X'00000510', so its low half reads as BALR 1,0"
 else
-    fail "a PHANTOM prologue: X'0510' in DATA reads as BALR 1,0 and is reported as one"
+    fail "a DECIMAL phantom: DC F'1296' is X'00000510', so its low half reads as BALR 1,0"
+fi
+if grep -qE 'reg=1 value=0x22 at=0x20 evidence=prologue' "$T/inf.toml"; then
+    pass "and the hex form of the same mechanism"
+else
+    fail "and the hex form of the same mechanism"
 fi
 # That is a LIMIT and it is pinned deliberately, not a defect to be papered over:
 # `BALR Rn,0' is a run-time fact and `USING' an assembly-time declaration, and an
 # object records the first and cannot record the second. Only reachability (#383)
 # can say nothing branches into that table. When #383 lands this assertion should
 # fail and be updated on purpose, exactly as as370's bare-DROP fixture did.
-[ "$(grep -c '^# infer:' "$T/inf.toml")" = 5 ] \
-    && pass "five candidates: prologue, rld, pattern, a BALR that is neither, and a phantom" \
-    || fail "five candidates: prologue, rld, pattern, a BALR that is neither, and a phantom"
+[ "$(grep -c '^# infer:' "$T/inf.toml")" = 6 ] \
+    && pass "six candidates: prologue, rld, pattern, a BALR that is neither, and two phantoms" \
+    || fail "six candidates: prologue, rld, pattern, a BALR that is neither, and two phantoms"
 
 # THE BLOCKER #401 was held on, and it is the property the mode exists for: the
 # 772 no-source CSECTs are reachable only from a BOUND MEMBER. --infer sat before
