@@ -721,6 +721,49 @@ IFOX00's decks differ in the END card and past column 72 by construction, so onl
 the project's own comparator can answer. **A summary line and a raw hash are both
 instruments, and neither was the one the question needed.**
 
+**2026-09-16, fourth — #374: one opcode table, and it inverts.**
+`opc_table.h` was not a header — 200 brace pairs with no guard, no struct and no
+sentinel, legal only inside the array in `as370.c`, with 35 further entries and
+the sentinel written *after* the `#include`. It now carries `enum fmt`,
+`struct opc`, the whole table and the sentinel, and nothing in it touches
+assembler state, so this is a declaration move and not a refactor.
+
+Two fields the encoder ignores make it invertible. **`opw`** is the opcode width
+in bytes, and it has to be stored because the data cannot be asked: the encoder
+writes `op` as a big-endian halfword, so a one-byte S opcode is spelled `<op>00`
+— `TS` is `0x9300` — while `SIO` really is the two bytes `0x9C00` and `SIOF` is
+`0x9C01`. Both have a zero low byte and they are not the same thing; exactly
+three entries are one-byte spelled as a halfword. **`dec`** is
+`OPD_PRIMARY` / `OPD_ALIAS` / `OPD_NEVER`.
+
+**Which spelling wins is measured, not preferred** — counted over the operation
+field of the 5,528 MVSBLD modules, comment cards and continuations excluded. IBM
+prefers the compare spelling in every one of the twelve pairs: `BE` 34,446 :
+`BZ` 32,011, `BNE` 44,853 : `BNZ` 25,651, `BNH` 10,897 : `BNP` 1,324, down to
+`BNLR` 4 : `BNMR` 2. Two margins are thin — `BE`/`BZ` 52 %, `BER`/`BZR` 51 % —
+and they are thin because the choice is genuinely contextual: `BZ` says what the
+programmer meant, `BE` says what the mask is. A decoder cannot know the context
+and can know what the corpus writes. Note that #112's own text illustrates the
+rule with `47 8 → BZ`; the point it makes — an extended mnemonic rather than
+`BC 8` — is what `dec` implements, and which of the two comes out is the
+measurement.
+
+`BC`/`BCR` are `ALIAS` because they cover all sixteen masks: where a pseudo names
+the mask the pseudo wins, and masks 3, 5, 6, 9, 10 and 12 — which no pseudo names
+— fall through to them. `BRXH`/`BRXLE` are `NEVER`: `X'84'`/`X'85'` are `WRD` and
+`RDD` on System/370, and decoding them as the ESA/390 pair would be an
+instruction from an architecture the module predates.
+
+**`tests/opcinv.c` is the second file to include the header, and that is half of
+what it tests** — as370 only ever encodes, so nothing in the assembler would
+notice if the header stopped being self-contained. Scored against two mutants:
+**52** failures with every entry `PRIMARY`, which is the information the table
+held until now, and **17** with the duplicate `BCT` put back. Acceptance in the
+strong form: 5,528 modules, `ASMDATES`/`SYSPARMS` off, **every deck
+byte-identical and every return code equal** between `3c6cf07` (`e7e70924…`) and
+the change (`a88c256f…`) — the `.tsv` rows compare equal as whole files and so do
+all 5,528 deck files.
+
 **2026-09-16, third — the segment mapping is proven now, not assumed.** #375
 recorded its own limitation honestly: per-segment slicing rests on *"CESDSEG n is
 the n-th SEGEND-delimited text group"*, and the `overlay` fixture is **built on
