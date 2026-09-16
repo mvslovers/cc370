@@ -1452,10 +1452,10 @@ static void usage(FILE *o)
 "Usage: dasm370 [options...] deck.obj\n"
 " Options:\n"
 "  --csect NAME       disassemble this control section (default: the only one)\n"
-"  --hints FILE       read a hint file: labels, data and fill runs, USINGs with\n"
-"                     a lifetime, and the VERIFY/REPLACE pair.  A TOML subset,\n"
-"                     parsed here; anything outside the grammar is refused, not\n"
-"                     skipped.  dasm370(1) has the grammar in full\n"
+"  --hints FILE       read a hint file: labels, data and fill runs, base\n"
+"                     registers with a lifetime, and the VERIFY/REPLACE pair.\n"
+"                     A TOML subset, parsed here; anything outside the grammar\n"
+"                     is refused, not skipped.  dasm370(1) has it in full\n"
 "  --allow-incomplete read a bound member whose record stream the reader could\n"
 "                     not finish (by default that is refused, not guessed at)\n"
 "  --isa SET          app|s370|s360|full -- accepted; only `full' is implemented\n"
@@ -1470,11 +1470,13 @@ static void usage(FILE *o)
 "is re-encoded from what was decoded and compared against the bytes it came\n"
 "from; anything that does not reproduce itself is written as DC X'..'.\n"
 "\n"
-"A USING given in a hint file is APPLIED, because it carries the lifetime its\n"
-"writer asserted.  One that dasm370 infers will be written to the file and\n"
-"never applied (#382): get a base register's range wrong and every displacement\n"
-"in it resolves against the wrong section, producing symbols that are plausible,\n"
-"consistent and false -- and the bytes do not move, so no round trip objects.\n", o);
+"A base register given in a hint file is APPLIED, because it carries the\n"
+"lifetime its writer asserted.  One that dasm370 infers will be written to the\n"
+"file and never applied (#382): get a base register's range wrong and every\n"
+"displacement in it resolves against the wrong section, producing symbols that\n"
+"are plausible, consistent and false -- and the bytes do not move, so no round\n"
+"trip objects.  A hint [[base]] covers this section; a USING points a register\n"
+"at a DSECT and is not implemented yet.\n", o);
 }
 
 int main(int argc, char **argv)
