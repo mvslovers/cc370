@@ -25,7 +25,7 @@ cc -O2 -Wall -Wextra -Werror -Icommon/include \
 # proprietary is committed.  Each one stood for a real refusal or a real
 # silent error before #372.
 MK=cmplmd370/tests/mkmember.py
-for k in overlay trailing sym flagtype truncated; do
+for k in overlay segmap trailing sym flagtype truncated; do
     python3 "$MK" "$k" "$TMP/$k.bin" || exit 99
 done
 python3 "$MK" deck:ROOT:11:0x40    "$TMP/ROOT.obj"    || exit 99
@@ -33,6 +33,8 @@ python3 "$MK" deck:SEGA:AA:0x20    "$TMP/SEGA.obj"    || exit 99
 python3 "$MK" deck:SEGB:BB:0x20    "$TMP/SEGB.obj"    || exit 99
 python3 "$MK" deck:ONESECT:5A:0x20 "$TMP/ONESECT.obj" || exit 99
 python3 "$MK" deck:WITHSYM:7E:0x20 "$TMP/WITHSYM.obj" || exit 99
+python3 "$MK" deck:SEG3:33:0x20    "$TMP/SEG3.obj"    || exit 99
+python3 "$MK" deck:SEG4:44:0x20    "$TMP/SEG4.obj"    || exit 99
 python3 "$MK" deck:FLAGGED:3C:0x20 "$TMP/FLAGGED.obj" || exit 99
 
 # An SD whose type byte kept an edit-time control bit (X'20').  Testing the
@@ -51,6 +53,35 @@ for sc in ROOT SEGA SEGB; do
     if $C --csect $sc "$TMP/$sc.obj" "$TMP/overlay.bin" >/dev/null 2>&1
     then pass "overlay: $sc sliced from its OWN segment"
     else fail "overlay: $sc sliced from its OWN segment"
+    fi
+done
+
+# The segment MAPPING, which `overlay' above cannot prove -- it is built on the
+# same assumption it would be testing.  There, CESD order, segment order and
+# section count all coincide, so "CESDSEG n", "the n-th section" and "the n-th
+# group that owns a section" are the same function.  HEWLF064, TK5's only
+# overlay member, does not separate them either: its 24 SD entries ARE in
+# ascending segment order and all 7 of its segments own at least one section.
+#
+# segmap makes them disagree.  CESD order is SEG3(seg 3), ROOT(seg 1), a null
+# entry, SEG4(seg 4); the text groups are 1: ROOT, 2: nobody's, 3: SEG3,
+# 4: SEG4.  Scored against two mutants of load_lmod, built for this and not
+# committed -- A maps the i-th section to segment i, B maps the k-th distinct
+# CESDSEG to the k-th group:
+#
+#                      overlay              segmap
+#   current            ROOT SEGA SEGB pass  ROOT SEG3 SEG4 pass
+#   mutant A           PASSES all three     fails all three
+#   mutant B           PASSES all three     fails SEG3 and SEG4
+#   pre-#372 (flat)    fails SEGA           fails SEG3
+#
+# So `overlay' guards the flat image and nothing else, and this guards the rule
+# the slicing rests on: CESDSEG n is the n-th SEGEND-delimited text group,
+# counting groups and not sections.
+for sc in ROOT SEG3 SEG4; do
+    if $C --csect $sc "$TMP/$sc.obj" "$TMP/segmap.bin" >/dev/null 2>&1
+    then pass "segmap: $sc keyed on CESDSEG, not on CESD position"
+    else fail "segmap: $sc keyed on CESDSEG, not on CESD position"
     fi
 done
 

@@ -10,6 +10,10 @@ control record per text record, and whatever the case under test needs.
 
 overlay   two segments whose sections SHARE an address, which is the whole
           point of an overlay and what a single flat image gets wrong
+segmap    the same, with the CESD deliberately out of segment order, a null
+          entry between two segments, and a segment that owns no section --
+          the three things HEWLF064 does NOT exercise, so a reader that maps
+          a section to a segment by POSITION passes `overlay' and fails here
 trailing  a well-formed module with bytes after the MODEND record
 sym       a SYM record ahead of the CESD, which used to end the walk at -1
 flagtype  a CESD whose SD entry keeps an edit-time control bit (X'20')
@@ -81,6 +85,33 @@ def build(kind):
         m += ctl_text(0x00, bytes([0x11]) * 0x40, segend=True)   # ends segment 1
         m += ctl_text(0x40, bytes([0xAA]) * 0x20, segend=True)   # ends segment 2
         m += ctl_text(0x40, bytes([0xBB]) * 0x20, segend=True, modend=True)
+        return m
+    if kind == "segmap":
+        # What `overlay' cannot prove.  There, CESD order, segment order and
+        # section count all coincide, so "CESDSEG n" and "the n-th section"
+        # and "the n-th group that owns a section" are the same function and
+        # the fixture is built on the assumption it is meant to test.
+        #
+        # Measured on HEWLF064, TK5's only overlay member: its 24 SD entries
+        # ARE in ascending segment order, and all 7 segments own at least one
+        # section -- so the corpus cannot separate them either.  Here they
+        # disagree on purpose:
+        #
+        #   CESD order    SEG3(seg 3), ROOT(seg 1), a null, SEG4(seg 4)
+        #   text groups   1: ROOT   2: nobody's   3: SEG3   4: SEG4
+        #
+        # A reader keyed on CESDSEG gets 0x33 and 0x44; one keyed on position
+        # gets 0x11 and 0x33; one that counts only the groups a section names
+        # gets 0x22 and 0x33.  The null entry is not decoration -- HEWLF064
+        # carries three of them (ESDIDs 4, 18 and 34), between segments.
+        m = cesd([("SEG3", 0x00, 0x40, 3, 0x20),
+                  ("ROOT", 0x00, 0x00, 1, 0x40),
+                  ("",     0x07, 0x00, 0, 0x00),
+                  ("SEG4", 0x00, 0x40, 4, 0x20)])
+        m += ctl_text(0x00, bytes([0x11]) * 0x40, segend=True)   # segment 1
+        m += ctl_text(0x40, bytes([0x22]) * 0x20, segend=True)   # segment 2: no section
+        m += ctl_text(0x40, bytes([0x33]) * 0x20, segend=True)   # segment 3
+        m += ctl_text(0x40, bytes([0x44]) * 0x20, segend=True, modend=True)
         return m
     if kind == "trailing":
         m = cesd([("ONESECT", 0x00, 0x00, 1, 0x20)])

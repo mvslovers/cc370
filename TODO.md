@@ -721,6 +721,35 @@ IFOX00's decks differ in the END card and past column 72 by construction, so onl
 the project's own comparator can answer. **A summary line and a raw hash are both
 instruments, and neither was the one the question needed.**
 
+**2026-09-16, third — the segment mapping is proven now, not assumed.** #375
+recorded its own limitation honestly: per-segment slicing rests on *"CESDSEG n is
+the n-th SEGEND-delimited text group"*, and the `overlay` fixture is **built on
+that same assumption** — there CESD order, segment order and section count all
+coincide, so "CESDSEG n", "the n-th section" and "the n-th group that owns a
+section" are one function. `HEWLF064` does not separate them either, and that is
+measured rather than supposed: its 24 SD entries **are** in ascending segment
+order and all **7** of its segments own at least one section.
+
+`segmap` makes them disagree — CESD order `SEG3`(seg 3), `ROOT`(seg 1), a null
+entry, `SEG4`(seg 4) against text groups 1: `ROOT`, 2: nobody's, 3: `SEG3`,
+4: `SEG4`. Scored against two mutants of `load_lmod` written for the purpose and
+not committed:
+
+| | `overlay` | `segmap` |
+|---|---|---|
+| current | passes | passes |
+| mutant A — the *i*-th section to segment *i* | **passes** | fails all three |
+| mutant B — the *k*-th distinct CESDSEG to the *k*-th group | **passes** | fails two |
+| pre-#372, flat image | fails `SEGA` | fails `SEG3` |
+
+So the old fixture guards the flat image and nothing else, and a fixture that
+cannot fail on either reading of the rule it tests was a non-test for that rule
+while looking like a test. The null CESD entry is not decoration: `HEWLF064`
+carries three (ESDIDs 4, 18, 34), between segments. The one thing `segmap` asks
+that no real member is known to show is a segment owning **no** section — it is
+in because without it "count groups" and "count groups that own a section" are
+the same function, and the rule is stated in groups.
+
 `lmod_scan()` is the contract that came out of it: a reader that cannot account
 for a member says so **with a reason** — `trailing-bytes`, `unknown-record`,
 `record-past-end`, `no-modend` — and an INCOMPLETE image is refused rather than
