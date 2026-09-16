@@ -61,6 +61,49 @@ a label past the first divergence names the wrong bytes --- symbolically,
 consistently, and without moving one, so no round trip objects. That is what the
 anchors are for.
 
+=item B<--infer>
+
+Candidates from the code itself, for the CSECT that has no source at all. Reads
+the module and writes a hint file in which B<every candidate is a comment and
+none is applied>.
+
+That is the issue's instruction rather than caution. A base register is not "R12
+holds X" but "from here until it is dropped, resolve C<D(12)> against X". The
+B<point> is sometimes ground truth; the B<range> never is, because a module has
+no C<DROP>s and no block structure to read one from. Get the range wrong and
+every displacement inside it resolves against the wrong section --- plausibly,
+consistently and falsely, without moving a byte, so neither the round trip nor
+anything downstream can object. Promoting a candidate is a human's deliberate
+edit, and what the human supplies is the lifetime.
+
+Feeding an inferred file back to B<--hints> therefore changes nothing, which is
+asserted.
+
+The B<evidence kind> is recorded separately from any confidence, because only
+some of them can be re-judged at all:
+
+=over 4
+
+=item B<prologue>
+
+C<BALR Rn,0> --- the base is the next instruction's offset. Exact about where,
+silent about for how long.
+
+=item B<rld>
+
+A register loaded from an address constant whose relocation resolves into this
+section, and afterwards used as a base. The RLD is the one place an object-deck
+reader has ground truth, so a later reader can re-check this against the object
+itself.
+
+=item B<pattern>
+
+A register the code addresses through with no origin found. Re-judgeable against
+nothing --- it records a question, not an answer, and says which registers a
+reader still has to account for.
+
+=back
+
 =item B<-I> I<DIR>
 
 A macro library for B<--derive-hints>. Repeatable, and order is preserved.

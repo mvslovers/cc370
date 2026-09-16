@@ -598,6 +598,51 @@ else
     fail "a wrapped comment is still 80 columns with column 72 blank"
 fi
 
+# ---- --infer (#382, PR C) -------------------------------------------------
+# Candidates from the code itself, for the CSECT with no source at all -- the
+# 772 of #112, mostly reachable only from a bound member.
+#
+# EVERY CANDIDATE IS A COMMENT AND NONE IS APPLIED, which is the issue's
+# instruction and not caution: a base register is not "R12 holds X" but "from
+# here until it is dropped". The POINT is sometimes ground truth; the RANGE
+# never is, because a module has no DROPs and no block structure to read one
+# from. Get the range wrong and every displacement inside it resolves against
+# the wrong section -- plausibly, consistently, falsely, without moving a byte.
+"$A" tests/infer.s -o "$T/inf.obj" >/dev/null 2>&1
+"$D" --infer "$T/inf.obj" -o "$T/inf.toml" 2>/dev/null
+iwant() { if grep -qE "$1" "$T/inf.toml"; then pass "$2"; else fail "$2"; fi; }
+iwant 'reg=12 value=0x2 at=0x0 evidence=prologue' \
+      "BALR 12,0 is a PROLOGUE base -- exact about where, silent about how long"
+iwant 'reg=9 value=0x18 at=0x2 evidence=rld' \
+      "a register loaded from an A-con the RLD resolves into this section is RLD evidence"
+iwant 'reg=7 value=\? at=\? evidence=pattern .*no-origin-found' \
+      "a register used as a base with no origin is a PATTERN -- a question, not an answer"
+
+# The three kinds differ in what a later reader can re-judge them against, which
+# is why the kind is recorded separately from any confidence: rld is checkable
+# against the object, pattern against nothing at all.
+[ "$(grep -c '^# infer:' "$T/inf.toml")" = 3 ] \
+    && pass "three candidates, one of each kind" \
+    || fail "three candidates, one of each kind"
+if grep -qE '^\[\[' "$T/inf.toml"; then
+    fail "--infer writes NO applicable table -- every candidate is a comment"
+else
+    pass "--infer writes NO applicable table -- every candidate is a comment"
+fi
+
+# Fed back to --hints it must change NOTHING. That is what "written, never
+# applied" means operationally, and a table would break it.
+"$D" --format free "$T/inf.obj" -o "$T/inf-plain.s" 2>/dev/null
+"$D" --format free --hints "$T/inf.toml" "$T/inf.obj" -o "$T/inf-hint.s" 2>/dev/null
+cmp -s "$T/inf-plain.s" "$T/inf-hint.s" \
+    && pass "the inferred file fed back to --hints changes not one byte of the output" \
+    || { fail "the inferred file fed back to --hints changes not one byte of the output"
+         diff "$T/inf-plain.s" "$T/inf-hint.s" | head -4; }
+
+"$D" --infer --derive-hints tests/derive.s "$T/inf.obj" >/dev/null 2>&1
+[ $? = 16 ] && pass "--infer and --derive-hints together are refused -- two producers of one file" \
+            || fail "--infer and --derive-hints together are refused"
+
 # ---- refusals -------------------------------------------------------------
 "$D" --csect NOSUCHCS "$T/a.obj" -o /dev/null >/dev/null 2>&1
 [ $? = 2 ] && pass "an unknown --csect exits 2, not 0" || fail "an unknown --csect exits 2, not 0"

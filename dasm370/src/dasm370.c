@@ -1931,6 +1931,199 @@ static int derive_emit(FILE *o, const char *as, const char *asver, long assize,
     return 0;
 }
 
+
+/* ---------------------------------------------------------------- infer -- */
+
+/* --infer: candidates from the code itself, for the CSECT that has no source at
+ * all -- the 772 of #112, mostly reachable only from a bound member.
+ *
+ * EVERY CANDIDATE IS WRITTEN AS A COMMENT AND NONE IS APPLIED, and that is the
+ * issue's instruction rather than caution.  A base register is not "R12 holds X"
+ * but "from here until it is dropped, resolve D(12) against X".  The POINT is
+ * sometimes ground truth; the RANGE never is, because there are no DROPs in a
+ * module and no block structure to read one from.  Get the range wrong and every
+ * displacement inside it resolves against the wrong section, producing symbols
+ * that are plausible, consistent and false -- and the bytes do not move, so the
+ * round trip is blind to it and so is everything downstream.  Promoting a
+ * candidate into a [[base]] is a human's deliberate edit, with the lifetime
+ * supplied by a person who looked.
+ *
+ * THE EVIDENCE KIND IS RECORDED SEPARATELY FROM ANY CONFIDENCE, because the two
+ * are re-judgeable by different means and only one of them is re-judgeable at
+ * all:
+ *
+ *   prologue   `BALR Rn,0' -- the base is the next instruction's offset.  Exact
+ *              about WHERE, and says nothing about for how long.
+ *   rld        a register loaded from an address constant whose RLD resolves
+ *              into this section, and afterwards used as a base.  The RLD is the
+ *              one place an object-deck reader has ground truth, so a later
+ *              reader can re-check this against the object itself.
+ *   pattern    a register used as a base with no origin found.  Re-judgeable
+ *              against nothing -- it records a question, not an answer.
+ */
+
+#define MAXCAND 256
+
+struct cand { int reg; long at, value; int kind; int used_at; int used; };
+                                       /* kind 0 prologue, 1 rld, 2 pattern */
+static struct cand cands[MAXCAND]; static int ncand;
+static long balr_base[16];             /* a prologue base per register, or -1 */
+static long used_base_at[16];          /* first offset the register is used as a base */
+
+/* The base registers an instruction addresses through: at most two, and zero is
+ * never one of them -- D(0) is an absolute address and names no base. */
+static int base_regs(const struct opc *o, const unsigned char *b, int *r)
+{
+    int n = 0;
+    switch (o->fmt) {
+    case F_RX: case F_BC: case F_RS: case F_S:
+        r[n] = (b[2] >> 4) & 0xf; if (r[n]) n++;
+        break;
+    case F_SI:
+        r[n] = (b[2] >> 4) & 0xf; if (r[n]) n++;
+        break;
+    case F_SS:
+        r[n] = (b[2] >> 4) & 0xf; if (r[n]) n++;
+        r[n] = (b[4] >> 4) & 0xf; if (r[n]) n++;
+        break;
+    default:
+        break;
+    }
+    return n;
+}
+
+static void cand_add(int reg, long at, long value, int kind)
+{
+    int i;
+    for (i = 0; i < ncand; i++)
+        if (cands[i].reg == reg && cands[i].value == value && cands[i].kind == kind) return;
+    if (ncand >= MAXCAND) return;
+    cands[ncand].reg = reg; cands[ncand].at = at; cands[ncand].value = value;
+    cands[ncand].kind = kind; cands[ncand].used = 0; cands[ncand].used_at = 0;
+    ncand++;
+}
+
+/* One linear decode of the section, twice: the first pass finds the prologue
+ * bases, and the second uses them to resolve an `L Rn,D(B)' far enough to ask
+ * the RLD what sits at the target.  Two passes because the second question
+ * cannot be asked before the first is answered, and one pass answering both
+ * would be answering it with whatever it had found so far. */
+static void infer_scan(int pass)
+{
+    long a = 0;
+    while (a < sect_len) {
+        const struct opc *o;
+        int mask, ismask = 0, len, br[2], nbr, k;
+        if (!cov[a] || (a % 2) || a + 1 >= sect_len) { a += 2 - (a % 2); continue; }
+        if (rld_at(a)) { a += rld_at(a)->len; continue; }
+        mask = (img[a + 1] >> 4) & 0xf;
+        o = find_op(img[a], img[a + 1], mask, &ismask);
+        len = o ? ins_len_of(o->fmt) : 0;
+        if (!o || a + len > sect_len || rld_overlaps(a, len) || !reencode_ok(o, img + a, len)) {
+            a += 2;
+            continue;
+        }
+        if (pass == 0) {
+            /* `BALR Rn,0' loads the address of the NEXT instruction.  R2 zero is
+             * what makes it an addressability idiom rather than a call. */
+            if (o->fmt == F_RR && (img[a + 1] & 0xf) == 0
+                && (!strcmp(o->name, "BALR") || !strcmp(o->name, "BASR"))) {
+                int r1 = (img[a + 1] >> 4) & 0xf;
+                if (r1) { balr_base[r1] = a + 2; cand_add(r1, a, a + 2, 0); }
+            }
+            nbr = base_regs(o, img + a, br);
+            for (k = 0; k < nbr; k++)
+                if (used_base_at[br[k]] < 0) used_base_at[br[k]] = a;
+        } else {
+            /* `L Rn,D(B)' where B already has a base: resolve the operand far
+             * enough to ask what is AT it.  An address constant there, relocated
+             * into this section, is the register's origin -- and the RLD saying
+             * so is why this is evidence and the BALR above is a pattern. */
+            if (o->fmt == F_RX && !strcmp(o->name, "L")) {
+                int r1 = (img[a + 1] >> 4) & 0xf;
+                int b2 = (img[a + 2] >> 4) & 0xf;
+                long d2 = ((img[a + 2] & 0xf) << 8) | img[a + 3];
+                if (b2 && balr_base[b2] >= 0) {
+                    long tgt = balr_base[b2] + d2;
+                    const struct rlditem *r = (tgt >= 0 && tgt + 4 <= sect_len) ? rld_at(tgt) : NULL;
+                    if (r && r->r == sect_esdid && r->len == 4) {
+                        long v = 0; int q;
+                        for (q = 0; q < 4; q++) v = (v << 8) | img[tgt + q];
+                        if (from_member) v -= sect_org;
+                        if (v >= 0 && v < sect_len) cand_add(r1, a, v, 1);
+                    }
+                }
+            }
+        }
+        a += len;
+    }
+}
+
+static const char *cand_kind(int k)
+{
+    return k == 0 ? "prologue" : k == 1 ? "rld" : "pattern";
+}
+
+static int infer_emit(FILE *o, const char *src)
+{
+    int i, r, n = 0;
+
+    fprintf(o, "# derived by dasm370 --infer\n");
+    fprintf(o, "#   module   %s\n", src);
+    fprintf(o, "#   section  %s  (X'%lX' bytes)\n", sect_name, (unsigned long)sect_len);
+    fprintf(o,
+"#\n"
+"# EVERY LINE BELOW IS A CANDIDATE AND NONE IS APPLIED. They are comments, so\n"
+"# feeding this file back to --hints changes nothing: promoting one into a\n"
+"# [[base]] is a deliberate edit, and the thing a person has to supply is the\n"
+"# LIFETIME. A base register is not \"R12 holds X\" but \"from here until it is\n"
+"# dropped, resolve D(12) against X\", and a module has no DROPs and no block\n"
+"# structure to read a range from. Get the range wrong and every displacement\n"
+"# inside it resolves against the wrong section -- plausibly, consistently and\n"
+"# falsely, without moving a byte, so nothing downstream can object.\n"
+"#\n"
+"# evidence= says what the claim rests on, separately from how much to believe\n"
+"# it, because only some of them can be re-judged at all:\n"
+"#   prologue  BALR Rn,0 -- exact about WHERE, silent about for how long\n"
+"#   rld       loaded from an address constant the RLD relocates into this\n"
+"#             section: re-checkable against the object itself\n"
+"#   pattern   used as a base with no origin found: a question, not an answer\n"
+"#\n");
+
+    for (i = 0; i < ncand; i++) {
+        struct cand *c = &cands[i];
+        char nm[LABBUF];
+        long L;
+        for (L = c->value; L > 0 && !lab[L]; L--) ;
+        label_name(L, nm);
+        fprintf(o, "# infer: kind=base reg=%d value=0x%lX at=0x%lX evidence=%s used=%s",
+                c->reg, (unsigned long)c->value, (unsigned long)c->at, cand_kind(c->kind),
+                used_base_at[c->reg] >= 0 ? "yes" : "no");
+        if (used_base_at[c->reg] >= 0)
+            fprintf(o, " first-use=0x%lX", (unsigned long)used_base_at[c->reg]);
+        if (L == c->value) fprintf(o, " near=%s", nm);
+        fprintf(o, "\n");
+        n++;
+    }
+    /* A register the code addresses through and whose origin nothing here
+     * explains.  Recording the question is the point: an unresolved D(R7) under
+     * a note costs a reader one lookup, and a confident wrong symbol is believed
+     * and propagates (#112).  This is the half that says which registers a
+     * reader still has to account for. */
+    for (r = 1; r < 16; r++) {
+        int have = 0;
+        if (used_base_at[r] < 0) continue;
+        for (i = 0; i < ncand; i++) if (cands[i].reg == r) have = 1;
+        if (have) continue;
+        fprintf(o, "# infer: kind=base reg=%d value=? at=? evidence=pattern used=yes"
+                   " first-use=0x%lX note=no-origin-found\n",
+                r, (unsigned long)used_base_at[r]);
+        n++;
+    }
+    fprintf(o, "\n# %d candidate(s), 0 applied\n", n);
+    return 0;
+}
+
 /* ------------------------------------------------------------- the walk -- */
 
 /* One pass over the section.  It runs TWICE when the hint file carries a USING:
@@ -2075,6 +2268,11 @@ static void usage(FILE *o)
 "                     lifetimes the assembly gave them.  Takes -I, and records\n"
 "                     the list in the file -- a hint set derived against the\n"
 "                     wrong macro library is a wrong one that looks right\n"
+"  --infer            candidates from the code itself, for a section with no\n"
+"                     source: base registers with their evidence kind\n"
+"                     (prologue/rld/pattern).  Every candidate is a COMMENT and\n"
+"                     none is applied -- the point is sometimes ground truth,\n"
+"                     the lifetime never is\n"
 "  -I DIR             macro library for --derive-hints (repeatable)\n"
 "  --as370 PATH       which as370 to run (default: beside this binary, then PATH)\n"
 "  --anchors=MODE     refuse (default) stops at the first failed check; report\n"
@@ -2113,6 +2311,7 @@ int main(int argc, char **argv)
 {
     const char *src = NULL, *want = NULL, *outfn = NULL, *hints_file = NULL, *isa_cli = NULL;
     const char *derive_src = NULL, *as370_path = NULL;
+    int infer = 0;
     char *incs[64]; int ninc = 0;
     char tsym[512], tuse[512], tobj[512], asver[128];
     long assize = 0;
@@ -2129,6 +2328,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[ai], "--allow-incomplete")) allow_incomplete = 1;
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];
         else if (!strcmp(argv[ai], "--derive-hints") && ai + 1 < argc) derive_src = argv[++ai];
+        else if (!strcmp(argv[ai], "--infer")) infer = 1;
         else if (!strcmp(argv[ai], "--as370") && ai + 1 < argc) as370_path = argv[++ai];
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) {
             if (ninc >= 64) { fprintf(stderr, "dasm370: too many -I directories for this build\n"); return 16; }
@@ -2168,6 +2368,11 @@ int main(int argc, char **argv)
     if (derive_src && src) {
         fprintf(stderr, "dasm370: --derive-hints takes a source and assembles its own deck; "
                         "do not also give one\n");
+        return 16;
+    }
+    if (infer && derive_src) {
+        fprintf(stderr, "dasm370: --infer reads a module and --derive-hints a source; "
+                        "they are two ways to produce one file, not two halves of one\n");
         return 16;
     }
     if (derive_src && hints_file) {
@@ -2341,6 +2546,25 @@ int main(int argc, char **argv)
                          sect_name, sect_len, 1);
         if (o != stdout && fclose(o)) { perror(outfn); rc = 16; }
         remove(tsym); remove(tuse); remove(tobj);
+        return rc;
+    }
+
+    if (infer) {
+        FILE *o;
+        int r;
+        for (r = 0; r < 16; r++) { balr_base[r] = -1; used_base_at[r] = -1; }
+        lab[0] = 1;
+        for (i = 0; i < nld; i++)
+            if (ld[i].owner == sect_esdid) {
+                long at = ld[i].addr - (from_member ? sect_org : 0);
+                if (at >= 0 && at < sect_len) { ld[i].addr = at; lab[at] = 1; }
+            }
+        infer_scan(0);
+        infer_scan(1);
+        o = outfn ? fopen(outfn, "w") : stdout;
+        if (!o) { perror(outfn); return 16; }
+        rc = infer_emit(o, src);
+        if (o != stdout && fclose(o)) { perror(outfn); rc = 16; }
         return rc;
     }
 
