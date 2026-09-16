@@ -47,6 +47,7 @@
 cd "$(dirname "$0")/.." || exit 2
 D=./dasm370
 A=../as370/as370
+L=../ld370/ld370
 T="${TMPDIR:-/tmp}/dasm370-tests.$$"
 mkdir -p "$T" || exit 2
 trap 'rm -rf "$T"' EXIT
@@ -613,7 +614,7 @@ fi
 iwant() { if grep -qE "$1" "$T/inf.toml"; then pass "$2"; else fail "$2"; fi; }
 iwant 'reg=12 value=0x2 at=0x0 evidence=prologue' \
       "BALR 12,0 is a PROLOGUE base -- exact about where, silent about how long"
-iwant 'reg=9 value=0x18 at=0x2 evidence=rld' \
+iwant 'reg=9 value=0x1C at=0x2 evidence=rld' \
       "a register loaded from an A-con the RLD resolves into this section is RLD evidence"
 iwant 'reg=7 value=\? at=\? evidence=pattern .*no-origin-found' \
       "a register used as a base with no origin is a PATTERN -- a question, not an answer"
@@ -621,9 +622,33 @@ iwant 'reg=7 value=\? at=\? evidence=pattern .*no-origin-found' \
 # The three kinds differ in what a later reader can re-judge them against, which
 # is why the kind is recorded separately from any confidence: rld is checkable
 # against the object, pattern against nothing at all.
-[ "$(grep -c '^# infer:' "$T/inf.toml")" = 3 ] \
-    && pass "three candidates, one of each kind" \
-    || fail "three candidates, one of each kind"
+iwant 'reg=5 .*evidence=pattern used=no note=balr-not-used-as-base' \
+      "a BALR whose register is never used as a base is NOT claimed as a prologue"
+[ "$(grep -c '^# infer:' "$T/inf.toml")" = 4 ] \
+    && pass "four candidates: prologue, rld, pattern, and a BALR that is neither" \
+    || fail "four candidates: prologue, rld, pattern, and a BALR that is neither"
+
+# THE BLOCKER #401 was held on, and it is the property the mode exists for: the
+# 772 no-source CSECTs are reachable only from a BOUND MEMBER. --infer sat before
+# the emit_source label, which the member path reaches by goto -- so a deck fell
+# through and produced candidates while a member jumped past and produced an
+# ordinary disassembly with none in it, which reads exactly like a module that
+# has none. Measured by the caller: 374 candidates from 30 CSECTs' decks, 0 from
+# the same CSECTs' members (IEAVTCR1 is identical, so the bytes were the same),
+# and 648 of 648 no-source CSECTs silent.
+"$L" -o "$T/inf.lm" --name INFER "$T/inf.obj" >/dev/null 2>&1
+if [ -s "$T/inf.lm" ]; then
+    "$D" --infer "$T/inf.obj" 2>/dev/null | grep '^# infer:' > "$T/cd.txt"
+    "$D" --infer "$T/inf.lm"  2>/dev/null | grep '^# infer:' > "$T/cm.txt"
+    if [ -s "$T/cm.txt" ] && cmp -s "$T/cd.txt" "$T/cm.txt"; then
+        pass "a BOUND MEMBER yields the same candidates as the deck -- the only form the 772 exist in"
+    else
+        fail "a BOUND MEMBER yields the same candidates as the deck"
+        echo "  deck:"; sed -n 1,4p "$T/cd.txt"; echo "  member:"; sed -n 1,4p "$T/cm.txt"
+    fi
+else
+    fail "a BOUND MEMBER yields the same candidates as the deck (ld370 produced nothing)"
+fi
 if grep -qE '^\[\[' "$T/inf.toml"; then
     fail "--infer writes NO applicable table -- every candidate is a comment"
 else

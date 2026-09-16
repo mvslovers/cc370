@@ -2096,12 +2096,21 @@ static int infer_emit(FILE *o, const char *src)
         long L;
         for (L = c->value; L > 0 && !lab[L]; L--) ;
         label_name(L, nm);
+        /* A BALR Rn,0 whose register is NEVER USED AS A BASE is not an
+         * addressability idiom, and calling it `prologue' claims more than the
+         * bytes support.  Measured by the caller against the real USING events
+         * of the same modules' source: of 28 prologue candidates, 3 disagreed,
+         * and two of those -- IGG08113 R15, ICKTR02 R1 -- are registers the
+         * source bases nothing on at all.  The BALR is still reported, because
+         * it happened; what changes is the claim made about it. */
+        int unused = used_base_at[c->reg] < 0;
         fprintf(o, "# infer: kind=base reg=%d value=0x%lX at=0x%lX evidence=%s used=%s",
-                c->reg, (unsigned long)c->value, (unsigned long)c->at, cand_kind(c->kind),
-                used_base_at[c->reg] >= 0 ? "yes" : "no");
-        if (used_base_at[c->reg] >= 0)
-            fprintf(o, " first-use=0x%lX", (unsigned long)used_base_at[c->reg]);
+                c->reg, (unsigned long)c->value, (unsigned long)c->at,
+                (c->kind == 0 && unused) ? "pattern" : cand_kind(c->kind),
+                unused ? "no" : "yes");
+        if (!unused) fprintf(o, " first-use=0x%lX", (unsigned long)used_base_at[c->reg]);
         if (L == c->value) fprintf(o, " near=%s", nm);
+        if (c->kind == 0 && unused) fprintf(o, " note=balr-not-used-as-base");
         fprintf(o, "\n");
         n++;
     }
@@ -2536,6 +2545,22 @@ int main(int argc, char **argv)
         fprintf(stderr, "dasm370: %s: TXT reaches %06lX, past the ESD length %06lX\n",
                 sect_name, (unsigned long)maxaddr, (unsigned long)sect_len);
 
+emit_source:
+    /* THE TWO FILE-WRITING MODES LIVE AFTER THIS LABEL, and that is the fix for
+     * the bound-member defect rather than a tidy-up.  The path above reaches here
+     * by `goto emit_source', so anything placed BEFORE the label is unreachable
+     * from it -- and --infer sat there.  A deck fell through and produced
+     * candidates; a member jumped past and produced an ordinary disassembly with
+     * no candidates in it, which reads exactly like a module that has none.
+     * Measured by the caller: 374 candidates from the 30 control CSECTs' decks
+     * and 0 from the same CSECTs' members, with IEAVTCR1 identical so the bytes
+     * were the same either way -- and 648 of 648 no-source CSECTs silent, which
+     * is every module the mode exists for.
+     *
+     * --derive-hints never met it because it assembles its own deck and so
+     * always takes the fall-through path.  It is moved anyway: a latent trap
+     * that fires only when someone adds an input format is the one nobody is
+     * looking for. */
     if (derive_src) {
         FILE *o;
         if ((rc = load_sym(tsym, sect_name)) != 0) return rc;
@@ -2568,7 +2593,6 @@ int main(int argc, char **argv)
         return rc;
     }
 
-emit_source:
     /* VERIFY, then REPLACE, and both before a single label is derived: the
      * derivation reads the image (an A-con's target comes out of the bytes), so
      * it has to read the image the decoder will read. */
