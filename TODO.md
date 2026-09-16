@@ -699,10 +699,25 @@ with dates only, **5,422** with neither, against the recorded **5,431**. The
 tables are not at fault: they are matched to IBM's shipped objects, which is the
 other comparison. What is at fault is that nothing says the two instruments want
 different inputs, so the comparability control the runbook asks for silently does
-not come back `+0/-0` on this host. A residual **9** — `IGG019HP`,
-`IGG019JN`–`JT` — is explained by neither table and is not measured here.
-Reported to `mvs38src`. Quote the environment with every tree figure from now on,
-the way the macro path already has to be quoted.
+not come back `+0/-0` on this host. A residual **9** — `IGG019HP` and
+`IGG019JN`…`JU` — is explained by neither table, and `mvs38src` measured it the
+same day: the `IGGCP14` CCW-count repair of 2026-09-13 (`NOP,0,CC+SILI,6` → `1`,
+one digit) postdates the reference corpus, and it flips the verdict in all nine.
+So the inputs that have to be held level are **three**, not two: the two tables
+and **the macro corpus itself**. To compare against IFOX00, null both tables and
+remember the macros have moved since 2026-09-07; to compare against IBM's object,
+apply them. Quote the environment with every tree figure from now on, the way the
+macro path already has to be quoted.
+
+Two reading errors on the way there, both in the same direction. The nine were
+reported here as `JN`–`JT`, eight names, because that is what `retest.py`'s
+summary line prints — it truncates the list, and the count beside it said 9. The
+names are in `retest-obj_<label>.tsv`, which is the file to read. And the first
+attempt at the macro test on the other side compared raw deck SHAs and got
+"neither matches" in all nine, which reads as no signal and is an artefact:
+IFOX00's decks differ in the END card and past column 72 by construction, so only
+the project's own comparator can answer. **A summary line and a raw hash are both
+instruments, and neither was the one the question needed.**
 
 `lmod_scan()` is the contract that came out of it: a reader that cannot account
 for a member says so **with a reason** — `trailing-bytes`, `unknown-record`,
