@@ -323,6 +323,17 @@ static int  is_dsect_id(int id) { return id > 0 && id < 256 && dsect_sect[id]; }
  * question -- measured: it moved nine IFCE and IFCS modules away from IFOX00
  * while gaining nothing. Membership is its own fact, so it gets its own test. */
 static int  sect_ord[MAXSECT], nsect_ord;
+/* 1 + the syms[] index of the symbol that NAMES a section id. It exists for the
+ * --sym export and for nothing else, and it has to be recorded where the id is
+ * allocated because nothing recovers it afterwards: EVERY symbol defined in a
+ * section carries that id in `sect', so once the passes are over the section's
+ * own name is indistinguishable from a label at offset 0 within it. The four
+ * assignments below are the whole of section creation. Written here, read only
+ * by emit_sym_export -- no assembly decision consults it, so no deck moves. */
+static int  sect_owner[MAXSECT];
+static void note_sect_owner(struct sym *s) {
+    if (s->sect > 0 && s->sect < MAXSECT) sect_owner[s->sect] = 1 + (int)(s - syms);
+}
 static void chain_sect(int id) {
     int k;
     if (g_pass != 1 || id <= 0 || id >= MAXSECT) return;
@@ -4590,7 +4601,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             pre_csect = 1;   /* statement before the first CSECT opens the implicit unnamed PC */
         if (cur_sect_id == 0 && !in_dsect && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG"))) {
             struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1;   /* code (or a leading EQU) with no CSECT: open the implicit private-code section so its ESD precedes a later ENTRY's LD */
-            if (!pc->sect) { pc->sect = ++g_sectid; } esd_add(pc, ESD_SECT);
+            if (!pc->sect) { pc->sect = ++g_sectid; } note_sect_owner(pc); esd_add(pc, ESD_SECT);
             /* And CHAIN it. assign_origins() walks sect_ord alone, so a section
              * that never enters it keeps sect_org 0 -- the implicit private code
              * then sat at origin 0 and the first named CSECT was assigned 0 as
@@ -4810,7 +4821,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 start_base = align8(expr_val(opnd, NULL));   /* only the FIRST section can be placed; the chain starts there */
             if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
                 int k, hassect = 0; for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) hassect = 1;
-                if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; esd_add(pc, ESD_SECT);
+                if (!hassect) { struct sym *pc = sym_get(""); pc->type = S_PC; pc->defined = 1; if (!pc->sect) pc->sect = ++g_sectid; note_sect_owner(pc); esd_add(pc, ESD_SECT);
                                 chain_sect(pc->sect); }   /* chained here too: same reason as the site above */
             }
             /* A name already DECLARED EXTRN may not name a control section.
@@ -4833,6 +4844,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             }
             struct sym *s = sym_get(rejected || !lbl[0] ? "" : lbl);
             if (!s->sect) s->sect = ++g_sectid;
+            note_sect_owner(s);
             /* The rejected section RESUMES the private code where it stands --
              * the oracle lists the first one at LOC 000004, after the implicit
              * DC F'1'. `opened' cannot express that here: the implicit opening
@@ -4911,6 +4923,7 @@ static void do_pass(int pass, char **lines, int nlines) {
              * unreachable from source, so it can collide with nothing. */
             struct sym *s = sym_get(lbl[0] ? lbl : "\1DSECT");
             if (!s->sect) s->sect = ++g_sectid;
+            note_sect_owner(s);
             cur_sect_id = s->sect;
             if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
             if (++s->opened == 1 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;   /* a DSECT is never chained, so it takes no slot in sect_ord */
@@ -6106,6 +6119,78 @@ static void emit_listing_a(char **lines, int nl) {
     if (alst && alst != stdout) fclose(alst);
 }
 
+/* --sym=FILE: the symbol table as data.
+ *
+ * NOT a section of the -a listing, and that is the one design decision here.
+ * emit_listing_a writes column-exact ASCII SYSPRINT -- an IFOX00 page, compared
+ * character for character against committed references by tests/listref -- so a
+ * machine-readable block inside it would either break that comparison or have to
+ * be filtered back out by every consumer. The `-a' sub-letters `s' (symbol and
+ * literal cross-reference) and `x' (DSECT cross-reference) still mean those
+ * human pages and still produce nothing; this writes the same facts as data, to
+ * its own file, and changes no existing invocation's output.
+ *
+ * The consumer is #373's caller: resolving a displacement such as
+ * `MVC 8(4,R13),12(R1)' back to `MVC TCBFSA+8(4),PARMPTR' is a filtered scan of
+ * these records -- the nearest `value <= target' within the addressed section --
+ * so the export carries what that scan needs and no ordering of its own.
+ *
+ * Emitted where emit_listing_a runs: past `g_pass = 0', so nothing below can
+ * still raise a diagnostic, and past emit_obj, so the deck is already written
+ * whatever happens here. */
+static const char *sym_type_name(int t) {
+    switch (t) {
+    case S_REL: return "REL";   /* relocatable, defined in a control section */
+    case S_SD:  return "SD";    /* the name of a control section */
+    case S_PC:  return "PC";    /* unnamed (private) control section */
+    case S_ER:  return "ER";    /* external reference: EXTRN, WXTRN or a V-con */
+    case S_LD:  return "LD";    /* a name this module ENTRYs */
+    case S_ABS: return "ABS";   /* absolute: an EQU with no section */
+    }
+    return "?";
+}
+/* A name as370 holds but the source never wrote comes out EMPTY, not as an
+ * invented token: the implicit private code's symbol is the empty string and the
+ * unnamed DSECT's is "\1DSECT", an internal name unreachable from source and one
+ * a tab-separated file must not carry. Both are sections the source did not
+ * name, `type' and `dsect' tell them apart, and no spelling is reserved -- a
+ * source symbol can never collide with a token that is not there. Any other
+ * control character is defensive: a name that could split a record would be a
+ * silently wrong parse on the reading side. */
+static void sym_name_out(FILE *f, const char *n) {
+    if ((unsigned char)n[0] < 0x20) return;
+    for (; *n; n++) fputc(((unsigned char)*n < 0x20 || *n == 0x7f) ? '.' : *n, f);
+}
+static int emit_sym_export(const char *fn, const char *srcfn) {
+    FILE *f;
+    int i;
+    /* No silent fallback to stdout the way the listing has one: a consumer
+     * reading a pipeline's stdout would take the fallback FOR the export. */
+    if (!strcmp(fn, "-")) f = stdout;
+    else if (!(f = fopen(fn, "w"))) { perror(fn); return 16; }
+    fputs("#as370-sym\t1\n", f);
+    fprintf(f, "#source\t%s\n", srcfn ? srcfn : "");
+    fputs("#note\tone record per as370 symbol-table entry, in as370's own order (first definition\n"
+          "#note\tor first reference). Not sorted: sort by (sect, value) to resolve a displacement.\n"
+          "#note\tvalue and length are decimal. value is section-relative for a symbol in a DSECT\n"
+          "#note\tand absolute -- the section origin already added -- for any other defined symbol.\n"
+          "#note\tWhere defined=0 the symbol was referenced and never defined: value and length say\n"
+          "#note\tnothing and the record must be skipped by anything scanning for an address.\n"
+          "#note\tAn empty name is a section the source never named: the implicit private code\n"
+          "#note\t(type PC) or an unnamed DSECT (dsect=1). sectname is empty for the same reason.\n", f);
+    fputs("#columns\tname\tvalue\tlength\ttype\tsect\tsectname\tdsect\tesdid\tdefined\tentry\n", f);
+    for (i = 0; i < nsym; i++) {
+        struct sym *s = &syms[i];
+        int owner = (s->sect > 0 && s->sect < MAXSECT) ? sect_owner[s->sect] : 0;
+        sym_name_out(f, s->name);
+        fprintf(f, "\t%ld\t%d\t%s\t%d\t", s->val, s->len, sym_type_name(s->type), s->sect);
+        if (owner) sym_name_out(f, syms[owner - 1].name);
+        fprintf(f, "\t%d\t%d\t%d\t%d\n", is_dsect_id(s->sect) ? 1 : 0, s->esdid, s->defined ? 1 : 0, s->is_entry ? 1 : 0);
+    }
+    if (f != stdout && fclose(f)) { perror(fn); return 16; }
+    return 0;
+}
+
 static void usage(FILE *o) {
     fputs(
 "Usage: as370 [options...] file\n"
@@ -6124,6 +6209,7 @@ static void usage(FILE *o) {
 "  --help             show this message and exit\n"
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
+"  --sym=FILE         write the symbol table to FILE as tab-separated data (- = stdout)\n"
 "  -v                 print as utility version\n"
 "\n"
 "macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros\n"
@@ -6170,7 +6256,7 @@ static int count_flagged_stmts(int nlines) {
     return nstmt_flagged + ncont_pri + ncont_lib - overlap;
 }
 int main(int argc, char **argv) {
-    const char *src = NULL, *objfn = NULL; int ai, eonly = 0;
+    const char *src = NULL, *objfn = NULL, *sym_fn = NULL; int ai, eonly = 0;
     if (argc == 1) { usage(stdout); return 0; }            /* bare invocation: show usage, RC 0 */
     /* cc370#104: an argument the loop below does not recognise used to fall
      * through to `src = argv[ai]', so a typo, a flag from a build script or an
@@ -6196,6 +6282,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
         else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", AS370_NAME, AS370_VER_H, __DATE__); return 0; }
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
+        else if (!strncmp(argv[ai], "--sym=", 6) && argv[ai][6]) sym_fn = argv[ai] + 6;   /* the symbol table as data; -a's `s'/`x' remain the human cross-reference pages */
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
         else if (!strncmp(argv[ai], "--sysparm=", 10)) scopy(g_sysparm, argv[ai] + 10, 95);   /* IFOX PARM=SYSPARM(...); default is the null string */
@@ -6481,6 +6568,7 @@ int main(int argc, char **argv) {
         emit_obj(of); fclose(of);
     }
     emit_listing_a(lines, nl);
+    if (sym_fn) { int e = emit_sym_export(sym_fn, src); if (e > optsev) optsev = e; }   /* a destination that cannot be written is the invocation's error, like an unopenable source: rc 16 */
     errors = count_flagged_stmts(nl);
     /* A severity without a statement cannot happen -- every recorder marks before
      * it prints -- but if a line index ever went out of range the RC would drop to

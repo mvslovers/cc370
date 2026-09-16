@@ -36,6 +36,23 @@ B<r> (relocation dictionary); B<=>I<FILE> writes the listing to I<FILE> (must be
 the last sub-option). Other sub-options (g/i/m/s/x) are accepted but not yet
 produced.
 
+=item B<--sym=>I<FILE>
+
+Write the assembly's symbol table to I<FILE> as tab-separated data, one record
+per symbol: name, value, length, type, section, section name, whether the
+section is a DSECT, ESDID, whether the symbol is defined, and whether it is an
+ENTRY. B<-> writes to standard output. The file carries its own C<#columns>
+header, and a destination that cannot be opened is an error of the invocation
+(exit 16), never a silent fall back to standard output.
+
+This is data, not the listing: the C<s> and C<x> sub-options of B<-a> remain the
+human cross-reference pages that B<IFOX00> prints, and still produce nothing.
+Values are decimal, and are section-relative for a symbol in a DSECT and
+absolute for any other defined symbol --- so a displacement such as
+C<8(4,13)> under C<USING TCB,13> is resolved by taking the nearest value at or
+below 8 among the records of TCB's section. Where C<defined> is 0 the symbol was
+referenced and never defined, and its value says nothing.
+
 =item B<-v>
 
 Print the assembler version.

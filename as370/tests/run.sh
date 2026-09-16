@@ -3138,5 +3138,44 @@ else
 fi
 rm -f /tmp/_bo$$.s /tmp/_bo$$.obj /tmp/_bo$$.lst /tmp/_bo$$.out /tmp/_bo2$$.out /tmp/_bo3$$.out
 
+# ------------------------------------------------------------------ symexp --
+# cc370#373: the symbol table as data. Everything the export needs was already
+# in `syms[]' -- value, length, type, section, ESDID, and is_dsect_id() for the
+# DSECT flag -- and there was no way to get any of it out: emit_listing_a writes
+# three column-exact SYSPRINT pages and nothing else, and `-a's `s'/`x' letters
+# were parsed into a_xref and never read.
+#
+# ON THE PRE-CHANGE BINARY (63f372f): `as370: invalid option '--sym=...'
+# - option ignored (IFOX00 IFO258)', RC 16, and no file -- so every branch below
+# fails on it, which is what #104's own fix made the old binary say.
+#
+# The checker resolves the fixture's displacements out of the export and is the
+# part that can be wrong: the answers are written into tests/symexp.s by hand.
+# Here: silence, RC 0, the deck NOT moving, `-' as the destination, and a
+# destination that cannot be opened being the invocation's error the way an
+# unopenable source already is.
+./as370 tests/symexp.s -o /tmp/_sx$$.obj --sym=/tmp/_sx$$.tsv >/tmp/_sx$$.out 2>&1
+rcs=$?
+./as370 tests/symexp.s -o /tmp/_sx2$$.obj >/dev/null 2>&1
+./as370 tests/symexp.s -o /dev/null --sym=- 2>/dev/null | head -1 > /tmp/_sx3$$.out
+./as370 tests/symexp.s -o /dev/null --sym=/nonexistent$$/x.tsv >/dev/null 2>&1
+rcs2=$?
+if [ $rcs != 0 ] || [ -s /tmp/_sx$$.out ]; then
+    echo "symexp: FAIL -- --sym must be silent at RC 0, got $rcs"
+    cat /tmp/_sx$$.out; fail=$((fail + 1))
+elif ! cmp -s /tmp/_sx$$.obj /tmp/_sx2$$.obj; then
+    echo "symexp: FAIL -- the deck moved with --sym; the export is output only"
+    fail=$((fail + 1))
+elif ! head -1 /tmp/_sx3$$.out | grep -q '^#as370-sym	1$'; then
+    echo "symexp: FAIL -- --sym=- must write the export to stdout"
+    cat /tmp/_sx3$$.out; fail=$((fail + 1))
+elif [ $rcs2 != 16 ]; then
+    echo "symexp: FAIL -- an unwritable --sym destination must give RC 16, got $rcs2"
+    fail=$((fail + 1))
+elif ! python3 tests/symexp_check.py /tmp/_sx$$.tsv; then
+    fail=$((fail + 1))
+fi
+rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.out
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
