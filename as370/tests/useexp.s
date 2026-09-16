@@ -13,12 +13,13 @@
 * writes PUSH USING and assembles identical, so these fixtures
 * carry nearly all the coverage that half will ever have.
 *
-* The bare DROP pins a DEFECT, not a behaviour.  split_fields("")
-* returns one empty field, so the drop-all branch is unreachable
-* and as370 drops register 0 instead -- cc370#394.  The fixture
-* records what it does, so the day #394 lands this file fails and
-* has to be updated on purpose.  A fixture that agreed with both
-* answers would be no test at all.
+* The bare DROP releases every live register -- and this fixture
+* is why cc370#394 could be fixed confidently.  It first pinned
+* the DEFECT: split_fields("") returns one empty field, so the
+* drop-all branch was unreachable and as370 dropped register 0
+* instead.  When #394 landed this file failed, exactly as it was
+* written to, and was updated on purpose.  A fixture that had
+* agreed with both answers would have been no test at all.
 *
 USEEXP   CSECT
 ABSD     EQU   0                 an ABSOLUTE domain
@@ -34,7 +35,8 @@ ABSD     EQU   0                 an ABSOLUTE domain
          DROP  6                 never based: noop, and recorded
          DROP  12,10
 * A bare DROP takes no remark: with the operand field optional,
-* the first token after the opcode IS the operand.
+* the first token after the opcode IS the operand.  It releases
+* R9 and R11, which are what is live here (cc370#394).
          DROP
          PUSH  USING             pushed and never popped
          ORG   USEEXP+X'20'

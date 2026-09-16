@@ -40,11 +40,12 @@ WANT = [
     (27, "DROP",   2,  6,    0, "",       0, 0, "noop"),  # named, never based
     (28, "DROP",   2, 12,    2, "USEEXP", 0, 0, "stmt"),
     (28, "DROP",   2, 10, 4096, "USEEXP", 0, 0, "stmt"),
-    (31, "DROP",   2,  0,    0, "",       0, 0, "noop"),  # cc370#394: a bare
-                                                          # DROP drops R0 and
-                                                          # leaves 9 and 11 live
-    (32, "PUSH",   2, -1,    0, "",       0, 0, "stmt"),  # never popped
-    (34, "USING", 32,  5,   32, "USEEXP", 0, 0, "stmt"),  # after ORG: loc moved
+    (32, "DROP",   2,  9, 4096, "USEEXP", 0, 0, "stmt"),  # a bare DROP releases
+    (32, "DROP",   2, 11,    0, "USEEXP", 0, 0, "stmt"),  # EVERY live register,
+                                                          # and as370 knows which
+                                                          # they were -- cc370#394
+    (33, "PUSH",   2, -1,    0, "",       0, 0, "stmt"),  # never popped
+    (35, "USING", 32,  5,   32, "USEEXP", 0, 0, "stmt"),  # after ORG: loc moved
                                                           # and the record needs
                                                           # no ORG record to say so
 ]

@@ -5085,24 +5085,30 @@ static void do_pass(int pass, char **lines, int nlines) {
              * wrong bases in one module from one cap.  Sixteen is the ceiling by
              * construction: there are sixteen registers to drop. */
             if (pass == 2) { char F[16][FLDW]; int nf = split_fields(opnd, F, 16), j, k;
-                if (!nf) {                                 /* DROP with no operand drops all */
-                    /* UNREACHABLE TODAY -- cc370#394.  split_fields("") returns
-                     * 1, not 0: it emits one empty field before it stops.  So an
-                     * operandless DROP falls into the `else' below, evaluates the
-                     * empty field as 0 and drops REGISTER 0, and the comment on
-                     * this line has described behaviour the code does not have
-                     * for as long as it has been here.  Measured: `DROP 12' gives
-                     * IFO209 on the next operand and a bare `DROP' assembles
-                     * silently at rc 0.
-                     *
-                     * Left as it stands, and deliberately.  #393 is output-only
-                     * and its acceptance is that no deck moved; repairing this
-                     * here would move decks in whatever modules are affected, and
-                     * a shared-input PR that does both is one where a moved gate
-                     * names no cause.  The export reports what as370 DID -- a
-                     * `noop' on register 0 -- which is how the defect was found.
-                     * When #394 lands, this branch becomes live and already emits
-                     * one record per register actually dropped. */
+                /* TWO conditions, not one, and that is the whole fix (cc370#394).
+                 * split_fields("") returns 1 and not 0 -- it emits one empty
+                 * field before it stops -- so testing `!nf' alone left this
+                 * branch UNREACHABLE for as long as it has been here, and a bare
+                 * DROP fell into the `else', evaluated the empty field as 0 and
+                 * dropped REGISTER 0.  Measured before the fix: `DROP 12' gives
+                 * IFO209 on the next operand and a bare `DROP' assembles silently
+                 * at rc 0, leaving the base it was written to release still live.
+                 *
+                 * IFOX00 reaches its drop-all by TWO paths and so does this one.
+                 * ifnx5a.asm: `GOIF OPNPRS,OFF=DRP400' for no operand field at
+                 * all, and `CLC D0(2,R10),=AL1(JCOMMA,JBLANK)' for an operand
+                 * that is comma-then-blank -- so `DROP ,' drops everything too,
+                 * and a fix testing only the field count gets the first and
+                 * misses the second.  That was measured here as well: `DROP ,'
+                 * produced two no-ops on register 0 and released nothing.
+                 *
+                 * IFOX00 implements it as `XC USINGT(USSL),USINGT' plus an
+                 * X'0F' end-of-table marker rather than as a loop -- terminating
+                 * the table at entry zero -- which is behaviourally what
+                 * nusing = 0 does here.  Its `SET ABSUS,OFF' has no counterpart
+                 * because absolute addressability is per-entry in `struct uent'
+                 * and not a global switch, so clearing the table clears it. */
+                if (!nf || !F[0][0]) {
                     for (k = 0; k < nusing; k++)
                         uev_add(i + 1, UEV_DROP, cur_sect_id, lc, usings[k].reg, usings[k].base,
                                 usings[k].sect, is_dsect_id(usings[k].sect), usings[k].isabs, UEB_STMT);
