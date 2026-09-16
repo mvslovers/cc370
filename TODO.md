@@ -622,6 +622,40 @@ because two startups share one name.
 
 ## The format library and the tools on it — new, and with a consumer
 
+**2026-09-16 — #372 landed on `feat/obj370-scatter-overlay`, and the shape of it
+matters more than the count.** `cmplmd370` could not compare 143 of TK5's bound
+target members. That read as one gap and was four, and **two of them did not
+refuse — they answered.** The CESD type byte was tested whole, so 147
+storage-owning entries carrying an edit-time control bit were invisible (all 24
+of `IEANUC01`'s nucleus proper, X'20' over an SD); the overlay image was built
+flat, so a section was compared against whichever segment wrote last; the walk
+ran past MODEND; and `X'40'` SYM records ended it at −1, with the CESD scan
+starting at offset 0 where a TEST-linked module puts SYM first.
+
+Measured old binary against new over **4,500 CSECTs: `error` 143 → 2**, of which
+**18 became identical and 123 became a real difference**, with **nothing moving
+between identical and differs in either direction**. All 18 are corroborated by
+the DLIB comparison, a separate member and a separate verdict.
+
+**The correction worth keeping.** This work was opened on the claim that the
+scatter record caused a partial image. **It does not** — the scatter record
+carries no program text and sits between the IDRs and the first control record,
+so skipping it is correct, and `IEANUC01` walks to MODEND cleanly. The claim was
+reported to `mvs38src` before it was checked, and it cost that session a
+cross-tab and five held modules. What *is* true is the overlay half, demonstrated
+on a synthetic member rather than asserted: two sections at the same address, and
+the flat image reports the first as differing in all 32 bytes against the
+second's text — exit 1, no warning. TK5 holds exactly **one** overlay member
+(`HEWLF064`, 7 segments) and it was refused for another reason, so no wrong
+verdict was ever published from it here.
+
+`lmod_scan()` is the contract that came out of it: a reader that cannot account
+for a member says so **with a reason** — `trailing-bytes`, `unknown-record`,
+`record-past-end`, `no-modend` — and an INCOMPLETE image is refused rather than
+compared, `--allow-incomplete` overriding. A boolean says how many results to
+distrust; a reason says which.
+
+
 Five issues filed 2026-09-04 — one of them now half done — and the first band
 here that exists because somebody outside this repository needs it. `mvs38src` assembles
 recovered MVS 3.8j source with as370 and compares the deck against the object the
@@ -985,6 +1019,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-16 — #372.** Four load-module reader defects, two of them silent.
+  4,500 CSECTs measured old against new: `error` 143 → 2, +18 identical, +123
+  real differences, no identical↔differs movement. Also: `#112` rewritten to the
+  three-stage `dasm370` spec with a caller-measured population (800 CSECTs with
+  an object and no source, 772 usable), and `#373`/`#374` filed as its other two
+  prerequisites — the as370 symbol export and one shared invertible opcode table.
 
 - **2026-09-13, second — #104.** An argument the parser did not recognise became
   the source filename and was overwritten by the next one, at rc 0. XF's scan
