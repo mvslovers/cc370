@@ -18,11 +18,19 @@ INFENT   BALR  12,0
          L     3,0(0,9)               and R9 used as a base
          ST    3,4(0,9)
          L     4,8(0,7)               R7: used, origin unknown
+         L     6,0(0,1)               R1 used as a base, so the
+*                                     phantom below reads as prologue
          BR    14
 * R5 gets a BALR and is never used as a base: not a prologue,
 * however much it looks like one.
          BALR  5,0
+* BALR 1,15 has R2 = R15, so it is a call and not the idiom; the
+* R2 == 0 guard excludes it and this pins that.
+         BALR  1,15
          DS    0F
+* PHANTOM is data that reads as BALR 1,0 to anything working from
+* bytes.  Only reachability (#383) can say nothing branches there.
+PHANTOM  DC    X'05100000'
 APTR     DC    A(TARGET)
 TARGET   DC    F'1'
          DC    F'2'

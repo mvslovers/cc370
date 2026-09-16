@@ -1953,7 +1953,21 @@ static int derive_emit(FILE *o, const char *as, const char *asver, long assize,
  * all:
  *
  *   prologue   `BALR Rn,0' -- the base is the next instruction's offset.  Exact
- *              about WHERE, and says nothing about for how long.
+ *              about WHERE, and says nothing about for how long.  It detects the
+ *              IDIOM and not the DECLARATION, which is the whole of what it can
+ *              and cannot mean: `BALR Rn,0' is a run-time fact and `USING' is an
+ *              assembly-time one, and an object records the first and cannot
+ *              record the second.  Three consequences, all measured:
+ *              IGG08113 writes `BALR R15,0' and then `B 32(,R15)' by hand with
+ *              no USING at all -- the idiom is there and the addressability is
+ *              not, and from the object those are the same bytes; IECVERPL
+ *              establishes R10 a second time at X'246' with no USING beside it,
+ *              so the assembly resolved everything against R10 = 0 throughout
+ *              and applying X'246' would resolve displacements against an origin
+ *              the assembly never used -- a true statement about the code and a
+ *              false one as a hint; and a data area holding X'0510' is `BALR 1,0'
+ *              to any byte-level reader, which is #383's reachability and not
+ *              something an opcode gate can decide.
  *   rld        a register loaded from an address constant whose RLD resolves
  *              into this section, and afterwards used as a base.  The RLD is the
  *              one place an object-deck reader has ground truth, so a later
@@ -2026,6 +2040,12 @@ static void infer_scan(int pass)
         if (pass == 0) {
             /* `BALR Rn,0' loads the address of the NEXT instruction.  R2 zero is
              * what makes it an addressability idiom rather than a call. */
+            /* R2 == 0 is what separates the addressability idiom from a call,
+             * and it is CORRECT here -- `BALR R1,R15' is X'051F' and never
+             * reaches this.  What it cannot separate is an instruction from data
+             * that looks like one: X'0510' in a table is `BALR 1,0' to any reader
+             * working from bytes, and only reachability (#383) can say that
+             * nothing branches there. */
             if (o->fmt == F_RR && (img[a + 1] & 0xf) == 0
                 && (!strcmp(o->name, "BALR") || !strcmp(o->name, "BASR"))) {
                 int r1 = (img[a + 1] >> 4) & 0xf;
@@ -2084,7 +2104,12 @@ static int infer_emit(FILE *o, const char *src)
 "#\n"
 "# evidence= says what the claim rests on, separately from how much to believe\n"
 "# it, because only some of them can be re-judged at all:\n"
-"#   prologue  BALR Rn,0 -- exact about WHERE, silent about for how long\n"
+"#   prologue  BALR Rn,0 -- exact about WHERE, silent about for how long, and\n"
+"#             detecting the IDIOM rather than the DECLARATION. A module that\n"
+"#             loads a base at run time without telling the assembler produces\n"
+"#             a candidate that is true about the bytes and wrong as a hint;\n"
+"#             and until reachability lands (#383) a data area holding X'0510'\n"
+"#             is BALR 1,0 to anything reading bytes.\n"
 "#   rld       loaded from an address constant the RLD relocates into this\n"
 "#             section: re-checkable against the object itself\n"
 "#   pattern   used as a base with no origin found: a question, not an answer\n"

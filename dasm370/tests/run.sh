@@ -614,7 +614,7 @@ fi
 iwant() { if grep -qE "$1" "$T/inf.toml"; then pass "$2"; else fail "$2"; fi; }
 iwant 'reg=12 value=0x2 at=0x0 evidence=prologue' \
       "BALR 12,0 is a PROLOGUE base -- exact about where, silent about how long"
-iwant 'reg=9 value=0x1C at=0x2 evidence=rld' \
+iwant 'reg=9 value=0x24 at=0x2 evidence=rld' \
       "a register loaded from an A-con the RLD resolves into this section is RLD evidence"
 iwant 'reg=7 value=\? at=\? evidence=pattern .*no-origin-found' \
       "a register used as a base with no origin is a PATTERN -- a question, not an answer"
@@ -624,9 +624,22 @@ iwant 'reg=7 value=\? at=\? evidence=pattern .*no-origin-found' \
 # against the object, pattern against nothing at all.
 iwant 'reg=5 .*evidence=pattern used=no note=balr-not-used-as-base' \
       "a BALR whose register is never used as a base is NOT claimed as a prologue"
-[ "$(grep -c '^# infer:' "$T/inf.toml")" = 4 ] \
-    && pass "four candidates: prologue, rld, pattern, and a BALR that is neither" \
-    || fail "four candidates: prologue, rld, pattern, and a BALR that is neither"
+# The R2 == 0 guard: BALR 1,15 is X'051F' and is a call, not addressability.
+# The caller's ICKTR02 case was read as this guard failing; it is not -- the
+# guard is correct, and what produced that candidate is the line below.
+if grep -qE 'reg=1 value=0x1E at=0x1C evidence=prologue' "$T/inf.toml"; then
+    pass "a PHANTOM prologue: X'0510' in DATA reads as BALR 1,0 and is reported as one"
+else
+    fail "a PHANTOM prologue: X'0510' in DATA reads as BALR 1,0 and is reported as one"
+fi
+# That is a LIMIT and it is pinned deliberately, not a defect to be papered over:
+# `BALR Rn,0' is a run-time fact and `USING' an assembly-time declaration, and an
+# object records the first and cannot record the second. Only reachability (#383)
+# can say nothing branches into that table. When #383 lands this assertion should
+# fail and be updated on purpose, exactly as as370's bare-DROP fixture did.
+[ "$(grep -c '^# infer:' "$T/inf.toml")" = 5 ] \
+    && pass "five candidates: prologue, rld, pattern, a BALR that is neither, and a phantom" \
+    || fail "five candidates: prologue, rld, pattern, a BALR that is neither, and a phantom"
 
 # THE BLOCKER #401 was held on, and it is the property the mode exists for: the
 # 772 no-source CSECTs are reachable only from a BOUND MEMBER. --infer sat before
