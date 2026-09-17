@@ -679,6 +679,102 @@ else
     pass "--infer writes NO applicable table -- every candidate is a comment"
 fi
 
+# ---- --labels sequential (#396) ------------------------------------------
+# A LIE THAT ASSEMBLES, and that is the whole issue. A label named after the
+# offset it sits at -- L0000A4 for X'A4' -- is wrong the moment a statement is
+# inserted above it: the name still reads L0000A4 and it now sits at X'A6'. No
+# diagnostic, no moved byte, so it is invisible to the round trip, to
+# cmplmd370, to reachgate.py and to --align-diff. Every instrument this project
+# has reports success on it.
+#
+# Inserting statements is the caller's repair workflow, not a hypothetical.
+#
+# SO THE TEST CANNOT BE A ROUND TRIP. It edits the disassembly the way a repair
+# would and then asks AS370'S OWN SYMBOL TABLE where each label actually
+# landed -- an independent instrument, and the only kind that can see this.
+#
+# Mutant scores, and two of the three are ZERO and are recorded as zero:
+#
+#   the control itself                                    fires, 4 of 4
+#       ... one two-byte insertion and every generated label in the file
+#       names an address it does not occupy. If that count were 0 the whole
+#       block would be measuring nothing.
+#   sequential falls back to the displacement name when the        0 fail
+#   binary search misses
+#       ... UNEXERCISED, and by construction: every offset label_name is
+#       called with was put in lab[] by the same pass that numbers it, so
+#       the fallback is unreachable. It is kept because a future caller of
+#       label_name need not hold that property, and it is honest to say the
+#       suite does not test it.
+#   the numbering moved BEFORE the scanning passes settle         0 fail
+#       ... a VALID mutant -- the binary changes -- and no fixture catches
+#       it. The rule is that a hint USING plants BC targets over up to eight
+#       passes, so numbering early leaves a late target unnumbered. The
+#       hinted fixture below does not plant a NEW label in a later pass, so
+#       nothing here fires. Stated rather than scored: what would exercise it
+#       is a [[base]] whose BC target is named by nothing else in the module.
+"$A" tests/reach.s -o "$T/lab.obj" >/dev/null 2>&1 || fail "reach.s does not assemble"
+labtest() {
+    "$D" --labels "$1" --format card "$T/lab.obj" -o "$T/lab-$1.s" 2>/dev/null
+    # one two-byte instruction inserted after the CSECT card, column 72 left
+    # blank -- a card that reaches it eats the next one, at severity 4
+    awk 'NR==1{print; printf "%-8s %-5s %-56s %8s\n","","LR","1,1","00000050"; next} {print}' \
+        "$T/lab-$1.s" > "$T/lab-$1-e.s"
+    "$A" "$T/lab-$1-e.s" --sym="$T/lab-$1.tsv" -o /dev/null >/dev/null 2>&1
+    awk -F'\t' '$1 ~ /^L[0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F][0-9A-F]$/ {
+        n = 0; h = substr($1,2)
+        for (i = 1; i <= 6; i++) { c = index("0123456789ABCDEF", substr(h,i,1)) - 1; n = n*16 + c }
+        if (n != $2 + 0) bad++
+    } END { print bad + 0 }' "$T/lab-$1.tsv"
+}
+lied=$(labtest displacement)
+honest=$(labtest sequential)
+if [ "$lied" -ge 1 ]; then
+    pass "a displacement-derived label LIES after an insertion ($lied of them here)"
+else
+    fail "a displacement-derived label LIES after an insertion -- the control did not fire"
+fi
+if [ "$honest" = 0 ]; then
+    pass "a sequential label makes no address claim, so an insertion cannot falsify it"
+else
+    fail "a sequential label makes no address claim, so an insertion cannot falsify it"
+fi
+
+# And it must move no byte: the names change, the object does not. Compared the
+# way the round trip above does it -- every card before the END, whose optional
+# IDR legitimately differs.
+"$D" --labels sequential --format card "$T/lab.obj" -o "$T/lab-seq.s" 2>/dev/null
+"$A" "$T/lab-seq.s" -o "$T/lab-seq.obj" >/dev/null 2>&1
+ln=$(( ($(wc -c < "$T/lab.obj") / 80 - 1) * 80 ))
+head -c $ln "$T/lab.obj" > "$T/lab-a.cut"
+head -c $ln "$T/lab-seq.obj" > "$T/lab-b.cut"
+if cmp -s "$T/lab-a.cut" "$T/lab-b.cut"; then
+    pass "sequential labels reassemble to the same bytes"
+else
+    fail "sequential labels reassemble to the same bytes"
+fi
+if grep -qE '^L[0-9A-F]{6} ' "$T/lab-seq.s"; then
+    fail "no displacement-shaped label survives --labels sequential"
+else
+    pass "no displacement-shaped label survives --labels sequential"
+fi
+"$D" --labels nonsense "$T/lab.obj" >/dev/null 2>&1
+[ $? = 16 ] && pass "--labels with an unknown mode is refused" \
+             || fail "--labels with an unknown mode is refused"
+
+# THE NUMBERING MUST RUN AFTER THE LABELS SETTLE, and only a hint USING can show
+# it: a [[base]] gives BC targets a meaning, and those are planted over up to
+# eight scanning passes. Number before they settle and a target found in pass 2
+# is not in the ordering, falls back to the displacement name, and the assertion
+# below catches it -- the same assertion, on a disassembly that has hints.
+"$D" --labels sequential --hints "$H.using" "$T/a.obj" -o "$T/lab-h.s" 2>/dev/null
+if grep -qE '^L[0-9A-F]{6} ' "$T/lab-h.s"; then
+    fail "a branch target found by a later scanning pass is numbered, not left as a displacement"
+    grep -E '^L[0-9A-F]{6} ' "$T/lab-h.s" | head -2
+else
+    pass "a branch target found by a later scanning pass is numbered, not left as a displacement"
+fi
+
 # ---- --reach-report (#383) -----------------------------------------------
 # The traversal's coverage as data. THE APPLIED FORM IS NOT SHIPPED and that is
 # a measurement, not caution: over the caller's 30 control CSECTs it darkens

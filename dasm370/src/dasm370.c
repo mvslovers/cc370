@@ -735,6 +735,37 @@ static void emit_comment(const char *text)
  *
  * `out' is LABBUF bytes: the prefix is at most 2 and %06lX at most 16, so the
  * arithmetic closes without the caller having to think about it. */
+/* SEQUENTIAL LABELS (#396), and the reason is not cosmetic.  A name derived
+ * from a displacement -- L0000A4 for offset X'A4' -- is WRONG THE MOMENT ANYONE
+ * INSERTS A STATEMENT: the label still reads L0000A4 and now points at X'B2'.
+ * And it still assembles.  No diagnostic, no failing test, no moved byte, so it
+ * is invisible to the round trip, to cmplmd370, to reachgate.py and to
+ * --align-diff -- every instrument this project has reports success on it.
+ *
+ * Inserting statements is not hypothetical for the caller; it IS the repair
+ * workflow, and every repair shifts every displacement after it.  So the failure
+ * is: disassemble, deposit, repair, and every generated label in the file names
+ * an address it does not occupy -- silently, permanently, in a file nobody will
+ * re-derive because it is checked in.
+ *
+ * The numbering is assigned ONCE, after the labels have settled.  A hint USING
+ * can plant new branch targets across up to eight scanning passes, so numbering
+ * earlier would renumber under the caller and produce two different names for
+ * one offset in one run. */
+static long *labord;                          /* labelled offsets, ascending */
+static long  nlabord;
+static int   label_seq;                       /* #396: number them, do not name them */
+
+static void label_order(void)
+{
+    long a;
+    free(labord); labord = NULL; nlabord = 0;
+    if (!label_seq) return;
+    labord = malloc((size_t)(sect_len ? sect_len : 1) * sizeof *labord);
+    if (!labord) { fprintf(stderr, "dasm370: out of memory numbering labels\n"); exit(16); }
+    for (a = 0; a < sect_len; a++) if (lab[a]) labord[nlabord++] = a;
+}
+
 static void label_name(long a, char *out)
 {
     const char *h;
@@ -742,6 +773,17 @@ static void label_name(long a, char *out)
     if ((h = hlab_name(a)) != NULL) { strcpy(out, h); return; }
     for (i = 0; i < nld; i++)
         if (ld[i].addr == a) { strcpy(out, ld[i].name); return; }
+    if (label_seq) {
+        long lo = 0, hi = nlabord - 1;
+        while (lo <= hi) {                    /* the offset's ordinal among the labels */
+            long m = (lo + hi) / 2;
+            if (labord[m] == a) { snprintf(out, LABBUF, "%s%04ld", hprefix, (m + 1) * 10); return; }
+            if (labord[m] < a) lo = m + 1; else hi = m - 1;
+        }
+        /* An offset nothing marked cannot be numbered, and inventing one here
+         * would hand back a name that collides with a real label's.  The
+         * displacement form is at least unambiguous about what it means. */
+    }
     snprintf(out, LABBUF, "%s%06lX", hprefix, (unsigned long)a);
 }
 
@@ -3415,6 +3457,12 @@ static void usage(FILE *o)
 "                     is refused, not skipped.  dasm370(1) has it in full\n"
 "  --allow-incomplete read a bound member whose record stream the reader could\n"
 "                     not finish (by default that is refused, not guessed at)\n"
+"  --labels MODE      displacement (the default) names a generated label after\n"
+"                     the offset it sits at; sequential numbers them instead.\n"
+"                     A displacement-derived name is WRONG the moment a\n"
+"                     statement is inserted above it -- and it still assembles,\n"
+"                     so no round trip, no comparison and no gate objects.  Use\n"
+"                     sequential for source that will be edited (cc370#396)\n"
 "  --isa SET          app|s370|s360|full -- accepted; only `full' is implemented\n"
 "  --format card|free card (the default) writes 80-column records with sequence\n"
 "                     numbers in 73-80 and column 72 left blank\n"
@@ -3456,6 +3504,12 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];
         else if (!strcmp(argv[ai], "--derive-hints") && ai + 1 < argc) derive_src = argv[++ai];
         else if (!strcmp(argv[ai], "--infer")) infer = 1;
+        else if (!strcmp(argv[ai], "--labels") && ai + 1 < argc) {
+            const char *v = argv[++ai];
+            if (!strcmp(v, "sequential")) label_seq = 1;
+            else if (!strcmp(v, "displacement")) label_seq = 0;
+            else { fprintf(stderr, "dasm370: --labels %s is not displacement or sequential\n", v); return 16; }
+        }
         else if (!strncmp(argv[ai], "--reach-report", 14) || !strncmp(argv[ai], "--reach", 7)) {
             const char *v;
             if (!strncmp(argv[ai], "--reach-report", 14)) { reach_only = 1; v = argv[ai] + 14; }
@@ -3717,6 +3771,11 @@ int main(int argc, char **argv)
             if (!lab_changed) break;
         }
     }
+
+    /* AFTER the scanning passes, because a hint USING plants branch targets over
+     * up to eight iterations and numbering earlier would renumber under the
+     * caller -- two names for one offset in one run. */
+    label_order();
 
     /* Opened LAST, so every refusal above leaves no file behind. */
     outf = outfn ? fopen(outfn, "w") : stdout;

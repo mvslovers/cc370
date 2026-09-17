@@ -53,6 +53,22 @@ statement, so that a displacement which moved because something before it change
 length is reported as a B<consequence> rather than as a change of its own. Writes
 a report, not a disassembly; reads no hint file. See L</ALIGN-DIFF> below.
 
+=item B<--labels> I<displacement>|I<sequential>
+
+How a generated label is named. C<displacement> (the default, unchanged) names it
+after the offset it sits at --- C<L0000A4> for C<X'A4'>. C<sequential> numbers
+them instead, C<L0010>, C<L0020>, in offset order.
+
+B<A displacement-derived name is wrong the moment a statement is inserted above
+it>, and it still assembles: the label reads C<L0000A4> and now sits at
+C<X'A6'>. No diagnostic, no moved byte --- so the round trip, L<cmplmd370(1)> and
+every comparison this project has report success on it. Inserting statements is
+the repair workflow, not a hypothesis, so use C<sequential> for any disassembly
+that will be edited or deposited. cc370#396.
+
+The names change and the object does not: a section disassembled either way
+reassembles to the same bytes.
+
 =item B<--reach-report>[=I<SET>]
 
 The #383 reachability traversal's coverage, as data and without a disassembly.
