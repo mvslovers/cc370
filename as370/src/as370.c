@@ -6395,8 +6395,14 @@ static const char *uev_by_name(int b) {
 static int stmt_reserves(const char *op, const char *opnd) {
     /* A zero duplication factor reserves nothing -- `DS 0F' is an alignment
      * directive wearing a storage statement's syntax, and it is the whole
-     * reason this column exists.  `CNOP' aligns by definition. */
-    if (!strcmp(op, "CNOP")) return 0;
+     * reason this column exists.  `CNOP' aligns by definition.
+     *
+     * `ORG' MOVES the counter and never occupies what it moves over, and the
+     * distinction is not academic: its `len' is the move, so an ORG that skips
+     * forward CLAIMED those bytes.  Measured over the 5,528-module corpus --
+     * 18,485 ORG records with len > 0, 602,740 bytes, in 2,295 modules.  A
+     * repair told that the ORG card occupies them edits the ORG. */
+    if (!strcmp(op, "CNOP") || !strcmp(op, "ORG")) return 0;
     if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
         const char *q = opnd;
         while (*q == ' ') q++;
@@ -6425,18 +6431,40 @@ static int emit_stmt_export(const char *fn, const char *srcfn, char **lines, int
           "#note\tsection's origin, so a SECTION-RELATIVE offset -- what an object deck carries --\n"
           "#note\tis loc - secorg. It is a column and not an inference because taking the\n"
           "#note\tsmallest loc in a section is wrong once a section is opened, left and resumed.\n"
-          "#note\tlen is the bytes the statement emits; len 0\n"
-          "#note\tmeans it emits none, which is NOT the same as reserving none.\n"
+          "#note\tlen is the LOCATION COUNTER ADVANCE at this statement and NOT the bytes it\n"
+          "#note\temits: it includes any alignment the statement forced, so a BR at an odd\n"
+          "#note\toffset has len 3 and its first byte is the pad. The statement\'s bytes are\n"
+          "#note\t[loc, loc+len) -- which is what the listing shows.\n"
+          "#note\tlen is NEGATIVE where the counter moves BACK. An ORG is a statement like any\n"
+          "#note\tother and its advance is its own: 59,443 records over the 5,528-module corpus,\n"
+          "#note\tin 3,758 of them. SO loc IS NOT A KEY AND AN OFFSET IS NOT A FUNCTION: 5.97 %\n"
+          "#note\tof claimed bytes are claimed by more than one statement, in 3,559 modules.\n"
+          "#note\tThe deck holds what the LAST claimant in listing order wrote.\n"
           "#note\treserves=1 the statement OCCUPIES its bytes (DC, DS CL1, an instruction),\n"
-          "#note\treserves=0 it only ALIGNS (DS 0F, CNOP). An object cannot tell these apart --\n"
-          "#note\tboth are bytes no TXT card covers -- which is why this column exists.\n"
+          "#note\treserves=0 it only ALIGNS or MOVES over them (DS 0F, CNOP, ORG). An object\n"
+          "#note\tcannot tell these apart -- both are bytes no TXT card covers -- which is why\n"
+          "#note\tthis column exists. Where len is 0 there are no bytes and reserves is vacuous.\n"
           "#note\tgen=1 the statement came out of a macro expansion. mcall_stmt and mcall_name\n"
           "#note\tname the CALL that produced it, not merely a depth: a listing marks it `+\' and\n"
           "#note\tnever says which call, and walking backwards to the nearest unmarked line is\n"
           "#note\tthe inference this export exists to remove. Both are empty for open code.\n"
+          "#note\tmcall_stmt HAS NO RECORD OF ITS OWN -- a call card generates no statement, so\n"
+          "#note\tit is skipped here. At mdepth 1 its file line is this record\'s org; at mdepth\n"
+          "#note\t2 and above mcall_name is the INNERMOST macro, whose call card is a model card\n"
+          "#note\tin a library and in no file the caller can edit, while org still names the\n"
+          "#note\tOUTERMOST open-code call, which is one. 20.3 % of generated records are at\n"
+          "#note\tmdepth >= 2.\n"
           "#note\ttext is the statement as the listing shows it -- for a generated line the model\n"
           "#note\tcard with substitutions applied, which is NOT a card in the caller\'s source.\n"
-          "#note\tThe card a repair edits is mcall_stmt.\n", f);
+          "#note\tTHE CARD A REPAIR EDITS IS org, AND A CONSUMER MUST CHECK IT: test that text\n"
+          "#note\tis a PREFIX of the statement at org, folding continuations. A statement from a\n"
+          "#note\tCOPY\'d member keeps the COPY statement\'s origin and carries nothing that marks\n"
+          "#note\tit -- gen=0, mdepth=0, mcall_stmt and mcall_name empty, exactly like open code\n"
+          "#note\t-- so org names the COPY card and the prefix test is what says so. Measured\n"
+          "#note\tover 490 COPY-derived records: the card at org is a COPY card 490 of 490, text\n"
+          "#note\tis not a prefix of it 490 of 490, and org is never a line inside the member.\n"
+          "#note\tControl, 47,534 open-code records: 0 false positives on the prefix test and 5\n"
+          "#note\ton equality, so PREFIX and not equality.\n", f);
     fputs("sect\tsectname\tsecorg\torg\tcards\tloc\tlen\tstmt\tgen\tmdepth\tmcall_stmt\tmcall_name\treserves\ttext\n", f);
     for (i = 0; i < nl; i++) {
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];

@@ -64,11 +64,29 @@ reserves text>. C<-> writes to standard output. cc370#411; the export B<dasm370>
 needs and no listing can replace.
 
 B<C<reserves> is the field this exists for.> It says whether a statement
-B<occupies> its bytes (C<DC>, C<DS CL1>, an instruction) or only B<aligns>
-(C<DS 0F>, C<CNOP>). An object cannot tell those apart --- both are bytes no TXT
-card covers --- and two defensible object-side rules were measured to disagree
-B<1 % against 14 %> about the size of that population. Only the source knows,
-and only at assembly time.
+B<occupies> its bytes (C<DC>, C<DS CL1>, an instruction) or only B<aligns> or
+B<moves over> them (C<DS 0F>, C<CNOP>, C<ORG>). An object cannot tell those apart
+--- both are bytes no TXT card covers --- and two defensible object-side rules
+were measured to disagree B<1 % against 14 %> about the size of that population.
+Only the source knows, and only at assembly time. Where C<len> is 0 there are no
+bytes and the column is vacuous.
+
+C<ORG> is in that list by measurement and it was not there at first. An C<ORG>
+that skips forward has a positive C<len>, so it B<claimed> the bytes it moved
+over: 18,485 such records, B<602,740 bytes in 2,295 of the 5,528 corpus modules>.
+A repair told the C<ORG> card occupies them edits the C<ORG>.
+
+B<C<len> is the location counter ADVANCE, not the bytes emitted.> It includes any
+alignment the statement forced, so a C<BR 14> at an odd offset has C<len> 3 and
+its first byte is the pad --- which is what the listing shows, the pad at the
+statement's own C<LOC> and the halfword after it. The statement's bytes are
+C<[loc, loc+len)>.
+
+B<And C<len> is negative where the counter moves back>, because an C<ORG> is a
+statement like any other and its advance is its own: 59,443 records in 3,758 of
+the 5,528 modules. So B<C<loc> is not a key and an offset is not a function> ---
+B<5.97 %> of claimed bytes are claimed by more than one statement, in 3,559
+modules. The deck holds what the B<last claimant in listing order> wrote.
 
 B<C<org> and C<cards> locate the card; C<stmt> does not.> A continued statement
 occupies several input cards and carries one statement number, so the two
@@ -92,6 +110,23 @@ consumer to walk backwards to the nearest unmarked line and hope. For a
 macro-generated card C<org> is the B<call site> --- the card a repair edits ---
 while C<text> is the model card with substitutions applied, which is not a card
 in the caller's file at all.
+
+C<mcall_stmt> B<has no record of its own>: a call card generates no statement, so
+it is not exported. At C<mdepth> 1 its file line is the record's C<org>. At
+C<mdepth> 2 and above C<mcall_name> is the B<innermost> macro, whose call card is
+a model card in a library and in no file the caller can edit, while C<org> still
+names the B<outermost> open-code call, which is one. B<20.3 %> of generated
+records are at C<mdepth> 2 or deeper.
+
+B<The consumer must check C<org>, and the test is a prefix test.> A statement
+from a C<COPY>'d member keeps the C<COPY> statement's origin and carries nothing
+that marks it --- C<gen> 0, C<mdepth> 0, C<mcall_stmt> and C<mcall_name> empty,
+exactly like open code --- so C<org> names the C<COPY> card and only comparing
+C<text> against the statement at C<org> says so. Measured over 490 COPY-derived
+records: the card at C<org> is a C<COPY> card B<490 of 490>, C<text> is not a
+prefix of it B<490 of 490>, and C<org> is B<never> a line inside the member. The
+false-positive control over 47,534 open-code records gives B<0> with the prefix
+test and B<5> with equality, so it is prefix and not equality.
 
 =item B<-v>
 

@@ -3230,9 +3230,43 @@ elif [ "$(stf "FIRST " org)" = "$(stf "FIRST " stmt)" ]; then
     echo "stmtexp: FAIL -- org and stmt agree everywhere, so this fixture cannot"
     echo "         tell them apart and proves nothing about either"
     fail=$((fail + 1))
+# THE THREE BELOW ARE THE #385 TRANSLATOR'S READING OF THIS EXPORT, and each was
+# measured over the 5,528-module corpus before being written down. Only the ORG
+# one scores against the pre-change binary; the other two pin behaviour that was
+# already right and DOCUMENTED WRONG, which is the defect they close.
+#
+# ORG moves the counter and never occupies what it moves over. `ORG ,' here has
+# len 7 and used to report reserves=1, so it claimed seven bytes it does not own
+# -- 602,740 bytes over 2,295 of the 5,528 modules. A repair told the ORG card
+# occupies them edits the ORG.
+elif [ "$(stf "         ORG   ," reserves)" != 0 ] || [ "$(stf "         ORG   TBL" reserves)" != 0 ]; then
+    echo "stmtexp: FAIL -- ORG moves the counter and must be reserves=0"; fail=$((fail + 1))
+# len is the ADVANCE, not the bytes emitted: BR 14 at the odd offset 15 forces an
+# alignment byte, so 3. And it is NEGATIVE where the counter moves back: 59,443
+# records in 3,758 modules. A consumer reading len as a byte count gets both wrong.
+elif [ "$(stf "         BR    14" len)" != 3 ]; then
+    echo "stmtexp: FAIL -- len is the counter ADVANCE: BR at an odd offset is 3, not 2"
+    fail=$((fail + 1))
+elif [ "$(stf "         ORG   TBL" len)" -ge 0 ]; then
+    echo "stmtexp: FAIL -- an ORG backwards must carry a NEGATIVE len"; fail=$((fail + 1))
+# loc is not a key: after the ORG, OVER sits where TBL sits. If these two ever
+# stop colliding the fixture has stopped testing the ambiguity it exists for.
+elif [ "$(stf "OVER     DC" loc)" != "$(stf "TBL      DC" loc)" ]; then
+    echo "stmtexp: FAIL -- the ORG must make two statements claim ONE offset"; fail=$((fail + 1))
+# mdepth 2: mcall_name is the INNERMOST macro, whose call card is inside OUTER's
+# body, while org still names the outermost open-code call -- the only card of the
+# three a caller can edit. 20.3 % of generated records over the corpus are here.
+elif [ "$(stf "DEEP " mdepth)" != 2 ] || [ "$(stf "DEEP " mcall_name)" != INNER ]; then
+    echo "stmtexp: FAIL -- at depth 2 mcall_name must be the INNERMOST macro"; fail=$((fail + 1))
+elif [ "$(stf "DEEP " org)" = "$(stf "DEEP " mcall_stmt)" ]; then
+    echo "stmtexp: FAIL -- at depth 2 org is the OUTERMOST call and mcall_stmt the"
+    echo "         inner one; equal here means the fixture cannot tell them apart"
+    fail=$((fail + 1))
 else
-    echo "stmtexp: OK (reserves separates DS 0F from DS CL1; two calls of one macro"
-    echo "         are distinguished; org is the call site and differs from stmt)"
+    echo "stmtexp: OK (reserves separates DS 0F from DS CL1 and excludes ORG; two calls"
+    echo "         of one macro are distinguished; org is the call site and differs from"
+    echo "         stmt; len is the counter advance and goes negative; two statements"
+    echo "         claim one offset; depth 2 separates org from mcall_stmt)"
 fi
 rm -f /tmp/_st$$.tsv /tmp/_st$$.obj /tmp/_st2$$.obj /tmp/_st$$.out
 
