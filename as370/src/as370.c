@@ -3695,6 +3695,32 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
          * are delimited the ordinary way -- see LF_SUBST. */
         if (n >= 0) { g_copyraw++; mexp_block(cb, n, out, nout, depth + 1, NULL); g_copyraw--; free(cb); return; }   /* COPY'd block keeps the COPY statement's origin (g_curorg) */
         free(cb);
+        /* cc370#416: THE MEMBER WAS NOT FOUND, AND SAYING NOTHING IS THE DEFECT.
+         * as370 fell through here and let the COPY card stand as an ordinary
+         * statement -- rc 0, nothing on either stream, and every offset after it
+         * moved, because a COPY that resolves to nothing has changed the program.
+         * IFFAAA01 then reports eight undefined symbols and names the member
+         * nowhere: the diagnostics point at consequences and never at the cause.
+         *
+         * IFOX00's own answer, and the severity is ITS number and not a judgement:
+         * ifnx1a.asm:1524-1532 takes a snapshot carrying SEV68 and ERR68 and then
+         * reads the next statement -- so it abandons the COPY and CARRIES ON,
+         * exactly as this does, and jermsgcd.asm:95 has SEV68 EQU 8.  erms.asm:84
+         * gives the text: COPY MEMBER $ NOT FOUND IN LIBRARY.
+         *
+         * Measured: IFOX00 raises IFO068 in 70 of the 5,528 modules, 194 times.
+         * as370 already returns 8 on every one of those 70 -- from the
+         * CONSEQUENCES -- so this changes no return code and no byte, and what it
+         * changes is that the message names the member. */
+        /* %.8s and not %s: a member name is EIGHT characters, and `opnd' is a
+         * whole operand field -- gcc's fortify pass puts the unbounded form at
+         * "between 50 and 8241 bytes into a destination of size 160", which is a
+         * warning this project's Macs see only at -Wformat-truncation=2 and CI
+         * sees for real.  Bounding it states the domain fact rather than widening
+         * a buffer to hold something that cannot occur. */
+        { char m[96];
+          snprintf(m, sizeof m, "COPY member %.8s not found in library (IFOX00 IFO068)", opnd);
+          note_operr(m, 8, *nout); }
     }
     /* SUBSTITUTION IN OPEN CODE (#141). Everything above this point interprets
      * the statement; from here it is a MODEL statement, and its variable symbols

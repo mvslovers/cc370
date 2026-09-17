@@ -3201,6 +3201,53 @@ rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.o
 #
 # The expectations below are written BY HAND. An expectation generated from the
 # export's own output would agree with any export at all.
+# ---- IFO068: a COPY member that is not on the path (cc370#416) -------------
+# as370 fell through and let the COPY card stand as an ordinary statement -- RC 0,
+# nothing on either stream -- and every offset after it moved, because a COPY that
+# resolves to nothing has changed the program. IFFAAA01 then reports eight
+# undefined symbols and names the member NOWHERE.
+#
+# IFOX00 is the reference and the severity is ITS number: erms.asm:84 has the
+# text, jermsgcd.asm:95 has SEV68 EQU 8, and ifnx1a.asm:1524 takes the snapshot
+# and then READS THE NEXT STATEMENT -- so it abandons the COPY and carries on,
+# exactly as as370 does. This changes no byte and no return code; it changes what
+# the message names.
+#
+# Measured over the corpus: 5 modules, 25 occurrences, all BNGC* -- and the
+# members named AGREE with IFOX00's own diagnostics MEMBER FOR MEMBER on all
+# five. QTRKCALC does not appear on either side: its COPY sits behind
+# AIF ('&SYSPARM' NE 'TEST'), and neither assembler reports what it never reached.
+cpmdir=/tmp/_cpm$$
+mkdir -p "$cpmdir"
+# LOWERCASE: lib_path() lowercases the member name before looking for the file,
+# so `COPY CPYOK' opens `cpyok'. Written as CPYOK this passed on macOS -- a
+# case-insensitive filesystem matched it -- and failed on CI's Linux, where the
+# resolving control silently became a second missing member. The fixture could
+# not fail on the machine it was written on.
+printf '%-71s\n' 'OKSYM    DS    CL4                      the member that resolves' \
+    > "$cpmdir/cpyok"
+./as370 -I "$cpmdir" -o /tmp/_cpm$$.obj tests/copymiss.s >/tmp/_cpm$$.out 2>/tmp/_cpm$$.err
+rccp=$?
+cpn=$(grep -c 'IFO068' /tmp/_cpm$$.err)
+if [ "$cpn" != 1 ]; then
+    echo "copymiss: FAIL -- expected exactly one IFO068, got $cpn"; cat /tmp/_cpm$$.err
+    fail=$((fail + 1))
+elif [ $rccp != 8 ]; then
+    echo "copymiss: FAIL -- SEV68 is 8, as370 returned $rccp"; fail=$((fail + 1))
+elif ! grep -q 'COPY member NOSUCHM not found' /tmp/_cpm$$.err; then
+    echo "copymiss: FAIL -- the message must NAME the member; that is the whole"
+    echo "          point, since the consequences already name everything else"
+    cat /tmp/_cpm$$.err; fail=$((fail + 1))
+elif grep -q 'CPYOK' /tmp/_cpm$$.err; then
+    echo "copymiss: FAIL -- the RESOLVING copy must be silent; a check that fired"
+    echo "          on every COPY would pass a fixture carrying only the missing one"
+    cat /tmp/_cpm$$.err; fail=$((fail + 1))
+else
+    echo "copymiss: OK (one IFO068 at severity 8 naming the member; the COPY that"
+    echo "          resolves stays silent)"
+fi
+rm -rf "$cpmdir" /tmp/_cpm$$.obj /tmp/_cpm$$.out /tmp/_cpm$$.err
+
 # ---- IFO007: subscripted use of an undimensioned variable (cc370#421) ------
 # IFOX00 raises IFO007 at severity 8 and generates NO OBJECT CODE for the
 # statement; as370 substituted nothing and assembled the result, so IEAVEXS's
