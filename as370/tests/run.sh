@@ -3201,6 +3201,49 @@ rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.o
 #
 # The expectations below are written BY HAND. An expectation generated from the
 # export's own output would agree with any export at all.
+# ---- IFO007: subscripted use of an undimensioned variable (cc370#421) ------
+# IFOX00 raises IFO007 at severity 8 and generates NO OBJECT CODE for the
+# statement; as370 substituted nothing and assembled the result, so IEAVEXS's
+# `LA 0,&CODE(,0)' became `LA 0,0(0,0)' and the section was 432 against 428.
+#
+# THE TWO SILENT CASES ARE THE CHECK. &A(1) against `LCLA &A(10)' is a correct
+# subscripted use, and &Z(1) is the UNDECLARED case -- cc370#97's, measured
+# unsafe to diagnose here, because as370 reaches the "names nothing" path 6,387
+# times in 771 of the 5,528 modules where IFOX00 raises nothing. This check keys
+# on a POSITIVE DECLARATION OF THE WRONG SHAPE and fires in 2 modules of 5,528,
+# which are exactly the two IFOX00 flags IFO007.
+./as370 tests/ifo007.s -a -o /tmp/_i7$$.obj > /tmp/_i7$$.lst 2>/tmp/_i7$$.err
+rci7=$?
+i7n=$(grep -c 'IFO007' /tmp/_i7$$.err)
+i7f=$(grep -c 'Statement Flagged' /tmp/_i7$$.err)
+if [ "$i7n" != 1 ]; then
+    echo "ifo007: FAIL -- expected exactly one IFO007, got $i7n"; cat /tmp/_i7$$.err; fail=$((fail + 1))
+elif [ $rci7 != 8 ]; then
+    echo "ifo007: FAIL -- IFOX00's severity is 8, as370 returned $rci7"; fail=$((fail + 1))
+elif ! grep -q 'Usage of &C is inconsistent' /tmp/_i7$$.err; then
+    echo "ifo007: FAIL -- the message must name the symbol, and in full"; cat /tmp/_i7$$.err
+    fail=$((fail + 1))
+elif grep -qE '&A|&Z' /tmp/_i7$$.err; then
+    echo "ifo007: FAIL -- &A(1) is a correct subscripted use and &Z(1) is the"
+    echo "        UNDECLARED case; neither may draw IFO007"; cat /tmp/_i7$$.err
+    fail=$((fail + 1))
+# THE HALF THAT MOVES BYTES: the flagged statement generates nothing, so the
+# location counter does not advance. Without it the diagnostic is cosmetic and
+# IEAVEXS stays four bytes long.
+elif ! awk '/LA    2,&A|LA +2,5/ {seen=1} /LA    0,/ && seen {print; exit}' /tmp/_i7$$.lst \
+        | grep -qE '^00000C +[0-9]+\+ +LA    0,$'; then
+    echo "ifo007: FAIL -- the flagged statement must emit nothing and leave the"
+    echo "        counter where it was"; grep -E '^0000' /tmp/_i7$$.lst; fail=$((fail + 1))
+elif ! grep -qE '^00000C 07FE' /tmp/_i7$$.lst; then
+    echo "ifo007: FAIL -- the statement after it must sit at 00000C, not 000010"
+    grep -E '^0000' /tmp/_i7$$.lst; fail=$((fail + 1))
+else
+    echo "ifo007: OK (one IFO007 at severity 8, naming the symbol; a dimensioned"
+    echo "        subscript and an undeclared one both silent; the flagged"
+    echo "        statement emits nothing and the counter does not advance)"
+fi
+rm -f /tmp/_i7$$.obj /tmp/_i7$$.lst /tmp/_i7$$.err
+
 ./as370 tests/stmtexp.s --stmts=/tmp/_st$$.tsv -o /tmp/_st$$.obj >/tmp/_st$$.out 2>&1
 rcs=$?
 ./as370 tests/stmtexp.s -o /tmp/_st2$$.obj >/dev/null 2>&1

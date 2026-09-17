@@ -1734,6 +1734,38 @@ static int mnote_split(const char *opnd, char *text, int textsz, char *image, in
  * the call/COPY in the input file. g_curorg is the line currently being expanded. */
 static int line_org[MAXLINES];
 static int g_curorg;
+/* cc370#421: a SUBSCRIPTED reference to a variable symbol declared WITHOUT a
+ * dimension -- `&C(,0)' where the macro wrote `LCLA &C'.  IFOX00 raises IFO007
+ * USAGE OF <name> IS INCONSISTENT WITH ITS DECLARATION at severity 8 and
+ * generates NO OBJECT CODE for the statement; as370 substituted nothing, so
+ * `LA 0,&CODE(,0)' assembled as `LA 0,0(0,0)' and the section came out four
+ * bytes long (IEAVEXS, 432 against 428).
+ *
+ * WHY THIS REFERENCE-SITE CHECK IS SAFE WHERE THE GENERAL ONE IS NOT, and it is
+ * the same site: cc370#97's note measures as370 reaching vref's "names nothing"
+ * path 6,387 times in 771 of the 5,528 modules where IFOX00 raises nothing at
+ * all -- those are places as370 fails to resolve what XF resolves, and a
+ * diagnostic there reports our own gap as the source's error.  This one keys on
+ * a POSITIVE DECLARATION OF THE WRONG SHAPE rather than on absence, and the
+ * corpus says so: it fires in 2 modules of 5,528, IEAVEXS and IEAVRTI0, and
+ * IFOX00 raises IFO007 on exactly those two, once each, at severity 8.  Two for
+ * two, no miss and no false positive.
+ *
+ * AND IT IS THE ONLY SHAPE OF IFO007 THE CORPUS HAS, which is a stronger
+ * statement than "one shape is implemented".  Across 5,528 IFOX00 runs the
+ * diagnostic appears in exactly two files, both naming &CODE
+ * (mvs38src work/measurements/ifox-run/ifox-objections/by-code.tsv, and diag/
+ * carries 26 distinct IFO codes).  XF may raise IFO007 for other
+ * inconsistencies; no module this project assembles triggers one, so "not
+ * covered" here is not unknown territory.
+ *
+ * The flag is set where the shape is visible (vref, during expansion) and
+ * consumed where the location counter lives (the assembly loop), because the
+ * statement must not advance it.  It is cleared at the top of every expanded
+ * line so a reference evaluated for an AIF cannot leak into the card after it. */
+static int g_ifo007;                       /* set by vref for the line being expanded */
+static char ifo007_name[20];               /* the symbol, for the message */
+static unsigned char ifo007_line[MAXLINES];/* 1 = this statement generates nothing */
 struct macro {
     char namep[20], name[16];
     /* A macro prototype's parameters.  SYS1.MACLIB(IDACB2) declares 127 and
@@ -2089,7 +2121,13 @@ static void vref(struct ctx *c, const char *ref, char *out) {
         }
         else { long idx; { const char *sep = ep_; struct ctx *sec = ec_; idx = eval_seta(c, idxs); ep_ = sep; ec_ = sec; } char cn[40]; snprintf(cn, sizeof cn, "%s(%ld)", amp, idx); char *v = set_find(c, cn);
             if (v) { scopy(out, v, VALSZ - 1); }
-            else { int a, decl = 0; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; decl = 1; break; } g_vref_res = decl; scopy(out, def, VALSZ - 1); } }   /* unset array element -> declared default, else unresolved */
+            else { int a, decl = 0; const char *def = ""; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], amp)) { def = c->arrnum[a] ? "0" : ""; decl = 1; break; }
+                   /* cc370#421: declared, but not with a dimension.  Not the
+                    * "names nothing" path -- the row exists and says the shape
+                    * is wrong, which is what makes this safe to diagnose. */
+                   if (!decl) { struct setrow *rr = set_row(c, amp);
+                                if (rr && rr->declared) { g_ifo007 = 1; scopy(ifo007_name, amp, sizeof ifo007_name - 1); } }
+                   g_vref_res = decl; scopy(out, def, VALSZ - 1); } }   /* unset array element -> declared default, else unresolved */
     } else {
         if (!is_param) base = set_find(c, amp);
         if (!base) { base = ""; g_vref_res = 0; }
@@ -3500,6 +3538,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
           int keep = (fcol[3] > 0 && fcol[3] < bl) ? fcol[3] : bl;
           char cut[STMTSZ]; if (keep > STMTSZ - 1) keep = STMTSZ - 1;
           memcpy(cut, bc, (size_t)keep); cut[keep] = 0;
+          g_ifo007 = 0;                          /* cc370#421: arm for THIS model card */
           msub(c, cut, ex, sizeof ex); }
         char gimg[256]; render_model(c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
         mexp_line(ex, out, nout, depth + 1);
@@ -3593,6 +3632,13 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * name, which a `(4,5)' substring three macros later turned into `MPNM.'
      * and an undefined symbol 900 statements after that (cc370#307). */
     struct ctx *opc = cur_ctx();
+    /* cc370#421.  A MACRO BODY substitutes its model card BEFORE calling here, so
+     * the flag may already be set on entry; an OPEN-CODE card substitutes inside
+     * this call, so it is set during it.  Both are taken, and the global is
+     * cleared on entry so a verdict cannot leak from the card before this one --
+     * which is what a bare clear at the top got wrong, wiping the macro path's
+     * answer the moment it arrived. */
+    int ifo007_in = g_ifo007; g_ifo007 = 0;
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
     char sysbuf[STMTSZ]; sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
@@ -3748,6 +3794,15 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN : 0) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0)); line_mcall[*nout] = mcall_cur() + 1;
     gcard[*nout] = img ? strdup(img) : NULL;
     line_org[*nout] = g_curorg;
+    if ((ifo007_in || g_ifo007) && *nout < MAXLINES) {   /* cc370#421 */
+        char m[160];
+        snprintf(m, sizeof m, "Usage of %s is inconsistent with its declaration "
+                 "- it is subscripted and nothing declares a dimension "
+                 "(IFOX00 IFO007)", ifo007_name);
+        note_operr(m, 8, *nout);
+        ifo007_line[*nout] = 1;
+        g_ifo007 = 0;
+    }
     if (lbl[0] == '.') { char r[STMTSZ + 32]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(sysbuf);
 }
@@ -3951,7 +4006,11 @@ static void note_operr(const char *msg, int sev, int line) {
      * attributed in this design. */
     if (line < 0) return;
     mark_flagged(line);
-    if (noperr < 128) { scopy(operr_msg[noperr], msg, 95); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
+    /* 95 was arbitrary and the row is VALSZ = 256 wide, so the cap truncated
+     * SILENTLY at a width nothing chose.  The longest message this file writes is
+     * 91 characters, so no existing diagnostic changes; what changes is that the
+     * next one over 95 says what it meant (cc370#421 wrote the first). */
+    if (noperr < 128) { scopy(operr_msg[noperr], msg, VALSZ - 1); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
 }
 /* MNOTE: the macro writer's own diagnostic, and the only one a macro can raise
  * about its caller. as370 skipped the statement outright -- no listing line, no
@@ -4661,6 +4720,12 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
         if (!parse(buf, lbl, op, opnd)) continue;
         if (!op[0]) continue;
+        /* cc370#421: IFOX00 generates NO OBJECT CODE for a statement it flagged
+         * IFO007, so the location counter must not advance either -- that is the
+         * whole four bytes of IEAVEXS.  Skipped here rather than at the operand,
+         * because the counter lives in this loop and the shape was visible three
+         * phases ago. */
+        if (ifo007_line[i]) continue;
         if (g_ovl_name[0]) {   /* over-length ordinary name field -> IFOX IFO016: abandon the name */
             if (pass == 1) note_ovldef(g_ovl_name, i);
             lbl[0] = 0;        /* treat as unnamed: no symbol/ESD/listing entry, but DS/DC still reserve storage so the LC advances identically in both passes */
