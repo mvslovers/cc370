@@ -322,7 +322,15 @@ static struct dinsect *din_for(const char *name)
     for (i = 0; i < ndin; i++) if (!strcmp(din[i].name, name)) return &din[i];
     if (ndin >= MAXSECT) die("too many sections in --difin", NULL);
     memset(&din[ndin], 0, sizeof din[0]);
-    strncpy(din[ndin].name, name, 8); din[ndin].name[8] = 0;
+    {   /* memcpy of a measured length rather than strncpy: gcc's
+         * -Wstringop-truncation fires on strncpy(dst, src, 8) into char[9]
+         * because the copy may fill it with no terminator -- true, and the line
+         * after handles it, but -Werror does not take "the line after" for an
+         * answer. Apple clang does not implement the warning, so this is a
+         * CI-only red (cc370#110). */
+        size_t n = strlen(name); if (n > 8) n = 8;
+        memcpy(din[ndin].name, name, n); din[ndin].name[n] = 0;
+    }
     return &din[ndin++];
 }
 
