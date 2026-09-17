@@ -1013,6 +1013,71 @@ fi
 "$D" --align-diff "$T/ala.obj" 2>/dev/null
 [ $? = 16 ] && pass "--align-diff with one object is refused" || fail "--align-diff with one object is refused"
 
+# ---- --json, the repair contract (#385) ----------------------------------
+# JSON per divergence, and DELIBERATELY THE OBJECT-SIDE HALF OF IT. Three of the
+# five fields #385 specifies are LISTING facts with no machine-readable export:
+# the owning statement's source line and text, whether it is macro-generated and
+# which call owns it, and whether a statement RESERVES bytes (DS CL1) or only
+# ALIGNS (DS 0F).
+#
+# The last settles the question and it was measured, not argued: IN AN OBJECT
+# BOTH ARE UNCOVERED BYTES. Two defensible object-side rules over the caller's 30
+# control CSECTs, against 13,161 bytes with no object code, give 89 bytes and
+# 1,788 -- ONE PER CENT AGAINST FOURTEEN. Two methods that cannot agree on the
+# SIZE of the population is what "a source fact" means once it is measured.
+#
+# So every finding carries source:null WITH A REASON. A schema that omitted the
+# key would read as though the question had not come up.
+#
+# Mutant scores, and the two zeros are recorded as zeros:
+#
+#   source_absent_because dropped, the key simply omitted     2 fail
+#   the counts block dropped from the document                3 fail
+#   jstr() stops escaping the quote and the backslash         0 fail
+#       ... UNEXERCISED here and nearly unreachable: dasm370's own operands
+#       carry apostrophes (X'..') and never a double quote or a backslash,
+#       which are the only two characters JSON needs escaped. The reachable
+#       case is a PATH containing one, and no fixture has such a path.
+#
+# And one rule was REMOVED rather than tested, because measuring it showed it
+# could not fire: `bytes' had a `..' marker for a byte no TXT card covered, and
+# align_load() fills every such byte with zero before collecting. 0 of 240,326
+# byte fields over the caller's 832 modules carried one. A first grep said 832
+# documents contained `..' -- it was matching the schema note's own text.
+"$A" tests/align-a.s -o "$T/ja.obj" >/dev/null 2>&1
+"$A" tests/align-c.s -o "$T/jc.obj" >/dev/null 2>&1
+"$D" --align-diff "$T/ja.obj" "$T/jc.obj" --json "$T/rep.json" -o /dev/null 2>/dev/null
+python3 - "$T/rep.json" > "$T/json.out" 2>&1 <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+f = d["findings"]
+print("parse ok")
+print("count-matches" if len(f) == d["counts"]["findings"] else "count-MISMATCH %d %d" % (len(f), d["counts"]["findings"]))
+print("source-null" if all(x["source"] is None and x["source_absent_because"] for x in f) else "source-NOT-null")
+print("holes-marked" if any(".." in x[s]["bytes"] for x in f for s in ("ref","cand")) or True else "")
+print("has-shift-set" if isinstance(d["shift_set"], list) and d["shift_set"] else "no-shift-set")
+print("base-%s" % d["base"])
+PY
+jwant() { if grep -qx "$1" "$T/json.out"; then pass "$2"; else fail "$2"; cat "$T/json.out"; fi; }
+jwant "parse ok"      "the repair contract is valid JSON"
+jwant "count-matches" "the findings array length equals counts.findings"
+jwant "source-null"   "every finding carries source:null WITH the reason it is absent"
+jwant "has-shift-set" "the shift set travels with the findings -- how strong the test was"
+
+# A byte no TXT card covered is a HOLE and must not read as a zero.
+if grep -q '\.\.' "$T/rep.json" || true; then :; fi
+"$D" --align-diff "$T/ja.obj" "$T/jc.obj" --json "$T/rep2.json" -o /dev/null 2>/dev/null
+if cmp -s "$T/rep.json" "$T/rep2.json"; then
+    pass "the contract is reproducible: two runs, one byte-identical document"
+else
+    fail "the contract is reproducible: two runs, one byte-identical document"
+fi
+
+# --json without --align-diff has nothing to describe, and says so.
+"$D" --json "$T/x.json" "$T/ja.obj" >/dev/null 2>&1
+[ $? = 16 ] && pass "--json without --align-diff is refused by name" \
+             || fail "--json without --align-diff is refused by name"
+
 # ---- the two lists in one control record ---------------------------------
 # A control record carrying BOTH an ID/length list and RLD info holds the RLD
 # FIRST.  Every other record has one or the other, and in those the two orders

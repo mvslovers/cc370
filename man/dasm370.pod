@@ -53,6 +53,24 @@ statement, so that a displacement which moved because something before it change
 length is reported as a B<consequence> rather than as a change of its own. Writes
 a report, not a disassembly; reads no hint file. See L</ALIGN-DIFF> below.
 
+=item B<--json> I<FILE>
+
+With B<--align-diff>, write the repair contract (cc370#385): one JSON record per
+divergence, with section-relative offsets and lengths, both sides' bytes, the
+statement each side carries, the module's shift set and which C<shift(B)> case it
+is in.
+
+B<It is the object-side half of that contract and says so in every record.> Three
+of the five fields #385 specifies are B<listing> facts with no machine-readable
+export --- the owning statement's source line and text, whether it is
+macro-generated and which call owns it, and whether a statement B<reserves> bytes
+(C<DS CL1>) or only B<aligns> (C<DS 0F>). In an object the last two are both
+uncovered bytes: two defensible object-side rules measured over 30 control
+sections give 89 bytes and 1,788 for the same population, one per cent against
+fourteen. So C<source> is C<null> on every finding, with C<source_absent_because>
+saying why --- a schema that omitted the key would read as though the question had
+not come up.
+
 =item B<--labels> I<displacement>|I<sequential>
 
 How a generated label is named. C<displacement> (the default, unchanged) names it

@@ -3261,6 +3261,13 @@ static void align_hex(FILE *o, const struct aside *s, long at, long n)
     if (n > lim) fputs("...", o);
 }
 
+/* Declared here because the gap reporter below is written before the JSON
+ * primitives, which need `struct aside' complete. */
+static void jfinding(const char *kind, const struct aside *R, long ra, long rl,
+                     const char *rop, const char *ropnd,
+                     const struct aside *C, long ca, long cl,
+                     const char *cop, const char *copnd, const char *detail);
+
 /* One gap in the alignment: statements in the reference that the candidate does
  * not have, statements the candidate has that the reference does not, or both.
  * Reported as ONE finding, because that is what it is -- a 17-byte eyecatcher
@@ -3278,6 +3285,12 @@ static void align_gap(FILE *o, const struct aside *R, int i0, int i1,
     else if (j0 == j1) { what = "delete"; (*del)++; }
     else if (alldata)  { what = "data";   (*dchg)++; }
     else               { what = "change"; (*chg)++; }
+    jfinding(what,
+             R, i0 < i1 ? R->st[i0].at : (i0 < R->n ? R->st[i0].at : R->len), rl,
+             i0 < i1 ? R->st[i0].op : NULL, i0 < i1 ? R->st[i0].opnd : NULL,
+             C, j0 < j1 ? C->st[j0].at : (j0 < C->n ? C->st[j0].at : C->len), cl,
+             j0 < j1 ? C->st[j0].op : NULL, j0 < j1 ? C->st[j0].opnd : NULL,
+             NULL);
     fprintf(o, "FINDING %-6s ref %06lX %ld byte%s (%d stmt)  cand %06lX %ld byte%s (%d stmt)  %+ld\n",
             what,
             (unsigned long)(i0 < i1 ? R->st[i0].at : (i0 < R->n ? R->st[i0].at : R->len)), rl,
@@ -3294,6 +3307,99 @@ static void align_gap(FILE *o, const struct aside *R, int i0, int i1,
                 (unsigned long)C->st[k].at, C->st[k].op, C->st[k].opnd),
         align_hex(o, C, C->st[k].at, C->st[k].len), fputc('\n', o);
 }
+
+/* ------------------------------------------------- the repair contract -- */
+
+/* #385 asks for JSON per divergence, and this emits THE OBJECT-SIDE HALF of it.
+ *
+ * WHAT IS DELIBERATELY ABSENT, named in the document rather than left to be
+ * noticed.  Three of the five fields the issue specifies are LISTING facts and
+ * no machine-readable export of them exists: the owning statement's source line
+ * number and text, whether it is macro-generated and which call owns it, and
+ * whether a statement RESERVES bytes (DS CL1) or only ALIGNS (DS 0F).
+ *
+ * The last is the acceptance's own fixture and it is the one that settles the
+ * question: IN AN OBJECT BOTH ARE UNCOVERED BYTES.  Two reasonable object-side
+ * rules were measured over the 30 control CSECTs, against 13,161 bytes with no
+ * object code -- "the gap follows an explicit zero-duplication DS" gives 89
+ * bytes, "the gap is smaller than the alignment it ends on" gives 1,788.  ONE
+ * PER CENT AGAINST FOURTEEN.  Two defensible methods cannot agree on the size of
+ * the population, which is what "a source fact" means once it is measured
+ * instead of asserted.  It bounds the ambiguity this file ships with at roughly
+ * 0.2 % to 2 % of corpus bytes.
+ *
+ * So `source' is emitted as null with a reason, on every finding.  A consumer
+ * that needs it can see exactly what is missing and why; a schema that simply
+ * omitted the key would read as though the question had not come up. */
+static FILE *jout;            /* #385: the repair contract, or NULL */
+static int   jfirst = 1;
+
+static void jstr(FILE *o, const char *s)
+{
+    fputc('"', o);
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c == '"' || c == '\\') fprintf(o, "\\%c", c);
+        else if (c < 0x20) fprintf(o, "\\u%04X", c);
+        else fputc(c, o);
+    }
+    fputc('"', o);
+}
+
+/* NO "uncovered" MARKER, and that is measured rather than omitted.  align_load()
+ * fills every byte no TXT card covered with zero before collecting -- a deck
+ * records its holes and a bound member cannot, so against a member every hole is
+ * a difference belonging to the transport.  By the time a finding is emitted
+ * there are none left: 0 of 240,326 byte fields over the caller's 832 modules.
+ * A branch for them here would be dead code that reads as a guarantee. */
+static void jbytes(FILE *o, const unsigned char *img8, long at, long n)
+{
+    long i;
+    fputc('"', o);
+    for (i = 0; i < n && i < 64; i++) fprintf(o, "%02X", img8[at + i]);
+    fputc('"', o);
+}
+
+/* `source' is null on every record and says why: see the note above.  A
+ * consumer that needs a card rather than a statement can see exactly what is
+ * missing, which a schema that omitted the key could not tell it. */
+static void jside(FILE *o, const char *tag, const struct aside *s,
+                  long at, long len, const char *op, const char *opnd)
+{
+    fprintf(o, "\"%s\":{\"offset\":%ld,\"length\":%ld,\"bytes\":", tag, at, len);
+    if (len > 0) jbytes(o, s->img, at, len); else fputs("\"\"", o);
+    if (op) {
+        fputs(",\"statement\":{\"op\":", o); jstr(o, op);
+        fputs(",\"operands\":", o); jstr(o, opnd ? opnd : "");
+        fputs(",\"from\":\"disassembly\"}", o);
+    } else fputs(",\"statement\":null", o);
+    fputc('}', o);
+}
+
+static void jfinding(const char *kind, const struct aside *R, long ra, long rl,
+                     const char *rop, const char *ropnd,
+                     const struct aside *C, long ca, long cl,
+                     const char *cop, const char *copnd,
+                     const char *detail)
+{
+    if (!jout) return;
+    fprintf(jout, "%s\n    {\"kind\":", jfirst ? "" : ",");
+    jfirst = 0;
+    jstr(jout, kind);
+    fputc(',', jout); jside(jout, "ref", R, ra, rl, rop, ropnd);
+    fputc(',', jout); jside(jout, "cand", C, ca, cl, cop, copnd);
+    fprintf(jout, ",\"delta\":%ld", cl - rl);
+    if (detail) { fputs(",\"detail\":", jout); jstr(jout, detail); }
+    /* THE THREE FIELDS #385 ASKS FOR THAT NO EXPORT PROVIDES. */
+    fputs(",\"source\":null,\"source_absent_because\":"
+          "\"as370 has no per-statement export: line number, text, macro origin "
+          "and reserve-vs-align are listing facts. In an object a DS 0F pad and a "
+          "DS CL1 reservation are both uncovered bytes; two object-side rules "
+          "measured over the 30 control CSECTs disagree 1% against 14%.\"", jout);
+    fputc('}', jout);
+}
+
+static const char *json_fn;   /* #385: --json FILE */
 
 static int align_run(const char *refp, const char *candp, const char *want, const char *outfn)
 {
@@ -3326,6 +3432,30 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
     if (strcmp(R.name, C.name))
         fprintf(o, "  NOTE the two sections are not the same name\n");
 
+    if (json_fn) {
+        if ((jout = fopen(json_fn, "w")) == NULL) { perror(json_fn); return 16; }
+        fputs("{\n  \"schema\": \"dasm370-repair/1\",\n", jout);
+        fputs("  \"note\": \"Offsets and lengths are section-relative BYTES as "
+              "integers; `bytes' is uppercase hex, truncated at 64 bytes. A byte "
+              "no TXT card covered was read as zero before comparison, because a "
+              "deck records its holes and a bound member cannot. Every finding "
+              "carries source:null; see source_absent_because.\",\n", jout);
+        fputs("  \"csect\": ", jout); jstr(jout, R.name);
+        fprintf(jout, ",\n  \"ref\": {\"path\": ");
+        jstr(jout, R.path);
+        fprintf(jout, ", \"form\": \"%s\", \"bytes\": %ld, \"statements\": %d}",
+                R.member ? "member" : "deck", R.len, R.n);
+        fprintf(jout, ",\n  \"cand\": {\"path\": ");
+        jstr(jout, C.path);
+        fprintf(jout, ", \"form\": \"%s\", \"bytes\": %ld, \"statements\": %d}",
+                C.member ? "member" : "deck", C.len, C.n);
+        fputs(",\n  \"findings\": [", jout);
+    }
+
+    if (D < 0 && jout) {
+        fputs("\n  ],\n  \"align\": \"abandoned\"\n}\n", jout);
+        fclose(jout); jout = NULL;
+    }
     if (D < 0) {
         fprintf(o, "  ALIGNMENT ABANDONED: more than %d insertions and deletions%s\n",
                 ALIGN_MAXD, D == -2 ? " (or out of memory)" : "");
@@ -3387,8 +3517,13 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
                             (unsigned long)a->at, (unsigned long)b->at, a->op, a->opnd,
                             f + 1, a->dd[f], b->dd[f], dl);
                 } else {
+                    char det[80];
                     chg++;
                     if (firstchange < 0) firstchange = a->at;
+                    snprintf(det, sizeof det, "displacement %d: %d -> %d, delta %+ld, "
+                             "not in the shift set", f + 1, a->dd[f], b->dd[f], dl);
+                    jfinding("const", &R, a->at, a->len, a->op, a->opnd,
+                             &C, b->at, b->len, b->op, b->opnd, det);
                     fprintf(o, "FINDING const  %06lX -> %06lX  %-5s %-24s  D%d %d -> %d  %+ld"
                                "  not a shift\n",
                             (unsigned long)a->at, (unsigned long)b->at, a->op, a->opnd,
@@ -3405,8 +3540,14 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
                                 (unsigned long)a->at, (unsigned long)b->at,
                                 (unsigned long)a->val, (unsigned long)b->val, dl);
                     } else {
+                        char det[80];
                         chg++;
                         if (firstchange < 0) firstchange = a->at;
+                        snprintf(det, sizeof det, "internal adcon: %06lX -> %06lX, delta %+ld, "
+                                 "not in the shift set", (unsigned long)a->val,
+                                 (unsigned long)b->val, dl);
+                        jfinding("const", &R, a->at, a->len, a->op, a->opnd,
+                                 &C, b->at, b->len, b->op, b->opnd, det);
                         fprintf(o, "FINDING const  %06lX -> %06lX  DC    A(%06lX -> %06lX) %+ld"
                                    "  not a shift\n",
                                 (unsigned long)a->at, (unsigned long)b->at,
@@ -3458,6 +3599,23 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
              * base to shift. */
             weak == 0 ? "exact" : weak == 1 ? "weak" : "none");
 
+    if (jout) {
+        /* The shift set and the base case belong in the document, because a
+         * consumer deciding what to repair needs to know how strong the
+         * consequence test was on this module -- membership in a 317-value set
+         * is close to no test at all. */
+        fputs("\n  ],\n  \"shift_set\": [", jout);
+        for (k = 0; k < nsv; k++) fprintf(jout, "%s%ld", k ? ", " : "", sv[k]);
+        fprintf(jout, "],\n  \"base\": \"%s\",\n",
+                weak == 0 ? "exact" : weak == 1 ? "weak" : "none");
+        fprintf(jout, "  \"counts\": {\"findings\": %d, \"insert\": %d, \"delete\": %d, "
+                      "\"data\": %d, \"const\": %d, \"consequences\": %d, "
+                      "\"unchanged\": %d, \"edits\": %d},\n",
+                ins + del + dchg + chg, ins, del, dchg, chg, cons, same, D);
+        fputs("  \"align\": \"ok\"\n}\n", jout);
+        if (fclose(jout)) { perror(json_fn); rc = 16; }
+        jout = NULL;
+    }
     if (o != stdout && fclose(o)) { perror(outfn); rc = 16; }
     free(sv); free(pr);
     free(R.st); free(R.img); free(R.cov);
@@ -3565,6 +3723,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];
         else if (!strcmp(argv[ai], "--derive-hints") && ai + 1 < argc) derive_src = argv[++ai];
         else if (!strcmp(argv[ai], "--infer")) infer = 1;
+        else if (!strcmp(argv[ai], "--json") && ai + 1 < argc) json_fn = argv[++ai];
         else if (!strcmp(argv[ai], "--labels") && ai + 1 < argc) {
             const char *v = argv[++ai];
             if (!strcmp(v, "sequential")) label_seq = 1;
@@ -3678,6 +3837,11 @@ int main(int argc, char **argv)
             return 16;
         }
         return align_run(align_ref, align_cand, want, outfn);
+    }
+    if (json_fn && !align_ref) {
+        fprintf(stderr, "dasm370: --json is the repair contract for --align-diff (cc370#385); "
+                        "it has nothing to describe without one\n");
+        return 16;
     }
     if (!src && !derive_src) { usage(stderr); return 16; }
 
