@@ -93,6 +93,7 @@ static long end_entry;
 static long sect_org;                         /* a bound member's section origin; 0 for a deck */
 static int  from_member;
 static int  scanning;                         /* pass one: decode, record, write nothing */
+static int  collecting;                       /* --align-diff: record statements, write nothing */
 static int  lab_changed;                      /* pass one found a branch target that had no label */
 static long sect_len;                         /* the ESD-declared length */
 static int  sect_esdid;
@@ -649,7 +650,7 @@ static void emit(const char *label, const char *op, const char *opnd, const char
      * must not advance the sequence number or write a card.  One walk in two
      * modes rather than two walks: a second copy of the decode loop would drift
      * from this one exactly the way a second copy of the opcode table would. */
-    if (scanning) return;
+    if (scanning || collecting) return;
     memset(line, ' ', sizeof line);
     if (label && *label) { n = (int)strlen(label); memcpy(line, label, (size_t)(n > 8 ? 8 : n)); }
     if (op && *op)       { n = (int)strlen(op);    memcpy(line + 9, op, (size_t)(n > 5 ? 5 : n)); }
@@ -688,7 +689,7 @@ static void emit_comment(const char *text)
 {
     char line[256];
     int n;
-    if (scanning) return;
+    if (scanning || collecting) return;
     /* WRAPPED, not truncated.  These carry divergence reports with two offsets
      * in them and are read by the hundred over a corpus; a note cut at column 71
      * is a note whose second offset is gone.  Broken at a blank where there is
@@ -2357,6 +2358,223 @@ static int infer_emit(FILE *o, const char *src)
  * boundary the file asked for; a hole is a hole; the RLD is ground truth; a fill
  * was proved uniform; a [[data]] run was declared not to be code; and only then
  * is a decode attempted. */
+/* ------------------------------------------------------------ align-diff -- */
+
+/* #384.  Two objects of the same CSECT at different maintenance levels, BOTH
+ * DISASSEMBLED, aligned statement by statement so that a shift is reported as a
+ * consequence of a length change and not as a change of its own.
+ *
+ * THE KEY IS THE STATEMENT WITH ITS DISPLACEMENTS MASKED, and everything rests
+ * on that: a statement's identity has to survive a shift, or every statement
+ * after an insertion reads as a change and a one-insertion pair reports six
+ * differences instead of one.
+ *
+ * It is built from the BYTES and not from the text this tool prints.  Our own
+ * output embeds the offset in a manufactured label -- `A(L000410)' -- so a
+ * shifted internal adcon would change its own key, and a second reader of our
+ * format has cost this project twice in one day (a comment card read as an
+ * instruction, and a predicate error of the same family).  The walk has the
+ * structure; it is taken from there.
+ *
+ * WHAT A DELTA IS COMPARED AGAINST is the CUMULATIVE SHIFT FUNCTION, computed
+ * from the alignment itself: for a matched pair, shift = cand.at - ref.at.  The
+ * offsets already contain everything, including the ALIGNMENT PADDING that no
+ * list of detected insertions carries -- two insertions of 2 and 4 bytes move
+ * every displacement by 8, because the 2-byte one pushed the data area off its
+ * fullword boundary.  A prefix sum over detected code insertions gives 6 there,
+ * and every displacement in the module would be reported as a constant change:
+ * a whole module of findings where there are none.
+ *
+ * So a displacement delta is a CONSEQUENCE exactly when it is in the shift
+ * function's value set, which has at most one value per length change -- about
+ * ten for a median module and 266 for the worst in the caller's corpus.  The
+ * test never asks where a shift sits relative to an insertion, because it
+ * cannot: measured on the first constructed case, the shift at 000002 PRECEDES
+ * its cause at 000006, the instruction addressing data past the insertion point.
+ * Position relative to the change is not evidence.
+ *
+ * THE LIMIT, stated per module rather than assumed away: the exact rule is
+ * delta == shift(T) - shift(B), and without a USING the disassembly has no B.
+ * Where the base is established before every change shift(B) is 0 and the rule
+ * is exact; where a change precedes the prologue the base moves too and the test
+ * is weaker.  On the caller's list that is not exotic -- 30-odd modules diverge
+ * at offset 0, where nothing precedes the prologue at all -- so the report says
+ * which case each module is in. */
+
+/* The alignment's edit-distance bound.  The trace is (D+1)(D+2)/2 ints, so
+ * 20000 is a 800 MB worst case and a measured 160 MB on the largest module in
+ * the caller's list (ICBMSG56, 6,942 statements against 32,578 bytes, D 316).
+ * Eight of the 140 eyecatcher modules exceeded 3000 and all eight complete
+ * here; the bound exists so that a pathological pair is ABANDONED rather than
+ * approximated, because an alignment that had to guess produces findings
+ * indistinguishable from the real ones. */
+#define ALIGN_MAXD 20000
+#define FNV_INIT 1469598103934665603ULL
+
+enum { AS_INSN = 0, AS_ADCON, AS_DATA };
+
+struct astmt {
+    long at;                    /* offset in its own section */
+    long len;
+    int  kind;
+    unsigned long long kh;      /* the key: what makes two statements the same one */
+    char op[8];                 /* mnemonic, or DC / DS -- for the report */
+    char tgt[9];                /* an adcon's target section */
+    int  fmt;
+    int  external;              /* an adcon against another section */
+    int  nd;                    /* displacement fields carried, 0..2 */
+    int  db[2], dd[2];
+    long val;                   /* an internal adcon's target offset */
+    char opnd[OPNDBUF];         /* operand text, for the report only */
+};
+
+struct aside {
+    struct astmt *st;
+    int n, cap;
+    unsigned char *img, *cov;   /* the section's own bytes, kept past the reset */
+    long len;
+    char name[9];
+    const char *path;
+    int  member;
+    long first_balr;            /* the first BALR Rn,0, or -1 */
+};
+
+static struct aside *acoll;     /* non-NULL exactly while walk_section collects */
+
+static unsigned long long fnv(const void *p, size_t n, unsigned long long h)
+{
+    const unsigned char *b = p;
+    while (n--) { h ^= *b++; h *= 1099511628211ULL; }
+    return h;
+}
+
+static struct astmt *acoll_new(void)
+{
+    struct aside *s = acoll;
+    if (s->n == s->cap) {
+        int nc = s->cap ? s->cap * 2 : 256;
+        struct astmt *t = realloc(s->st, (size_t)nc * sizeof *t);
+        if (!t) { fprintf(stderr, "dasm370: out of memory collecting statements\n"); exit(16); }
+        s->st = t; s->cap = nc;
+    }
+    memset(&s->st[s->n], 0, sizeof s->st[0]);
+    return &s->st[s->n++];
+}
+
+/* Where the displacement fields sit, by format.  The base nibble STAYS in the
+ * key -- a different base register is a different statement -- and only the 12
+ * bits that move are cleared. */
+static void mask_disp(unsigned char *t, int fmt)
+{
+    switch (fmt) {
+    case F_RX: case F_BC: case F_RS: case F_SI: case F_S:
+        t[2] &= 0xf0; t[3] = 0; break;
+    case F_SS:
+        t[2] &= 0xf0; t[3] = 0; t[4] &= 0xf0; t[5] = 0; break;
+    default: break;
+    }
+}
+
+static int disp_of(const unsigned char *b, int fmt, int *bs, int *ds)
+{
+    switch (fmt) {
+    case F_RX: case F_BC: case F_RS: case F_SI: case F_S:
+        bs[0] = (b[2] >> 4) & 0xf; ds[0] = ((b[2] & 0xf) << 8) | b[3];
+        return 1;
+    case F_SS:
+        bs[0] = (b[2] >> 4) & 0xf; ds[0] = ((b[2] & 0xf) << 8) | b[3];
+        bs[1] = (b[4] >> 4) & 0xf; ds[1] = ((b[4] & 0xf) << 8) | b[5];
+        return 2;
+    default:
+        return 0;
+    }
+}
+
+static void collect_insn(long a, const struct opc *o, int len, const char *opnd)
+{
+    struct astmt *s = acoll_new();
+    unsigned char t[6];
+    s->at = a; s->len = len; s->kind = AS_INSN; s->fmt = o->fmt;
+    snprintf(s->op, sizeof s->op, "%s", o->name);
+    snprintf(s->opnd, sizeof s->opnd, "%s", opnd);
+    s->nd = disp_of(img + a, o->fmt, s->db, s->dd);
+    memcpy(t, img + a, (size_t)len);
+    mask_disp(t, o->fmt);
+    s->kh = fnv(t, (size_t)len, FNV_INIT);
+    /* The prologue base, for the per-module statement about shift(B).  BALR
+     * Rn,0 is the IDIOM and not the declaration -- #382 measured that and it is
+     * a limit, not a defect -- so this is used to say the test is WEAK, never to
+     * resolve an address. */
+    if (o->fmt == F_RR && !strcmp(o->name, "BALR") && (img[a + 1] & 0xf) == 0
+        && acoll->first_balr < 0)
+        acoll->first_balr = a;
+}
+
+static void collect_adcon(long a, const struct rlditem *r)
+{
+    struct astmt *s = acoll_new();
+    char k[24];
+    long v = 0;
+    int i;
+    s->at = a; s->len = r->len; s->kind = AS_ADCON;
+    snprintf(s->op, sizeof s->op, "DC");
+    for (i = 0; i < r->len; i++) v = (v << 8) | img[a + i];
+    if (from_member) v -= sect_org;
+    s->external = (r->r != sect_esdid);
+    s->val = v;
+    if (!s->external) snprintf(s->tgt, sizeof s->tgt, "*");
+    else if (r->r > 0 && r->r < MAXESD && esdname[r->r][0])
+        snprintf(s->tgt, sizeof s->tgt, "%s", esdname[r->r]);
+    else snprintf(s->tgt, sizeof s->tgt, "?%d", r->r);
+    /* The key names the TARGET and the width and never the value.  An internal
+     * adcon's value is precisely the thing that shifts; an external one's is an
+     * addend in a deck and a binder-resolved address in a bound member, which
+     * are two different quantities and not comparable across the pair. */
+    snprintf(k, sizeof k, "A:%s:%d", s->tgt, (int)r->len);
+    s->kh = fnv(k, strlen(k), FNV_INIT);
+    snprintf(s->opnd, sizeof s->opnd, "%s(%s)", s->external ? "V" : "A", s->tgt);
+}
+
+static void collect_data(long a, long n)
+{
+    struct astmt *s = acoll_new();
+    s->at = a; s->len = n; s->kind = AS_DATA;
+    snprintf(s->op, sizeof s->op, "%s", cov[a] ? "DC" : "DS");
+}
+
+/* Adjacent data statements are ONE run, and the key is the run's bytes.
+ *
+ * Without this the report is manufactured: walk_section cuts a DC at 16 bytes
+ * from the run's start, so shifting a data area by two bytes gives every card in
+ * it different content while the data is identical -- and the 218 eyecatcher
+ * modules would each report dozens of constant changes, failing the acceptance
+ * on a classifier that is working correctly.  A run carries its coverage too: a
+ * hole is not a run of zeroes, and merging the two would lose that. */
+static void coalesce_data(struct aside *s)
+{
+    int i = 0, o = 0;
+    while (i < s->n) {
+        if (s->st[i].kind != AS_DATA) { s->st[o++] = s->st[i++]; continue; }
+        {
+            struct astmt r = s->st[i];
+            long j;
+            i++;
+            while (i < s->n && s->st[i].kind == AS_DATA && s->st[i].at == r.at + r.len)
+                r.len += s->st[i++].len;
+            r.kh = FNV_INIT;
+            for (j = r.at; j < r.at + r.len; j++) {
+                unsigned char tok[2];
+                tok[0] = s->cov[j];
+                tok[1] = s->cov[j] ? s->img[j] : 0;
+                r.kh = fnv(tok, 2, r.kh);
+            }
+            snprintf(r.opnd, sizeof r.opnd, "%ld byte%s", r.len, r.len == 1 ? "" : "s");
+            s->st[o++] = r;
+        }
+    }
+    s->n = o;
+}
+
 static void walk_section(void)
 {
     long a = 0;
@@ -2404,12 +2622,19 @@ static void walk_section(void)
         if (!cov[a]) {                             /* a hole is a hole, not a zero */
             long n = 1;
             while (a + n < sect_len && !cov[a + n] && !lab[a + n] && !stbrk[a + n]) n++;
+            if (collecting) collect_data(a, n);
             emit_ds_hole(a, n);
             a += n;
             continue;
         }
-        if ((r = rld_at(a)) != NULL) { emit_adcon(a, r); a += r->len; continue; }
-        if ((fl = hfill_at(a)) > 0) { emit_fill(a, fl); a += fl; continue; }
+        if ((r = rld_at(a)) != NULL) {
+            if (collecting) collect_adcon(a, r);
+            emit_adcon(a, r); a += r->len; continue;
+        }
+        if ((fl = hfill_at(a)) > 0) {
+            if (collecting) collect_data(a, fl);
+            emit_fill(a, fl); a += fl; continue;
+        }
         if (!hin_data(a)) {
             const struct opc *o;
             int mask = (img[a + 1] >> 4) & 0xf, ismask = 0, len;
@@ -2449,6 +2674,7 @@ static void walk_section(void)
                     }
                     if (lab[a]) label_name(a, l); else l[0] = 0;
                     sprintf(rem, "%06lX", (unsigned long)a);
+                    if (collecting) collect_insn(a, o, len, opnd);
                     emit(l, o->name, opnd, rem);
                     a += len;
                     continue;
@@ -2459,6 +2685,7 @@ static void walk_section(void)
             long n = 1;
             while (a + n < sect_len && cov[a + n] && !lab[a + n] && !stbrk[a + n]
                    && !rld_at(a + n) && !hfill_at(a + n) && n < 16) n++;
+            if (collecting) collect_data(a, n);
             emit_dc_hex(a, (int)n);
             a += n;
         }
@@ -2473,6 +2700,345 @@ static void walk_section(void)
         }
         ev++;
     }
+}
+
+/* ----------------------------------------------------- align-diff, run -- */
+
+/* One side: load it, keep its bytes past the reset, and collect the statements
+ * the disassembler would PRINT -- same loader, same labels, same walk.  Nothing
+ * downstream may read img[] or esdname[], because the next load clears both. */
+static int align_load(struct aside *s, const char *path, const char *want)
+{
+    int rc;
+    memset(s, 0, sizeof *s);
+    s->first_balr = -1;
+    s->path = path;
+    if ((rc = load_section(path, want, 1)) != 0) return rc;
+    /* A HOLE IS ZERO HERE, and that is the difference between comparing two
+     * modules and comparing two input formats.  A deck says which bytes no TXT
+     * card covered; a bound member cannot say it, because the binder filled them
+     * before it wrote the member.  So against a member every such hole is a
+     * difference that belongs to the transport.
+     *
+     * Measured on the 30 control CSECTs, all of which the caller has as
+     * `identical': BLSRENQK's deck holds `DS XL2' at 000942 where the member
+     * holds X'0000', and 23 of the 30 reported findings on byte-equal sections
+     * because of it.  It is worse than one statement each, because the hole also
+     * RESETS THE PHASE of the 16-byte DC run -- and walk_section attempts an
+     * instruction decode at every chunk start.  In the member 000974 sat inside
+     * a chunk; in the deck the hole made it a chunk start and X'7FFFFFFF' came
+     * back as `SU 15,4095(15,15)'.  One transport artifact, an invented
+     * instruction in a data area.
+     *
+     * Filling to zero is what the binder does, so the deck is read as the member
+     * form of itself.  A member whose hole is NOT zero still differs, and says
+     * so, which is the case worth keeping. */
+    {
+        long z;
+        for (z = 0; z < sect_len; z++) if (!cov[z]) { img[z] = 0; cov[z] = 1; }
+    }
+    s->len = sect_len;
+    s->member = from_member;
+    memcpy(s->name, sect_name, sizeof s->name);
+    s->img = malloc((size_t)(sect_len ? sect_len : 1));
+    s->cov = malloc((size_t)(sect_len ? sect_len : 1));
+    if (!s->img || !s->cov) { fprintf(stderr, "dasm370: out of memory reading %s\n", path); return 16; }
+    memcpy(s->img, img, (size_t)sect_len);
+    memcpy(s->cov, cov, (size_t)sect_len);
+    derive_labels();
+    acoll = s;
+    collecting = 1;
+    walk_section();
+    collecting = 0;
+    acoll = NULL;
+    coalesce_data(s);
+    return 0;
+}
+
+struct apair { int i, j; };
+
+/* Myers' O(ND) diff over the keys.  D is the number of insertions plus
+ * deletions, which is small by construction here -- these are two maintenance
+ * levels of one module, and the displacements are masked out of the key -- so
+ * the trace is d+1 ints per step and not a copy of the whole V array.
+ *
+ * ABANDONED rather than approximated past ALIGN_MAXD: an alignment that had to
+ * guess would produce findings that look exactly like the real ones. */
+static int align_lcs(const struct astmt *A, int n, const struct astmt *B, int m,
+                     struct apair **out, int *nout)
+{
+    int max = n + m, off = max, d, k, x, y, D = -1;
+    int *V = malloc((size_t)(2 * max + 1) * sizeof *V);
+    int **tr = calloc((size_t)ALIGN_MAXD + 2, sizeof *tr);
+    struct apair *pr = NULL;
+    int np = 0, cap = 0;
+
+    *out = NULL; *nout = 0;
+    if (!V || !tr) { free(V); free(tr); return -2; }
+    V[off + 1] = 0;
+    for (d = 0; d <= max && d <= ALIGN_MAXD; d++) {
+        if ((tr[d] = malloc((size_t)(d + 1) * sizeof **tr)) == NULL) { D = -2; break; }
+        memset(tr[d], 0, (size_t)(d + 1) * sizeof **tr);
+        for (k = -d; k <= d; k += 2) {
+            if (k == -d || (k != d && V[off + k - 1] < V[off + k + 1])) x = V[off + k + 1];
+            else x = V[off + k - 1] + 1;
+            y = x - k;
+            while (x < n && y < m && A[x].kh == B[y].kh) { x++; y++; }
+            V[off + k] = x;
+            tr[d][(k + d) / 2] = x;
+            if (x >= n && y >= m) { D = d; break; }
+        }
+        if (D >= 0) break;
+    }
+    if (D >= 0) {
+        x = n; y = m;
+        for (d = D; d > 0; d--) {
+            int pk, px, py;
+            k = x - y;
+            if (k - 1 < -(d - 1))      pk = k + 1;
+            else if (k + 1 > (d - 1))  pk = k - 1;
+            else pk = (tr[d - 1][(k - 1 + d - 1) / 2] < tr[d - 1][(k + 1 + d - 1) / 2]) ? k + 1 : k - 1;
+            px = tr[d - 1][(pk + d - 1) / 2];
+            py = px - pk;
+            while (x > px && y > py) {
+                if (np == cap) {
+                    int nc = cap ? cap * 2 : 256;
+                    struct apair *t = realloc(pr, (size_t)nc * sizeof *t);
+                    if (!t) { free(pr); pr = NULL; D = -2; break; }
+                    pr = t; cap = nc;
+                }
+                x--; y--;
+                pr[np].i = x; pr[np].j = y; np++;
+            }
+            if (D < 0) break;
+            x = px; y = py;
+        }
+        while (D >= 0 && x > 0 && y > 0) {
+            if (np == cap) {
+                int nc = cap ? cap * 2 : 256;
+                struct apair *t = realloc(pr, (size_t)nc * sizeof *t);
+                if (!t) { free(pr); pr = NULL; D = -2; break; }
+                pr = t; cap = nc;
+            }
+            x--; y--;
+            pr[np].i = x; pr[np].j = y; np++;
+        }
+    }
+    for (d = 0; d <= ALIGN_MAXD + 1; d++) free(tr[d]);
+    free(tr); free(V);
+    if (D < 0) { free(pr); return D == -2 ? -2 : -1; }
+    /* the walk above runs backwards */
+    for (k = 0; k < np / 2; k++) {
+        struct apair t = pr[k]; pr[k] = pr[np - 1 - k]; pr[np - 1 - k] = t;
+    }
+    *out = pr; *nout = np;
+    return D;
+}
+
+static int shift_known(const long *v, int n, long q)
+{
+    int i;
+    for (i = 0; i < n; i++) if (v[i] == q) return 1;
+    return 0;
+}
+
+static void align_hex(FILE *o, const struct aside *s, long at, long n)
+{
+    long i, lim = n > 12 ? 12 : n;
+    for (i = 0; i < lim; i++) {
+        if (s->cov[at + i]) fprintf(o, "%02X", s->img[at + i]);
+        else fputs("..", o);
+    }
+    if (n > lim) fputs("...", o);
+}
+
+/* One gap in the alignment: statements in the reference that the candidate does
+ * not have, statements the candidate has that the reference does not, or both.
+ * Reported as ONE finding, because that is what it is -- a 17-byte eyecatcher
+ * against a 25-byte one is one change and not two. */
+static void align_gap(FILE *o, const struct aside *R, int i0, int i1,
+                      const struct aside *C, int j0, int j1, int *ins, int *del,
+                      int *dchg, int *chg)
+{
+    long rl = 0, cl = 0;
+    int k, alldata = 1;
+    const char *what;
+    for (k = i0; k < i1; k++) { rl += R->st[k].len; if (R->st[k].kind != AS_DATA) alldata = 0; }
+    for (k = j0; k < j1; k++) { cl += C->st[k].len; if (C->st[k].kind != AS_DATA) alldata = 0; }
+    if (i0 == i1)      { what = "insert"; (*ins)++; }
+    else if (j0 == j1) { what = "delete"; (*del)++; }
+    else if (alldata)  { what = "data";   (*dchg)++; }
+    else               { what = "change"; (*chg)++; }
+    fprintf(o, "FINDING %-6s ref %06lX %ld byte%s (%d stmt)  cand %06lX %ld byte%s (%d stmt)  %+ld\n",
+            what,
+            (unsigned long)(i0 < i1 ? R->st[i0].at : (i0 < R->n ? R->st[i0].at : R->len)), rl,
+            rl == 1 ? "" : "s", i1 - i0,
+            (unsigned long)(j0 < j1 ? C->st[j0].at : (j0 < C->n ? C->st[j0].at : C->len)), cl,
+            cl == 1 ? "" : "s", j1 - j0,
+            cl - rl);
+    for (k = i0; k < i1; k++)
+        fprintf(o, "    ref  %06lX %-5s %-24s  ",
+                (unsigned long)R->st[k].at, R->st[k].op, R->st[k].opnd),
+        align_hex(o, R, R->st[k].at, R->st[k].len), fputc('\n', o);
+    for (k = j0; k < j1; k++)
+        fprintf(o, "    cand %06lX %-5s %-24s  ",
+                (unsigned long)C->st[k].at, C->st[k].op, C->st[k].opnd),
+        align_hex(o, C, C->st[k].at, C->st[k].len), fputc('\n', o);
+}
+
+static int align_run(const char *refp, const char *candp, const char *want, const char *outfn)
+{
+    struct aside R, C;
+    struct apair *pr = NULL;
+    long *sv = NULL;
+    int nsv = 0, np = 0, D, rc = 0, i, j, k, pi, pj;
+    int ins = 0, del = 0, dchg = 0, chg = 0, cons = 0, same = 0, weak = 0;
+    long firstchange = -1;
+    FILE *o;
+
+    if ((rc = align_load(&R, refp, want)) != 0) return rc;
+    if ((rc = align_load(&C, candp, want)) != 0) { free(R.st); free(R.img); free(R.cov); return rc; }
+
+    D = align_lcs(R.st, R.n, C.st, C.n, &pr, &np);
+
+    o = outfn ? fopen(outfn, "w") : stdout;
+    if (!o) { perror(outfn); return 16; }
+
+    fprintf(o, "ALIGN-DIFF %s\n", R.name);
+    fprintf(o, "  ref  %-8s %6ld bytes %5d stmt  %-6s %s\n",
+            R.name, R.len, R.n, R.member ? "member" : "deck", R.path);
+    fprintf(o, "  cand %-8s %6ld bytes %5d stmt  %-6s %s\n",
+            C.name, C.len, C.n, C.member ? "member" : "deck", C.path);
+    if (strcmp(R.name, C.name))
+        fprintf(o, "  NOTE the two sections are not the same name\n");
+
+    if (D < 0) {
+        fprintf(o, "  ALIGNMENT ABANDONED: more than %d insertions and deletions%s\n",
+                ALIGN_MAXD, D == -2 ? " (or out of memory)" : "");
+        fprintf(o, "SUMMARY %s align=abandoned\n", R.name);
+        if (o != stdout) fclose(o);
+        free(R.st); free(R.img); free(R.cov); free(C.st); free(C.img); free(C.cov);
+        return 4;
+    }
+
+    /* The shift function's value set, taken from the alignment itself. */
+    sv = malloc((size_t)(np + 2) * sizeof *sv);   /* the matched pairs, plus the section end */
+    if (!sv) { fprintf(stderr, "dasm370: out of memory\n"); return 16; }
+    for (k = 0; k < np; k++) {
+        long q = C.st[pr[k].j].at - R.st[pr[k].i].at;
+        if (!shift_known(sv, nsv, q)) sv[nsv++] = q;
+    }
+    /* THE END OF THE SECTION IS AN ALIGNMENT POINT TOO, and leaving it out cost
+     * the second constructed case its whole answer.  A matched pair has the same
+     * length on both sides -- the key carries the bytes, so it must -- which
+     * makes a statement's end shift equal to its start shift, and every gap's
+     * end coincide with the next matched statement's start.  Every boundary is
+     * therefore a matched start, EXCEPT the last one, which no statement
+     * follows.
+     *
+     * Case 2 lands exactly there: insertions of 2 and 4 bytes move every
+     * displacement by 8, the missing 2 being alignment padding the assembler
+     * added when the first insertion pushed the data area off its fullword
+     * boundary.  That padding sits INSIDE the trailing data run, which does not
+     * match, so no matched pair carries +8 and the shift set came back
+     * {+0,+2,+6} -- and all four displacements were reported as constant
+     * changes.  A whole module of findings where there are none, which is the
+     * failure the cumulative-shift design exists to avoid, arriving through the
+     * one boundary the implementation had not counted. */
+    {
+        long q = C.len - R.len;
+        if (!shift_known(sv, nsv, q)) sv[nsv++] = q;
+    }
+
+    pi = pj = 0;
+    for (k = 0; k <= np; k++) {
+        int i1 = (k < np) ? pr[k].i : R.n, j1 = (k < np) ? pr[k].j : C.n;
+        if (i1 > pi || j1 > pj) {
+            if (firstchange < 0) firstchange = (i1 > pi) ? R.st[pi].at : (pi < R.n ? R.st[pi].at : R.len);
+            align_gap(o, &R, pi, i1, &C, pj, j1, &ins, &del, &dchg, &chg);
+        }
+        if (k == np) break;
+        i = pr[k].i; j = pr[k].j;
+        {
+            const struct astmt *a = &R.st[i], *b = &C.st[j];
+            long sh = b->at - a->at;
+            int said = 0, f;
+            for (f = 0; f < a->nd && f < b->nd; f++) {
+                long dl = (long)b->dd[f] - (long)a->dd[f];
+                if (dl == 0) continue;
+                if (shift_known(sv, nsv, dl)) {
+                    cons++;
+                    fprintf(o, "CONSEQ  shift  %06lX -> %06lX  %-5s %-24s  D%d %d -> %d  %+ld\n",
+                            (unsigned long)a->at, (unsigned long)b->at, a->op, a->opnd,
+                            f + 1, a->dd[f], b->dd[f], dl);
+                } else {
+                    chg++;
+                    if (firstchange < 0) firstchange = a->at;
+                    fprintf(o, "FINDING const  %06lX -> %06lX  %-5s %-24s  D%d %d -> %d  %+ld"
+                               "  not a shift\n",
+                            (unsigned long)a->at, (unsigned long)b->at, a->op, a->opnd,
+                            f + 1, a->dd[f], b->dd[f], dl);
+                }
+                said = 1;
+            }
+            if (a->kind == AS_ADCON && !a->external && !b->external) {
+                long dl = b->val - a->val;
+                if (dl != 0) {
+                    if (shift_known(sv, nsv, dl)) {
+                        cons++;
+                        fprintf(o, "CONSEQ  adcon  %06lX -> %06lX  DC    A(%06lX -> %06lX) %+ld\n",
+                                (unsigned long)a->at, (unsigned long)b->at,
+                                (unsigned long)a->val, (unsigned long)b->val, dl);
+                    } else {
+                        chg++;
+                        if (firstchange < 0) firstchange = a->at;
+                        fprintf(o, "FINDING const  %06lX -> %06lX  DC    A(%06lX -> %06lX) %+ld"
+                                   "  not a shift\n",
+                                (unsigned long)a->at, (unsigned long)b->at,
+                                (unsigned long)a->val, (unsigned long)b->val, dl);
+                    }
+                    said = 1;
+                }
+            }
+            if (!said) { if (sh == 0) same++; else cons++; }
+        }
+        pi = i1 + 1; pj = j1 + 1;
+    }
+
+    /* Which case shift(B) is in, per module and never assumed.  The exact rule
+     * is delta == shift(T) - shift(B); with the base established before every
+     * change shift(B) is 0 and the membership test is exact.  A change that
+     * PRECEDES the prologue moves the base too, and then the same test is
+     * weaker -- so it is stated rather than quietly relied on. */
+    if (R.first_balr < 0) weak = 2;
+    else if (firstchange >= 0 && firstchange <= R.first_balr) weak = 1;
+
+    fprintf(o, "  shift set (%d):", nsv);
+    for (k = 0; k < nsv && k < 24; k++) fprintf(o, " %+ld", sv[k]);
+    if (nsv > 24) fprintf(o, " ... (%d more)", nsv - 24);
+    fputc('\n', o);
+    fprintf(o, "  base: %s", R.first_balr >= 0 ? "first BALR Rn,0 at " : "no BALR Rn,0 in the reference");
+    if (R.first_balr >= 0) fprintf(o, "%06lX", (unsigned long)R.first_balr);
+    if (firstchange >= 0) fprintf(o, ", first change at %06lX", (unsigned long)firstchange);
+    fprintf(o, " -> %s\n", weak == 0 ? "EXACT" : weak == 1 ? "WEAK (a change precedes the base)"
+                                               : "WEAK (no prologue base found)");
+    fprintf(o, "SUMMARY %s findings=%d ins=%d del=%d data=%d const=%d conseq=%d unchanged=%d "
+               "shifts=%d edits=%d base=%s align=ok\n",
+            R.name, ins + del + dchg + chg, ins, del, dchg, chg, cons, same, nsv, D,
+            /* THREE STATES, NOT TWO, and the difference is not cosmetic: a
+             * module with no prologue idiom at all is a different thing from
+             * one whose base is established after the first change, and a
+             * population run greps this line.  Most of #112's corpus is PL/S,
+             * which largely does not write BALR Rn,0 -- so folding the two into
+             * `weak' reports a shifted base for modules that simply have no
+             * base to shift. */
+            weak == 0 ? "exact" : weak == 1 ? "weak" : "none");
+
+    if (o != stdout && fclose(o)) { perror(outfn); rc = 16; }
+    free(sv); free(pr);
+    free(R.st); free(R.img); free(R.cov);
+    free(C.st); free(C.img); free(C.cov);
+    return rc;
 }
 
 /* ------------------------------------------------------------------ run -- */
@@ -2493,7 +3059,13 @@ static void usage(FILE *o)
 "                     (prologue/rld/pattern).  Every candidate is a COMMENT and\n"
 "                     none is applied -- the point is sometimes ground truth,\n"
 "                     the lifetime never is\n"
-"  -I DIR             macro library for --derive-hints (repeatable)\n"
+"  --align-diff R C   disassemble BOTH objects of one CSECT and align them\n"
+"                     statement by statement, with the displacements masked out\n"
+"                     of the key so a statement survives a shift.  A\n"
+"                     displacement delta is a CONSEQUENCE when it is in the\n"
+"                     shift function's value set and a FINDING when it is not.\n"
+"                     Reads no hint file and writes no disassembly\n"
+"  -I DIR             macro library for --derive-hints (repeatable)"
 "  --as370 PATH       which as370 to run (default: beside this binary, then PATH)\n"
 "  --anchors=MODE     refuse (default) stops at the first failed check; report\n"
 "                     disassembles anyway and writes EVERY finding as a comment\n"
@@ -2531,6 +3103,7 @@ int main(int argc, char **argv)
 {
     const char *src = NULL, *want = NULL, *outfn = NULL, *hints_file = NULL, *isa_cli = NULL;
     const char *derive_src = NULL, *as370_path = NULL;
+    const char *align_ref = NULL, *align_cand = NULL;
     int infer = 0;
     char *incs[64]; int ninc = 0;
     char tsym[512], tuse[512], tobj[512], asver[128];
@@ -2546,6 +3119,14 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];
         else if (!strcmp(argv[ai], "--derive-hints") && ai + 1 < argc) derive_src = argv[++ai];
         else if (!strcmp(argv[ai], "--infer")) infer = 1;
+        else if (!strcmp(argv[ai], "--align-diff")) {
+            if (ai + 2 >= argc) {
+                fprintf(stderr, "dasm370: --align-diff takes two objects, a reference and a candidate\n");
+                return 16;
+            }
+            align_ref = argv[++ai];
+            align_cand = argv[++ai];
+        }
         else if (!strcmp(argv[ai], "--as370") && ai + 1 < argc) as370_path = argv[++ai];
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) {
             if (ninc >= 64) { fprintf(stderr, "dasm370: too many -I directories for this build\n"); return 16; }
@@ -2595,6 +3176,24 @@ int main(int argc, char **argv)
     if (derive_src && hints_file) {
         fprintf(stderr, "dasm370: --derive-hints writes a hint file; it does not read one\n");
         return 16;
+    }
+    /* --align-diff reads TWO objects of its own and writes a report, so it
+     * takes no third one and produces no disassembly.  The hint modes are
+     * refused with it rather than combined: a hint set supplies the base this
+     * mode says it does not have, which is a real refinement and a later one --
+     * combining them now would mean reporting two different shift(B) cases from
+     * one run without saying which applied where. */
+    if (align_ref) {
+        if (src) {
+            fprintf(stderr, "dasm370: --align-diff already names both objects; do not give a third\n");
+            return 16;
+        }
+        if (derive_src || infer || hints_file) {
+            fprintf(stderr, "dasm370: --align-diff compares two objects; it neither reads nor writes "
+                            "a hint file\n");
+            return 16;
+        }
+        return align_run(align_ref, align_cand, want, outfn);
     }
     if (!src && !derive_src) { usage(stderr); return 16; }
 

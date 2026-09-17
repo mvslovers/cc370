@@ -679,6 +679,105 @@ else
     pass "--infer writes NO applicable table -- every candidate is a comment"
 fi
 
+# ---- --align-diff (#384) -------------------------------------------------
+# Both sides disassembled and aligned statement by statement, so a displacement
+# that moved because something before it changed length is reported as a
+# CONSEQUENCE rather than as a change of its own.
+#
+# THE FIXTURES ARE TWO CONSTRUCTED CASES AND EACH CORRECTED THE DESIGN ONCE.
+# align-a.s is the reference; align-b.s adds one 4-byte instruction; align-c.s
+# adds two of 2 and 4 bytes.  Their headers say what each is for.
+#
+# SCORED AGAINST MUTANTS, because most of what this mode does is a RULE and a
+# rule cannot be demonstrated by a fixture that passes.  Each was mutated out of
+# dasm370.c and the suite re-run, with a rebuild guard on the binary's sha256:
+#
+#   mask_disp() made a no-op                                    3 fail
+#       ... the key stops surviving a shift, so every statement after an
+#       insertion reads as its own change.
+#   the section end left out of the shift set                   1 fail
+#       ... case 2 exactly: the 2 bytes of alignment padding sit inside the
+#       trailing data run, which does not match, so no matched pair carries
+#       +8 and all four displacements come back as constant changes.
+#   the hole-to-zero fill in align_load() dropped               0 fail HERE,
+#       and 19 of the caller's 30 control CSECTs disagree with cmplmd370.
+#       Both fixtures are decks, so nothing here can see it: a deck says
+#       which bytes no TXT card covered and a bound member cannot, because
+#       the binder filled them.  A corpus mutant score, deliberately.
+#   adjacent data statements not merged into one run            0 fail HERE,
+#       0 of the 30, and 48,275 findings against 48,862 over the caller's
+#       140 eyecatcher modules -- 1.2 %.  SO IT IS A REPORT-SHAPE RULE AND
+#       NOT A CORRECTNESS ONE, and it is written down here because the
+#       opposite was expected: the reasoning was that walk_section cuts a DC
+#       run at 16 bytes and a shifted data area would re-chunk.  It does not,
+#       because the cut is 16 bytes FROM THE RUN'S OWN START, so a pure shift
+#       carries its chunk boundaries with it.  What merging buys is that a
+#       changed data region is ONE finding rather than one per card.
+for f in a b c; do
+    "$A" "tests/align-$f.s" -o "$T/al$f.obj" >/dev/null 2>&1 || fail "align-$f.s does not assemble"
+done
+asum() { grep -m1 '^SUMMARY' "$1" | tr ' ' '\n' | grep "^$2=" | cut -d= -f2; }
+
+# The null control, and it is one this mode can fail: a classifier that invents
+# a shift between two identical sections fails here and nowhere else.
+"$D" --align-diff "$T/ala.obj" "$T/ala.obj" -o "$T/aln.txt" 2>/dev/null
+if [ "$(asum "$T/aln.txt" findings)" = 0 ] && [ "$(asum "$T/aln.txt" conseq)" = 0 ] \
+   && [ "$(asum "$T/aln.txt" shifts)" = 1 ]; then
+    pass "a section against ITSELF: no finding, no consequence, one shift value"
+else
+    fail "a section against ITSELF: no finding, no consequence, one shift value"
+    grep '^SUMMARY' "$T/aln.txt"
+fi
+
+# Case 1.  One insertion, and the four displacements that follow it are
+# consequences -- but the FIRST of them is at 000002 and the insertion is at
+# 00000A.  #112 states the caller's assumption as "the shifts FOLLOWING an
+# attributed length change are consequences"; this shift precedes its own cause,
+# because the instruction addresses data past the insertion point and inserting
+# anywhere before that data moves it.  So the classifier must not use position
+# relative to the change as evidence, and this fixture is what says so.
+"$D" --align-diff "$T/ala.obj" "$T/alb.obj" -o "$T/al1.txt" 2>/dev/null
+if [ "$(asum "$T/al1.txt" ins)" = 1 ] && [ "$(asum "$T/al1.txt" findings)" = 1 ] \
+   && [ "$(asum "$T/al1.txt" const)" = 0 ]; then
+    pass "one insertion is ONE finding, and the shifts around it are consequences"
+else
+    fail "one insertion is ONE finding, and the shifts around it are consequences"
+    grep '^SUMMARY' "$T/al1.txt"
+fi
+if grep -q '^CONSEQ  shift  000002 -> 000002' "$T/al1.txt" \
+   && grep -q '^FINDING insert ref 00000A' "$T/al1.txt"; then
+    pass "a shift at 000002 PRECEDES its cause at 00000A -- position is not evidence"
+else
+    fail "a shift at 000002 PRECEDES its cause at 00000A -- position is not evidence"
+    grep -E '^(CONSEQ|FINDING)' "$T/al1.txt"
+fi
+
+# Case 2.  Six bytes of code inserted, EIGHT bytes of displacement movement: the
+# 2-byte insertion pushed the data area off its fullword boundary and the
+# assembler made up the difference.  A prefix sum over the detected insertions
+# gives 6, so a classifier built that way reports all four displacements as
+# constant changes -- a whole module of findings where there are none.  The shift
+# function is computed from the ALIGNMENT instead, which counts every statement,
+# code and data alike, and the padding falls out for free.
+"$D" --align-diff "$T/ala.obj" "$T/alc.obj" -o "$T/al2.txt" 2>/dev/null
+if [ "$(asum "$T/al2.txt" const)" = 0 ] && grep -q '  D1 18 -> 26  +8$' "$T/al2.txt"; then
+    pass "6 bytes inserted, 8 of movement: the alignment padding is a CONSEQUENCE too"
+else
+    fail "6 bytes inserted, 8 of movement: the alignment padding is a CONSEQUENCE too"
+    grep -E '^(CONSEQ|FINDING|  shift set)' "$T/al2.txt"
+fi
+
+# Refused rather than combined.  A hint file supplies the base this mode says it
+# does not have -- a real refinement, and a later one; combining them now would
+# report two different shift(B) cases from one run without saying which applied
+# where.  And the mode names both objects itself, so a third is a mistake.
+"$D" --align-diff "$T/ala.obj" "$T/alb.obj" --hints /dev/null -o "$T/x.txt" 2>/dev/null
+[ $? = 16 ] && pass "--align-diff with --hints is refused" || fail "--align-diff with --hints is refused"
+"$D" --align-diff "$T/ala.obj" "$T/alb.obj" "$T/alc.obj" -o "$T/x.txt" 2>/dev/null
+[ $? = 16 ] && pass "--align-diff with a third object is refused" || fail "--align-diff with a third object is refused"
+"$D" --align-diff "$T/ala.obj" 2>/dev/null
+[ $? = 16 ] && pass "--align-diff with one object is refused" || fail "--align-diff with one object is refused"
+
 # ---- the two lists in one control record ---------------------------------
 # A control record carrying BOTH an ID/length list and RLD info holds the RLD
 # FIRST.  Every other record has one or the other, and in those the two orders

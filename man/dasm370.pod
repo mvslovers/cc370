@@ -6,6 +6,8 @@ dasm370 - disassemble a control section of an OS/360 object deck
 
 B<dasm370> [I<options>] I<deck.obj>
 
+B<dasm370> B<--align-diff> I<reference> I<candidate> [I<options>]
+
 =head1 DESCRIPTION
 
 B<dasm370> turns one control section of an object deck back into assembler
@@ -43,6 +45,13 @@ constant in the module, and neither the bytes nor the round trip will object.
 
 Disassemble this control section. The default is the first one in the deck.
 An unknown name is an error (exit 2), not an empty result.
+
+=item B<--align-diff> I<reference> I<candidate>
+
+Disassemble B<both> objects of one control section and align them statement by
+statement, so that a displacement which moved because something before it changed
+length is reported as a B<consequence> rather than as a change of its own. Writes
+a report, not a disassembly; reads no hint file. See L</ALIGN-DIFF> below.
 
 =item B<--derive-hints> I<SRC>
 
@@ -330,6 +339,105 @@ B<mvs38dasm> documents its own control statements. That tree carries no licence
 statement, so it is read for what a word means and never copied: the semantics
 are its, the file format is ours.
 
+=head1 ALIGN-DIFF
+
+Two objects of the same control section at different maintenance levels, both
+disassembled, aligned, and every difference classified: an insertion, a deletion,
+a changed data run, a B<constant change>, or a B<displacement shift> that is a
+consequence of one of the others.
+
+=head2 The key is the statement with its displacements masked
+
+Everything rests on this. A statement's identity has to survive a shift, or every
+statement after an insertion reads as a change of its own and a pair differing by
+one insertion reports six differences instead of one.
+
+The key is built from the B<bytes>, with the displacement fields cleared and the
+base-register nibbles kept --- a different base register is a different statement.
+It is not built from the text B<dasm370> prints: our own output embeds an offset
+in a manufactured label, C<A(L000410)>, so a shifted internal address constant
+would change its own key. An address constant's key names its target and its
+width and never its value, because an external one's text is an addend in a deck
+and a binder-resolved address in a bound member --- two different quantities,
+which is why the value is masked on both sides rather than compared across.
+
+=head2 A shift is measured, never assumed from position
+
+#112 states the assumption this mode exists to convert as I<"the displacement
+shifts following an attributed length change are consequences">. That is not the
+rule. In the first constructed case the shift is at C<000002> and the insertion
+at C<00000A>: the instruction addresses data at the end of the section, and
+inserting anywhere before that data moves it. B<A shift can precede its own
+cause>, so position relative to a change is not evidence and is not used.
+
+What a displacement delta is compared against is the B<cumulative shift
+function>, computed from the alignment itself: for a matched pair,
+C<shift = cand.at - ref.at>. A delta is a consequence exactly when it is a value
+that function takes.
+
+Two boundaries matter and both were found by a case rather than by reasoning.
+The first is that the function must count B<every> statement, code and data
+alike: two insertions of 2 and 4 bytes move every displacement by B<8>, the
+missing 2 being alignment padding the assembler added when the first insertion
+pushed the data area off its fullword boundary. A prefix sum over the detected
+code insertions gives 6, and every displacement in the module is then reported as
+a constant change --- a whole module of findings where there are none. The second
+is that B<the end of the section is an alignment point too>: in that same case
+the padding sits inside the trailing data run, which does not match, so no
+matched pair carries C<+8> at all.
+
+=head2 What the report says, and how strong it is
+
+Each finding and each consequence is one line at its own offset, and the last
+line is a C<SUMMARY> a population run can grep. Two things are printed on every
+module because they decide what the classification is worth:
+
+=over 4
+
+=item the B<size of the shift set>
+
+which is the strength of the membership test. Over the 832-module target
+population the median is 16 values and the maximum 317 --- of 8,191 possible
+deltas, 0.2 % and 3.9 %. Membership in a 317-value set is close to no test at
+all, and only the printed size tells a reader which modules the verdict means
+something for.
+
+=item which B<shift(B)> case the module is in
+
+The exact rule is C<delta == shift(T) - shift(B)>, and without a C<USING> the
+disassembly has no B. Where the base is established before every change
+C<shift(B)> is 0 and the test is exact; where a change precedes the prologue the
+base moves too and the test is weaker. The report says C<base=exact>, C<base=weak> or
+C<base=none> per module rather than assuming the common case. The third is not a
+refinement of the second: a module that writes no C<BALR Rn,0> at all has no base
+to shift, and most of #112's corpus is PL/S, which largely does not write one.
+Over the 832-module target population: 158 exact, 347 weak, 327 none.
+
+=back
+
+No byte count is reported that is not attached to a named statement or run. A
+deck's text and a bound member never agree on relocated address constants, so a
+byte count over a member/deck pair means one thing under an alignment and another
+under L<cmplmd370(1)>, which clears the RLD-covered bytes.
+
+=head2 What it does not do
+
+It reads no hint file and writes no disassembly, and B<--hints>, B<--infer> and
+B<--derive-hints> are refused alongside it rather than combined. A hint file
+supplies exactly the base this mode says it does not have; that is a real
+refinement and a later one, and combining them now would mean reporting two
+different C<shift(B)> cases from one run without saying which applied where.
+
+An uncovered byte is read as zero, on both sides. A deck says which bytes no TXT
+card covered and a bound member cannot, because the binder filled them before it
+wrote the member --- so against a member every such hole is a difference that
+belongs to the transport. Filling to zero reads the deck as the member form of
+itself; a member whose hole is B<not> zero still differs and still says so.
+
+An alignment needing more than 20,000 insertions and deletions is B<abandoned>
+rather than approximated, and the report says so. An alignment that had to guess
+would produce findings indistinguishable from the real ones.
+
 =head1 WHAT IT DOES NOT
 
 B<It infers nothing.> Without a hint file no C<USING> is reconstructed and no
@@ -361,8 +469,9 @@ the current source, with the scores recorded in F<dasm370/tests/run.sh>.
 
 =head1 EXIT STATUS
 
-B<0> a section was written, B<2> no such section, B<16> the invocation or the
-input is wrong.
+B<0> a section was written, or B<--align-diff> compared two, B<2> no such
+section, B<4> B<--align-diff> abandoned the alignment, B<16> the invocation or
+the input is wrong.
 
 =head1 SEE ALSO
 
