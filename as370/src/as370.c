@@ -202,6 +202,7 @@ enum { UEB_STMT, UEB_POP, UEB_NOOP };
 struct uev { long seq, loc, value; int kind, sect, reg, valsect, valdsect, isabs, by; };
 static struct uev *uevs; static long nuev, uevcap;
 static const char *use_fn;                    /* NULL unless --usings= was given */
+static const char *stmt_fn;                   /* NULL unless --stmts= was given (cc370#411) */
 
 static void uev_add(long seq, int kind, int sect, long loc, int reg,
                     long value, int valsect, int valdsect, int isabs, int by) {
@@ -1685,6 +1686,24 @@ static struct ctx *g_copyctx;   /* the enclosing expansion's variables, for a CO
 /* per-statement listing data captured in pass 2 (LOC + emitted bytes + effective operand addresses) */
 struct lrec { long loc; int len; long a1, a2; unsigned char hasa1, hasa2; };
 static struct lrec lrecs[MAXLINES];
+
+/* cc370#411: which macro CALL owns a generated line.  LF_GEN says a line came
+ * out of an expansion and the listing marks it `+', and neither says WHICH call
+ * -- so a consumer has to walk backwards to the nearest non-generated line and
+ * hope, which is the inference an export exists to remove (#397).  Recorded
+ * where the expander already knows it. */
+/* `name' is as wide as struct macro's own, so the copy cannot truncate and the
+ * arithmetic closes.  At 9 it did not: a macro name is at most 8 characters in
+ * Assembler XF, but as370 stores it in char[16], and gcc under _FORTIFY_SOURCE
+ * says so where clang and this host's gcc do not. */
+struct mcall { char name[16]; long stmt; int depth; };
+static struct mcall mcalls[MAXLINES / 8];
+static int nmcall;
+static int mcall_stack[64], mcall_sp;
+/* index into mcalls[] PLUS ONE, so the zero a static array starts with means
+ * "open code" and no initialising pass over MAXLINES is needed. */
+static int line_mcall[MAXLINES];
+static int raw_span[MAXLINES];                /* cc370#411: input cards per statement */
 /* The verbatim 80-column source image for the listing's SOURCE column. For a
  * macro-generated line this is the model card with variable symbols substituted
  * IN PLACE (field start-columns preserved, cols 73-80 carried through) -- which
@@ -2851,6 +2870,12 @@ static int op_is_cond_expr(const char *s, int n) {
  * every macro/COPY library read. */
 /* seqout (optional) receives cols 73-80 of each output line's primary card --
  * the library sequence number the listing's SOURCE column carries through. */
+/* `span' (cc370#411): how many input CARDS this statement occupies.  A repair
+ * edits cards, and a continued statement is several of them carrying one
+ * statement number -- so `org' alone names where to start and says nothing about
+ * where to stop.  Counted here because this is the only place that knows: it is
+ * the loop that consumes the continuations. */
+static int *join_span;
 static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12], int *org) {
     int i = 0, no = 0;
     while (i < n && no < maxout) {
@@ -2968,6 +2993,9 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
             i++;
         }
         acc[a++] = '\n'; acc[a] = 0;
+        /* `i' has consumed every continuation card of this statement by
+         * now, and org[no] is its first: the span is the difference. */
+        if (join_span && org) join_span[no] = i - (org[no] - 1);
         out[no++] = strdup(acc);
     }
     return no;
@@ -3296,8 +3324,24 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
     render_model_ex(c, model, seq, out, 0xF, 0);
 }
 /* expand a macro invocation, interpreting conditional assembly */
+/* Pushed at the call and popped at its end, so every line emitted between them
+ * carries the call that produced it and not merely a depth. */
+static void mcall_push(const char *name, long stmt, int depth) {
+    if (nmcall >= (int)(sizeof mcalls / sizeof mcalls[0]) || mcall_sp >= 64) return;
+    snprintf(mcalls[nmcall].name, sizeof mcalls[nmcall].name, "%s", name ? name : "");
+    mcalls[nmcall].stmt = stmt;
+    mcalls[nmcall].depth = depth;
+    mcall_stack[mcall_sp++] = nmcall++;
+}
+static void mcall_pop(void) { if (mcall_sp > 0) mcall_sp--; }
+static int mcall_cur(void) { return mcall_sp > 0 ? mcall_stack[mcall_sp - 1] : -1; }
+
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
     g_genlevel++;   /* lines emitted during this expansion are macro-generated */
+    /* cc370#411: the CALL, not merely the depth.  `*nout' is the next output
+     * line, so the call's own listing statement is the one before it -- a macro
+     * call is emitted LF_NOASM and then its expansion follows. */
+    mcall_push(m->name, (long)(*nout), g_genlevel);
     int savecopyraw = g_copyraw; g_copyraw = 0;   /* a macro body is model statements, whatever the call arrived on */
     struct ctx *savecopyctx = g_copyctx;   /* a COPY inside THIS body substitutes from THIS expansion's variables */
     /* ctx and the sequence-symbol table live on the HEAP, not on this frame.
@@ -3404,7 +3448,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
                 /* lines[] keeps the SUBSTITUTED MNOTE statement so the stderr
                  * card print shows what the macro actually wrote; gcard carries
                  * the rendered image the listing column wants. */
-                lflags[*nout] = LF_GEN | LF_NOASM; gcard[*nout] = strdup(mimg);
+                lflags[*nout] = LF_GEN | LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = strdup(mimg);
                 line_org[*nout] = g_curorg; out[*nout] = strdup(mex);
                 note_mnote(msev, mtext, *nout);
                 (*nout)++;
@@ -3455,7 +3499,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
-    g_genlevel--; g_copyraw = savecopyraw; g_copyctx = savecopyctx;
+    g_genlevel--; mcall_pop(); g_copyraw = savecopyraw; g_copyctx = savecopyctx;
     set_free(c); free(c); free(seqn); free(seqi); free(args);
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
@@ -3565,7 +3609,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         char mtext[256], mimg[256]; int mcom = 0;
         int msev = mnote_split(opnd, mtext, sizeof mtext, mimg, sizeof mimg, &mcom);
         if (*nout < MAXLINES) {
-            lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM);
+            lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); line_mcall[*nout] = mcall_cur() + 1;
             gcard[*nout] = strdup(mimg); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf);
             note_mnote(msev, mtext, *nout);
             (*nout)++;
@@ -3661,10 +3705,10 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && !known_op(op) && !opsubst && depth <= 40) { m = mac_find(op); if (!m) m = lib_load(op); }
     if (m) {   /* keep the macro call line itself for the listing (not assembled); its expansion is flagged generated */
         if (subst && *nout < MAXLINES) {   /* the model card, then the generated call */
-            lflags[*nout] = LF_NOASM; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
+            lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
             out[*nout] = strdup(line); (*nout)++;
         }
-        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0)); gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0)); line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
         /* HLASM substitutes the caller's variable symbols in a macro's arguments
          * in the caller's context. At open-code level resolve them from g_opc, so
          * e.g. `DCB MACRF=P&OUTM.M` binds &MACRF='PMM' (not the literal 'P&OUTM.M',
@@ -3683,7 +3727,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * carrying the object code and the '+'. tests/setc_open.s statements 23 and
      * 24+; tests/remark_sub.s 23/24+ and 26/27+. */
     if (subst && *nout + 1 < MAXLINES) {
-        lflags[*nout] = LF_NOASM; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
+        lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
         out[*nout] = strdup(line); (*nout)++;
         img = genimg;
     }
@@ -3695,7 +3739,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (op[0] && (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") ||
                   !strcmp(op, "START") || !strcmp(op, "COM")))
         scopy(g_sysect, (lbl[0] && lbl[0] != '.') ? lbl : "", 8);
-    lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN : 0) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0));
+    lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN : 0) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0)); line_mcall[*nout] = mcall_cur() + 1;
     gcard[*nout] = img ? strdup(img) : NULL;
     line_org[*nout] = g_curorg;
     if (lbl[0] == '.') { char r[STMTSZ + 32]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
@@ -6322,6 +6366,92 @@ static const char *uev_by_name(int b) {
     }
     return "?";
 }
+/* --stmts=FILE: one record per generated statement (cc370#411).
+ *
+ * THE FIELD THIS EXISTS FOR IS `reserves'.  dasm370's repair contract (#385)
+ * has to tell a statement that OCCUPIES its bytes from one that only ALIGNS,
+ * because that decides replace-versus-insert.  IN AN OBJECT THE TWO ARE
+ * INDISTINGUISHABLE: both are bytes no TXT card covers.  The caller measured two
+ * defensible object-side rules over 13,161 such bytes in 30 sections -- "the gap
+ * follows an explicit zero-duplication DS" gives 89, "the gap is smaller than
+ * the alignment it ends on" gives 1,788.  ONE PER CENT AGAINST FOURTEEN.  Two
+ * methods that cannot agree on the SIZE of a population is what "a source fact"
+ * means once it is measured instead of asserted.
+ *
+ * AND `mcall_name' IS THE OTHER HALF.  A listing marks a generated line with `+'
+ * and never says which call produced it, so a consumer walks backwards to the
+ * nearest unmarked line and hopes.  That is the inference #397 removed for
+ * USINGs, and as370 knows the answer at the moment it expands.
+ *
+ * Written where --sym and --usings are written, and for their reason: past
+ * g_pass = 0 so nothing below can still raise a diagnostic, and past emit_obj so
+ * the deck is on disk whatever happens here. */
+static int stmt_reserves(const char *op, const char *opnd) {
+    /* A zero duplication factor reserves nothing -- `DS 0F' is an alignment
+     * directive wearing a storage statement's syntax, and it is the whole
+     * reason this column exists.  `CNOP' aligns by definition. */
+    if (!strcmp(op, "CNOP")) return 0;
+    if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
+        const char *q = opnd;
+        while (*q == ' ') q++;
+        if (*q == '0') {                      /* a leading 0 is the duplication factor */
+            const char *r = q;
+            while (*r == '0') r++;
+            if (!isdigit((unsigned char)*r)) return 0;   /* 0F, 00F: nothing reserved */
+        }
+        return 1;
+    }
+    return 1;                                  /* an instruction, CCW: its bytes are its own */
+}
+
+static int emit_stmt_export(const char *fn, const char *srcfn, char **lines, int nl) {
+    FILE *f;
+    int i;
+    if (!strcmp(fn, "-")) f = stdout;
+    else if (!(f = fopen(fn, "w"))) { perror(fn); return 16; }
+    fputs("#as370-stmts\t1\n", f);
+    fprintf(f, "#source\t%s\n", srcfn ? srcfn : "");
+    fputs("#note\tone record per STATEMENT the assembly generated, in listing order. stmt is the\n"
+          "#note\tlisting statement number and IS a key here -- unlike --usings, where one\n"
+          "#note\tstatement can produce several records.\n"
+          "#note\tloc is the location counter AT the statement and len the bytes it emits; len 0\n"
+          "#note\tmeans it emits none, which is NOT the same as reserving none.\n"
+          "#note\treserves=1 the statement OCCUPIES its bytes (DC, DS CL1, an instruction),\n"
+          "#note\treserves=0 it only ALIGNS (DS 0F, CNOP). An object cannot tell these apart --\n"
+          "#note\tboth are bytes no TXT card covers -- which is why this column exists.\n"
+          "#note\tgen=1 the statement came out of a macro expansion. mcall_stmt and mcall_name\n"
+          "#note\tname the CALL that produced it, not merely a depth: a listing marks it `+\' and\n"
+          "#note\tnever says which call, and walking backwards to the nearest unmarked line is\n"
+          "#note\tthe inference this export exists to remove. Both are empty for open code.\n"
+          "#note\ttext is the statement as the listing shows it -- for a generated line the model\n"
+          "#note\tcard with substitutions applied, which is NOT a card in the caller\'s source.\n"
+          "#note\tThe card a repair edits is mcall_stmt.\n", f);
+    fputs("org\tcards\tloc\tlen\tstmt\tgen\tmdepth\tmcall_stmt\tmcall_name\treserves\ttext\n", f);
+    for (i = 0; i < nl; i++) {
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
+        int mi = line_mcall[i] - 1;
+        int gen = (lflags[i] & LF_GEN) != 0;
+        const char *t;
+        if (lflags[i] & LF_NOASM) continue;          /* listing-only: the call card itself */
+        strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
+        parse(buf, lbl, op, opnd);
+        if (!op[0]) continue;                         /* a comment or an empty card */
+        t = lines[i];
+        fprintf(f, "%d\t%d\t%ld\t%d\t%d\t%d\t%d\t", line_org[i],
+                raw_span[i] > 0 ? raw_span[i] : 1, lrecs[i].loc, lrecs[i].len,
+                i + 1, gen, mi >= 0 ? mcalls[mi].depth : 0);
+        if (mi >= 0) fprintf(f, "%ld\t%s\t", mcalls[mi].stmt, mcalls[mi].name);
+        else fputs("\t\t", f);
+        fprintf(f, "%d\t", stmt_reserves(op, opnd));
+        /* A tab would split the record and a newline would END it -- lines[]
+         * carries the card's own terminator. */
+        for (; *t && *t != '\n' && *t != '\r'; t++) fputc(*t == '\t' ? ' ' : *t, f);
+        fputc('\n', f);
+    }
+    if (f != stdout && fclose(f)) { perror(fn); return 16; }
+    return 0;
+}
+
 static int emit_use_export(const char *fn, const char *srcfn) {
     FILE *f;
     long i;
@@ -6385,6 +6515,11 @@ static void usage(FILE *o) {
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
 "  --sym=FILE         write the symbol table to FILE as tab-separated data (- = stdout)\n"
+"  --stmts=FILE       write one record per generated statement to FILE as\n"
+"                     tab-separated data (- = stdout): where it lands, how many\n"
+"                     bytes it emits, whether it RESERVES them or only ALIGNS,\n"
+"                     and which macro CALL produced it. An object cannot tell a\n"
+"                     DS 0F from a DS CL1 -- both are bytes no TXT card covers\n"
 "  --usings=FILE      write the USING/DROP/PUSH/POP events to FILE as tab-separated\n"
 "                     data (- = stdout). One record per event and per base\n"
 "                     register, each carrying its own section and location\n"
@@ -6463,6 +6598,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", AS370_NAME, AS370_VER_H, __DATE__); return 0; }
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strncmp(argv[ai], "--sym=", 6) && argv[ai][6]) sym_fn = argv[ai] + 6;   /* the symbol table as data; -a's `s'/`x' remain the human cross-reference pages */
+        else if (!strncmp(argv[ai], "--stmts=", 8) && argv[ai][8]) stmt_fn = argv[ai] + 8;   /* one record per generated statement (#411) */
         else if (!strncmp(argv[ai], "--usings=", 9) && argv[ai][9]) use_fn = argv[ai] + 9;   /* the USING/DROP/PUSH/POP events as data (#393); usings[] is live state and holds nothing at the end */
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
@@ -6539,7 +6675,9 @@ int main(int argc, char **argv) {
     }
     fclose(f);
     static int raw_org[MAXLINES];
-    int n = join_cont(raw0, nr, raw, MAXLINES, NULL, raw_org);   /* fold column-72 continuations; raw_org = input line per statement */
+    join_span = raw_span;
+    int n = join_cont(raw0, nr, raw, MAXLINES, NULL, raw_org);
+    join_span = NULL;   /* fold column-72 continuations; raw_org = input line per statement */
 
     static char *lines[MAXLINES];
     prescan_symtypes(raw, n);   /* T' of a symbol is answered from open code, before any expansion (#144) */
@@ -6751,6 +6889,7 @@ int main(int argc, char **argv) {
     emit_listing_a(lines, nl);
     if (sym_fn) { int e = emit_sym_export(sym_fn, src); if (e > optsev) optsev = e; }   /* a destination that cannot be written is the invocation's error, like an unopenable source: rc 16 */
     if (use_fn) { int e = emit_use_export(use_fn, src); if (e > optsev) optsev = e; }
+    if (stmt_fn) { int e = emit_stmt_export(stmt_fn, src, lines, nl); if (e > optsev) optsev = e; }
     errors = count_flagged_stmts(nl);
     /* A severity without a statement cannot happen -- every recorder marks before
      * it prints -- but if a line index ever went out of range the RC would drop to

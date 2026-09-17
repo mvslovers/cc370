@@ -56,6 +56,34 @@ in it --- every module writes C<R0 EQU 0> through C<R15 EQU 15> inside a CSECT,
 and a scan that keeps them answers C<R4> for C<4(,12)>. Where C<defined> is 0 the
 symbol was referenced and never defined, and its value says nothing.
 
+=item B<--stmts=>I<FILE>
+
+One record per generated statement, tab-separated, in the shape of B<--sym>:
+C<org cards loc len stmt gen mdepth mcall_stmt mcall_name reserves text>. C<->
+writes to standard output. cc370#411; the export B<dasm370>'s repair contract
+needs and no listing can replace.
+
+B<C<reserves> is the field this exists for.> It says whether a statement
+B<occupies> its bytes (C<DC>, C<DS CL1>, an instruction) or only B<aligns>
+(C<DS 0F>, C<CNOP>). An object cannot tell those apart --- both are bytes no TXT
+card covers --- and two defensible object-side rules were measured to disagree
+B<1 % against 14 %> about the size of that population. Only the source knows,
+and only at assembly time.
+
+B<C<org> and C<cards> locate the card; C<stmt> does not.> A continued statement
+occupies several input cards and carries one statement number, so the two
+counters diverge and never converge. Measured over 30 modules' real sources,
+61,252 open-code cards: C<stmt> locates the card in B<0.8 %> of them and C<org>
+in B<99.9 %>. C<cards> is how many input lines the statement spans, so the range
+is C<org> to C<org + cards - 1>.
+
+B<C<mcall_stmt> and C<mcall_name> name the CALL, not merely a depth.> A listing
+marks a generated line C<+> and never says which call produced it, leaving a
+consumer to walk backwards to the nearest unmarked line and hope. For a
+macro-generated card C<org> is the B<call site> --- the card a repair edits ---
+while C<text> is the model card with substitutions applied, which is not a card
+in the caller's file at all.
+
 =item B<-v>
 
 Print the assembler version.

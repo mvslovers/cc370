@@ -3184,6 +3184,53 @@ rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.o
 
 # ------------------------------------------------------------------ useexp --
 # cc370#393: the USING/DROP/PUSH/POP events as data. --sym exports the symbol
+# ---- --stmts, one record per generated statement (cc370#411) -------------
+# The export dasm370's repair contract (#385) needs and NO LISTING CAN REPLACE.
+#
+# RESERVE vs ALIGN is the field it exists for. In an OBJECT a `DS 0F' pad and a
+# `DS CL1' reservation are both bytes no TXT card covers, and the caller
+# measured two defensible object-side rules that disagree 1 % against 14 % about
+# the size of that population. Two methods that cannot agree on a population's
+# SIZE is what "a source fact" means once measured.
+#
+# AND `org' RATHER THAN `stmt'. Over 30 modules' real sources, 61,252 open-code
+# cards: `stmt' locates the card in 0.8 % of them and `org' in 99.9 %. A
+# continued statement occupies several cards and carries ONE statement number,
+# so the two counters diverge and never converge -- IEFAB493 parts company at
+# statement 2. A repair edits cards, so it needs `org' and `cards'.
+#
+# The expectations below are written BY HAND. An expectation generated from the
+# export's own output would agree with any export at all.
+./as370 tests/stmtexp.s --stmts=/tmp/_st$$.tsv -o /tmp/_st$$.obj >/tmp/_st$$.out 2>&1
+rcs=$?
+./as370 tests/stmtexp.s -o /tmp/_st2$$.obj >/dev/null 2>&1
+# Keyed on the statement TEXT, not on a listing number: editing a comment in
+# the fixture shifts every statement number and would silently re-point every
+# expectation at the wrong record.
+stf() { awk -F"\t" -v pat="$1" -v c="$2" 'index($11,pat)==1{print $c; exit}' /tmp/_st$$.tsv; }
+if [ $rcs != 0 ] || [ -s /tmp/_st$$.out ]; then
+    echo "stmtexp: FAIL -- --stmts must be silent at RC 0, got $rcs"; cat /tmp/_st$$.out; fail=$((fail + 1))
+elif ! cmp -s /tmp/_st$$.obj /tmp/_st2$$.obj; then
+    echo "stmtexp: FAIL -- the deck moved with --stmts; the export is output only"; fail=$((fail + 1))
+elif [ "$(stf "B        DS    0F" 10)" != 0 ] || [ "$(stf "A        DS    CL1" 10)" != 1 ]; then
+    echo "stmtexp: FAIL -- DS 0F must be reserves=0 and DS CL1 reserves=1"
+    fail=$((fail + 1))
+elif [ "$(stf "FIRST " 8)" = "$(stf "SECOND " 8)" ]; then
+    echo "stmtexp: FAIL -- two calls of one macro must have DIFFERENT mcall_stmt"; fail=$((fail + 1))
+elif [ "$(stf "FIRST " 9)" != PADPAIR ] || [ "$(stf "SECOND " 9)" != PADPAIR ]; then
+    echo "stmtexp: FAIL -- a generated card must name the macro that produced it"; fail=$((fail + 1))
+elif [ "$(stf "FIRST " 1)" = "$(stf "SECOND " 1)" ]; then
+    echo "stmtexp: FAIL -- two calls must sit at DIFFERENT org lines"; fail=$((fail + 1))
+elif [ "$(stf "FIRST " 1)" = "$(stf "FIRST " 5)" ]; then
+    echo "stmtexp: FAIL -- org and stmt agree everywhere, so this fixture cannot"
+    echo "         tell them apart and proves nothing about either"
+    fail=$((fail + 1))
+else
+    echo "stmtexp: OK (reserves separates DS 0F from DS CL1; two calls of one macro"
+    echo "         are distinguished; org is the call site and differs from stmt)"
+fi
+rm -f /tmp/_st$$.tsv /tmp/_st$$.obj /tmp/_st2$$.obj /tmp/_st$$.out
+
 # TABLE; usings[] is live STATE and holds nothing by the end of an assembly, so
 # the events have to be collected as they happen and there was no way to see
 # them at all. The listing cannot answer it either -- measured: a USING shows
