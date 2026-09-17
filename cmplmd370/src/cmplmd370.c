@@ -302,6 +302,30 @@ static int hexn(const char *s, int n, long *out)
     return 1;
 }
 
+/* A run of differing bytes.  Defined here because --difin's verbatim record
+ * below uses it too; the collection rules live with clu_add further down. */
+struct clu { long off, len; int in_hole; };
+
+/* --difin AS READ, kept verbatim and per section.  --difout must carry forward
+ * every range this run did not EVALUATE, or an accumulated review is destroyed
+ * by something that never looked at it: a --csect run skips every other section,
+ * an unpaired or length-differing section is never compared, and a section named
+ * in the file that this comparison does not cover was dropped at load time.  All
+ * four reached write_difout as "no differences found" and wrote nothing (#110). */
+struct dinsect { char name[9]; struct clu *c; long n, cap; int judged; };
+static struct dinsect din[MAXSECT];
+static int ndin;
+
+static struct dinsect *din_for(const char *name)
+{
+    int i;
+    for (i = 0; i < ndin; i++) if (!strcmp(din[i].name, name)) return &din[i];
+    if (ndin >= MAXSECT) die("too many sections in --difin", NULL);
+    memset(&din[ndin], 0, sizeof din[0]);
+    strncpy(din[ndin].name, name, 8); din[ndin].name[8] = 0;
+    return &din[ndin++];
+}
+
 static void difin_load(struct side *sd, const char *path)
 {
     FILE *f = fopen(path, "r");
@@ -329,6 +353,16 @@ static void difin_load(struct side *sd, const char *path)
         if (!cur[0]) {
             fprintf(stderr, "cmplmd370: %s:%d: record before any '>' header\n", path, lineno);
             exit(2);
+        }
+        {   /* keep it whatever happens below -- see struct dinsect */
+            struct dinsect *d = din_for(cur);
+            if (d->n >= d->cap) {
+                d->cap = d->cap ? d->cap * 2 : 32;
+                d->c = realloc(d->c, (size_t)d->cap * sizeof *d->c);
+                if (!d->c) die("out of memory", NULL);
+            }
+            d->c[d->n].off = off; d->c[d->n].len = len; d->c[d->n].in_hole = 0;
+            d->n++;
         }
         s = sect_find(sd, cur);
         if (!s) continue;              /* a section this comparison does not cover */
@@ -359,7 +393,6 @@ static void hexrun(const unsigned char *p, long n)
  * omitted every range past the 64th, and a JSON consumer would have had no way
  * to know its cluster list was short.  A machine-read format that truncates
  * without saying so is the failure the caller asked for JSON to avoid. */
-struct clu { long off, len; int in_hole; };
 
 struct result {
     const char *name;
@@ -368,7 +401,20 @@ struct result {
     long diff, nrelo, nign, in_hole, in_text;
     struct clu *c;
     long nc, ccap;
+    struct clu *ic;             /* ranges --difin masked a REAL difference at */
+    long nic, iccap;
 };
+
+static void clu_push(struct clu **arr, long *n, long *cap, long off, int in_hole)
+{
+    if (*n >= *cap) {
+        *cap = *cap ? *cap * 2 : 64;
+        *arr = realloc(*arr, (size_t)*cap * sizeof **arr);
+        if (!*arr) die("out of memory", NULL);
+    }
+    (*arr)[*n].off = off; (*arr)[*n].len = 0; (*arr)[*n].in_hole = in_hole;
+    (*n)++;
+}
 
 static void clu_add(struct result *r, long off, int in_hole)
 {
@@ -385,7 +431,7 @@ static void compare(const struct sect *a, const struct sect *b, int clearrld,
                     const char *label, struct result *r)
 {
     long i;
-    int inrun = 0;
+    int inrun = 0, inign = 0;
 
     memset(r, 0, sizeof *r);
     r->name = label;
@@ -395,14 +441,20 @@ static void compare(const struct sect *a, const struct sect *b, int clearrld,
     if (a->len != b->len) { r->length_differs = 1; return; }
 
     for (i = 0; i < a->len; i++) {
-        if (clearrld && (a->relo[i] || b->relo[i])) { r->nrelo++; inrun = 0; continue; }
-        if (a->ign[i]) { r->nign++; inrun = 0; continue; }
+        if (clearrld && (a->relo[i] || b->relo[i])) { r->nrelo++; inrun = inign = 0; continue; }
         if (a->bytes[i] != b->bytes[i]) {
+            if (a->ign[i]) {        /* --difin masked a difference that IS there */
+                r->nign++; inrun = 0;
+                if (!inign) { inign = 1; clu_push(&r->ic, &r->nic, &r->iccap, i, !a->made[i]); }
+                r->ic[r->nic - 1].len++;
+                continue;
+            }
             r->diff++;
             if (a->made[i]) r->in_text++; else r->in_hole++;
             if (!inrun) { inrun = 1; clu_add(r, i, !a->made[i]); }
             r->c[r->nc - 1].len++;
-        } else inrun = 0;
+            inign = 0;
+        } else inrun = inign = 0;
     }
     r->identical = (r->diff == 0);
 }
@@ -523,18 +575,51 @@ static void report_json(const struct result *r, const struct sect *a,
     printf("%s]\n    }", r->nc ? "\n      " : "");
 }
 
+static void emit_range(FILE *f, long o, long l)
+{
+    while (l > 0) {                         /* the length field is one byte */
+        long chunk = l > 255 ? 255 : l;
+        fprintf(f, "%06lX%02lX\n", o, chunk);
+        o += chunk; l -= chunk;
+    }
+}
+
+/* --difout writes what the NEXT run must suppress, which is the differences
+ * found PLUS the ones --difin suppressed here -- that is what "a reviewed run
+ * can seed the next one" means, and writing only the new ones made the file
+ * shrink on every pass: `--difin acc --difout acc` on a converged comparison
+ * left acc EMPTY, and a partial review lost exactly the range that had been
+ * reviewed (#110).
+ *
+ * Ranges that --difin listed and that masked NOTHING here are deliberately not
+ * carried: a suppression nobody can point at a difference is one nobody will
+ * re-examine.  What this run could not JUDGE is a different thing and is carried
+ * verbatim -- see the carry-forward after the section loop.
+ *
+ * Both arrays are built in one ascending pass, so both are sorted and merging
+ * them is a walk. */
 static void write_difout(FILE *f, const struct result *r)
 {
-    long i;
-    if (!r->paired || r->length_differs || r->identical) return;
+    long i = 0, j = 0;
+    if (!r->paired || r->length_differs) return;   /* not judged: carried forward */
+    if (r->nc == 0 && r->nic == 0) return;
     fprintf(f, ">%s\n", r->name);
-    for (i = 0; i < r->nc; i++) {
-        long o = r->c[i].off, l = r->c[i].len;
-        while (l > 0) {                     /* the length field is one byte */
-            long chunk = l > 255 ? 255 : l;
-            fprintf(f, "%06lX%02lX\n", o, chunk);
-            o += chunk; l -= chunk;
-        }
+    while (i < r->nc || j < r->nic) {
+        const struct clu *p;
+        if (j >= r->nic || (i < r->nc && r->c[i].off <= r->ic[j].off)) p = &r->c[i++];
+        else p = &r->ic[j++];
+        emit_range(f, p->off, p->len);
+    }
+}
+
+/* Every --difin section this run did not evaluate, written out unchanged. */
+static void difout_carry(FILE *f)
+{
+    int i; long k;
+    for (i = 0; i < ndin; i++) {
+        if (din[i].judged || din[i].n == 0) continue;
+        fprintf(f, ">%s\n", din[i].name);
+        for (k = 0; k < din[i].n; k++) emit_range(f, din[i].c[k].off, din[i].c[k].len);
     }
 }
 
@@ -553,7 +638,10 @@ static void usage(FILE *f)
       "  --no-clearrld  compare adcons too -- only meaningful deck against deck\n"
       "  --difin FILE   ignore the ranges this file lists ('>' + CSECT name,\n"
       "                 then a 6-hex offset and a 2-hex length per record)\n"
-      "  --difout FILE  write the differences found, in that same format\n"
+      "  --difout FILE  write what the next run must suppress: the differences\n"
+      "                 found PLUS the --difin ranges that masked one here, so a\n"
+      "                 reviewed run seeds the next. A listed range that masks\n"
+      "                 nothing is dropped; what this run could not judge is kept\n"
       "  --json         machine-readable result on stdout, all clusters\n"
       "  --allow-incomplete  compare anyway when the reference's record stream\n"
       "                 could not be walked to its end (default: refuse, exit 2)\n"
@@ -674,10 +762,17 @@ int main(int argc, char **argv)
         if (!r.identical) rc = 1;
         if (json) { report_json(&r, &A.s[i], b2, firstj); firstj = 0; }
         else report_text(&r, &A.s[i], b2, verbose);
-        if (difout) write_difout(difout, &r);
-        free(r.c);
+        if (difout) {
+            struct dinsect *d = NULL; int k;
+            for (k = 0; k < ndin; k++) if (!strcmp(din[k].name, label)) { d = &din[k]; break; }
+            /* judged only when the comparison actually ran: a length difference
+             * never consults ign[], so its ranges are carried, not pruned */
+            if (d && !r.length_differs) d->judged = 1;
+            write_difout(difout, &r);
+        }
+        free(r.c); free(r.ic);
     }
-    if (difout) fclose(difout);
+    if (difout) { difout_carry(difout); fclose(difout); }
 
     {   /* One exit through here, so the JSON object has ONE shape.  The error
          * paths used to print "error" and stop, leaving out "exit" and

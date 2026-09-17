@@ -288,6 +288,74 @@ if [ -f "$FIX/dlib-102/IEFJDSNA.obj" ]; then
     else
         fail "--difout: the file it wrote does not close the comparison"
     fi
+
+    # --- #110: --difout must CARRY --difin FORWARD --------------------------
+    # "so a reviewed run can seed the next one" is the deliverable's own wording,
+    # and it did the opposite: write_difout emitted only the clusters it FOUND,
+    # and --difin's ranges are by construction not among them.  So every pass
+    # shrank the file.  Measured on AMDSAGTF before the fix:
+    #
+    #   --difout acc                       9 ranges, 82 bytes
+    #   --difin acc --difout acc           acc EMPTY, rc 0
+    #   --difin acc --difout next          next EMPTY -- so not an aliasing bug
+    #   review 1 of 8, --difout part2      7 ranges, the REVIEWED one dropped
+    #
+    # The last is the sharp one: the file loses exactly what a human just
+    # approved, and the run that does it exits 0.
+    $C --difout "$TMP/acc" "$DD/AMDSAGTF.obj" "$DD/AMDSAGTF.dlib" >/dev/null 2>&1
+    cp "$TMP/acc" "$TMP/acc.0"
+    $C --difin "$TMP/acc" --difout "$TMP/acc" "$DD/AMDSAGTF.obj" "$DD/AMDSAGTF.dlib" >/dev/null 2>&1
+    if ! cmp -s "$TMP/acc.0" "$TMP/acc"; then
+        fail "--difout does not carry --difin forward: $(wc -l < "$TMP/acc.0") ranges in, $(wc -l < "$TMP/acc") out"
+    elif ! $C --difin "$TMP/acc" "$DD/AMDSAGTF.obj" "$DD/AMDSAGTF.dlib" >/dev/null 2>&1; then
+        fail "--difout: the carried file no longer closes the comparison"
+    else
+        pass "--difin acc --difout acc is idempotent on a converged comparison"
+    fi
+
+    # A PARTIAL review must survive: suppress one of the eight, and the file that
+    # comes back must be IDENTICAL to the unreviewed run -- 7 found plus 1 masked
+    # is the same set of 8.  Asserting the set rather than a count, because the
+    # first version of this test asserted 9 and 9 was the LINE count: one header
+    # plus eight ranges.
+    printf '>AMDSAGTF\n0002A808\n' > "$TMP/part"
+    $C --difin "$TMP/part" --difout "$TMP/part2" "$DD/AMDSAGTF.obj" "$DD/AMDSAGTF.dlib" >/dev/null 2>&1
+    if ! grep -q '0002A808' "$TMP/part2" 2>/dev/null; then
+        fail "--difout dropped the range --difin had suppressed (a reviewed decision)"
+    elif ! cmp -s "$TMP/acc.0" "$TMP/part2"; then
+        fail "--difout after a partial review differs from the unreviewed run:
+$(diff "$TMP/acc.0" "$TMP/part2" | head -6)"
+    else
+        pass "--difout after a 1-of-8 review is identical to the unreviewed run"
+    fi
+
+    # What the run could not JUDGE is carried verbatim rather than pruned.
+    # --csect naming a section that is not there compares nothing at all, so
+    # before the fix --difout wrote an empty file and the whole review was gone.
+    # Seeded from acc.0, the PRISTINE copy, never from acc: on a binary without
+    # the fix the step above leaves acc empty, and empty-against-empty made this
+    # check pass for the wrong reason -- a non-test that looked like a pass.
+    $C --csect NOSUCH --difin "$TMP/acc.0" --difout "$TMP/cs" "$DD/AMDSAGTF.obj" "$DD/AMDSAGTF.dlib" >/dev/null 2>&1
+    if ! cmp -s "$TMP/acc.0" "$TMP/cs"; then
+        fail "--csect discarded the --difin ranges it never looked at"
+    else
+        pass "--difout carries forward what the run did not judge (--csect)"
+    fi
+
+    # THE CONTROL, and it is what makes this option B rather than a blind union:
+    # a listed range that masks NOTHING is not carried.  IGG0CLB3's own difout
+    # closes its comparison, so adding a bogus range to it leaves that range with
+    # nothing to suppress, and the next file must come back WITHOUT it.
+    $C --difout "$TMP/cl" "$DD/IGG0CLB3.obj" "$DD/IGG0CLB3.dlib" >/dev/null 2>&1
+    cp "$TMP/cl" "$TMP/cl.bogus"; printf 'FFFFF001\n' >> "$TMP/cl.bogus"
+    $C --difin "$TMP/cl.bogus" --difout "$TMP/cl.out" "$DD/IGG0CLB3.obj" "$DD/IGG0CLB3.dlib" >/dev/null 2>&1
+    if grep -q 'FFFFF001' "$TMP/cl.out" 2>/dev/null; then
+        fail "--difout carried a range that masked nothing (blind union, not B)"
+    elif ! cmp -s "$TMP/cl" "$TMP/cl.out"; then
+        fail "--difout: pruning the dead range also changed the live ones"
+    else
+        pass "--difout prunes a listed range that masks nothing, keeping the rest"
+    fi
 else
     echo "SKIP: 102-pair cases (no $FIX/dlib-102)"
 fi
