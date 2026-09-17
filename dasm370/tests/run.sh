@@ -1169,6 +1169,101 @@ cmp -s "$T/inf-plain.s" "$T/inf-hint.s" \
 [ $? = 16 ] && pass "--infer and --derive-hints together are refused -- two producers of one file" \
             || fail "--infer and --derive-hints together are refused"
 
+# ---- a section that is not the deck's first one (cc370#415) ---------------
+# EVERY OTHER FIXTURE HERE IS A SINGLE SECTION AT ESD ADDRESS 0, which is the one
+# address at which this defect cannot appear. A deck numbers every address it
+# files under a section in the MODULE's space -- the TXT card's address, the
+# RLD's P-position, the LD entry's address and the END card's entry point -- and
+# load_section read all four as offsets into the section.
+#
+# AND THE ROUND TRIP CANNOT SEE IT. A section read eight bytes too far comes out
+# as one `DS XLn' over zeros, and assembling that DS reproduces the same zeros:
+# the deck matches, the suite passes, and 66 bytes of AHLMCMSG are gone. That is
+# why the checks below are on the CONTENT and one of them is on the first section
+# of the same deck, which is the null control.
+#
+# On the pre-change binary (main at 85d5278) this block fails in five places at
+# once: `DS XL8 not covered by TXT' at 000000, ENT at 000008, the adcon at
+# 000010, `A(SECTB+X''14'')' instead of a label in the section, and the last six
+# bytes missing entirely.
+"$A" tests/twosect.s -o "$T/ts.obj" > "$T/ts.asm" 2>&1
+if [ $? -ge 8 ]; then fail "the two-section fixture does not assemble"; head -3 "$T/ts.asm"; fi
+"$D" --csect SECTB "$T/ts.obj" -o "$T/ts-b.s" 2>"$T/ts-b.err"
+"$D" --csect SECTA "$T/ts.obj" -o "$T/ts-a.s" 2>"$T/ts-a.err"
+[ -s "$T/ts-b.err" ]     && { fail "a section at a non-zero ESD address warns: $(cat "$T/ts-b.err")"; }     || pass "a section at a non-zero ESD address reads without a warning"
+grep -q 'not covered by TXT' "$T/ts-b.s"     && fail "SECTB's text is there: no byte of it may read as uncovered"     || pass "a non-first section's TXT lands at its own offset 0, not at its origin"
+grep -qE '^ENT +BALR +12,0 +000000' "$T/ts-b.s"     && pass "an LD entry's address is module-absolute too: ENT is at 000000"     || { fail "ENT must be at 000000"; grep -n 'BALR' "$T/ts-b.s"; }
+grep -qE "^ +DC +A\(L00000C\)" "$T/ts-b.s"     && pass "an adcon's own-section target resolves inside the section, so it is a label"     || { fail "the adcon must resolve to a label in the section"; grep -n ' DC  *A' "$T/ts-b.s"; }
+grep -qE '^ +END +ENT' "$T/ts-b.s"     && pass "the END card's entry point is module-absolute too, and lands on ENT"     || { fail "END must name ENT"; grep -n 'END' "$T/ts-b.s"; }
+grep -q "X'CCDD99999999'" "$T/ts-b.s"     && pass "the bytes past the adcon survive -- the section is read to its end"     || { fail "the tail of the section is missing"; cat "$T/ts-b.s"; }
+# THE NULL CONTROL, on the same deck: SECTA is at address 0 and must not move.
+grep -q "X'AABBCC'" "$T/ts-a.s" && ! grep -q 'not covered by TXT' "$T/ts-a.s"     && pass "the first section of the same deck is unchanged -- the null control"     || { fail "the first section moved; the fix reached where it must not"; cat "$T/ts-a.s"; }
+# THE ROUND TRIP ON SECTB, which proves the bytes and not only the spelling --
+# and it cannot be a plain comparison, for the reason the fixture exists. The
+# disassembly is one CSECT, so reassembling it puts SECTB at origin 0, and an
+# own-section adcon's assembled value is its target's MODULE address: X'14' in
+# the original, X'0C' alone. So the test is the stronger statement rather than a
+# masked one -- every byte outside the RLD must be equal, and every word inside
+# it must differ by EXACTLY the section's origin.
+"$A" "$T/ts-b.s" -o "$T/ts-b.obj" > "$T/ts-b.asm" 2>&1
+if [ $? -ge 8 ]; then
+    fail "SECTB's disassembly does not assemble"; head -3 "$T/ts-b.asm"
+elif python3 -c "
+import sys
+
+def read(path):
+    d = open(path, 'rb').read()
+    sid = org = None
+    img = bytearray(64); rlds = []
+    for o in range(0, len(d)-79, 80):
+        c = d[o:o+80]
+        if c[:4] == bytes((0x02,0xC5,0xE2,0xC4)):
+            first = int.from_bytes(c[14:16],'big'); n = int.from_bytes(c[10:12],'big')
+            for k in range(n//16):
+                e = c[16+k*16:32+k*16]
+                if e[8] in (0,4) and e[:8].decode('cp037').rstrip() == 'SECTB':
+                    sid = first + k; org = int.from_bytes(e[9:12],'big')
+    for o in range(0, len(d)-79, 80):
+        c = d[o:o+80]
+        if c[:4] == bytes((0x02,0xE3,0xE7,0xE3)) and int.from_bytes(c[14:16],'big') == sid:
+            a = int.from_bytes(c[5:8],'big') - org; n = int.from_bytes(c[10:12],'big')
+            img[a:a+n] = c[16:16+n]
+        if c[:4] == bytes((0x02,0xD9,0xD3,0xC4)):
+            n = int.from_bytes(c[10:12],'big'); b = c[16:16+n]; i = 0; r = p_ = None
+            while i + 4 <= len(b):
+                if r is None or not cont:
+                    r = int.from_bytes(b[i:i+2],'big'); p_ = int.from_bytes(b[i+2:i+4],'big'); i += 4
+                fl = b[i]; ad = int.from_bytes(b[i+1:i+4],'big'); i += 4
+                cont = fl & 1
+                ln = ((fl >> 2) & 3) + 1
+                if p_ == sid and r == sid: rlds.append((ad - org, ln))
+    return org, bytes(img[:18]), sorted(rlds)
+
+o1, t1, r1 = read('$T/ts.obj')
+o2, t2, r2 = read('$T/ts-b.obj')
+if r1 != r2:
+    print('  the RLD moved: %s against %s' % (r1, r2)); sys.exit(1)
+if not r1:
+    print('  no own-section RLD item: this test proves nothing'); sys.exit(1)
+bad = []
+mask = bytearray(b'\\x01' * 18)
+for a, ln in r1:
+    v1 = int.from_bytes(t1[a:a+ln],'big'); v2 = int.from_bytes(t2[a:a+ln],'big')
+    if v1 - v2 != o1 - o2:
+        bad.append('adcon at %d: %X against %X, difference %d, origins %d and %d'
+                   % (a, v1, v2, v1-v2, o1, o2))
+    for k in range(a, a+ln): mask[k] = 0
+for i in range(18):
+    if mask[i] and t1[i] != t2[i]: bad.append('byte %d: %02X against %02X' % (i, t1[i], t2[i]))
+if bad:
+    for m in bad: print('  ' + m)
+    sys.exit(1)
+"; then
+    pass "round trip: every byte outside the RLD is identical and every adcon differs by exactly the origin"
+else
+    fail "round trip: SECTB's bytes differ where they must not"
+fi
+
 # ---- refusals -------------------------------------------------------------
 "$D" --csect NOSUCHCS "$T/a.obj" -o /dev/null >/dev/null 2>&1
 [ $? = 2 ] && pass "an unknown --csect exits 2, not 0" || fail "an unknown --csect exits 2, not 0"

@@ -90,7 +90,15 @@ static int nld;
 
 static int  end_has_entry;                    /* the END card names one, and in OUR section */
 static long end_entry;
-static long sect_org;                         /* a bound member's section origin; 0 for a deck */
+/* THE SECTION'S ORIGIN IN THE SPACE ITS INPUT NUMBERS IN, and both inputs number
+ * in the same one: a bound member's CESD origin and a DECK's ESD SD address are
+ * each module-absolute.  This used to be documented as "0 for a deck", and it
+ * was 0 because nothing set it -- so every address a deck files under a section
+ * at a non-zero origin was read as an offset into that section (cc370#415).
+ * Measured over the 5,528-deck corpus: 503 of 6,366 SD/PC sections, in 309
+ * modules, and in all 438 of those carrying TXT the lowest TXT address is at or
+ * above the ESD address, never below it. */
+static long sect_org;
 static int  from_member;
 static int  scanning;                         /* pass one: decode, record, write nothing */
 static int  collecting;                       /* --align-diff: record statements, write nothing */
@@ -1424,12 +1432,20 @@ static void emit_adcon(long a, const struct rlditem *r)
     long v = 0;
     int i;
     for (i = 0; i < r->len; i++) v = (v << 8) | img[a + i];
-    /* In a bound member the adcon has been RELOCATED: its value is the final
-     * address and not the offset a deck carries.  A target in this section is
-     * therefore `value - origin'; an EXTERNAL one has been resolved to wherever
-     * the binder put it, and that address is not an addend -- reassembling it
-     * as one would write a number where a deck holds a relocatable zero. */
-    if (from_member) v -= sect_org;
+    /* A target IN THIS SECTION is an ADDRESS in whatever space the input numbers
+     * in, and BOTH inputs number module-absolute: a member's value has been
+     * relocated by the binder, a deck's is the assembled address.  So the
+     * section's origin comes off either way -- it was 0 for a deck only because
+     * nothing set it, which is cc370#415.
+     *
+     * AN EXTERNAL TARGET IS NOT THE SAME QUANTITY and the subtraction must not
+     * reach it.  In a deck the text holds the ADDEND against another symbol, and
+     * taking this section's origin off that is arithmetic between two different
+     * symbols; in a member it has been resolved to wherever the binder put it,
+     * and that address is not an addend -- reassembling it as one would write a
+     * number where a deck holds a relocatable zero, which is why the branch
+     * below prints V(...) for a member whatever the value. */
+    if (r->r == sect_esdid) v -= sect_org;
     if (lab[a]) label_name(a, l); else l[0] = 0;
     /* A(...) and V(...) ALIGN to a fullword; the length-modified forms do not.
      * An adcon that does not sit on a fullword boundary is ordinary -- IECVERPL
@@ -1742,6 +1758,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
             if (obj_is_section(e->type) && !sect_esdid
                 && (!want || !strcmp(e->name, want))) {
                 sect_esdid = e->id;
+                sect_org = e->addr;          /* cc370#415: a deck has one too */
                 sect_len = e->len;
                 memcpy(sect_name, e->name, 9);
             }
@@ -1764,10 +1781,16 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
         const unsigned char *card = deck + c * 80;
         struct obj_txt t;
         if (obj_txt_get(card, &t) && t.esdid == sect_esdid) {
-            if (t.addr >= 0 && t.addr + t.len <= MAXSECT_BYTES) {
-                memcpy(img + t.addr, t.data, (size_t)t.len);
-                memset(cov + t.addr, 1, (size_t)t.len);
-                if (t.addr + t.len > maxaddr) maxaddr = t.addr + t.len;
+            /* A TXT card's address is MODULE-ABSOLUTE, the same space as the
+             * section's ESD address -- so the offset into this section is the
+             * difference.  Reading it raw put every byte of a section at origin
+             * A at offset A: past the declared length, leaving the image zero
+             * and the disassembly a `DS' that round-trips (cc370#415). */
+            long off = t.addr - sect_org;
+            if (off >= 0 && off + t.len <= MAXSECT_BYTES) {
+                memcpy(img + off, t.data, (size_t)t.len);
+                memset(cov + off, 1, (size_t)t.len);
+                if (off + t.len > maxaddr) maxaddr = off + t.len;
             }
         }
     }
@@ -1784,7 +1807,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
         struct obj_end e;
         if (obj_end_get(deck + c * 80, &e) && e.has_entry && e.entry_esdid == sect_esdid) {
             end_has_entry = 1;
-            end_entry = e.entry_addr;
+            end_entry = e.entry_addr - sect_org;   /* cc370#415: module-absolute too */
         }
     }
     free(deck);
@@ -1809,7 +1832,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
  * ESD carries module-absolute ones. */
 static void derive_labels(void)
 {
-    long off = from_member ? sect_org : 0;
+    long off = sect_org;
     int i;
 
     lab[0] = 1;
@@ -1824,7 +1847,7 @@ static void derive_labels(void)
         if (rld[i].r == sect_esdid && rld[i].len == 4) {
             long v = 0; int k;
             for (k = 0; k < 4; k++) v = (v << 8) | img[rld[i].addr + k];
-            if (from_member) v -= sect_org;
+            v -= sect_org;
             if (v >= 0 && v < sect_len) lab[v] = 1;
         }
     }
@@ -2376,7 +2399,7 @@ static void infer_scan(int pass)
                     if (r && r->r == sect_esdid && r->len == 4) {
                         long v = 0; int q;
                         for (q = 0; q < 4; q++) v = (v << 8) | img[tgt + q];
-                        if (from_member) v -= sect_org;
+                        v -= sect_org;
                         if (v >= 0 && v < sect_len) cand_add(r1, a, v, 1);
                     }
                 }
@@ -2597,7 +2620,7 @@ static void reach_promote(long src)
         long v = 0; int q;
         if (!ri || ri->r != sect_esdid || ri->len != 4) break;
         for (q = 0; q < 4; q++) v = (v << 8) | img[w + q];
-        if (from_member) v -= sect_org;
+        v -= sect_org;
         if (v > 0 && v < sect_len) { rq_push(v); nr_acon++; any = 1; }
     }
     if (any) nr_acontab++;
@@ -2681,7 +2704,7 @@ static void reach_walk(void)
                         if (ri && ri->r == sect_esdid && ri->len == 4) {
                             long v = 0; int q;
                             for (q = 0; q < 4; q++) v = (v << 8) | img[src + q];
-                            if (from_member) v -= sect_org;
+                            v -= sect_org;    /* ri->r == sect_esdid above */
                             /* Counted apart, because "fired and added
                              * nothing" has TWO mechanisms a byte count cannot
                              * separate: the register may already have had a base
@@ -2945,8 +2968,10 @@ static void collect_adcon(long a, const struct rlditem *r)
     s->at = a; s->len = r->len; s->kind = AS_ADCON;
     snprintf(s->op, sizeof s->op, "DC");
     for (i = 0; i < r->len; i++) v = (v << 8) | img[a + i];
-    if (from_member) v -= sect_org;
     s->external = (r->r != sect_esdid);
+    /* Own-section only: an external adcon's text is an addend against another
+     * symbol and this section's origin is not part of it (cc370#415). */
+    if (!s->external) v -= sect_org;
     s->val = v;
     if (!s->external) snprintf(s->tgt, sizeof s->tgt, "*");
     else if (r->r > 0 && r->r < MAXESD && esdname[r->r][0])
@@ -3973,7 +3998,7 @@ int main(int argc, char **argv)
         lab[0] = 1;
         for (i = 0; i < nld; i++)
             if (ld[i].owner == sect_esdid) {
-                long at = ld[i].addr - (from_member ? sect_org : 0);
+                long at = ld[i].addr - sect_org;
                 if (at >= 0 && at < sect_len) { ld[i].addr = at; lab[at] = 1; }
             }
         infer_scan(0);
@@ -4105,9 +4130,13 @@ static int dasm_rld_cb(const struct obj_rld *r, void *ctx)
     (void)ctx;
     if (nrld >= MAXRLD) return 0;
     if (r->p != sect_esdid) return 1;
-    rld[nrld].addr = r->addr;
+    /* The P-position is module-absolute like everything else a deck files under
+     * a section, and the range guard is the member path's (cc370#415): without
+     * the subtraction an item of a section at origin A indexed img[] past the
+     * section and emit_adcon read bytes that were never loaded. */
+    rld[nrld].addr = r->addr - sect_org;
     rld[nrld].len = obj_rld_len(r->flag);
     rld[nrld].r = r->r;
-    nrld++;
+    if (rld[nrld].addr >= 0 && rld[nrld].addr < sect_len) nrld++;
     return 1;
 }
