@@ -98,6 +98,32 @@ else
     pass "empty, blank and named-but-deleted entries read as three things"
 fi
 
+# --- 6c. THE THIRD BRANCH, which NO corpus exercises ------------------------
+# A name that is unprintable but not empty renders with '?' per byte, and is
+# neither (null) nor (blank).  Both sides measured zero instances of it --
+# 0 of 36,606 entries on the DLIB trees and 0 of 11,877 on TK5's target members
+# -- so without this it ships exercised by construction only.  Built by patching
+# a REAL member rather than hand-framing a CESD record: the framing is what a
+# synthetic fixture gets wrong, and the mutation is eight bytes.
+if command -v python3 >/dev/null; then
+    cp "$LM" /tmp/_f370p.$$ 2>/dev/null
+    python3 - /tmp/_f370p.$$ <<'PYEOF'
+import sys
+d = bytearray(open(sys.argv[1], 'rb').read())
+d[8:16] = bytes([0xC2, 0xC1, 0xC4, 0x01, 0x02, 0xE7, 0x40, 0x40])   # BAD<01><02>X
+open(sys.argv[1], 'wb').write(d)
+PYEOF
+    o=$("$F" --csects /tmp/_f370p.$$ 2>/dev/null)
+    if ! printf '%s\n' "$o" | grep -qE '^    CESD +1  BAD\?\?X +SD'; then
+        fail "an unprintable-but-not-empty name does not render with '?': $(printf '%s\n' "$o" | sed -n 2p)"
+    elif printf '%s\n' "$o" | grep -qE '^    CESD +1  \((null|blank)\)'; then
+        fail "a name with unprintable bytes was collapsed into (null) or (blank)"
+    else
+        pass "a name that is unprintable but not empty is neither (null) nor (blank)"
+    fi
+    rm -f /tmp/_f370p.$$
+fi
+
 # --- 7. THE CONSUMER'S QUESTION, which is why this exists -------------------
 # "Can two distributions' copies of a CSECT be linked interchangeably?" is
 # answered by comparing the two symbol lists.  IKJEFT06 is a standalone DLIB
