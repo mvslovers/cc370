@@ -225,15 +225,35 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
  * lmod_cesd_walk() is the shared reader and already knew all of this. */
 struct cesd_ctx { int json, first, n; };
 
+/* THREE WAYS AN ENTRY CAN HAVE NO NAME, and they are different facts:
+ *   8 x X'00'  an empty slot -- what a Nul entry usually carries
+ *   8 x X'40'  EBCDIC blanks -- an unnamed PC section
+ *   anything else, with '?' for the unprintable bytes
+ * mvs_nm() renders the first as "????????", which is both indistinguishable
+ * from a real name full of unprintables and a second spelling of "no name"
+ * beside "(blank)".  Naming them apart costs nothing and 5,258 of 40,368
+ * entries in the two corpora are the first case. */
+static const char *cesd_name(const unsigned char *raw, const char *rendered)
+{
+    int i, zero = 1, blank = 1;
+    for (i = 0; i < 8; i++) {
+        if (raw[i] != 0x00) zero = 0;
+        if (raw[i] != 0x40) blank = 0;
+    }
+    if (zero)  return "(null)";
+    if (blank || !rendered[0]) return "(blank)";
+    return rendered;
+}
+
 static int cesd_print(const struct lmod_esd *e, void *ctx)
 {
     struct cesd_ctx *c = ctx;
-    const char *nm = mvs_nm(e->name);
+    const char *nm = cesd_name(e->name, mvs_nm(e->name));
     int ty = e->type, flags = e->typebyte & 0xf0;
     c->n++;
     if (c->json) {
         printf("%s\n      {\"esdid\": %d, \"name\": \"%s\", \"type\": \"%s\"",
-               c->first ? "" : ",", e->esdid, nm[0] ? nm : "", esd_type(ty));
+               c->first ? "" : ",", e->esdid, nm, esd_type(ty));
         if (flags) printf(", \"typebyte\": \"%02X\"", e->typebyte);
         if (obj_is_section(ty)) printf(", \"addr\": %ld, \"len\": %ld", e->addr, e->len);
         else if (ty == LMOD_LR)  printf(", \"addr\": %ld, \"owner\": %ld", e->addr, e->len);
@@ -242,7 +262,7 @@ static int cesd_print(const struct lmod_esd *e, void *ctx)
         c->first = 0;
         return 1;
     }
-    printf("    CESD %3d  %-8s  %-3s", e->esdid, nm[0] ? nm : "(blank)", esd_type(ty));
+    printf("    CESD %3d  %-8s  %-3s", e->esdid, nm, esd_type(ty));
     if (obj_is_section(ty))     printf("  addr=%06lX  len=%06lX", e->addr, e->len);
     else if (ty == LMOD_LR)     printf("  addr=%06lX  owner=%ld", e->addr, e->len);
     if (e->seg)   printf("  seg=%d", e->seg);

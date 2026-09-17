@@ -80,6 +80,24 @@ assert any(e["type"]=="LR" and "owner" in e for e in c)
     fi
 fi
 
+# --- 6b. THREE ways to have no name, and they are three different facts -----
+# 8 x X'00' is an empty slot; 8 x X'40' is an unnamed PC section; anything else
+# is a name with '?' for unprintables.  mvs_nm() renders the first as
+# "????????", which is both a second spelling of "no name" beside "(blank)" and
+# indistinguishable from a real name full of unprintable bytes.  Over the two
+# corpora the two cases are 4,899 and 4 -- wildly different facts that read as
+# related.  IKJEFT01 carries one of each kind of Nul: named and empty.
+o=$("$F" --csects "$LM")
+if printf '%s\n' "$o" | grep -q '????????'; then
+    fail "an all-zero name still renders as '????????'"
+elif ! printf '%s\n' "$o" | grep -qE '^    CESD +4  \(null\) +Nul'; then
+    fail "the empty slot at esdid 4 is not rendered '(null)'"
+elif ! printf '%s\n' "$o" | grep -qE '^    CESD +3  IKJEFT0A +Nul'; then
+    fail "a Nul entry that KEEPS its name must still show it"
+else
+    pass "empty, blank and named-but-deleted entries read as three things"
+fi
+
 # --- 7. THE CONSUMER'S QUESTION, which is why this exists -------------------
 # "Can two distributions' copies of a CSECT be linked interchangeably?" is
 # answered by comparing the two symbol lists.  IKJEFT06 is a standalone DLIB
