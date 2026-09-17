@@ -1611,6 +1611,67 @@ static void section_reset(void)
  * cannot skip what follows it, so that trap is gone rather than documented.
  *
  * 0 = loaded, 2 = no such section, 16 = could not read it. */
+/* A REFUSAL THAT NAMES WHAT IT DID FIND.  By the time this runs the CESD walk
+ * has already stored every LD/LR entry and every ESD name, so at the moment the
+ * tool said "no section named AHLDMPMD" it knew that AHLDMPMD is an ENTRY POINT
+ * owned by the section AHLWTO in that very member -- and said none of it.
+ *
+ * THE REFUSAL ASSERTED LESS THAN THE TOOL KNEW, and that is not a cosmetic
+ * complaint: the caller read it as "wrong member", went looking for a lookup
+ * failure, and wrote up 124 modules as an unresolved corpus.  Measured over
+ * their no-source population, of 124 refusals: 0 are a section this reader
+ * missed, 91 name an ENTRY POINT whose owning section is in the same member, 31
+ * name a deleted (null) CESD entry, and 2 are genuinely absent.  One message
+ * would have separated them at the first run.
+ *
+ * A refusal that names what it found is the difference between a caller who
+ * investigates and a caller who guesses. */
+static void no_section(const char *want, const char *src)
+{
+    int i, n = 0;
+
+    if (want) {
+        for (i = 0; i < nld; i++)
+            if (!strcmp(ld[i].name, want)) {
+                const char *ow = (ld[i].owner > 0 && ld[i].owner < MAXESD
+                                  && esdname[ld[i].owner][0]) ? esdname[ld[i].owner] : NULL;
+                fprintf(stderr, "dasm370: %s is an ENTRY POINT in %s, not a control section",
+                        want, src);
+                if (ow) fprintf(stderr, "; its section is %s -- try --csect %s", ow, ow);
+                fputc('\n', stderr);
+                return;
+            }
+        for (i = 1; i < MAXESD; i++)
+            if (esdname[i][0] && !strcmp(esdname[i], want)) {
+                /* obj_type_name() answers "??" for the load-module types it has
+                 * no object-deck counterpart for, and "??" tells a reader
+                 * nothing.  X'03' is LR and X'07' is the deleted/null entry
+                 * (docs/load-module-format.md section 7), and a name surviving
+                 * as a tombstone is a different finding from a name that is
+                 * absent -- 31 of the caller's 124 are exactly this. */
+                const char *t = obj_type_name(esdtype[i]);
+                if ((esdtype[i] & 0x0f) == 0x07)
+                    fprintf(stderr, "dasm370: %s is in %s only as a DELETED (null) CESD "
+                                    "entry, not a control section\n", want, src);
+                else if ((esdtype[i] & 0x0f) == 0x03)
+                    fprintf(stderr, "dasm370: %s is an ENTRY POINT (LR) in %s, not a control "
+                                    "section\n", want, src);
+                else
+                    fprintf(stderr, "dasm370: %s is in %s as a %s entry, not a control "
+                                    "section\n", want, src, t);
+                return;
+            }
+    }
+    fprintf(stderr, "dasm370: no section named %s in %s", want ? want : "(any)", src);
+    for (i = 1; i < MAXESD; i++)
+        if (esdname[i][0] && obj_is_section(esdtype[i])) {
+            fprintf(stderr, "%s%s", n++ ? ", " : "; it holds ", esdname[i]);
+            if (n == 6) { fputs(", ...", stderr); break; }
+        }
+    if (!n) fputs("; it holds no section at all", stderr);
+    fputc('\n', stderr);
+}
+
 static int load_section(const char *src, const char *want, int allow_incomplete)
 {
     unsigned char *deck;
@@ -1635,7 +1696,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
         int k = load_member(deck, dn, want, allow_incomplete);
         free(deck);
         if (k == 0) {
-            fprintf(stderr, "dasm370: no section named %s in %s\n", want ? want : "(any)", src);
+            no_section(want, src);
             return 2;
         }
         return k == 1 ? 0 : k;
@@ -1670,7 +1731,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
         }
     }
     if (!sect_esdid) {
-        fprintf(stderr, "dasm370: no section named %s in %s\n", want ? want : "(any)", src);
+        no_section(want, src);
         free(deck);
         return 2;
     }

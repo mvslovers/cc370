@@ -679,6 +679,47 @@ else
     pass "--infer writes NO applicable table -- every candidate is a comment"
 fi
 
+# ---- a refusal that names what it DID find --------------------------------
+# By the time dasm370 says "no section named X" the CESD walk has already stored
+# every LD/LR entry and every ESD name -- so when it refused AHLDMPMD it already
+# knew AHLDMPMD is an ENTRY POINT owned by the section AHLWTO in that very
+# member, and said none of it.
+#
+# THE REFUSAL ASSERTED LESS THAN THE TOOL KNEW, and that is not cosmetic: the
+# caller read it as "wrong member", went looking for a lookup failure, and wrote
+# 124 modules up as an unresolved corpus. Of those 124, measured: 0 are a
+# section this reader missed, 93 name an entry point whose owning section is in
+# the same member, 29 name a deleted CESD entry, 2 are genuinely absent. One
+# message separates them at the first run.
+cat > "$T/ent.s" <<'ASM'
+SECTA    CSECT
+         ENTRY EPX
+         BALR  12,0
+         USING *,12
+EPX      LR    1,1
+         BR    14
+         END
+ASM
+"$A" "$T/ent.s" -o "$T/ent.obj" >/dev/null 2>&1 || fail "the ENTRY fixture does not assemble"
+"$D" --csect EPX "$T/ent.obj" >/dev/null 2>"$T/ent.err"; rc=$?
+if [ "$rc" = 2 ] && grep -q 'ENTRY POINT' "$T/ent.err" && grep -q 'SECTA' "$T/ent.err"; then
+    pass "asking for an ENTRY POINT is refused by NAMING it and its section"
+else
+    fail "asking for an ENTRY POINT is refused by NAMING it and its section (rc $rc)"
+    cat "$T/ent.err"
+fi
+"$D" --csect NOSUCH "$T/ent.obj" >/dev/null 2>"$T/no.err"; rc=$?
+if [ "$rc" = 2 ] && grep -q 'it holds SECTA' "$T/no.err"; then
+    pass "a name that is nowhere is refused by listing the sections that ARE there"
+else
+    fail "a name that is nowhere is refused by listing the sections that ARE there (rc $rc)"
+    cat "$T/no.err"
+fi
+# The exit code does not move: a refusal is still a refusal, and a caller
+# branching on rc must see no change at all.
+[ "$rc" = 2 ] && pass "and the exit code is unchanged -- only the message says more" \
+              || fail "and the exit code is unchanged -- only the message says more"
+
 # ---- --labels sequential (#396) ------------------------------------------
 # A LIE THAT ASSEMBLES, and that is the whole issue. A label named after the
 # offset it sits at -- L0000A4 for X'A4' -- is wrong the moment a statement is
