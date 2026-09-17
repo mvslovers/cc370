@@ -651,6 +651,48 @@ second's text — exit 1, no warning. TK5 holds exactly **one** overlay member
 (`HEWLF064`, 7 segments) and it was refused for another reason, so no wrong
 verdict was ever published from it here.
 
+**2026-09-17 — #382 is closed, #404 is merged, #384 is in review, #383 is next.**
+The whole hints chain landed (#391 `--hints`, #397 as370's `--usings` export,
+#398 `--derive-hints`, #400 the report modes, #401 `--infer`, #402 its fixture),
+and #394 is closed by #399.
+
+**#403/#404, found while building #384 and fixed separately.** A load-module
+control record carrying both an ID/length list and RLD info holds the **RLD info
+first**; `dasm370` and `cmplmd370` both read the list first and so began the RLD
+parse four bytes late, taking the first item's flag and address for an R/P pair.
+`docs/load-module-format.md` §4 said off 16 unconditionally — right for every
+record with no RLD info, which is exactly the case where the two orders produce
+identical bytes, so both tools got the same bug from the same prose. The document
+is corrected. The arbiter needs no second tool: the ID/length list's lengths must
+sum to the CCW count at off 14–15, and over 13,102 members 2,489 of 2,489 records
+agree with the list *after* the RLD info and 0 with it first; `mvs38src` confirmed
+1,668 of 1,668 with its own parser. 1,339 members (10.2 %) carry such a record.
+**It only ever lost items** — 3,237 adcons recovered over 300 affected members,
+0 withdrawn — and a lost adcon is written `DC X'..'`, which reproduces its own
+bytes, so the round trip stayed green over it the whole time. Byte-safe,
+therefore invisible to the gate that would have to fail. The caller's `recovered`
+moved 1,626 → 1,628 with zero modules going the other way.
+
+**#384 `--align-diff` is open as #405.** Both objects of one CSECT disassembled
+and aligned on the statement with its **displacements masked**, so a shift is
+classified against a cumulative shift function taken from the alignment rather
+than from a list of insertions. Two rules came from constructed cases and neither
+from reasoning: a shift can **precede its own cause** (the instruction addresses
+data past the insertion point), and the function must count every statement plus
+**the section end**, because alignment padding hides inside an unmatched trailing
+data run. The null control is one the mode can fail and did — 23 of the 30 control
+CSECTs reported findings until a deck's uncovered bytes were read as zero, and 5
+more until #404. It now agrees with `cmplmd370` on 30 of 30. Over the 140
+eyecatcher modules 140 carry exactly the expected signed shift at offset 0; over
+the 832-module target population, 382,378 shifts classified as consequences and
+**109,257 constant changes**, which is the population `lenattr.py` has never
+counted because it drops every equal-length difference.
+
+**#383 reachability is next, and its acceptance must be rewritten before it is
+implemented** — the original states an outcome where a rule is what is being
+specified, and it was measured unreachable as written. `mvs38src/tools/reachgate.py`
+is its gate and is proven to fail.
+
 **2026-09-16, fourth — #381 is done and #382 is in flight.** `dasm370` exists:
 deck or bound member in, one CSECT out, the decoder inverted from as370's own
 `opc_table.h` and not copied from it. Four invariants hold it up — nothing is
