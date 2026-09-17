@@ -205,6 +205,46 @@ else
         || { fail "round trip with hints: the deck differs"; cmp "$T/a.cut" "$T/hc.cut" | head -3; }
 fi
 
+# ---- --derive-hints must not blame the source for as370's own failure -------
+# The as370 command was built with `>/dev/null 2>&1', so as370's diagnostic was
+# discarded and replaced by a sentence about the hint set -- which sends the
+# reader to their source and their macro library.  mvs38src lost ten minutes to
+# it on a source that assembles rc 0: their INSTALLED as370 predates --usings
+# (#393) and said so exactly, and only wrapping as370 in a logging script showed
+# it.  On ae68438 the second assertion below finds nothing at all.
+cat > "$T/fake-as370" <<'FAKEEOF'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in --usings=*) echo "as370: invalid option '$a' - option ignored (IFOX00 IFO258)" >&2; exit 16;; esac
+done
+exit 0
+FAKEEOF
+cat > "$T/mute-as370" <<'MUTEEOF'
+#!/bin/sh
+exit 16
+MUTEEOF
+chmod +x "$T/fake-as370" "$T/mute-as370"
+printf 'T        CSECT\n         BR    14\n         END\n' > "$T/tiny.s"
+
+"$D" --derive-hints "$T/tiny.s" --as370 "$T/fake-as370" -o /dev/null > "$T/dh.out" 2>&1
+if ! grep -q 'a hint set from a failed' "$T/dh.out"; then
+    fail "--derive-hints no longer refuses a failed assembly"; head -3 "$T/dh.out"
+elif ! grep -q "IFO258" "$T/dh.out"; then
+    fail "as370's own diagnostic is still discarded -- the message blames the source"
+    head -3 "$T/dh.out"
+else
+    pass "--derive-hints passes as370's own diagnostic through on failure"
+fi
+
+# And when as370 fails SILENTLY there is nothing to pass through, so the message
+# must say so rather than leave a bare refusal that reads the same either way.
+"$D" --derive-hints "$T/tiny.s" --as370 "$T/mute-as370" -o /dev/null > "$T/dh2.out" 2>&1
+if ! grep -q 'printed nothing' "$T/dh2.out"; then
+    fail "a silently failing as370 is not distinguished from a talking one"; head -3 "$T/dh2.out"
+else
+    pass "a silent as370 failure says so, and names the binary it ran"
+fi
+
 # ---- a [[base]] whose value falls MID-INSTRUCTION (cc370, mvs38src case) ----
 # The value used to be FORCED into a statement boundary -- every other offset in
 # the hint loader is checked and refused, the base value was the one that never

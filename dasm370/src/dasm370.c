@@ -2155,14 +2155,19 @@ static int load_usings(const char *fn, const char *want)
 static int run_as370(const char *as, const char *src, char *const *incs, int ninc,
                      const char *symf, const char *usef, const char *objf)
 {
-    char cmd[4096];
+    char cmd[4096], errf[512];
     int n = 0, i, rc;
+    {   /* as370's stderr, kept rather than discarded -- see the failure path */
+        const char *tmp = getenv("TMPDIR");
+        if (!tmp || !*tmp) tmp = "/tmp";
+        snprintf(errf, sizeof errf, "%s/dasm370-%d.aserr", tmp, (int)getpid());
+    }
     n += snprintf(cmd + n, sizeof cmd - (size_t)n, "'%s'", as);
     for (i = 0; i < ninc; i++)
         n += snprintf(cmd + n, sizeof cmd - (size_t)n, " -I '%s'", incs[i]);
     n += snprintf(cmd + n, sizeof cmd - (size_t)n,
-                  " '%s' -o '%s' --sym='%s' --usings='%s' >/dev/null 2>&1",
-                  src, objf, symf, usef);
+                  " '%s' -o '%s' --sym='%s' --usings='%s' >/dev/null 2>'%s'",
+                  src, objf, symf, usef, errf);
     if (n >= (int)sizeof cmd) {
         fprintf(stderr, "dasm370: the as370 command line is too long for this build\n");
         return 16;
@@ -2174,10 +2179,34 @@ static int run_as370(const char *as, const char *src, char *const *incs, int nin
      * deck, and a hint set derived from a failed assembly is worse than none:
      * every symbol it did resolve looks exactly like one from a clean run. */
     if (rc >= 8) {
+        /* PASS as370's OWN DIAGNOSTIC THROUGH.  This used to be `2>&1' into
+         * /dev/null, so the one line that says what is wrong was thrown away and
+         * replaced by a sentence that blames the SOURCE -- which sends the reader
+         * to their file and their macro library.  mvs38src lost ten minutes to it
+         * on a source that assembles rc 0: their INSTALLED as370 predates
+         * --usings (cc370#393) and said so exactly, `invalid option --usings ...
+         * option ignored (IFOX00 IFO258)', and only wrapping as370 in a logging
+         * script revealed it.  A five-line source with no macro at all fails
+         * identically, which is the control that isolates it in one step. */
+        FILE *ef = fopen(errf, "r");
         fprintf(stderr, "dasm370: as370 ended rc %d on %s -- a hint set from a failed "
                         "assembly cannot be told from one from a clean run\n", rc, src);
+        if (ef) {
+            char ln[512];
+            int any = 0;
+            while (fgets(ln, sizeof ln, ef)) {
+                if (!any) { fprintf(stderr, "dasm370: as370 said:\n"); any = 1; }
+                fprintf(stderr, "  %s", ln);
+            }
+            fclose(ef);
+            if (!any)
+                fprintf(stderr, "dasm370: as370 printed nothing -- check that '%s' is the\n"
+                                "         as370 you think it is, and that it supports --usings\n", as);
+        }
+        remove(errf);
         return 16;
     }
+    remove(errf);
     return 0;
 }
 
