@@ -53,6 +53,19 @@ statement, so that a displacement which moved because something before it change
 length is reported as a B<consequence> rather than as a change of its own. Writes
 a report, not a disassembly; reads no hint file. See L</ALIGN-DIFF> below.
 
+=item B<--reach-report>[=I<SET>]
+
+The #383 reachability traversal's coverage, as data and without a disassembly.
+Traverses from the B<code roots> --- the C<SD> (the section origin), the C<LD>/C<LR>
+entries this section owns, the C<END> entry B<on a deck only>, and a table of
+address constants a branched-through register was loaded from --- and reports what
+it reached. I<SET> is C<none|r15|balr|rld|lr|both|bothlr|acon|all> (default
+C<all>) and selects which base assumptions are allowed, so each one's
+contribution can be measured on its own. See L</REACHABILITY> below.
+
+B<The applied form is not implemented, and that is a measurement.> C<--reach>
+exits 16 and says so.
+
 =item B<--derive-hints> I<SRC>
 
 Assemble I<SRC> with L<as370(1)> and write out what it found, as a hint file: the
@@ -441,6 +454,54 @@ itself; a member whose hole is B<not> zero still differs and still says so.
 An alignment needing more than 20,000 insertions and deletions is B<abandoned>
 rather than approximated, and the report says so. An alignment that had to guess
 would produce findings indistinguishable from the real ones.
+
+=head1 REACHABILITY
+
+=head2 What a code root is, and what it is not
+
+B<An RLD target is a LABEL root and never a code root.> An address constant says
+where something points, which is data at least as often as code; treating a
+C<DC A(BUFFER)> table as code reintroduces exactly what reachability exists to
+remove. The same word becomes a B<code> root when a register loaded from it is
+B<branched through> --- and the discriminator is the C<BR>, not the adcon. That is
+why a base derived from an address constant reaches nothing on its own: I<it has
+the targets and lacks the gate.>
+
+The index is never resolved and does not need to be. What is recognised is that
+the load's target region is relocated; every relocated word of that table is then
+a root. The run is taken from the load's target B<or from the word immediately
+after it>, because index 0 is a null slot holding zero, and a zero address
+carries no relocation --- a rule anchored strictly on the target promotes nothing
+on the modules it was derived from.
+
+B<The C<END> entry is a deck root only.> Two C<ld370> links differing in nothing
+but the entry point produce byte-identical members; the entry lives in the PDS
+directory, which an extracted member does not carry.
+
+=head2 Bases are discovered by the walk
+
+Only C<R15> is seeded --- it holds the entry point by MVS linkage convention, which
+is what a branch over an eyecatcher at offset 0 relies on. Everything else is
+found by walking: a C<BALR Rn,0> the traversal arrives at, and a base copied by
+C<LR>. B<A pre-scan reads a section's data as well as its code> and adopts
+halfwords that decode as prologues but are constants. I<The difference between a
+prologue base and a phantom is not a property of the bytes --- it is whether the
+traversal arrives at them.>
+
+=head2 Why the applied form is not shipped
+
+Measured over 30 control sections whose real source says which bytes are code:
+the traversal reaches an aggregate of B<82.2 %> and a B<median of 97.7 %>, and
+the distribution is bimodal --- 25 of the 30 essentially complete, five near zero.
+Applied, it darkens B<12,558 bytes the source calls code> against B<2,300 bytes
+of genuine table> it correctly silences, and recovers 130 bytes of code that
+previously did not decode. The best threshold on its own coverage is
+break-even.
+
+B<Byte-safe is not harmless.> A module whose real code becomes C<DC> reassembles
+byte-identically, so the round trip and every gate built on it report success.
+The limit is the B<base map> and not the root set: one module has four roots and
+reaches 1.1 %. cc370#383 carries the ledger.
 
 =head1 WHAT IT DOES NOT
 

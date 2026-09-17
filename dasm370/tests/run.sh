@@ -679,6 +679,86 @@ else
     pass "--infer writes NO applicable table -- every candidate is a comment"
 fi
 
+# ---- --reach-report (#383) -----------------------------------------------
+# The traversal's coverage as data. THE APPLIED FORM IS NOT SHIPPED and that is
+# a measurement, not caution: over the caller's 30 control CSECTs it darkens
+# 12,558 bytes their source listing calls CODE against 2,300 bytes of genuine
+# table it correctly silences, and the best threshold on its own coverage is
+# break-even. Byte-safe is not harmless -- a module whose real code becomes DC
+# round-trips identically and every gate reports success. cc370#383 has it.
+#
+# tests/reach.s is a known-answer module in a PL/S shape: a branch over an
+# eyecatcher through R15, a prologue BALR, that base copied by LR, and a jump
+# table reached by loading a register from relocated words and branching
+# through it. It carries BOTH cases the deliverable separates -- TAB, promoted
+# because a register loaded from it IS branched through, and DTAB, an address
+# constant pointing at the eyecatcher that is loaded and never branched
+# through, which must stay a LABEL root.
+#
+# SCORED AGAINST MUTANTS, because every rule here is a rule:
+#
+#   the promotion anchored strictly on the load's target        2 fail
+#       ... TABZ is index 0, holds zero and carries no relocation, so the
+#       run must be taken from the target OR the word after it. Measured on
+#       BLSCAMER first, whose own table begins the same way.
+#   the promotion at the LOAD instead of at the BR (no gate)    1 fail
+#       ... DTAB is then promoted, `acon' goes 2 -> 5 over 3 tables, and the
+#       first reached run swallows the EYECATCHER -- which is exactly the
+#       `DC A(BUFFER)' case #383's first bullet forbids, in one line of
+#       output. The discriminator is the BR and not the adcon.
+#   bases pre-scanned instead of discovered by the walk       (corpus only)
+#       ... invisible here; on the corpus it adopts six halfwords in
+#       BLSCAMER's DATA that decode as prologues, and cost IECVERPL its
+#       real LR base.
+"$A" tests/reach.s -o "$T/reach.obj" >/dev/null 2>&1 || fail "reach.s does not assemble"
+rfield() { "$D" --reach-report="$2" "$T/reach.obj" 2>/dev/null | head -1 | tr ' ' '\n' | grep "^$1=" | cut -d= -f2; }
+rruns() { "$D" --reach-report="$2" "$T/reach.obj" 2>/dev/null | grep '^REACHRUN'; }
+
+# The SD root alone, with no base at all: the section origin and nothing more.
+# `B START(0,15)' cannot be followed without R15, so the walk dies at byte 4.
+[ "$(rfield reached none)" = 4 ] \
+    && pass "with no base the traversal reaches the SD root and stops at the first branch" \
+    || fail "with no base the traversal reaches the SD root and stops at the first branch"
+
+# THE EYECATCHER IS THE WHOLE POINT. Without reachability it decodes as MVCK
+# and STH -- text that re-encodes perfectly and that no opcode gate can refuse.
+if rruns all | awk '{o=strtonum("0x"$2); if (o < 0x12 && o+$3 > 0x04) f=1} END{exit !f}'; then
+    fail "the eyecatcher stays dark -- nothing branches into it"
+else
+    pass "the eyecatcher stays dark -- nothing branches into it"
+fi
+
+# Dead code after an unconditional branch, which nothing enters.
+if rruns all | awk '{o=strtonum("0x"$2); if (o < 0x32 && o+$3 > 0x28) f=1} END{exit !f}'; then
+    fail "code after an unconditional branch that nothing enters stays dark"
+else
+    pass "code after an unconditional branch that nothing enters stays dark"
+fi
+
+# The promotion, and the two halves of it the deliverable separates.
+if [ "$(rfield acon all)" = 2 ] && [ "$(rfield acontab all)" = 1 ]; then
+    pass "a register loaded from a relocated table and BRANCHED THROUGH promotes it"
+else
+    fail "a register loaded from a relocated table and BRANCHED THROUGH promotes it"
+    "$D" --reach-report=all "$T/reach.obj" | head -1
+fi
+[ "$(rfield reached bothlr)" -lt "$(rfield reached all)" ] \
+    && pass "and the promotion is what reaches the jump table's targets" \
+    || fail "and the promotion is what reaches the jump table's targets"
+
+# THE OTHER HALF, and it is the first bullet: DTAB points at the eyecatcher and
+# is loaded, and no register loaded from it is branched through. The eyecatcher
+# assertion above is what fails if that gate is removed -- an RLD target is a
+# LABEL root, and the discriminator is the BR and not the adcon.
+[ "$(rfield rldbase all)" -ge 1 ] \
+    && pass "an adcon loaded but never branched through sets a base and promotes NOTHING" \
+    || fail "an adcon loaded but never branched through sets a base and promotes NOTHING"
+
+# The applied form is refused by name rather than silently absent.
+"$D" --reach "$T/reach.obj" >/dev/null 2>&1
+[ $? = 16 ] && pass "--reach (applied) is refused, and says what the measurement was" \
+            || fail "--reach (applied) is refused, and says what the measurement was"
+
 # ---- --align-diff (#384) -------------------------------------------------
 # Both sides disassembled and aligned statement by statement, so a displacement
 # that moved because something before it changed length is reported as a

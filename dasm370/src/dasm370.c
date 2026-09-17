@@ -2358,6 +2358,312 @@ static int infer_emit(FILE *o, const char *src)
  * boundary the file asked for; a hole is a hole; the RLD is ground truth; a fill
  * was proved uniform; a [[data]] run was declared not to be code; and only then
  * is a decode attempted. */
+/* ----------------------------------------------------------- reachability -- */
+
+/* #383, MEASUREMENT FIRST.  The rule's own coverage decides its shape, so this
+ * runs before the re-specification is final rather than after it.
+ *
+ * WHAT A CODE ROOT IS, and the issue is explicit where a day of design was not:
+ * "RLD targets are LABEL roots, not code roots -- an RLD entry says where an
+ * address constant points, which is data at least as often as code; treating a
+ * DC A(BUFFER) table as code reintroduces exactly what reachability exists to
+ * remove."  So the roots here are the SD (the section origin), the LD/LR entries
+ * the section OWNS, and the END entry ON A DECK ONLY -- a member does not carry
+ * an entry point at all, which two ld370 links differing in nothing else proved
+ * by coming out byte-identical (2026-06-22).  The fourth kind, an adcon target
+ * whose register is branched through, is a TRAVERSAL DISCOVERY over the whole
+ * module and is not in this cut; it is reported as absent rather than silently
+ * omitted.
+ *
+ * WHY SD IS NOT NEGOTIABLE: without it 11 of the 30 control CSECTs -- real code
+ * with real source -- come out entirely DC, byte-safe and invisible to every
+ * instrument either session has.  A CSECT entered at its origin by V(name) from
+ * another load module is the ordinary MVS shape, and no test applied inside the
+ * member can see that call.
+ *
+ * WHAT THE TRAVERSAL CAN FOLLOW WITHOUT A BASE is the whole question.  Fall-
+ * through, yes.  `BC D(X,B)' needs a resolved base, which is #382's problem
+ * entire.  Two assumptions are therefore SWITCHES and not defaults, so the
+ * measurement can say what each one buys:
+ *
+ *   r15   R15 holds the entry point on entry, so it is the section origin.
+ *         MVS linkage convention, and what the branch over a PL/S eyecatcher
+ *         at offset 0 relies on -- without it the traversal dies at byte 0 of
+ *         most modules.  Wrong the moment R15 is reloaded, which is not tracked.
+ *   balr  a prologue BALR Rn,0 sets Rn = offset + 2, assumed live for the whole
+ *         section.  That is --infer's `prologue' evidence and carries its limit:
+ *         the IDIOM is a run-time fact and USING is not in the object at all.
+ *
+ * Both can mark data as reached where they are wrong, which is the D -> I
+ * direction; having neither marks code dark, which is I -> D and the one the
+ * gate calls discriminating. */
+
+#define RCH_R15  1
+#define RCH_BALR 2
+#define RCH_RLD  4
+#define RCH_LR   8
+#define RCH_ACON 16
+
+static unsigned char rch[MAXSECT_BYTES];      /* 1 = the traversal reached this byte */
+static unsigned char rseen[MAXSECT_BYTES];    /* 1 = already walked from this offset */
+static long rq[MAXSECT_BYTES / 2];
+static long nrq;
+static long rbase[16];                        /* a base register's section offset, or -1 */
+static long rload[16];                        /* where a register was last LOADED from, or -1 */
+static int  reach_mode = -1;                  /* -1 = off, else RCH_* bits */
+static int  reach_only;                       /* the measurement report, no disassembly */
+static int  nr_sd, nr_ld, nr_end;
+/* How often the RLD base rule actually SET a register.  A zero in the reach
+ * figures is otherwise consistent with both `it fired and changed nothing'
+ * and `it never fired', and those are not the same measurement. */
+static int  nr_rldbase, nr_rldnew, nr_lrbase, nr_balrbase;
+static int  nr_acon, nr_acontab;              /* promoted code roots, and tables promoted */
+
+static void rq_push(long a)
+{
+    if (a < 0 || a >= sect_len || (a % 2)) return;
+    if (rseen[a]) return;
+    if (nrq >= (long)(sizeof rq / sizeof rq[0])) return;
+    rq[nrq++] = a;
+}
+
+/* The same decode decision walk_section makes, and deliberately the same: a
+ * traversal that accepts bytes the emitter would refuse would report coverage
+ * the disassembly does not have. */
+static const struct opc *reach_decode(long a, int *len)
+{
+    const struct opc *o;
+    int mask, ismask = 0;
+    char opnd[OPNDBUF];
+    if (a < 0 || a + 1 >= sect_len || (a % 2) || !cov[a]) return NULL;
+    mask = (img[a + 1] >> 4) & 0xf;
+    o = find_op(img[a], img[a + 1], mask, &ismask);
+    if (!o) return NULL;
+    *len = ins_len_of(o->fmt);
+    if (a + *len > sect_len || rld_overlaps(a, *len)) return NULL;
+    if (!reencode_ok(o, img + a, *len)) return NULL;
+    if (!operands(o, img + a, a, opnd, sizeof opnd)) return NULL;
+    return o;
+}
+
+/* THE PROMOTION RULE -- #383's fourth bullet, and it is the COMPLEMENT of its
+ * first rather than a refinement of it.  An RLD target is a LABEL root on its
+ * own, because an address constant points at data at least as often as code.
+ * The same word becomes a CODE root when a register loaded from it is BRANCHED
+ * THROUGH: the discriminator is the BR, not the adcon.  That is also why an
+ * `rld' base pass fires and adds nothing -- it has the targets and lacks the
+ * gate, and a base is not a gate.
+ *
+ * THE INDEX IS NEVER RESOLVED and does not need to be.  BLSCAMER's
+ * `SLA 9,2' / `L 9,1744(9,12)' / `BR 9' selects one entry of a table this pass
+ * cannot know; what it recognises is that the load's target region is relocated,
+ * and then EVERY relocated word of that table is a code root.
+ *
+ * WHAT DELIMITS THE TABLE is the whole risk, because too wide a rule promotes
+ * the `DC A(BUFFER)' case the first bullet forbids.  The run is taken from the
+ * load's target OR from the word immediately after it, and the one word of slack
+ * is measured rather than chosen: BLSCAMER's load targets 000006EC, which is the
+ * table's INDEX-0 SLOT, holds zero, and therefore carries no relocation at all --
+ * a zero address needs none to stay zero.  A rule anchored strictly on the
+ * target promotes nothing on the very module it was derived from. */
+static void reach_promote(long src)
+{
+    long w;
+    int any = 0;
+    if (src < 0 || src >= sect_len) return;
+    if (!(rld_at(src) && rld_at(src)->r == sect_esdid && rld_at(src)->len == 4)) src += 4;
+    for (w = src; w + 4 <= sect_len; w += 4) {
+        const struct rlditem *ri = rld_at(w);
+        long v = 0; int q;
+        if (!ri || ri->r != sect_esdid || ri->len != 4) break;
+        for (q = 0; q < 4; q++) v = (v << 8) | img[w + q];
+        if (from_member) v -= sect_org;
+        if (v > 0 && v < sect_len) { rq_push(v); nr_acon++; any = 1; }
+    }
+    if (any) nr_acontab++;
+}
+
+static void reach_walk(void)
+{
+    while (nrq > 0) {
+        long a = rq[--nrq];
+        int going = 1;
+        while (going && a >= 0 && a < sect_len) {
+            const struct opc *o;
+            int len = 0, k;
+            if (rseen[a]) break;
+            rseen[a] = 1;
+            if ((o = reach_decode(a, &len)) == NULL) break;
+            for (k = 0; k < len; k++) rch[a + k] = 1;
+            if (o->op == 0x47) {                       /* BC and its extended mnemonics */
+                int m = (img[a + 1] >> 4) & 0xf;
+                int x = img[a + 1] & 0xf, b = (img[a + 2] >> 4) & 0xf;
+                int d = ((img[a + 2] & 0xf) << 8) | img[a + 3];
+                if (x == 0 && b > 0 && rbase[b] >= 0) rq_push(rbase[b] + d);
+                if (m == 15) going = 0;                /* B: no fall-through */
+                else a += len;
+            } else if (o->op == 0x07) {                /* BCR: the target is a register */
+                int m = (img[a + 1] >> 4) & 0xf, r2 = img[a + 1] & 0xf;
+                if ((reach_mode & RCH_ACON) && rload[r2] >= 0) reach_promote(rload[r2]);
+                if (m == 15) going = 0;                /* BR: unconditional, target unknown */
+                else a += len;
+            } else if (o->op == 0x45 || o->op == 0x4D) {  /* BAL, BAS: call, then return */
+                int x = img[a + 1] & 0xf, b = (img[a + 2] >> 4) & 0xf;
+                int d = ((img[a + 2] & 0xf) << 8) | img[a + 3];
+                if (x == 0 && b > 0 && rbase[b] >= 0) rq_push(rbase[b] + d);
+                a += len;
+            } else if ((reach_mode & RCH_BALR) && o->op == 0x05
+                       && (img[a + 1] & 0xf) == 0) {
+                /* BALR Rn,0 -- the prologue idiom, and here only where the walk
+                 * actually arrived at it.  It OVERRIDES an existing base for
+                 * that register, because it is the later fact about it:
+                 * IGG08113 opens `BALR 15,0' / `B 32(0,15)', so R15 is 2 and the
+                 * target is 000022, which is where the witness says the code
+                 * starts.  Left at the entry-time R15 = 0 the target came out
+                 * 000020 and the module reached 6 of 3,032 bytes. */
+                int rn = (img[a + 1] >> 4) & 0xf;
+                if (rn) { rbase[rn] = a + 2; nr_balrbase++; }
+                a += len;
+            } else if ((reach_mode & RCH_LR) && o->op == 0x18) {
+                /* LR Rx,Ry COPIES A BASE, and three of the nine modules that
+                 * reached almost nothing need exactly this and nothing else.
+                 * IGCFR10D, IKJEGSTA and IECVERPL open `LR Rn,15' and carry NO
+                 * `BALR Rn,0' anywhere in the section -- not a lost base, but a
+                 * module that never needed one, because R15 holds the entry
+                 * address by MVS linkage convention and the code copies it.
+                 * Invisible to a prologue scanner by construction, and exact
+                 * rather than heuristic: one instruction, one register. */
+                int r1 = (img[a + 1] >> 4) & 0xf, r2 = img[a + 1] & 0xf;
+                if (r1 && rbase[r2] >= 0) { rbase[r1] = rbase[r2]; nr_lrbase++; }
+                a += len;
+            } else {
+                /* A REGISTER LOADED FROM AN ADDRESS CONSTANT the RLD resolves
+                 * into this section is a base with ground truth -- it is
+                 * --infer's `rld' evidence kind, the one a later reader can
+                 * re-judge against the object.  Discovered here during the walk
+                 * rather than pre-scanned, because it needs a resolved base of
+                 * its own to find the adcon at all. */
+                if (o->op == 0x58) {                             /* L R1,D2(X2,B2) */
+                    int r1 = (img[a + 1] >> 4) & 0xf, x = img[a + 1] & 0xf;
+                    int b = (img[a + 2] >> 4) & 0xf;
+                    int d = ((img[a + 2] & 0xf) << 8) | img[a + 3];
+                    /* Remembered whatever the index says, because the TABLE's
+                     * origin is base+displacement and the index only chooses
+                     * within it.  Cleared nowhere else, which is the honest
+                     * limit: a register written by something other than L keeps
+                     * a stale load address until the next L overwrites it. */
+                    if (r1) rload[r1] = (b > 0 && rbase[b] >= 0) ? rbase[b] + d : -1;
+                    if (!(reach_mode & RCH_RLD)) { a += len; continue; }
+                    if (r1 && x == 0 && b > 0 && rbase[b] >= 0) {
+                        long src = rbase[b] + d;
+                        int had = rbase[r1] >= 0;
+                        const struct rlditem *ri = rld_at(src);
+                        if (ri && ri->r == sect_esdid && ri->len == 4) {
+                            long v = 0; int q;
+                            for (q = 0; q < 4; q++) v = (v << 8) | img[src + q];
+                            if (from_member) v -= sect_org;
+                            /* Counted apart, because "fired and added
+                             * nothing" has TWO mechanisms a byte count cannot
+                             * separate: the register may already have had a base
+                             * -- redundancy, which need not hold where the walk
+                             * reaches less, as it will on the 772 -- or the
+                             * target may be data, which is the deliverable's own
+                             * reasoning and does transfer. */
+                            if (v >= 0 && v < sect_len) {
+                                rbase[r1] = v; nr_rldbase++;
+                                if (!had) nr_rldnew++;
+                            }
+                        }
+                    }
+                }
+                a += len;                              /* everything else falls through */
+            }
+        }
+    }
+}
+
+/* Reported per module, and the coverage line is the point: with SD a root every
+ * section HAS one, so "has a root" stops discriminating and only `dark' carries
+ * meaning.  A pass that found one root and stopped otherwise reads exactly like
+ * a module that is mostly data. */
+static long reach_reached, reach_runs;
+
+static void reach_compute(void)
+{
+    long i;
+    int r;
+
+    memset(rch, 0, (size_t)sect_len);
+    memset(rseen, 0, (size_t)sect_len);
+    nrq = 0;
+    for (r = 0; r < 16; r++) rbase[r] = -1;
+    /* R15 is the only base SEEDED.  Every other base is discovered by the walk,
+     * and that is not a refinement -- a pre-scan for `BALR Rn,0' reads the whole
+     * section including its data, and IECVERPL carries X'05A0' at 000244 inside
+     * a table.  Pre-scanned, that phantom claimed R10, and the REAL `LR 10,15'
+     * at offset 0 was then refused because the register already had a base: the
+     * module reached 232 of 1,064 bytes for a reason that is not in the module.
+     * It is --infer's measured phantom-prologue limit arriving in the traversal,
+     * and the traversal has an answer --infer does not: a BALR that is never
+     * REACHED never sets anything.  Evidence that had to be walked to is
+     * evidence about code.
+     *
+     * THE CASE THAT PROVOKED THIS WAS NOT A PHANTOM, and the peer corrected it
+     * from the listing: IECVERPL's X'05A0' at 000244 is a REAL `BALR R10,0' at
+     * a SECOND ENTRY POINT -- an ESTAE exit establishing its own base for the
+     * register the front end loads with `LR 10,15'.  So the defect was a
+     * pre-scan adopting a base belonging to a DIFFERENT ENTRY PATH and applying
+     * it from offset 0: a per-path base case, not a phantom.  The rule stands
+     * and its evidence changed.  BLSCAMER carries six halfwords in bytes the
+     * witness calls DATA that decode as prologues -- X'0590' at 052A, 0536 and
+     * 0542, X'05D0' at 0552 and 0586, X'05E0' at 0566 -- and those are what a
+     * pre-scan adopts and a walk never reaches. */
+    if (reach_mode & RCH_R15) rbase[15] = 0;
+
+    nr_sd = nr_ld = nr_end = nr_rldbase = nr_rldnew = nr_lrbase = nr_balrbase = 0;
+    nr_acon = nr_acontab = 0;
+    for (r = 0; r < 16; r++) rload[r] = -1;
+    rq_push(0); nr_sd = 1;                             /* SD: the section origin */
+    for (i = 0; i < nld; i++)
+        if (ld[i].owner == sect_esdid && ld[i].addr >= 0 && ld[i].addr < sect_len) {
+            rq_push(ld[i].addr); nr_ld++;
+        }
+    if (!from_member && end_has_entry && end_entry >= 0 && end_entry < sect_len) {
+        rq_push(end_entry); nr_end = 1;
+    }
+
+    reach_walk();
+
+    reach_reached = reach_runs = 0;
+    for (i = 0; i < sect_len; i++) {
+        if (!rch[i]) continue;
+        reach_reached++;
+        if (i == 0 || !rch[i - 1]) reach_runs++;
+    }
+}
+
+static int reach_report(FILE *o)
+{
+    long i;
+
+    reach_compute();
+    fprintf(o, "REACH %s len=%ld roots=%d sd=%d ld=%d end=%d "
+               "reached=%ld dark=%ld runs=%ld acon=%d acontab=%d balrbase=%d rldbase=%d "
+               "rldnew=%d lrbase=%d base=%s%s\n",
+            sect_name, sect_len, nr_sd + nr_ld + nr_end, nr_sd, nr_ld, nr_end,
+            reach_reached, sect_len - reach_reached, reach_runs, nr_acon, nr_acontab,
+            nr_balrbase, nr_rldbase, nr_rldnew, nr_lrbase,
+            (reach_mode & RCH_R15) ? "r15" : "-",
+            (reach_mode & RCH_BALR) ? "+balr" : "");
+    for (i = 0; i < sect_len; i++)
+        if (rch[i] && (i == 0 || !rch[i - 1])) {
+            long j = i;
+            while (j < sect_len && rch[j]) j++;
+            fprintf(o, "REACHRUN %06lX %ld\n", (unsigned long)i, j - i);
+        }
+    return 0;
+}
+
 /* ------------------------------------------------------------ align-diff -- */
 
 /* #384.  Two objects of the same CSECT at different maintenance levels, BOTH
@@ -3069,6 +3375,22 @@ static void usage(FILE *o)
 "                     lifetimes the assembly gave them.  Takes -I, and records\n"
 "                     the list in the file -- a hint set derived against the\n"
 "                     wrong macro library is a wrong one that looks right\n"
+"  --reach[=SET]      #383: traverse from the CODE roots (the SD, the LD/LR\n"
+"                     entries this section owns, the END entry on a deck, and a\n"
+"                     table of address constants a branched-through register was\n"
+"                     loaded from) and emit what nothing reaches as DC.  A\n"
+"                     REACHABILITY comment card reports the coverage, which is\n"
+"                     the point: unreached CODE also becomes DC, and that is\n"
+"                     byte-safe and so invisible to a round trip.  SET is\n"
+"                     none|r15|balr|rld|lr|both|bothlr|acon|all (default all)\n"
+"  --reach-report[=SET] the traversal's coverage as data, without a disassembly\n"
+"  --reach-OLD[=SET]  #383 measurement: traverse from the CODE roots (the SD,\n"
+"                     the LD/LR entries this section owns, and the END entry on\n"
+"                     a deck) and report what the traversal reaches.  SET is\n"
+"                     none|r15|balr|both (default both) and says which base\n"
+"                     assumptions are allowed: r15 = R15 holds the entry point,\n"
+"                     balr = a prologue BALR Rn,0 is live for the section.  RLD\n"
+"                     targets are LABEL roots and are never code roots here\n"
 "  --infer            candidates from the code itself, for a section with no\n"
 "                     source: base registers with their evidence kind\n"
 "                     (prologue/rld/pattern).  Every candidate is a COMMENT and\n"
@@ -3134,6 +3456,38 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];
         else if (!strcmp(argv[ai], "--derive-hints") && ai + 1 < argc) derive_src = argv[++ai];
         else if (!strcmp(argv[ai], "--infer")) infer = 1;
+        else if (!strncmp(argv[ai], "--reach-report", 14) || !strncmp(argv[ai], "--reach", 7)) {
+            const char *v;
+            if (!strncmp(argv[ai], "--reach-report", 14)) { reach_only = 1; v = argv[ai] + 14; }
+            else {
+                /* THE APPLIED FORM IS HELD BACK, and the measurement is why.
+                 * Over the 30 control CSECTs it darkens 12,558 bytes the source
+                 * listing calls CODE against 2,300 bytes of genuine table it
+                 * correctly silences, and the best threshold on its own coverage
+                 * is break-even.  Byte-safe is not harmless: a module whose real
+                 * code becomes DC round-trips identically and every gate reports
+                 * success.  cc370#383 carries the ledger. */
+                fprintf(stderr, "dasm370: --reach is not implemented; --reach-report measures it.\n"
+                                "  Applied, it darkens more real code than it silences data --\n"
+                                "  12,558 bytes against 2,300 over the 30 control CSECTs.\n"
+                                "  cc370#383 has the measurement.\n");
+                return 16;
+            }
+            if (!*v) reach_mode = RCH_R15 | RCH_BALR | RCH_RLD | RCH_LR | RCH_ACON;
+            else if (*v == '=') {
+                v++;
+                if (!strcmp(v, "none")) reach_mode = 0;
+                else if (!strcmp(v, "r15")) reach_mode = RCH_R15;
+                else if (!strcmp(v, "balr")) reach_mode = RCH_BALR;
+                else if (!strcmp(v, "both")) reach_mode = RCH_R15 | RCH_BALR;
+                else if (!strcmp(v, "rld")) reach_mode = RCH_RLD;
+                else if (!strcmp(v, "lr")) reach_mode = RCH_LR;
+                else if (!strcmp(v, "bothlr")) reach_mode = RCH_R15 | RCH_BALR | RCH_LR;
+                else if (!strcmp(v, "acon")) reach_mode = RCH_R15 | RCH_BALR | RCH_LR | RCH_ACON;
+                else if (!strcmp(v, "all")) reach_mode = RCH_R15 | RCH_BALR | RCH_RLD | RCH_LR | RCH_ACON;
+                else { fprintf(stderr, "dasm370: --reach=%s is not none|r15|balr|rld|lr|both|bothlr|acon|all\n", v); return 16; }
+            } else { fprintf(stderr, "dasm370: invalid option '%s'\n", argv[ai]); return 16; }
+        }
         else if (!strcmp(argv[ai], "--align-diff")) {
             if (ai + 2 >= argc) {
                 fprintf(stderr, "dasm370: --align-diff takes two objects, a reference and a candidate\n");
@@ -3292,6 +3646,20 @@ int main(int argc, char **argv)
                          sect_name, sect_len, 1);
         if (o != stdout && fclose(o)) { perror(outfn); rc = 16; }
         remove(tsym); remove(tuse); remove(tobj);
+        return rc;
+    }
+
+    /* #383 measurement mode.  AFTER the load and the labels, like every other
+     * mode that reads a module -- the bound-member path used to reach the
+     * emitter by a goto and anything before it was unreachable from a member,
+     * which is the population this mode exists to measure. */
+    if (reach_only) {
+        FILE *o;
+        derive_labels();
+        o = outfn ? fopen(outfn, "w") : stdout;
+        if (!o) { perror(outfn); return 16; }
+        rc = reach_report(o);
+        if (o != stdout && fclose(o)) { perror(outfn); rc = 16; }
         return rc;
     }
 
