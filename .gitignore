@@ -1,13 +1,14 @@
 .DS_Store
 
 # host toolchain build output (Makefile)
-as370/as370
-ld370/ld370
-ar370/ar370
-file370/file370
-xmit370/xmit370
-cmplmd370/cmplmd370
-dasm370/dasm370
+# Tool binaries. DERIVED, not listed: every tool is <name>370/<name>370, and a
+# list of remembered names forgets the next tool -- idrdump370's binary was
+# committed for exactly that reason (cc370#429), and a `make` in a freshly
+# extracted tree then answered "up to date" and built nothing, so a gate arm
+# measured the committed binary instead of the source.
+# Control before adopting this: `git ls-files | grep -E '^[^/]*370/[^/]*370$'`
+# matched only the binary, so the pattern ignores no tracked source.
+*370/*370
 /build/
 
 # stale in-tree build artifacts — the real GCC build is out-of-tree in /build/
