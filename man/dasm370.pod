@@ -61,7 +61,10 @@ entries this section owns, the C<END> entry B<on a deck only>, and a table of
 address constants a branched-through register was loaded from --- and reports what
 it reached. I<SET> is C<none|r15|balr|rld|lr|both|bothlr|acon|all> (default
 C<all>) and selects which base assumptions are allowed, so each one's
-contribution can be measured on its own. See L</REACHABILITY> below.
+contribution can be measured on its own --- and measured they are worth about
+B<5 % and 7 % alone against 77 % together>, five times their sum, because C<R15>
+carries the branch over an eyecatcher into the prologue and the prologue base
+carries the body. See L</REACHABILITY> below.
 
 B<The applied form is not implemented, and that is a measurement.> C<--reach>
 exits 16 and says so.
@@ -490,9 +493,23 @@ traversal arrives at them.>
 
 =head2 Why the applied form is not shipped
 
+B<Which denominator, because three are in circulation and they disagree.> The
+C<reached=> and C<dark=> fields of the report are byte counts over the B<whole
+section>, data included, and they are exact. Every percentage quoted below and in
+cc370#383 is a different quantity: B<of the bytes a real source listing calls
+code, the fraction the traversal reached> --- the intersection over the witness,
+not C<reached / sect_len> and not C<reached / code>. Over the 30 control sections
+those three read 62.1 %, 80.0 % and 76.6 % for the same run, so a reader
+recomputing the ratio a second way will not land on the published figure unless
+the formula is named. It is named here for the same reason the report does not
+publish a percentage at all: C<reached / sect_len> punishes a section for being
+half table, and a coverage number whose denominator is unstated is not a coverage
+number.
+
 Measured over 30 control sections whose real source says which bytes are code:
-the traversal reaches an aggregate of B<82.2 %> and a B<median of 97.7 %>, and
-the distribution is bimodal --- 25 of the 30 essentially complete, five near zero.
+the traversal reaches an aggregate of B<82.2 %> and a B<median of 97.7 %> by that
+definition, and the distribution is bimodal --- 25 of the 30 essentially
+complete, five near zero.
 Applied, it darkens B<12,558 bytes the source calls code> against B<2,300 bytes
 of genuine table> it correctly silences, and recovers 130 bytes of code that
 previously did not decode. The best threshold on its own coverage is
