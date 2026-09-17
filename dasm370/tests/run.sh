@@ -1473,6 +1473,64 @@ else
     fail "round trip: SECTB's bytes differ where they must not"
 fi
 
+# ---- --isa, a narrower opcode table (cc370#395) ---------------------------
+# THE ROUND TRIP CANNOT SEE A FALSE INSTRUCTION: it re-encodes the wrong reading
+# to the same bytes, so `ADR 3,4' over two bytes of data and a real ADR are
+# equally byte-safe. Narrowing the table is the only mechanism that removes the
+# reading, and the only thing that may not move is the deck.
+#
+# The cut is 236 mnemonics to 128 -- floating point 52, privileged 30, packed
+# decimal 16, I/O 10 -- and the class column lives in opc_table.h where both
+# tools read it, gated by as370/tests/opcinv.c (which also asserts the counts and
+# re-runs the whole inversion assertion UNDER the cut).
+"$A" tests/isa.s -o "$T/isa.obj" > "$T/isa.asm" 2>&1
+if [ $? -ge 8 ]; then fail "the --isa fixture does not assemble"; head -3 "$T/isa.asm"; fi
+"$D" --isa full "$T/isa.obj" -o "$T/isa-full.s" 2>/dev/null
+"$D" --isa app  "$T/isa.obj" -o "$T/isa-app.s"  2>/dev/null
+"$D" --isa s370 "$T/isa.obj" -o "$T/isa-s370.s" 2>/dev/null
+"$D"            "$T/isa.obj" -o "$T/isa-def.s"  2>/dev/null
+
+grep -q 'ADR' "$T/isa-full.s" && grep -q 'ZAP' "$T/isa-full.s" \
+    && pass "--isa full reads two bytes of data as ADR and eight as ZAP" \
+    || { fail "the fixture must produce a false decode under full or it proves nothing"
+         cat "$T/isa-full.s"; }
+grep -q 'ADR' "$T/isa-app.s" || grep -q 'ZAP' "$T/isa-app.s" \
+    && { fail "--isa app must decode neither -- ADR is floating point, ZAP decimal"
+         cat "$T/isa-app.s"; } \
+    || pass "--isa app decodes neither: the false readings are gone"
+grep -q "DC    X'F811000000000000'" "$T/isa-app.s" \
+    && pass "and the data comes back as the EIGHT bytes the source wrote" \
+    || { fail "under app the run must be the source's own eight bytes"
+         grep "DC" "$T/isa-app.s"; }
+# THE HALF THAT MATTERS MORE: nothing real is lost. A cut that removed a true
+# instruction would be a cut that changed the reading of code, not of data.
+isamiss=0
+for ins in 'BALR  12,0' 'LR    1,2' 'LR    3,4' 'BR    14'; do
+    grep -q "$ins" "$T/isa-app.s" || { echo "  missing under app: $ins"; isamiss=1; }
+    grep -q "$ins" "$T/isa-full.s" || { echo "  missing under full: $ins"; isamiss=1; }
+done
+[ $isamiss = 0 ] && pass "every real instruction survives the cut -- both LRs, the BALR and the BR" \
+                 || { fail "the cut lost a real instruction"; }
+# AND THE DECK DOES NOT MOVE. This is the property the whole option rests on: a
+# wrong cut changes how a byte PRINTS, not what anything DOES.
+for isa in full app; do
+    "$A" "$T/isa-$isa.s" -o "$T/isa-$isa.obj" > "$T/isa-$isa.asm" 2>&1
+    n=$(( ($(wc -c < "$T/isa.obj") / 80 - 1) * 80 ))
+    head -c $n "$T/isa.obj"        > "$T/isa-$isa.a.cut"
+    head -c $n "$T/isa-$isa.obj"   > "$T/isa-$isa.b.cut"
+    cmp -s "$T/isa-$isa.a.cut" "$T/isa-$isa.b.cut" \
+        && pass "round trip under --isa $isa: the deck reassembles byte-identically" \
+        || { fail "round trip under --isa $isa: the deck moved"
+             cmp "$T/isa-$isa.a.cut" "$T/isa-$isa.b.cut" | head -2; }
+done
+cmp -s "$T/isa-s370.s" "$T/isa-def.s" \
+    && pass "--isa s370 IS the default: this table is the System/370 set" \
+    || fail "--isa s370 must be byte-identical to no --isa at all"
+"$D" --isa s360 "$T/isa.obj" -o /dev/null >/dev/null 2>"$T/isa-s360.err"
+[ $? = 16 ] && grep -q '17,885' "$T/isa-s360.err" \
+    && pass "--isa s360 is refused, and the refusal carries what it would cost" \
+    || { fail "--isa s360 must be refused WITH the measurement"; cat "$T/isa-s360.err"; }
+
 # ---- refusals -------------------------------------------------------------
 "$D" --csect NOSUCHCS "$T/a.obj" -o /dev/null >/dev/null 2>&1
 [ $? = 2 ] && pass "an unknown --csect exits 2, not 0" || fail "an unknown --csect exits 2, not 0"

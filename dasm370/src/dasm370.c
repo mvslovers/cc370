@@ -886,12 +886,20 @@ static void addr_l(long a, int d, int l, int b, char *out, size_t n)
  * this old cannot hold the second reading.  When no PRIMARY claims the mask, the
  * generic BC/BCR (OPD_ALIAS) is what is left, which is the whole reason they
  * carry that value. */
+/* cc370#395: `--isa app' narrows the table this walks, and NOTHING ELSE CHANGES.
+ * There is ONE lookup in this file -- the emitter, the reachability walk, the
+ * --infer scan and --align-diff's collector all arrive here -- so the cut cannot
+ * split the disassembly from the alignment, which would make --align-diff under
+ * `app' compare two different readings of the same bytes. */
+static int isa_app;             /* 1 = keep OPC_APP only */
+
 static const struct opc *find_op(int b0, int b1, int mask, int *is_mask_form)
 {
     const struct opc *alias = NULL;
     int i;
     for (i = 0; optab[i].name; i++) {
         const struct opc *o = &optab[i];
+        if (isa_app && o->cls != OPC_APP) continue;
         int code = (o->opw == 2) ? ((o->fmt == F_S || o->fmt == F_S0) ? o->op : -1)
                                  : ((o->fmt == F_S || o->fmt == F_S0) ? ((o->op >> 8) & 0xff) : o->op);
         int want = (o->opw == 2) ? ((b0 << 8) | b1) : b0;
@@ -4151,7 +4159,11 @@ static void usage(FILE *o)
 "                     statement is inserted above it -- and it still assembles,\n"
 "                     so no round trip, no comparison and no gate objects.  Use\n"
 "                     sequential for source that will be edited (cc370#396)\n"
-"  --isa SET          app|s370|s360|full -- accepted; only `full' is implemented\n"
+"  --isa SET          app|s370|s360|full.  `app' drops floating point, packed\n"
+"                     decimal, I/O and privileged -- 236 mnemonics to 128 -- so\n"
+"                     fewer bytes can be mistaken for an instruction.  `s370' is\n"
+"                     `full' here, this table being the S/370 set; `s360' is\n"
+"                     refused and says what it would cost (cc370#395)\n"
 "  --format card|free card (the default) writes 80-column records with sequence\n"
 "                     numbers in 73-80 and column 72 left blank\n"
 "  -o FILE            write to FILE instead of standard output\n"
@@ -4387,13 +4399,28 @@ int main(int argc, char **argv)
         /* The command line wins over the file: a file is a decision saved
          * earlier and the option is the one being made now. */
         const char *isa = isa_cli ? isa_cli : (hisa[0] ? hisa : NULL);
-        /* Accepted and not yet acted on.  Problem-state against privileged is a
-         * per-mnemonic attribute opc_table.h does not carry, and inventing it
-         * here would be the second copy #374 exists to prevent.  It is an
-         * additive table field, gated by as370/tests/opcinv.c, when the decoder
-         * has a reason to want it. */
-        if (isa && strcmp(isa, "full"))
-            fprintf(stderr, "dasm370: --isa %s not implemented, using full\n", isa);
+        /* `app' is the one that narrows, and the class column now lives in
+         * opc_table.h where both tools read it -- which is what #374 exists for.
+         *
+         * `s370' IS `full' here, and saying so is not a technicality: this table
+         * IS the System/370 set, so the value names the default rather than
+         * selecting anything, and a reader who saw it accepted in silence would
+         * be right to wonder which of the two it had picked.
+         *
+         * `s360' IS REFUSED, and the refusal carries the measurement rather than
+         * an apology.  It would need an architecture column with no better
+         * evidence than the class one, and the corpus says what it would cost. */
+        if (isa && !strcmp(isa, "s360")) {
+            fprintf(stderr,
+                "dasm370: --isa s360 is not implemented, and the corpus says why.\n"
+                "  Of the S/370 additions this table carries, IBM's own MVS 3.8j source\n"
+                "  writes ICM 9,824 times, STCM 6,720, MVCL 738, CLM 416, STCK 146 and\n"
+                "  CLCL 41 -- 17,885 instructions an S/360 cut would turn into DC.\n"
+                "  It writes BAS, BASR, BASSM, BSM, MVCIN, IAC and TB exactly ZERO times,\n"
+                "  so the cut removes nothing anyone wrote.  Use app, s370 or full.\n");
+            return 16;
+        }
+        if (isa && !strcmp(isa, "app")) isa_app = 1;
     }
 
     if ((rc = load_section(src, want, allow_incomplete)) != 0) return rc;

@@ -307,10 +307,63 @@ padding, for reading.
 
 =item B<--isa> B<app>|B<s370>|B<s360>|B<full>
 
-Accepted; only B<full> is implemented, and any other value prints a note and
-behaves as B<full>. Problem-state against privileged is a per-mnemonic attribute
-F<opc_table.h> does not carry, and inventing it here would be the second copy the
-shared table exists to prevent.
+The opcode table the decoder may draw on. B<full> is the default.
+
+B<A disassembler decides at every byte whether an instruction is there, and the
+larger the table the more nonsense is representable.> The round trip cannot
+object: it re-encodes the wrong reading to the same bytes, so a false instruction
+and a true one are equally byte-safe. Narrowing the table is the only mechanism
+that B<removes> the reading rather than reporting it. cc370#395.
+
+B<app> keeps the B<128> mnemonics an application program can execute and drops
+B<108> --- floating point 52, privileged 30, packed decimal 16, I/O 10. The class
+is a column in F<opc_table.h>, where L<as370(1)> reads the same table, and
+F<as370/tests/opcinv.c> gates it: the counts, and the whole inversion assertion
+re-run B<under> the cut.
+
+B<The cut is ours and is not recovered from anywhere.> #395 names Pospischil's
+C<DISOPAPP> as the precedent, but no one here has his table. Two independent
+passes over the 236 entries agreed on floating point B<to the entry> --- it is a
+rule, the opcode ranges 20-3F and 60-7F --- and differed on eleven elsewhere,
+every difference an omission rather than a judgement. The corpus writes most of
+the disputed entries 0 or 3 times, so the two cuts differ measurably almost not
+at all; what a boundary changes is what a later reader believes about where it
+came from. The header names the entries that were argued.
+
+B<What may not move is the deck.> A wrong cut changes how a byte B<prints>, not
+what anything B<does>: both readings re-encode to the same bytes. Measured over
+500 corpus modules, B<0> round-trip verdicts change in either direction.
+
+B<The instruction count is not one-sided, and that is the mechanism rather than a
+defect.> Over 1,200 corpus sections B<app> decodes 3.25 % fewer instructions ---
+falling in 746, unchanged in 256 and B<rising in 198>. A rise is a false decode
+removed and a true one re-syncing behind it: in C<HMASMDR1> the full table reads
+two C<MVO>s across an EBCDIC eyecatcher, and dropping them lets the real prologue
+tail decode. A failed decode costs everything after it until something names an
+offset, so whether a cut helps depends on there being a label to re-sync on.
+
+B<s370> B<is> B<full> here --- this table is the System/370 set, so the value
+names the default rather than selecting anything.
+
+B<C<MVCK>, C<MVCP> and C<MVCS> are privileged on the class rule and not on their
+rarity> --- they are semi-privileged, moving under a source key or across address
+spaces. The measurement that sent us looking is separate and worth stating: over
+5,538 module sources IBM writes C<MVCK>, C<MVCP>, C<MVCS> and C<MVCIN> B<zero>
+times, while the disassembly of those same modules' objects decodes them B<1,800>
+times over 1,200 sections. B<Both sides of the same modules>, so every one is a
+false decode --- a stronger statement than the corpus can make about the
+no-source population this was found for. Moving the three leaves B<205> under
+B<app>, all C<MVCIN>, against 1,652 for the same cut before it. C<MVCIN> stays:
+it is problem-state, the only argument against it is that it is rare, and rarity
+is not what the class column encodes.
+
+B<s360> B<is refused>, and the refusal carries the measurement rather than an
+apology. It would need an architecture column with no better evidence than the
+class one, and of the S/370 additions this table carries, IBM's own MVS 3.8j
+source writes C<ICM> 9,824 times, C<STCM> 6,720, C<MVCL> 738, C<CLM> 416,
+C<STCK> 146 and C<CLCL> 41 --- B<17,885 instructions an S/360 cut would turn into
+C<DC>> --- while it writes C<BAS>, C<BASR>, C<BASSM>, C<BSM>, C<MVCIN>, C<IAC>
+and C<TB> exactly B<zero> times. The cut would remove nothing anyone wrote.
 
 =item B<-o> I<FILE>
 

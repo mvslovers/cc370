@@ -55,7 +55,7 @@ static int covers(const struct opc *o, int op, int mask)
 
 int main(void)
 {
-    int i, j, n = 0, op, mask;
+    int i, j, n = 0, op, mask, pass;
 
     for (i = 0; optab[i].name; i++) n++;
 
@@ -65,6 +65,13 @@ int main(void)
             bad("%s: opcode width is %d, not 1 or 2", o->name, o->opw);
         if (o->dec != OPD_PRIMARY && o->dec != OPD_ALIAS && o->dec != OPD_NEVER)
             bad("%s: decode preference %d is not one of the three", o->name, o->dec);
+        /* cc370#395.  Every entry carries a class, and an UNSET one would read as
+         * OPC_APP -- the value that keeps it -- so a forgotten entry would widen
+         * the cut silently, which is the one direction `--isa app' exists to
+         * prevent.  There is no sentinel for "not classified", so the check is
+         * that the value is in range and the count below is that it is right. */
+        if (o->cls < OPC_APP || o->cls > OPC_PRIV)
+            bad("%s: ISA class %d is not one of the five", o->name, o->cls);
         /* Only the S space is two bytes wide, and a one-byte S opcode has to be
          * spelled with a zero low half or the encoder writes a byte nobody
          * asked for. */
@@ -88,31 +95,57 @@ int main(void)
                     optab[j].name, opcode_of(&optab[j]), optab[i].name, optab[i].op);
     }
 
-    /* The inversion itself: for every encoding, at most one PRIMARY, and an
-     * encoding any entry claims must be decodable as something. */
+    /* THE CLASS COUNTS, because "in range" is not the property that matters.
+     * A class the table gets wrong is still in range, and the only defence is
+     * that the total is written down where a change to it has to be argued.
+     * These are the reconciliation of two independent passes (cc370#395). */
+    {
+        int c[5] = { 0, 0, 0, 0, 0 };
+        static const int want[5] = { 128, 52, 16, 10, 30 };
+        static const char *nm[5] = { "APP", "FP", "DEC", "IO", "PRIV" };
+        for (i = 0; i < n; i++)
+            if (optab[i].cls >= 0 && optab[i].cls <= OPC_PRIV) c[optab[i].cls]++;
+        for (i = 0; i < 5; i++)
+            if (c[i] != want[i])
+                bad("OPC_%s holds %d entries, not the %d the header argues for",
+                    nm[i], c[i], want[i]);
+    }
+
+    /* AND THE INVERSION HOLDS UNDER THE CUT, which is not implied by holding
+     * over the whole table: removing a PRIMARY can leave an encoding whose only
+     * remaining claimant is an ALIAS, or none at all, and a decoder that then
+     * finds nothing is right -- but a decoder that finds TWO PRIMARIES would be
+     * a table defect the full-table pass cannot see.  So the assertion is
+     * parameterised rather than duplicated. */
+    for (pass = 0; pass < 2; pass++)
     for (op = 0; op <= 0xffff; op++)
         for (mask = 0; mask < 16; mask++) {
             const char *prim = NULL;
             int nprim = 0, nalias = 0, nany = 0;
             for (i = 0; i < n; i++) {
                 const struct opc *o = &optab[i];
+                if (pass && o->cls != OPC_APP) continue;   /* the `app' cut */
                 if (!covers(o, op, mask)) continue;
                 nany++;
                 if (o->dec == OPD_PRIMARY) { nprim++; prim = o->name; }
                 else if (o->dec == OPD_ALIAS) nalias++;
             }
             if (nprim > 1) {
-                bad("X'%04X' mask %d: %d mnemonics claim it as PRIMARY", op, mask, nprim);
+                bad("X'%04X' mask %d: %d mnemonics claim it as PRIMARY%s",
+                    op, mask, nprim, pass ? " under --isa app" : "");
                 for (i = 0; i < n; i++)
                     if (covers(&optab[i], op, mask) && optab[i].dec == OPD_PRIMARY)
                         printf("opcinv:     %s\n", optab[i].name);
             }
-            if (nany && !nprim && !nalias)
+            /* Only over the WHOLE table: under the cut an encoding whose every
+             * remaining entry is NEVER is not a defect, it is the cut. */
+            if (!pass && nany && !nprim && !nalias)
                 bad("X'%04X' mask %d: every entry is OPD_NEVER", op, mask);
             (void)prim;
         }
 
     if (fails) { printf("opcinv: %d FAILURE(S) over %d entries\n", fails, n); return 1; }
-    printf("opcinv: OK (%d entries, every encoding inverts to one mnemonic)\n", n);
+    printf("opcinv: OK (%d entries, every encoding inverts to one mnemonic --\n"
+           "        under the whole table and under the --isa app cut of 128)\n", n);
     return 0;
 }
