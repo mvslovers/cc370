@@ -1704,6 +1704,12 @@ static int mcall_stack[64], mcall_sp;
  * "open code" and no initialising pass over MAXLINES is needed. */
 static int line_mcall[MAXLINES];
 static int raw_span[MAXLINES];                /* cc370#411: input cards per statement */
+/* The section a statement belongs to.  WITHOUT IT `loc' IS AMBIGUOUS: measured
+ * over the 5,538 module sources, only 49.7 % declare a single section, 23.3 %
+ * declare three and 19.7 % four or more -- so half the corpus has several
+ * counters running and a consumer resolving an offset has no way to know which
+ * one a record's loc belongs to. */
+static int line_sect[MAXLINES];
 /* The verbatim 80-column source image for the listing's SOURCE column. For a
  * macro-generated line this is the model card with variable symbols substituted
  * IN PLACE (field start-columns preserved, cols 73-80 carried through) -- which
@@ -4649,7 +4655,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         g_curln = i;                          /* line context for diagnostics raised inside sym_get/lit_get */
         g_genstmt = (lflags[i] & LF_SUBST) != 0;   /* see g_genstmt: a blank SUBSTITUTED into an operand is not a field end */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
-        if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
+        if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; line_sect[i] = cur_sect_id; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
@@ -4968,7 +4974,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             lc = sect_base(cur_sect_id) + (cur_sect_id < MAXSECT ? sect_rel[cur_sect_id] : 0);
             if (!first_ctl_sect) first_ctl_sect = cur_sect_id;   /* IFOX FSTCSECT: the first section that is not a DSECT (nor COM) */
             if (pass == 1 && !s->defined) { s->type = (lbl[0] && !rejected) ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }   /* relative origin; assign_origins() makes it absolute; a rejected name opens PRIVATE code, so the type follows the section and not the label */
-            if (pass == 2) { cur_sect_esdid = s->esdid; lrecs[i].loc = lc; }   /* the listing shows the section's OWN counter, not the one it left (#227) */
+            if (pass == 2) { cur_sect_esdid = s->esdid; lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }   /* the listing shows the section's OWN counter, not the one it left (#227) */
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             /* A DSECT is just another section with its own counter -- the save
              * and restore this used to do by hand for the enclosing control
@@ -4993,7 +4999,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (cur_sect_id < 256) dsect_sect[cur_sect_id] = 1;   /* symbols here are absolute offsets */
             if (++s->opened == 1 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;   /* a DSECT is never chained, so it takes no slot in sect_ord */
             lc = (cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;   /* sect_base is 0 for a DSECT in either pass */
-            if (pass == 2) lrecs[i].loc = lc;                           /* its own counter, from zero on the first opening (#227) */
+            if (pass == 2) { lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }                           /* its own counter, from zero on the first opening (#227) */
             if (pass == 1) { s->val = 0; s->defined = 1; }
         } else if (!strcmp(op, "ISEQ")) {
             /* Input sequence checking.  Measured against IFOX00 (cc370#128): it
@@ -5245,7 +5251,7 @@ static void do_pass(int pass, char **lines, int nlines) {
              * a word (cc370#231, part of #153). */
             if (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 1; }
-            if (pass == 2) lrecs[i].loc = lc;
+            if (pass == 2) { lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }
             if (nn > 1 && !(b & 1) && b < nn) {
                 long need = ((long)b - lc) % nn; if (need < 0) need += nn;
                 while (need > 0) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; need -= 2; }
@@ -6414,7 +6420,12 @@ static int emit_stmt_export(const char *fn, const char *srcfn, char **lines, int
     fputs("#note\tone record per STATEMENT the assembly generated, in listing order. stmt is the\n"
           "#note\tlisting statement number and IS a key here -- unlike --usings, where one\n"
           "#note\tstatement can produce several records.\n"
-          "#note\tloc is the location counter AT the statement and len the bytes it emits; len 0\n"
+          "#note\tloc is the location counter AT the statement, MODULE-ABSOLUTE as the counter\n"
+          "#note\tis: section 2 of a two-section module does not start at 0. secorg is that\n"
+          "#note\tsection's origin, so a SECTION-RELATIVE offset -- what an object deck carries --\n"
+          "#note\tis loc - secorg. It is a column and not an inference because taking the\n"
+          "#note\tsmallest loc in a section is wrong once a section is opened, left and resumed.\n"
+          "#note\tlen is the bytes the statement emits; len 0\n"
           "#note\tmeans it emits none, which is NOT the same as reserving none.\n"
           "#note\treserves=1 the statement OCCUPIES its bytes (DC, DS CL1, an instruction),\n"
           "#note\treserves=0 it only ALIGNS (DS 0F, CNOP). An object cannot tell these apart --\n"
@@ -6426,7 +6437,7 @@ static int emit_stmt_export(const char *fn, const char *srcfn, char **lines, int
           "#note\ttext is the statement as the listing shows it -- for a generated line the model\n"
           "#note\tcard with substitutions applied, which is NOT a card in the caller\'s source.\n"
           "#note\tThe card a repair edits is mcall_stmt.\n", f);
-    fputs("org\tcards\tloc\tlen\tstmt\tgen\tmdepth\tmcall_stmt\tmcall_name\treserves\ttext\n", f);
+    fputs("sect\tsectname\tsecorg\torg\tcards\tloc\tlen\tstmt\tgen\tmdepth\tmcall_stmt\tmcall_name\treserves\ttext\n", f);
     for (i = 0; i < nl; i++) {
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         int mi = line_mcall[i] - 1;
@@ -6437,9 +6448,21 @@ static int emit_stmt_export(const char *fn, const char *srcfn, char **lines, int
         parse(buf, lbl, op, opnd);
         if (!op[0]) continue;                         /* a comment or an empty card */
         t = lines[i];
-        fprintf(f, "%d\t%d\t%ld\t%d\t%d\t%d\t%d\t", line_org[i],
-                raw_span[i] > 0 ? raw_span[i] : 1, lrecs[i].loc, lrecs[i].len,
-                i + 1, gen, mi >= 0 ? mcalls[mi].depth : 0);
+        {
+            int sid = line_sect[i];
+            int ow = (sid > 0 && sid < MAXSECT) ? sect_owner[sid] : 0;
+            /* `loc' is MODULE-ABSOLUTE, as the location counter is -- section
+             * TWO of a two-section module starts at 8, not at 0.  A consumer
+             * comparing against an object deck needs SECTION-RELATIVE offsets,
+             * so the origin is carried as its own column rather than left to be
+             * inferred from the smallest loc in the section: that inference is
+             * wrong the moment a section is opened, left and resumed. */
+            fprintf(f, "%d\t%s\t%ld\t%d\t%d\t%ld\t%d\t%d\t%d\t%d\t",
+                    sid, ow ? syms[ow - 1].name : "",
+                    ow ? syms[ow - 1].val : 0L, line_org[i],
+                    raw_span[i] > 0 ? raw_span[i] : 1, lrecs[i].loc, lrecs[i].len,
+                    i + 1, gen, mi >= 0 ? mcalls[mi].depth : 0);
+        }
         if (mi >= 0) fprintf(f, "%ld\t%s\t", mcalls[mi].stmt, mcalls[mi].name);
         else fputs("\t\t", f);
         fprintf(f, "%d\t", stmt_reserves(op, opnd));

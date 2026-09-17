@@ -59,8 +59,8 @@ symbol was referenced and never defined, and its value says nothing.
 =item B<--stmts=>I<FILE>
 
 One record per generated statement, tab-separated, in the shape of B<--sym>:
-C<org cards loc len stmt gen mdepth mcall_stmt mcall_name reserves text>. C<->
-writes to standard output. cc370#411; the export B<dasm370>'s repair contract
+C<sect sectname secorg org cards loc len stmt gen mdepth mcall_stmt mcall_name
+reserves text>. C<-> writes to standard output. cc370#411; the export B<dasm370>'s repair contract
 needs and no listing can replace.
 
 B<C<reserves> is the field this exists for.> It says whether a statement
@@ -76,6 +76,15 @@ counters diverge and never converge. Measured over 30 modules' real sources,
 61,252 open-code cards: C<stmt> locates the card in B<0.8 %> of them and C<org>
 in B<99.9 %>. C<cards> is how many input lines the statement spans, so the range
 is C<org> to C<org + cards - 1>.
+
+B<C<loc> is module-absolute and C<secorg> makes it usable.> The location counter
+does not restart per section, so section 2 of a two-section module does not begin
+at 0 --- and an object deck carries B<section-relative> offsets. The
+section-relative offset is C<loc - secorg>. It is a column rather than an
+inference because taking the smallest C<loc> in a section is wrong the moment a
+section is opened, left and resumed. Without C<sect> the counter is ambiguous
+outright: measured over the 5,538 module sources, only B<49.7 %> declare a single
+section, 23.3 % declare three and 19.7 % four or more.
 
 B<C<mcall_stmt> and C<mcall_name> name the CALL, not merely a depth.> A listing
 marks a generated line C<+> and never says which call produced it, leaving a

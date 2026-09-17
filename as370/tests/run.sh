@@ -3204,24 +3204,29 @@ rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.o
 ./as370 tests/stmtexp.s --stmts=/tmp/_st$$.tsv -o /tmp/_st$$.obj >/tmp/_st$$.out 2>&1
 rcs=$?
 ./as370 tests/stmtexp.s -o /tmp/_st2$$.obj >/dev/null 2>&1
-# Keyed on the statement TEXT, not on a listing number: editing a comment in
-# the fixture shifts every statement number and would silently re-point every
-# expectation at the wrong record.
-stf() { awk -F"\t" -v pat="$1" -v c="$2" 'index($11,pat)==1{print $c; exit}' /tmp/_st$$.tsv; }
+# Keyed on the statement TEXT and on the COLUMN NAME, never on a number. Both
+# were learned the hard way in one session: expectations keyed on listing
+# statement numbers silently re-pointed when a comment in the fixture was
+# shortened, and expectations keyed on column positions broke the moment two
+# columns were inserted. A name survives both.
+stf() { awk -F"\t" -v pat="$1" -v want="$2" '
+    /^sect\t/ { for (i = 1; i <= NF; i++) if ($i == want) c = i; next }
+    /^#/ { next }
+    c && index($(NF), pat) == 1 { print $c; exit }' /tmp/_st$$.tsv; }
 if [ $rcs != 0 ] || [ -s /tmp/_st$$.out ]; then
     echo "stmtexp: FAIL -- --stmts must be silent at RC 0, got $rcs"; cat /tmp/_st$$.out; fail=$((fail + 1))
 elif ! cmp -s /tmp/_st$$.obj /tmp/_st2$$.obj; then
     echo "stmtexp: FAIL -- the deck moved with --stmts; the export is output only"; fail=$((fail + 1))
-elif [ "$(stf "B        DS    0F" 10)" != 0 ] || [ "$(stf "A        DS    CL1" 10)" != 1 ]; then
+elif [ "$(stf "B        DS    0F" reserves)" != 0 ] || [ "$(stf "A        DS    CL1" reserves)" != 1 ]; then
     echo "stmtexp: FAIL -- DS 0F must be reserves=0 and DS CL1 reserves=1"
     fail=$((fail + 1))
-elif [ "$(stf "FIRST " 8)" = "$(stf "SECOND " 8)" ]; then
+elif [ "$(stf "FIRST " mcall_stmt)" = "$(stf "SECOND " mcall_stmt)" ]; then
     echo "stmtexp: FAIL -- two calls of one macro must have DIFFERENT mcall_stmt"; fail=$((fail + 1))
-elif [ "$(stf "FIRST " 9)" != PADPAIR ] || [ "$(stf "SECOND " 9)" != PADPAIR ]; then
+elif [ "$(stf "FIRST " mcall_name)" != PADPAIR ] || [ "$(stf "SECOND " mcall_name)" != PADPAIR ]; then
     echo "stmtexp: FAIL -- a generated card must name the macro that produced it"; fail=$((fail + 1))
-elif [ "$(stf "FIRST " 1)" = "$(stf "SECOND " 1)" ]; then
+elif [ "$(stf "FIRST " org)" = "$(stf "SECOND " org)" ]; then
     echo "stmtexp: FAIL -- two calls must sit at DIFFERENT org lines"; fail=$((fail + 1))
-elif [ "$(stf "FIRST " 1)" = "$(stf "FIRST " 5)" ]; then
+elif [ "$(stf "FIRST " org)" = "$(stf "FIRST " stmt)" ]; then
     echo "stmtexp: FAIL -- org and stmt agree everywhere, so this fixture cannot"
     echo "         tell them apart and proves nothing about either"
     fail=$((fail + 1))
