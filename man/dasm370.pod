@@ -60,18 +60,23 @@ divergence, with section-relative offsets and lengths, both sides' bytes, the
 statement each side carries, the module's shift set and which C<shift(B)> case it
 is in.
 
-B<It is the object-side half of that contract and says so in every record.> Three
-of the five fields #385 specifies are B<listing> facts with no machine-readable
-export --- the owning statement's source line and text, whether it is
+B<Three of the five fields #385 specifies are source facts and the object cannot
+supply them> --- the owning statement's line and text, whether it is
 macro-generated and which call owns it, and whether a statement B<reserves> bytes
 (C<DS CL1>) or only B<aligns> (C<DS 0F>). In an object the last two are both
 uncovered bytes: two defensible object-side rules measured over 30 control
 sections give 89 bytes and 1,788 for the same population, one per cent against
-fourteen. So C<source> is C<null> on every finding, with C<source_absent> naming
-which absence it is and a document-level C<source_absent_because> saying why --- a
-schema that omitted the key would read as though the question had not come up.
-The reason is stated once because it is a property of the build rather than of a
-finding; repeating it cost two fifths of the corpus output.
+fourteen. So they are not guessed here. B<--ref-stmts> and B<--cand-stmts> read
+them from L<as370(1)>'s own export; without one, that side's C<source> is
+C<null>, with C<source_absent> naming which absence it is and a document-level
+C<source_absent_because> saying why. A schema that omitted the key would read as
+though the question had not come up. The reason is stated once because it is a
+property of the build rather than of a finding; repeating it cost two fifths of
+the corpus output.
+
+The schema is C<dasm370-repair/2>. C</1> carried C<source> on the finding; it
+belongs to each B<side>, because the two sides are two maintenance levels of one
+section and have two different sources.
 
 B<On a C<delete>, C<cand.offset> is populated while C<cand.length> is zero.> That
 is not a stray: it is the B<insertion point> in the candidate, which is exactly
@@ -80,6 +85,43 @@ holds mirrored for an C<insert>.
 
 C<operands> on a data run is a rendering (C<"24 bytes">) rather than a field to
 parse; C<length> carries the number.
+
+=item B<--ref-stmts> I<FILE>, B<--cand-stmts> I<FILE>
+
+The C<as370 --stmts> export of each side's source, which fills that side's
+C<source> in B<--json> (cc370#385, #411). Each record gives the owning
+statement's C<org> --- the card a repair edits --- with C<cards>, C<stmt>,
+C<gen>, C<mdepth>, C<mcall_stmt>, C<mcall_name>, C<reserves> and the statement's
+own C<stmt_offset> and C<stmt_length>.
+
+B<Two flags and not one.> The two objects are two maintenance levels of one
+section and have two different sources; a single flag would have to pick a side
+silently, and picking the wrong one produces a plausible C<org> on every finding
+with nothing to object.
+
+B<An offset is not a function, and C<claimants> says when it was not.> An C<ORG>
+moves the location counter backwards in 59,443 records over the 5,528-module
+corpus, so B<5.97 % of claimed bytes are claimed by more than one statement, in
+3,559 modules>. The deck holds what the B<last> claimant in listing order wrote,
+so that is what is reported. A statement with no advance --- a C<USING>, an
+C<EQU>, an already-aligned C<DS 0F> --- can never outrank one that has an
+advance, whatever the order: it occupies nothing, and C<reserves> is C<null>
+there rather than C<false>, because C<false> would read as I<these bytes are
+alignment> where there are no bytes.
+
+B<The consumer must check C<org>, and the test is a prefix test.> A statement
+from a C<COPY>'d member keeps the C<COPY> statement's origin and carries nothing
+that marks it, so C<org> names the C<COPY> card. Measured over 490 COPY-derived
+records: the card at C<org> is a C<COPY> card 490 of 490 and C<text> is not a
+prefix of it 490 of 490; the control over 47,534 open-code records gives 0 false
+positives on the prefix test and 5 on equality.
+
+B<A stale export is reported, not swallowed.> One that belongs to a different
+build of the same source parses, matches the section name and misses every
+offset. The section's length is the one scalar the export and the object state
+independently, so C<stmts.>I<side>C<.matches_object> carries the comparison and a
+disagreement is named on standard error. An export naming no statement in this
+section is B<refused>, listing the sections it does carry.
 
 =item B<--labels> I<displacement>|I<sequential>
 

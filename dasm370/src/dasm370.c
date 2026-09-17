@@ -3352,27 +3352,330 @@ static void align_gap(FILE *o, const struct aside *R, int i0, int i1,
 
 /* ------------------------------------------------- the repair contract -- */
 
-/* #385 asks for JSON per divergence, and this emits THE OBJECT-SIDE HALF of it.
+/* #385 asks for JSON per divergence: the offset and length, both sides' bytes,
+ * the owning statement's line and text, whether it is macro-generated and which
+ * call owns it, and whether that statement RESERVES bytes (DS CL1) or only
+ * ALIGNS (DS 0F).
  *
- * WHAT IS DELIBERATELY ABSENT, named in the document rather than left to be
- * noticed.  Three of the five fields the issue specifies are LISTING facts and
- * no machine-readable export of them exists: the owning statement's source line
- * number and text, whether it is macro-generated and which call owns it, and
- * whether a statement RESERVES bytes (DS CL1) or only ALIGNS (DS 0F).
+ * THE OBJECT CANNOT ANSWER THE LAST THREE AND THAT IS MEASURED, not assumed.  In
+ * an object a DS 0F pad and a DS CL1 reservation are both bytes no TXT card
+ * covers; two reasonable object-side rules over the 30 control CSECTs, against
+ * 13,161 bytes with no object code, give 89 bytes and 1,788 for the same
+ * population -- ONE PER CENT AGAINST FOURTEEN.  Two defensible methods that
+ * cannot agree on the SIZE of a population is what "a source fact" means once it
+ * is measured instead of asserted.
  *
- * The last is the acceptance's own fixture and it is the one that settles the
- * question: IN AN OBJECT BOTH ARE UNCOVERED BYTES.  Two reasonable object-side
- * rules were measured over the 30 control CSECTs, against 13,161 bytes with no
- * object code -- "the gap follows an explicit zero-duplication DS" gives 89
- * bytes, "the gap is smaller than the alignment it ends on" gives 1,788.  ONE
- * PER CENT AGAINST FOURTEEN.  Two defensible methods cannot agree on the size of
- * the population, which is what "a source fact" means once it is measured
- * instead of asserted.  It bounds the ambiguity this file ships with at roughly
- * 0.2 % to 2 % of corpus bytes.
+ * So #385 became a TRANSLATOR rather than a second guess: as370 --stmts
+ * (cc370#411) exports the statement the assembly generated, and --ref-stmts /
+ * --cand-stmts read it back in.  Without one, `source' is null with
+ * `source_absent' naming WHICH absence it is -- a schema that omitted the key
+ * would read as though the question had not come up.
  *
- * So `source' is emitted as null with a reason, on every finding.  A consumer
- * that needs it can see exactly what is missing and why; a schema that simply
- * omitted the key would read as though the question had not come up. */
+ * THE ONE THING THAT DECIDED THIS FILE'S SHAPE: an offset is not a function.
+ * Measured over 5,528 module sources and 7,671,248 export records -- ORG moves
+ * the location counter backwards in 59,443 records across 3,758 modules, so
+ * 5.97 % of claimed bytes are claimed by MORE THAN ONE statement, in 3,559 of
+ * the 5,528.  A lookup that takes the first match is wrong on two thirds of the
+ * corpus.
+ *
+ * AND "THE LAST CLAIMANT" IS NOT THE RULE EITHER -- it is the last that
+ * RESERVES, and the difference was found in the control corpus rather than
+ * reasoned about.  IEHPROG1's second section winds the counter back with
+ * `ORG *-18', overwrites six statements and winds it forward again with a bare
+ * `ORG'.  That forward ORG has an advance of +10, so it CLAIMS 4476..4485 and is
+ * last in listing order -- but the deck there holds 50210000 92801000 0A14, the
+ * ST, the MVI and the SVC, and the TXT cards agree from the other side: the
+ * rewritten run is one card of 8 bytes at 4468 that stops short of 4476.  An ORG
+ * moves over bytes and never writes them.  Measured by mvs38src over both
+ * populations:
+ *
+ *                             the 30      the 832
+ *   modules with an overlap       12          378
+ *   overlapped offsets         3,266      189,227
+ *   the plain rule is WRONG        45       53,328   (28.2 % of overlaps)
+ *   the reserves rule is wrong      0            0
+ *
+ * KEYED ON `reserves' AND NOT ON THE OPERATION, and the five offsets that settle
+ * that are in the 832: of the 53,328 last claimants that emit nothing, 53,323 are
+ * ORG -- and FIVE ARE NOT.  HMASMREC's 13865 is claimed by `DC 0F'0'' and
+ * IGE0704B's 170 by `ASCTAB DS 0F', both zero-duplication storage statements
+ * sitting on bytes an earlier statement emitted.  "An ORG never outranks an
+ * emitter" leaves those five standing; "the last claimant that reserves" catches
+ * all 53,328.
+ *
+ * WHICH IS WHY cc370#414 HAD TO COME FIRST: before it every one of those ORGs
+ * reported reserves=1, and nothing in the export could have told them apart. */
+
+/* One exported statement.  `at' is SECTION-RELATIVE (loc - secorg): as370's loc
+ * is module-absolute as the counter is, and a deck carries section-relative
+ * offsets.  `len' is the counter's ADVANCE and not the bytes emitted -- it
+ * includes alignment the statement forced, so a BR at an odd offset is 3 with
+ * the pad as its first byte, and it is NEGATIVE at an ORG that moves back. */
+struct sstmt {
+    long at, len, org, stmt, mcall_stmt;
+    int  cards, gen, mdepth, reserves, has_mcall;
+    char mcall[16];
+    char *text;
+};
+
+struct sside {
+    const char *path;          /* the export file, as given */
+    char  src[520];            /* its #source: the file a repair edits */
+    struct sstmt *st;
+    int   n;                   /* records kept for this section */
+    int   total;               /* records in the file */
+    int   loaded;
+    long  bytes;               /* the export's own extent for this section */
+    long  objbytes;            /* what the object says, for the comparison */
+};
+
+static struct sside sref, scand;   /* --ref-stmts / --cand-stmts */
+
+static char *sdup(const char *s, size_t n)
+{
+    char *p = malloc(n + 1);
+    if (!p) return NULL;
+    memcpy(p, s, n); p[n] = 0;
+    return p;
+}
+
+/* Split one tab-separated record IN PLACE.  The delimiter has to be read BEFORE
+ * it is overwritten -- testing the byte after the NUL that replaced it reports
+ * every field as the last one, which is how this first read a fourteen-column
+ * header as one column called `sect'. */
+static int ssplit(char *line, char **fld, int max)
+{
+    int n = 0;
+    char *p = line, *q;
+    while (n < max) {
+        char d;
+        q = strpbrk(p, "\t\r\n");
+        if (!q) { fld[n++] = p; break; }
+        d = *q; *q = 0; fld[n++] = p;
+        if (d != '\t') break;
+        p = q + 1;
+    }
+    return n;
+}
+
+/* Column indices are resolved BY NAME from the header row and never by
+ * position.  Two columns were inserted into this export in one day and every
+ * positional reader silently re-pointed; the fixture that caught it had been
+ * keyed on names for exactly that reason. */
+static int scol(char **name, int ncol, const char *want)
+{
+    int i;
+    for (i = 0; i < ncol; i++) if (!strcmp(name[i], want)) return i;
+    return -1;
+}
+
+/* A REFUSAL NAMES WHAT IT FOUND.  An export of the wrong module is the likely
+ * mistake -- the file parses, the header is right, and every offset simply
+ * misses -- so an empty section is reported with the names the file does carry
+ * rather than as "no records". */
+static int stmts_load(struct sside *s, const char *fn, const char *sect)
+{
+    FILE *f;
+    char line[4096];
+    char *name[64];
+    int ncol = 0, cap = 0;
+    int c_sn, c_so, c_org, c_cards, c_loc, c_len, c_stmt, c_gen, c_md, c_ms, c_mn, c_res, c_txt;
+    char seen[16][9];
+    int nseen = 0, i;
+
+    if ((f = fopen(fn, "r")) == NULL) { perror(fn); return 16; }
+    if (!fgets(line, sizeof line, f) || strncmp(line, "#as370-stmts\t", 13)) {
+        fprintf(stderr, "dasm370: %s is not an as370 --stmts export -- its first line is\n"
+                        "  %.70s%s", fn, line, strchr(line, '\n') ? "" : "\n");
+        fclose(f); return 16;
+    }
+    if (strcmp(line + 13, "1\n")) {
+        fprintf(stderr, "dasm370: %s is as370-stmts version %.20s; this build reads 1\n",
+                fn, line + 13);
+        fclose(f); return 16;
+    }
+    s->path = fn; s->src[0] = 0;
+    while (fgets(line, sizeof line, f)) {
+        if (!strncmp(line, "#source\t", 8)) {
+            size_t n = strcspn(line + 8, "\r\n");
+            if (n >= sizeof s->src) n = sizeof s->src - 1;
+            memcpy(s->src, line + 8, n); s->src[n] = 0;
+            continue;
+        }
+        if (line[0] == '#') continue;
+        /* the first non-comment line is the column header */
+        if (!ncol) {
+            char *raw[64];
+            int nr = ssplit(line, raw, 64), k;
+            /* line[] is reused by the next fgets, so the header's names are
+             * copied; the data fields below are consumed before that happens. */
+            for (k = 0; k < nr; k++)
+                if ((name[ncol++] = sdup(raw[k], strlen(raw[k]))) == NULL)
+                    { fprintf(stderr, "dasm370: out of memory reading %s\n", fn); fclose(f); return 16; }
+            c_sn = scol(name, ncol, "sectname"); c_so = scol(name, ncol, "secorg");
+            c_org = scol(name, ncol, "org");     c_cards = scol(name, ncol, "cards");
+            c_loc = scol(name, ncol, "loc");     c_len = scol(name, ncol, "len");
+            c_stmt = scol(name, ncol, "stmt");   c_gen = scol(name, ncol, "gen");
+            c_md = scol(name, ncol, "mdepth");   c_ms = scol(name, ncol, "mcall_stmt");
+            c_mn = scol(name, ncol, "mcall_name"); c_res = scol(name, ncol, "reserves");
+            c_txt = scol(name, ncol, "text");
+            if (c_sn < 0 || c_so < 0 || c_org < 0 || c_cards < 0 || c_loc < 0 ||
+                c_len < 0 || c_stmt < 0 || c_gen < 0 || c_md < 0 || c_ms < 0 ||
+                c_mn < 0 || c_res < 0 || c_txt < 0) {
+                fprintf(stderr, "dasm370: %s is missing a column this needs -- it has\n  ", fn);
+                for (i = 0; i < ncol; i++) fprintf(stderr, "%s%s", i ? " " : "", name[i]);
+                fputc('\n', stderr);
+                fclose(f); return 16;
+            }
+            continue;
+        }
+        {
+            char *fld[64];
+            int nf;
+            struct sstmt *e;
+            nf = ssplit(line, fld, 64);
+            if (nf <= c_txt) continue;              /* a short record is not a statement */
+            s->total++;
+            if (strcmp(fld[c_sn], sect)) {
+                for (i = 0; i < nseen; i++) if (!strcmp(seen[i], fld[c_sn])) break;
+                if (i == nseen && nseen < 16 && fld[c_sn][0])
+                    { strncpy(seen[nseen], fld[c_sn], 8); seen[nseen][8] = 0; nseen++; }
+                continue;
+            }
+            if (s->n == cap) {
+                struct sstmt *g;
+                cap = cap ? cap * 2 : 256;
+                if ((g = realloc(s->st, (size_t)cap * sizeof *g)) == NULL) {
+                    fprintf(stderr, "dasm370: out of memory reading %s\n", fn);
+                    fclose(f); return 16;
+                }
+                s->st = g;
+            }
+            e = &s->st[s->n++];
+            e->at   = strtol(fld[c_loc], NULL, 10) - strtol(fld[c_so], NULL, 10);
+            e->len  = strtol(fld[c_len], NULL, 10);
+            e->org  = strtol(fld[c_org], NULL, 10);
+            e->cards = (int)strtol(fld[c_cards], NULL, 10);
+            e->stmt = strtol(fld[c_stmt], NULL, 10);
+            e->gen  = (int)strtol(fld[c_gen], NULL, 10);
+            e->mdepth = (int)strtol(fld[c_md], NULL, 10);
+            e->reserves = (int)strtol(fld[c_res], NULL, 10);
+            e->has_mcall = fld[c_ms][0] != 0;
+            e->mcall_stmt = e->has_mcall ? strtol(fld[c_ms], NULL, 10) : 0;
+            strncpy(e->mcall, fld[c_mn], sizeof e->mcall - 1);
+            e->mcall[sizeof e->mcall - 1] = 0;
+            e->text = sdup(fld[c_txt], strlen(fld[c_txt]));
+            if (!e->text) { fprintf(stderr, "dasm370: out of memory reading %s\n", fn); fclose(f); return 16; }
+        }
+    }
+    fclose(f);
+    for (i = 0; i < ncol; i++) free(name[i]);
+    if (!s->n) {
+        fprintf(stderr, "dasm370: %s has no statement in section %s.\n", fn, sect);
+        if (nseen) {
+            fprintf(stderr, "  It carries %d record%s in: ", s->total, s->total == 1 ? "" : "s");
+            for (i = 0; i < nseen; i++) fprintf(stderr, "%s%s", i ? " " : "", seen[i]);
+            fprintf(stderr, "%s\n", nseen == 16 ? " ..." : "");
+            fprintf(stderr, "  An export of the wrong module parses cleanly and misses every offset.\n");
+        } else fprintf(stderr, "  It carries %d record%s and names no section at all.\n",
+                       s->total, s->total == 1 ? "" : "s");
+        return 16;
+    }
+    /* THE EXPORT'S OWN EXTENT, against the object's.  A STALE export is the
+     * mistake this cannot otherwise see: it parses, the header is right, the
+     * section name matches and every offset looks plausible, because it belongs
+     * to a different build of the same source.  The section's length is the one
+     * scalar both sides state independently, so it is compared and reported --
+     * not refused, because a caller may know better, but never in silence. */
+    {
+        int k;
+        for (k = 0; k < s->n; k++) {
+            long end = s->st[k].len > 0 ? s->st[k].at + s->st[k].len : s->st[k].at;
+            if (end > s->bytes) s->bytes = end;
+        }
+    }
+    s->loaded = 1;
+    return 0;
+}
+
+/* The statement a repair edits, for one side and one range.
+ *
+ * `len' > 0 is a range of bytes: the owner is the last claimant of its FIRST
+ * byte, because an ORG overlay means the deck holds what the last statement in
+ * listing order wrote.  `covers' counts the distinct statements the whole range
+ * touches, so a consumer knows when one finding spans several cards.
+ *
+ * `len' == 0 is an INSERTION POINT and not a range -- a delete populates
+ * cand.offset with a zero length.  Nothing occupies it, so the statement
+ * reported is the one that BEGINS there: the card an insertion goes before.
+ *
+ * AN INSERTION POINT NEED NOT FALL ON A SOURCE BOUNDARY.  A disassembly's
+ * statement boundaries are the DECODER's, not the assembler's, so the offset can
+ * land INSIDE a statement -- reported as that statement with
+ * `chosen: "encloses"', which tells a repair the card has to be SPLIT.  A bare
+ * absence would have said only that nothing was found.
+ *
+ * THE PROPERTY IS length == 0 AND NOT "inside", which is measured rather than
+ * reasoned and is why three attempts at the fixture failed by pinning "inside".
+ * Over the 832 (mvs38src, against this binary): 119,744 findings -- 119,035
+ * reserving, 504 unreserved, 170 encloses in 63 modules, 31 zero-advance, 4 with
+ * no owner at all.  EVERY encloses is length 0, and 2,168 findings of NON-zero
+ * length also START inside their chosen statement while being correctly
+ * reserving or unreserved.  The separation is exact in both directions.  The
+ * real-material witness is ICBVUT01: a delete at 22030 inside `GROUPKY DS CL8'
+ * at 22027.
+ *
+ * A STATEMENT WITH NO ADVANCE CANNOT OUTRANK ONE THAT HAS ONE, whatever the
+ * listing order.  A USING, an EQU or a DROP sits at the same offset as the
+ * statement after it and occupies nothing, so `last in listing order' would hand
+ * an insertion point to a USING and report its `reserves' -- which is vacuous
+ * where len is 0 and would read as "this statement occupies the bytes".  Over
+ * the corpus 3,085,535 records are len 0 with reserves 1, so this is the common
+ * case rather than a corner.  A zero-advance claimant is therefore only ever a
+ * fallback, taken when nothing with an advance begins there. */
+static const struct sstmt *stmts_owner(const struct sside *s, long at, long len,
+                                       int *claimants, int *covers, int *encloses,
+                                       int *unreserved)
+{
+    const struct sstmt *own = NULL, *any = NULL, *empty = NULL, *encl = NULL;
+    int i, cl = 0, cv = 0;
+    long last = -1;
+
+    *claimants = 0; *covers = 0; *encloses = 0; *unreserved = 0;
+    if (!s->loaded) return NULL;
+    for (i = 0; i < s->n; i++) {
+        const struct sstmt *e = &s->st[i];
+        /* A NEGATIVE advance is an ORG moving the counter back.  It occupies
+         * nothing and begins nothing: 59,443 such records over the corpus. */
+        if (e->len < 0) continue;
+        if (e->len == 0) {
+            if (!len && e->at == at) empty = e;      /* fallback only */
+            continue;
+        }
+        if (len) {
+            if (at >= e->at && at < e->at + e->len) {
+                any = e; if (e->reserves) own = e;
+                cl++;
+            }
+            if (e->at < at + len && at < e->at + e->len) {
+                if (e->at != last) { cv++; last = e->at; }
+            }
+        } else if (e->at == at) {
+            any = e; if (e->reserves) own = e;
+            cl++;
+        }
+        else if (at > e->at && at < e->at + e->len && e->reserves) encl = e;
+    }
+    if (!own) own = any;                      /* nothing reserves: say so below */
+    if (!own && encl)  own = encl;
+    if (!own && empty) { own = empty; cl = 1; }
+    *claimants = cl;
+    *covers = len ? cv : cl;
+    *encloses = (own && own == encl);
+    *unreserved = (own && own == any && !own->reserves);
+    return own;
+}
+
 static FILE *jout;            /* #385: the repair contract, or NULL */
 static int   jfirst = 1;
 
@@ -3402,11 +3705,51 @@ static void jbytes(FILE *o, const unsigned char *img8, long at, long n)
     fputc('"', o);
 }
 
-/* `source' is null on every record and says why: see the note above.  A
- * consumer that needs a card rather than a statement can see exactly what is
- * missing, which a schema that omitted the key could not tell it. */
+/* `source' is this side's OWN half of the contract and lives beside the bytes it
+ * describes, not at the document level: the two sides are two different modules
+ * at two maintenance levels, so they have two different sources and a repair
+ * edits one of them.  Null with `source_absent' where the side has no export or
+ * no statement claims the offset -- naming WHICH absence it is, because "no
+ * export was given" and "the export has a hole here" call for different actions
+ * and a bare null cannot tell them apart. */
+static void jsource(FILE *o, const struct sside *S, long at, long len)
+{
+    const struct sstmt *e;
+    int claimants, covers, encloses, unreserved;
+
+    if (!S->loaded) { fputs(",\"source\":null,\"source_absent\":\"no-statement-export\"", o); return; }
+    e = stmts_owner(S, at, len, &claimants, &covers, &encloses, &unreserved);
+    if (!e) { fputs(",\"source\":null,\"source_absent\":\"no-owning-statement\"", o); return; }
+    fputs(",\"source\":{\"file\":", o); jstr(o, S->src);
+    fprintf(o, ",\"org\":%ld,\"cards\":%d,\"stmt\":%ld", e->org, e->cards, e->stmt);
+    fprintf(o, ",\"gen\":%s,\"mdepth\":%d", e->gen ? "true" : "false", e->mdepth);
+    if (e->has_mcall) {
+        fprintf(o, ",\"mcall_stmt\":%ld,\"mcall_name\":", e->mcall_stmt);
+        jstr(o, e->mcall);
+    } else fputs(",\"mcall_stmt\":null,\"mcall_name\":null", o);
+    /* VACUOUS WHERE THE STATEMENT HAS NO ADVANCE, and null rather than false,
+     * because false reads as "these bytes are alignment" and there are no bytes.
+     * 3,085,535 records over the corpus are in that state -- a USING, an EQU, a
+     * DROP, an already-aligned DS 0F -- so it is the common case. */
+    if (e->len == 0) fputs(",\"reserves\":null", o);
+    else fprintf(o, ",\"reserves\":%s", e->reserves ? "true" : "false");
+    fputs(",\"text\":", o); jstr(o, e->text);
+    /* THE STATEMENT'S OWN SPAN, and not the finding's.  They differ whenever a
+     * finding starts inside a statement or runs across several, and a consumer
+     * that assumes they agree edits the wrong number of bytes. */
+    fprintf(o, ",\"stmt_offset\":%ld,\"stmt_length\":%ld", e->at, e->len);
+    /* claimants > 1 means an ORG overlay put several statements on this offset
+     * and the LAST in listing order was taken, because that is what the deck
+     * holds.  5.97 % of claimed bytes over the corpus are in that state. */
+    fprintf(o, ",\"claimants\":%d,\"chosen\":\"%s\",\"covers\":%d}", claimants,
+            encloses    ? "encloses"
+            : unreserved ? "unreserved"
+            : e->len > 0 ? "reserving" : "zero-advance", covers);
+}
+
 static void jside(FILE *o, const char *tag, const struct aside *s,
-                  long at, long len, const char *op, const char *opnd)
+                  long at, long len, const char *op, const char *opnd,
+                  const struct sside *S)
 {
     fprintf(o, "\"%s\":{\"offset\":%ld,\"length\":%ld,\"bytes\":", tag, at, len);
     if (len > 0) jbytes(o, s->img, at, len); else fputs("\"\"", o);
@@ -3415,6 +3758,7 @@ static void jside(FILE *o, const char *tag, const struct aside *s,
         fputs(",\"operands\":", o); jstr(o, opnd ? opnd : "");
         fputs(",\"from\":\"disassembly\"}", o);
     } else fputs(",\"statement\":null", o);
+    jsource(o, S, at, len);
     fputc('}', o);
 }
 
@@ -3428,21 +3772,37 @@ static void jfinding(const char *kind, const struct aside *R, long ra, long rl,
     fprintf(jout, "%s\n    {\"kind\":", jfirst ? "" : ",");
     jfirst = 0;
     jstr(jout, kind);
-    fputc(',', jout); jside(jout, "ref", R, ra, rl, rop, ropnd);
-    fputc(',', jout); jside(jout, "cand", C, ca, cl, cop, copnd);
+    fputc(',', jout); jside(jout, "ref", R, ra, rl, rop, ropnd, &sref);
+    fputc(',', jout); jside(jout, "cand", C, ca, cl, cop, copnd, &scand);
     fprintf(jout, ",\"delta\":%ld", cl - rl);
     if (detail) { fputs(",\"detail\":", jout); jstr(jout, detail); }
-    /* THE THREE FIELDS #385 ASKS FOR THAT NO EXPORT PROVIDES.  The REASON is a
-     * property of the build and not of the finding, so it is stated once at the
-     * document level; what stays here is the per-finding fact and a nine-character
-     * key naming which absence it is.  The caller measured the cost of repeating
-     * it: 265 characters on each of 120,163 findings is 31.8 MB of 77.5, two
-     * fifths of the corpus output, identical in every record. */
-    fputs(",\"source\":null,\"source_absent\":\"no-statement-export\"", jout);
+    /* The REASON an export is absent is a property of the build and not of the
+     * finding, so it is stated once at the document level; each side carries the
+     * per-finding fact and a key naming which absence it is.  The caller measured
+     * the cost of repeating the reason: 265 characters on each of 120,163
+     * findings is 31.8 MB of 77.5, two fifths of the corpus output, identical in
+     * every record. */
     fputc('}', jout);
 }
 
 static const char *json_fn;   /* #385: --json FILE */
+static const char *ref_stmts_fn, *cand_stmts_fn;   /* #385: --ref-stmts / --cand-stmts */
+
+/* What each side was given, so a consumer can tell "no export" from "an export
+ * that matched nothing" without re-reading the file.  `records' is what the file
+ * held and `section' what survived the section filter: the two apart are the
+ * only warning that an export of the right module was read for the wrong
+ * section, which parses cleanly and misses every offset. */
+static void jstmts_side(const char *tag, const struct sside *S)
+{
+    fprintf(jout, "\"%s\": ", tag);
+    if (!S->loaded) { fputs("null", jout); return; }
+    fputs("{\"export\": ", jout); jstr(jout, S->path);
+    fputs(", \"source\": ", jout); jstr(jout, S->src);
+    fprintf(jout, ", \"records\": %d, \"section\": %d", S->total, S->n);
+    fprintf(jout, ", \"section_bytes\": %ld, \"object_bytes\": %ld, \"matches_object\": %s}",
+            S->bytes, S->objbytes, S->bytes == S->objbytes ? "true" : "false");
+}
 
 static int align_run(const char *refp, const char *candp, const char *want, const char *outfn)
 {
@@ -3462,6 +3822,23 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
     if ((rc = align_load(&R, refp, want)) != 0) return rc;
     if ((rc = align_load(&C, candp, want)) != 0) { free(R.st); free(R.img); free(R.cov); return rc; }
 
+    /* The exports are read HERE and not at option time, because the section
+     * filter needs the name the object actually carries.  A refusal here is a
+     * refusal of the whole run: an export that names no statement in this
+     * section would silently make every finding read `no-owning-statement',
+     * which is the one wrong answer that looks like a measurement. */
+    if (ref_stmts_fn  && (rc = stmts_load(&sref,  ref_stmts_fn,  R.name)) != 0) return rc;
+    if (cand_stmts_fn && (rc = stmts_load(&scand, cand_stmts_fn, C.name)) != 0) return rc;
+    sref.objbytes = R.len; scand.objbytes = C.len;
+    if (sref.loaded && sref.bytes != R.len)
+        fprintf(stderr, "dasm370: %s covers %ld bytes of %s, the object %ld -- a STALE export\n"
+                        "  parses, matches the section name and misses every offset\n",
+                ref_stmts_fn, sref.bytes, R.name, R.len);
+    if (scand.loaded && scand.bytes != C.len)
+        fprintf(stderr, "dasm370: %s covers %ld bytes of %s, the object %ld -- a STALE export\n"
+                        "  parses, matches the section name and misses every offset\n",
+                cand_stmts_fn, scand.bytes, C.name, C.len);
+
     D = align_lcs(R.st, R.n, C.st, C.n, &pr, &np);
 
     o = outfn ? fopen(outfn, "w") : stdout;
@@ -3477,18 +3854,50 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
 
     if (json_fn) {
         if ((jout = fopen(json_fn, "w")) == NULL) { perror(json_fn); return 16; }
-        fputs("{\n  \"schema\": \"dasm370-repair/1\",\n", jout);
+        /* /2 AND NOT /1: `source' moved from the finding to each SIDE of it, and
+         * a moved key is a breaking change however empty it used to be.  A
+         * finding has two sides, they are two maintenance levels of one section,
+         * and they have two different sources -- one document-level `source'
+         * would have to pick one silently. */
+        fputs("{\n  \"schema\": \"dasm370-repair/2\",\n", jout);
         fputs("  \"note\": \"Offsets and lengths are section-relative BYTES as "
               "integers; `bytes' is uppercase hex, truncated at 64 bytes. A byte "
               "no TXT card covered was read as zero before comparison, because a "
-              "deck records its holes and a bound member cannot. Every finding "
-              "carries source:null; see source_absent_because.\",\n", jout);
-        fputs("  \"source_absent_because\": \"as370 has no per-statement export: "
-              "line number, text, macro origin and reserve-vs-align are listing "
-              "facts. In an object a DS 0F pad and a DS CL1 reservation are both "
-              "uncovered bytes; two object-side rules measured over the 30 control "
-              "CSECTs disagree 1% against 14%. Every finding carries "
-              "source_absent naming which absence it is.\",\n", jout);
+              "deck records its holes and a bound member cannot. EACH SIDE CARRIES ITS "
+              "OWN `source\' -- in dasm370-repair/1 it sat on the FINDING and was always "
+              "null -- because the two objects are two maintenance levels of one section "
+              "and have two different sources; where it is null, `source_absent\' names "
+              "which absence it is. A reader of /1 that asks a finding for `source\' and "
+              "tolerates its absence will silently see none where there is one.\",\n", jout);
+        if (!sref.loaded || !scand.loaded)
+            fputs("  \"source_absent_because\": \"a side with no as370 --stmts export "
+                  "(cc370#411) carries source:null there: line number, text, macro origin "
+                  "and reserve-vs-align are SOURCE facts. In an object a DS 0F pad and a "
+                  "DS CL1 reservation are both uncovered bytes; two object-side rules "
+                  "measured over the 30 control CSECTs disagree 1% against 14%. Pass "
+                  "--ref-stmts and --cand-stmts to fill them.\",\n", jout);
+        fputs("  \"source_note\": \"A source record names the card at `org\', and THE "
+              "CONSUMER MUST CHECK IT: test that `text\' is a PREFIX of the statement at "
+              "org, folding continuations. A statement from a COPY\'d member keeps the "
+              "COPY card\'s origin and carries nothing that marks it -- gen false, mdepth "
+              "0, mcall_* null, exactly like open code -- so org names the COPY card and "
+              "the prefix test is what says so. Measured over 490 COPY-derived records: "
+              "490 of 490 both ways, and org is never a line inside the member; control "
+              "over 47,534 open-code records gives 0 false positives on prefix and 5 on "
+              "equality. `claimants\' above 1 means an ORG overlay put several statements "
+              "on the offset. THE ONE TAKEN IS THE LAST IN LISTING ORDER THAT RESERVES, "
+              "and `the last\' alone is wrong: a forward ORG claims the bytes it moved "
+              "over and is last, while the deck holds what the statements under it wrote "
+              "-- 53,328 of 189,227 overlapped offsets over the 832-module population, in "
+              "121 of its 378 modules with an overlap, and 45 of 3,266 over the 30. The "
+              "rule is keyed on `reserves\' and NOT on the operation: 53,323 of those "
+              "53,328 last claimants are ORG and five are a zero-duplication DC 0F or "
+              "DS 0F. Under the reserves rule the count is 0 in both populations. `chosen\' is \\\"reserving\\\" for that statement, "
+              "\\\"unreserved\\\" where no claimant reserves at all, "
+              "\\\"encloses\\\" for one an INSERTION POINT falls inside -- a disassembly\'s "
+              "boundaries are the decoder\'s and not the assembler\'s, so that card has to "
+              "be SPLIT -- and \\\"zero-advance\\\" for one that occupies nothing, whose "
+              "`reserves\' is null.\",\n", jout);
         fputs("  \"csect\": ", jout); jstr(jout, R.name);
         fprintf(jout, ",\n  \"ref\": {\"path\": ");
         jstr(jout, R.path);
@@ -3498,6 +3907,11 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
         jstr(jout, C.path);
         fprintf(jout, ", \"form\": \"%s\", \"bytes\": %ld, \"statements\": %d}",
                 C.member ? "member" : "deck", C.len, C.n);
+        fputs(",\n  \"stmts\": {", jout);
+        jstmts_side("ref", &sref);
+        fputc(',', jout);
+        jstmts_side("cand", &scand);
+        fputc('}', jout);
         fputs(",\n  \"findings\": [", jout);
     }
 
@@ -3712,7 +4126,13 @@ static void usage(FILE *o)
 "                     displacement delta is a CONSEQUENCE when it is in the\n"
 "                     shift function's value set and a FINDING when it is not.\n"
 "                     Reads no hint file and writes no disassembly\n"
-"  -I DIR             macro library for --derive-hints (repeatable)"
+"  --json FILE        with --align-diff, the repair contract: one record per\n"
+"                     divergence, schema dasm370-repair/2 (cc370#385)\n"
+"  --ref-stmts FILE   the as370 --stmts export of each side's SOURCE, which\n"
+"  --cand-stmts FILE  fills that side's `source\' in --json.  Two flags because\n"
+"                     the two objects have two different sources, and a single\n"
+"                     one would have to pick a side silently\n"
+"  -I DIR             macro library for --derive-hints (repeatable)\n"
 "  --as370 PATH       which as370 to run (default: beside this binary, then PATH)\n"
 "  --anchors=MODE     refuse (default) stops at the first failed check; report\n"
 "                     disassembles anyway and writes EVERY finding as a comment\n"
@@ -3773,6 +4193,19 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[ai], "--derive-hints") && ai + 1 < argc) derive_src = argv[++ai];
         else if (!strcmp(argv[ai], "--infer")) infer = 1;
         else if (!strcmp(argv[ai], "--json") && ai + 1 < argc) json_fn = argv[++ai];
+        /* TWO FLAGS AND NOT ONE, because the two sides are two different modules
+         * at two maintenance levels and each has its own source.  A single
+         * --stmts would have to pick a side silently, and picking the wrong one
+         * produces a plausible `org' on every finding with nothing to object. */
+        else if (!strcmp(argv[ai], "--ref-stmts") && ai + 1 < argc) ref_stmts_fn = argv[++ai];
+        else if (!strcmp(argv[ai], "--cand-stmts") && ai + 1 < argc) cand_stmts_fn = argv[++ai];
+        else if (!strcmp(argv[ai], "--stmts") || !strncmp(argv[ai], "--stmts=", 8)) {
+            fprintf(stderr, "dasm370: --stmts is as370's option for WRITING the export; "
+                            "dasm370 reads one\n"
+                            "  per side, because the two objects have two different sources:\n"
+                            "  --ref-stmts FILE and --cand-stmts FILE\n");
+            return 16;
+        }
         else if (!strcmp(argv[ai], "--labels") && ai + 1 < argc) {
             const char *v = argv[++ai];
             if (!strcmp(v, "sequential")) label_seq = 1;
@@ -3885,7 +4318,20 @@ int main(int argc, char **argv)
                             "a hint file\n");
             return 16;
         }
+        if ((ref_stmts_fn || cand_stmts_fn) && !json_fn) {
+            fprintf(stderr, "dasm370: a statement export fills the `source' field of --json "
+                            "(cc370#385);\n"
+                            "  the text report has no field for it, so it would be read and "
+                            "discarded\n");
+            return 16;
+        }
         return align_run(align_ref, align_cand, want, outfn);
+    }
+    if ((ref_stmts_fn || cand_stmts_fn) && !align_ref) {
+        fprintf(stderr, "dasm370: --ref-stmts/--cand-stmts name the sources of the two objects "
+                        "--align-diff compares;\n"
+                        "  there are no two objects without it\n");
+        return 16;
     }
     if (json_fn && !align_ref) {
         fprintf(stderr, "dasm370: --json is the repair contract for --align-diff (cc370#385); "

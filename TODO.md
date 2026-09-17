@@ -1344,8 +1344,32 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
-- **2026-09-17, in flight — #415, PR #417 (`fix/dasm370-section-origin`,
-  `6ecc4e5`).** `dasm370` read a deck's TXT address as an offset into the
+- **2026-09-17, in flight — #385, PR #419 (`feat/dasm370-385-json-source`).**
+  The repair contract's **source** half, as a translator and not a second guess —
+  Mike's decision on the shape. Two flags, `--ref-stmts` and `--cand-stmts`,
+  because the two objects are two maintenance levels with two different sources
+  and one flag would pick a side silently. Schema **`dasm370-repair/2`**:
+  `source` moved from the finding to each side, and the document's own note says
+  so, because a `/1` reader that *tolerates* its absence gets `None` — the old
+  answer — and silently sees no source where there now is one.
+
+  The rule that decided the file's shape is that **an offset is not a function**
+  — 5.97 % of claimed bytes have more than one claimant, in 3,559 of 5,528
+  modules. The owner is **the last claimant that RESERVES**, and *"the last"*
+  alone was my rule and was wrong: a forward `ORG` claims the bytes it moved over
+  and is last, which `mvs38src` measured at **53,328 of 189,227** overlapped
+  offsets over the 832 and 45 of 3,266 over the 30 — **0 under the reserves rule
+  in both**. Keyed on the **column** and not on the operation: five of those
+  53,328 are a zero-duplication `DC 0F` or `DS 0F`, so *"an `ORG` never outranks
+  an emitter"* — which fits all 45 of the small population — leaves them
+  standing.
+
+  Acceptance: `align-d.s` and `align-e.s` differ only in `DS 0F` against
+  `DS CL2` at one offset, **their decks are byte-identical** (sha256
+  `287591aa…`, reproduced independently by `mvs38src`), and the same finding at
+  000006 comes back `reserves` false against true.
+
+- **2026-09-17 — #415, MERGED as `db4561c` (PR #417).** `dasm370` read a deck's TXT address as an offset into the
   section. It is **module-absolute**, the same space as the section's ESD
   address, so a section at origin *A* had every byte written at offset *A* — past
   the declared length — and came out as one `DS XLn` over zeros **that
@@ -1360,9 +1384,16 @@ Pointers only. The reasoning lives in the issues and their PRs.
   those 472: **270,868 → 2,755, with 0 sections gaining any**. `0 of the 832` and
   `0 of the 30` are non-first sections so no published verdict moves, **but their
   decks carry 41 such sections** — the control corpus contains the class and
-  looks straight past it. `mvs38src` is running the tree-wide gate. Left open
-  deliberately: a **cross-section** adcon still prints its addend
-  module-absolute; unmeasured, unchanged by this, and not folded in.
+  looks straight past it. **`mvs38src`'s tree-wide gate passed**: 5,538 decks,
+  6,395 sections, 5,878 at address 0 with **0** changed and 517 non-zero with
+  **474** changed, the 43 that did not being zero-length. The census difference
+  between the two runs is **reconciled** — named non-zero sections are 472 on
+  both sides with 471 changed on both, and the whole gap is the blank-named
+  class, which `--csect ''` reaches. Left open deliberately and now filed as
+  **#418**: a **cross-section** adcon's addend carries the target section's
+  origin twice — `A(AHLMCMSG+X'548')` where `A(AHLMCMSG)` is right — in 683 of
+  814 such RLD entries across 124 modules. It reaches **first** sections too, so
+  it is not a tail of #415.
 
 - **2026-09-17, filed — #416.** An unresolved `COPY` member is silent in as370:
   rc 0, nothing on either stream, the card left in the stream and the location
@@ -1371,7 +1402,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   nowhere. Whether those 72 are as370's silence or a gap in `work/macros` is a
   separate question and is Mike's.
 
-- **2026-09-17, in flight — #411/#385, PR #414 (`feat/dasm370-385-translator`).**
+- **2026-09-17 — #411/#385's export half, MERGED as `666138c` (PR #414).**
   Two corrections to the `as370 --stmts` export, both found by trying to write
   #385's translator against it. `sect`/`sectname`/`secorg`, because **only 49.7 %
   of the 5,538 sources declare a single section** and `loc` is module-absolute —

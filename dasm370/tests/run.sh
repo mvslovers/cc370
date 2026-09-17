@@ -1105,13 +1105,15 @@ d = json.load(open(sys.argv[1]))
 f = d["findings"]
 print("parse ok")
 print("count-matches" if len(f) == d["counts"]["findings"] else "count-MISMATCH %d %d" % (len(f), d["counts"]["findings"]))
-print("source-null" if all(x["source"] is None and x["source_absent"] for x in f) and d["source_absent_because"] else "source-NOT-null")
+print("source-null" if all(x[s]["source"] is None and x[s]["source_absent"] == "no-statement-export" for x in f for s in ("ref","cand")) and d["source_absent_because"] else "source-NOT-null")
+print("schema-%s" % d["schema"])
 print("holes-marked" if any(".." in x[s]["bytes"] for x in f for s in ("ref","cand")) or True else "")
 print("has-shift-set" if isinstance(d["shift_set"], list) and d["shift_set"] else "no-shift-set")
 print("base-%s" % d["base"])
 PY
 jwant() { if grep -qx "$1" "$T/json.out"; then pass "$2"; else fail "$2"; cat "$T/json.out"; fi; }
 jwant "parse ok"      "the repair contract is valid JSON"
+jwant "schema-dasm370-repair/2" "the schema names its version, and /2 is where source moved to the sides"
 jwant "count-matches" "the findings array length equals counts.findings"
 jwant "source-null"   "every finding carries source:null WITH the reason it is absent"
 jwant "has-shift-set" "the shift set travels with the findings -- how strong the test was"
@@ -1168,6 +1170,213 @@ cmp -s "$T/inf-plain.s" "$T/inf-hint.s" \
 "$D" --infer --derive-hints tests/derive.s "$T/inf.obj" >/dev/null 2>&1
 [ $? = 16 ] && pass "--infer and --derive-hints together are refused -- two producers of one file" \
             || fail "--infer and --derive-hints together are refused"
+
+# ---- the repair contract's SOURCE half (cc370#385) ------------------------
+# THE ACCEPTANCE #385 ASKS FOR, and the fixtures state it as sharply as it can be
+# stated: align-d.s and align-e.s differ only in `PAD DS 0F' against
+# `HOLD DS CL2' at the same offset, and THEIR DECKS ARE BYTE-IDENTICAL. So the
+# object carries no evidence whatsoever for the distinction -- two object-side
+# rules measured over the 30 control CSECTs disagree 1 % against 14 % about the
+# size of that population -- and only as370's statement export can answer it.
+# Both are diffed against the same align-f.s, giving ONE finding at 000006 on
+# each side and OPPOSITE verdicts.
+#
+# ON THE PRE-CHANGE BINARY every check here fails at rc 16, because --ref-stmts
+# and --cand-stmts do not exist there. That is an additive option and not a
+# mutant, and the useexp block in as370 says the same thing about its own: an
+# option a binary rejects cannot be scored against it.
+"$A" tests/align-d.s -o "$T/sd.obj" --stmts="$T/sd.tsv" >/dev/null 2>&1
+"$A" tests/align-e.s -o "$T/se.obj" --stmts="$T/se.tsv" >/dev/null 2>&1
+"$A" tests/align-f.s -o "$T/sf.obj" --stmts="$T/sf.tsv" >/dev/null 2>&1
+cmp -s "$T/sd.obj" "$T/se.obj" \
+    && pass "acceptance: DS 0F and DS CL2 at one offset produce BYTE-IDENTICAL decks" \
+    || { fail "the two decks must be byte-identical or the fixture proves nothing"
+         cmp "$T/sd.obj" "$T/se.obj" | head -2; }
+for q in d e; do
+    "$D" --align-diff "$T/s$q.obj" "$T/sf.obj" --json "$T/s$q.json" \
+         --ref-stmts "$T/s$q.tsv" --cand-stmts "$T/sf.tsv" -o /dev/null 2>"$T/s$q.err"
+done
+python3 - "$T/sd.json" "$T/se.json" > "$T/s.out" 2>&1 <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); e = json.load(open(sys.argv[2]))
+def one(j):
+    f = j["findings"]
+    if len(f) != 1: return None
+    return f[0]["ref"]["source"]
+a, b = one(d), one(e)
+if a is None or b is None: print("NOT-ONE-FINDING"); sys.exit()
+print("verdicts-differ" if a["reserves"] != b["reserves"] else "verdicts-SAME")
+print("aligns-%s" % a["reserves"]); print("reserves-%s" % b["reserves"])
+print("text-a-%s" % a["text"].split()[0]); print("text-b-%s" % b["text"].split()[0])
+print("offset-%d-%d" % (a["stmt_offset"], b["stmt_offset"]))
+print("cand-has-source" if d["findings"][0]["cand"]["source"] else "cand-source-MISSING")
+# `reserves' and `chosen' are two different facts and the ALIGNS side shows it:
+# no claimant of 000006 reserves, so the owner comes back with chosen
+# "unreserved" -- which says the bytes belong to no statement at all, where
+# reserves alone says only that THIS statement does not occupy them.
+print("chosen-a-%s" % a["chosen"]); print("chosen-b-%s" % b["chosen"])
+print("finding-on-the-finding" if "source" in d["findings"][0] else "source-is-per-side")
+PY
+swant() { if grep -qx "$1" "$T/s.out"; then pass "$2"; else fail "$2"; cat "$T/s.out"; fi; }
+swant "verdicts-differ" "acceptance: the SAME finding at the SAME offset gets OPPOSITE verdicts"
+swant "aligns-False"    "the DS 0F side reports reserves false -- it only aligned over the bytes"
+swant "reserves-True"   "the DS CL2 side reports reserves true -- it occupied them"
+swant "text-a-PAD"      "and the verdict comes with the card that produced it (PAD)"
+swant "text-b-HOLD"     "and with HOLD on the other side, which is a different card"
+swant "offset-6-6"      "both at 000006: the distinction is not a difference of position"
+swant "cand-has-source" "both sides carry their own source -- two levels, two files"
+swant "chosen-a-unreserved" "the ALIGNS side: nothing claiming 000006 reserves it, so chosen says so"
+swant "chosen-b-reserving"  "the RESERVES side: a claimant does, and chosen names that rule"
+swant "source-is-per-side"  "and source is NOT on the finding -- that is what /2 means"
+
+# The insert case, where the two sides resolve to DIFFERENT cards of DIFFERENT
+# files: the candidate's inserted instruction to its own card, and the
+# reference's zero-length insertion point to the statement it goes BEFORE.
+"$A" tests/align-a.s -o "$T/sa.obj" --stmts="$T/sa.tsv" >/dev/null 2>&1
+"$A" tests/align-b.s -o "$T/sb.obj" --stmts="$T/sb.tsv" >/dev/null 2>&1
+"$D" --align-diff "$T/sa.obj" "$T/sb.obj" --json "$T/sab.json" \
+     --ref-stmts "$T/sa.tsv" --cand-stmts "$T/sb.tsv" -o /dev/null 2>/dev/null
+python3 - "$T/sab.json" > "$T/sab.out" 2>&1 <<'PY'
+import json, sys
+j = json.load(open(sys.argv[1])); f = j["findings"][0]
+r, c = f["ref"]["source"], f["cand"]["source"]
+print("kind-%s" % f["kind"])
+print("ref-op-%s" % r["text"].split()[0]); print("cand-op-%s" % c["text"].split()[0])
+print("files-differ" if r["file"] != c["file"] else "files-SAME")
+print("ref-len-%d" % f["ref"]["length"])
+print("matches" if all(j["stmts"][s]["matches_object"] for s in ("ref","cand")) else "MISMATCH")
+PY
+awant() { if grep -qx "$1" "$T/sab.out"; then pass "$2"; else fail "$2"; cat "$T/sab.out"; fi; }
+awant "kind-insert"  "the insert case is still an insert with the export attached"
+awant "ref-len-0"    "and the reference side of it is a zero-length insertion POINT"
+awant "ref-op-ST"    "which resolves to the statement the insertion goes before"
+awant "cand-op-A"    "while the candidate's own card is the instruction that was added"
+awant "files-differ" "the two cards are in two different files, which is the point"
+awant "matches"      "and each export's extent agrees with its object's length"
+
+# THE LAST CLAIMANT OF AN OFFSET IS NOT THE RULE -- the last that RESERVES is,
+# and the difference was found in the control corpus rather than reasoned about.
+# IEHPROG1's second section winds the counter back, overwrites six statements and
+# winds it forward with a bare ORG whose advance is +10: that ORG CLAIMS
+# 4476..4485 and is last in listing order, while the deck holds 50210000 92801000
+# 0A14 -- the ST, the MVI and the SVC. An ORG moves over bytes and never writes
+# them. 45 of 3,266 overlapped offsets over the 30 control CSECTs, in three
+# modules, twice inside IEHPROG1 alone (mvs38src).
+#
+# align-g.s reproduces the shape: offset 000008 has THREE claimants, and the deck
+# holds the middle one. NEGATIVE CONTROL against the rule this replaced, which is
+# a real mutant and not an additive option: at 6a40fd0 the same document says
+# chosen=last, text=ORG, reserves=false -- a repair told the ORG owns those bytes
+# edits the ORG.
+"$A" tests/align-g.s -o "$T/og.obj" --stmts="$T/og.tsv" >/dev/null 2>&1
+"$A" tests/align-h.s -o "$T/oh.obj" --stmts="$T/oh.tsv" >/dev/null 2>&1
+"$D" --align-diff "$T/og.obj" "$T/oh.obj" --json "$T/og.json" \
+     --ref-stmts "$T/og.tsv" --cand-stmts "$T/oh.tsv" -o /dev/null 2>/dev/null
+python3 - "$T/og.json" > "$T/og.out" 2>&1 <<'PY'
+import json, sys
+j = json.load(open(sys.argv[1]))
+f = j["findings"]
+if len(f) != 1: print("NOT-ONE-FINDING-%d" % len(f)); sys.exit()
+s = f[0]["ref"]["source"]
+print("offset-%d" % f[0]["ref"]["offset"])
+print("claimants-%d" % s["claimants"])
+print("chosen-%s" % s["chosen"])
+print("op-%s" % s["text"].split()[1])
+print("reserves-%s" % s["reserves"])
+PY
+owant() { if grep -qx "$1" "$T/og.out"; then pass "$2"; else fail "$2"; cat "$T/og.out"; fi; }
+owant "offset-8"     "the ORG case lands at 000008, inside the range the bare ORG claims"
+owant "claimants-3"  "three statements claim it: the first L, the MVI over it, and the ORG"
+owant "chosen-reserving" "and the one taken is the last that RESERVES, not the last"
+owant "op-MVI"       "which is the MVI -- what the deck holds at that offset"
+owant "reserves-True" "so the verdict is that the bytes are OCCUPIED, not moved over"
+
+# AN INSERTION POINT NEED NOT FALL ON A SOURCE BOUNDARY. A disassembly's
+# boundaries are the DECODER's: in align-j.s the two bytes X'5800' and the first
+# two of the DS after them decode together as one four-byte L 0,0(0,0), so the
+# decoder's next boundary is 000008 while `BUF DS CL8' runs 000006..00000D. The
+# deletion point lands two bytes INSIDE that card and the card has to be SPLIT.
+#
+# THE PROPERTY IS length == 0, NOT "inside", and three earlier attempts at this
+# fixture failed by pinning "inside". Over the 832 (mvs38src): 170 encloses in 63
+# modules, all length 0, while 2,168 findings of NON-zero length also start
+# inside their chosen statement and are correctly reserving or unreserved. The
+# separation is exact both ways, so a fixture keyed on "inside" would pass on any
+# of those 2,168 and prove nothing.
+"$A" tests/align-i.s -o "$T/ei.obj" --stmts="$T/ei.tsv" >/dev/null 2>&1
+"$A" tests/align-j.s -o "$T/ej.obj" --stmts="$T/ej.tsv" >/dev/null 2>&1
+"$D" --align-diff "$T/ei.obj" "$T/ej.obj" --json "$T/ei.json" \
+     --ref-stmts "$T/ei.tsv" --cand-stmts "$T/ej.tsv" -o /dev/null 2>/dev/null
+python3 - "$T/ei.json" > "$T/ei.out" 2>&1 <<'PY'
+import json, sys
+j = json.load(open(sys.argv[1]))
+f = j["findings"]
+if len(f) != 1: print("NOT-ONE-FINDING-%d" % len(f)); sys.exit()
+c = f[0]["cand"]; s = c["source"]
+print("kind-%s" % f[0]["kind"])
+print("cand-len-%d" % c["length"])
+print("chosen-%s" % s["chosen"])
+print("inside" if s["stmt_offset"] < c["offset"] < s["stmt_offset"] + s["stmt_length"]
+      else "NOT-INSIDE")
+print("op-%s" % s["text"].split()[1])
+print("ref-chosen-%s" % f[0]["ref"]["source"]["chosen"])
+PY
+ewant() { if grep -qx "$1" "$T/ei.out"; then pass "$2"; else fail "$2"; cat "$T/ei.out"; fi; }
+ewant "kind-delete"      "the enclose case is a delete, which is where a zero length comes from"
+ewant "cand-len-0"       "and its candidate side has length 0 -- an insertion POINT, not a range"
+ewant "inside"           "that point is strictly inside the card the export gives for it"
+ewant "chosen-encloses"  "so chosen says encloses: the card has to be SPLIT, not replaced"
+ewant "op-DS"            "and the card is the DS the decoder ran past, not the statement at 000008"
+ewant "ref-chosen-reserving" "while the reference side of the same finding is an ordinary owner"
+
+# A STALE EXPORT IS THE MISTAKE NOTHING ELSE CAN SEE: it parses, the header is
+# right, the section name matches and every offset looks plausible, because it
+# belongs to a different build of the same source. The section's length is the
+# one scalar both sides state independently. Truncating the export also leaves
+# the finding's offset uncovered, which is the only way to reach
+# `no-owning-statement' -- so both states are exercised by one run, and the third
+# (`no-statement-export') by leaving the other side's flag off.
+awk -F'\t' 'BEGIN{OFS="\t"} /^#/{print;next}
+    {if(c==0){for(i=1;i<=NF;i++) if($i=="loc") c=i; print; next} if($c+0 < 6) print}' \
+    "$T/sd.tsv" > "$T/strunc.tsv"
+"$D" --align-diff "$T/sd.obj" "$T/sf.obj" --json "$T/stale.json" \
+     --ref-stmts "$T/strunc.tsv" -o /dev/null 2>"$T/stale.err"
+grep -q 'STALE export' "$T/stale.err" \
+    && pass "an export whose extent disagrees with the object is reported, not swallowed" \
+    || { fail "a stale export must be reported"; cat "$T/stale.err"; }
+python3 - "$T/stale.json" > "$T/stale.out" 2>&1 <<'PY'
+import json, sys
+j = json.load(open(sys.argv[1])); f = j["findings"][0]
+print("ref-%s" % (f["ref"].get("source_absent") or "present"))
+print("cand-%s" % (f["cand"].get("source_absent") or "present"))
+print("matches-%s" % j["stmts"]["ref"]["matches_object"])
+print("cand-side-%s" % (j["stmts"]["cand"] is None))
+PY
+twant() { if grep -qx "$1" "$T/stale.out"; then pass "$2"; else fail "$2"; cat "$T/stale.out"; fi; }
+twant "ref-no-owning-statement" "an offset no statement claims says so BY NAME, not with a bare null"
+twant "cand-no-statement-export" "and a side with no export at all says a DIFFERENT thing"
+twant "matches-False"           "matches_object is false where the extents disagree"
+twant "cand-side-True"          "a side given no export is null in the document, not an empty object"
+
+# ---- refusals, for the source half ----------------------------------------
+"$D" --align-diff "$T/sd.obj" "$T/sf.obj" --stmts "$T/sd.tsv" -o /dev/null >/dev/null 2>"$T/r1.err"
+[ $? = 16 ] && grep -q 'ref-stmts' "$T/r1.err" \
+    && pass "--stmts is as370's option and the refusal names the two that are ours" \
+    || { fail "--stmts must be refused BY NAME"; cat "$T/r1.err"; }
+"$D" --align-diff "$T/sd.obj" "$T/sf.obj" --ref-stmts "$T/sd.tsv" -o /dev/null >/dev/null 2>"$T/r2.err"
+[ $? = 16 ] \
+    && pass "an export without --json is refused: nothing in the text report holds it" \
+    || { fail "an export without --json must be refused"; cat "$T/r2.err"; }
+"$D" --align-diff "$T/sd.obj" "$T/sf.obj" --json /dev/null --ref-stmts "$T/sa.tsv" \
+     -o /dev/null >/dev/null 2>"$T/r3.err"
+[ $? = 16 ] && grep -q 'ALIGNX' "$T/r3.err" \
+    && pass "an export of the WRONG section is refused, and the refusal NAMES what it found" \
+    || { fail "the refusal must name the sections the file does carry"; cat "$T/r3.err"; }
+"$D" --align-diff "$T/sd.obj" "$T/sf.obj" --json /dev/null --ref-stmts /dev/null \
+     -o /dev/null >/dev/null 2>"$T/r4.err"
+[ $? = 16 ] && grep -q 'not an as370' "$T/r4.err" \
+    && pass "a file that is not the export is refused on its first line" \
+    || { fail "a non-export must be refused"; cat "$T/r4.err"; }
 
 # ---- a section that is not the deck's first one (cc370#415) ---------------
 # EVERY OTHER FIXTURE HERE IS A SINGLE SECTION AT ESD ADDRESS 0, which is the one
