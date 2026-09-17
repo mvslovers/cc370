@@ -1031,7 +1031,13 @@ fi
 #
 # Mutant scores, and the two zeros are recorded as zeros:
 #
-#   source_absent_because dropped, the key simply omitted     2 fail
+#   source_absent_because dropped from the document            2 fail
+#       ... the REASON is hoisted to document level, because it is a property
+#       of the build and not of the finding: 265 characters on each of
+#       120,163 findings is 31.8 MB of 77.5, two fifths of the corpus output
+#       and identical in every record. What stays per finding is
+#       `source_absent: "no-statement-export"' -- nine characters, so a
+#       consumer can still hold one finding in its hand.
 #   the counts block dropped from the document                3 fail
 #   jstr() stops escaping the quote and the backslash         0 fail
 #       ... UNEXERCISED here and nearly unreachable: dasm370's own operands
@@ -1053,7 +1059,7 @@ d = json.load(open(sys.argv[1]))
 f = d["findings"]
 print("parse ok")
 print("count-matches" if len(f) == d["counts"]["findings"] else "count-MISMATCH %d %d" % (len(f), d["counts"]["findings"]))
-print("source-null" if all(x["source"] is None and x["source_absent_because"] for x in f) else "source-NOT-null")
+print("source-null" if all(x["source"] is None and x["source_absent"] for x in f) and d["source_absent_because"] else "source-NOT-null")
 print("holes-marked" if any(".." in x[s]["bytes"] for x in f for s in ("ref","cand")) or True else "")
 print("has-shift-set" if isinstance(d["shift_set"], list) and d["shift_set"] else "no-shift-set")
 print("base-%s" % d["base"])

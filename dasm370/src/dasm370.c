@@ -3390,12 +3390,13 @@ static void jfinding(const char *kind, const struct aside *R, long ra, long rl,
     fputc(',', jout); jside(jout, "cand", C, ca, cl, cop, copnd);
     fprintf(jout, ",\"delta\":%ld", cl - rl);
     if (detail) { fputs(",\"detail\":", jout); jstr(jout, detail); }
-    /* THE THREE FIELDS #385 ASKS FOR THAT NO EXPORT PROVIDES. */
-    fputs(",\"source\":null,\"source_absent_because\":"
-          "\"as370 has no per-statement export: line number, text, macro origin "
-          "and reserve-vs-align are listing facts. In an object a DS 0F pad and a "
-          "DS CL1 reservation are both uncovered bytes; two object-side rules "
-          "measured over the 30 control CSECTs disagree 1% against 14%.\"", jout);
+    /* THE THREE FIELDS #385 ASKS FOR THAT NO EXPORT PROVIDES.  The REASON is a
+     * property of the build and not of the finding, so it is stated once at the
+     * document level; what stays here is the per-finding fact and a nine-character
+     * key naming which absence it is.  The caller measured the cost of repeating
+     * it: 265 characters on each of 120,163 findings is 31.8 MB of 77.5, two
+     * fifths of the corpus output, identical in every record. */
+    fputs(",\"source\":null,\"source_absent\":\"no-statement-export\"", jout);
     fputc('}', jout);
 }
 
@@ -3440,6 +3441,12 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
               "no TXT card covered was read as zero before comparison, because a "
               "deck records its holes and a bound member cannot. Every finding "
               "carries source:null; see source_absent_because.\",\n", jout);
+        fputs("  \"source_absent_because\": \"as370 has no per-statement export: "
+              "line number, text, macro origin and reserve-vs-align are listing "
+              "facts. In an object a DS 0F pad and a DS CL1 reservation are both "
+              "uncovered bytes; two object-side rules measured over the 30 control "
+              "CSECTs disagree 1% against 14%. Every finding carries "
+              "source_absent naming which absence it is.\",\n", jout);
         fputs("  \"csect\": ", jout); jstr(jout, R.name);
         fprintf(jout, ",\n  \"ref\": {\"path\": ");
         jstr(jout, R.path);

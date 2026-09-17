@@ -67,9 +67,19 @@ macro-generated and which call owns it, and whether a statement B<reserves> byte
 (C<DS CL1>) or only B<aligns> (C<DS 0F>). In an object the last two are both
 uncovered bytes: two defensible object-side rules measured over 30 control
 sections give 89 bytes and 1,788 for the same population, one per cent against
-fourteen. So C<source> is C<null> on every finding, with C<source_absent_because>
-saying why --- a schema that omitted the key would read as though the question had
-not come up.
+fourteen. So C<source> is C<null> on every finding, with C<source_absent> naming
+which absence it is and a document-level C<source_absent_because> saying why --- a
+schema that omitted the key would read as though the question had not come up.
+The reason is stated once because it is a property of the build rather than of a
+finding; repeating it cost two fifths of the corpus output.
+
+B<On a C<delete>, C<cand.offset> is populated while C<cand.length> is zero.> That
+is not a stray: it is the B<insertion point> in the candidate, which is exactly
+what a repair needs in order to know where the missing statement goes. The same
+holds mirrored for an C<insert>.
+
+C<operands> on a data run is a rendering (C<"24 bytes">) rather than a field to
+parse; C<length> carries the number.
 
 =item B<--labels> I<displacement>|I<sequential>
 
