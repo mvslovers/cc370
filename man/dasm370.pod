@@ -493,18 +493,31 @@ traversal arrives at them.>
 
 =head2 Why the applied form is not shipped
 
-B<Which denominator, because three are in circulation and they disagree.> The
+B<Which denominator, because FOUR are in circulation and they disagree.> The
 C<reached=> and C<dark=> fields of the report are byte counts over the B<whole
 section>, data included, and they are exact. Every percentage quoted below and in
-cc370#383 is a different quantity: B<of the bytes a real source listing calls
-code, the fraction the traversal reached> --- the intersection over the witness,
-not C<reached / sect_len> and not C<reached / code>. Over the 30 control sections
-those three read 62.1 %, 80.0 % and 76.6 % for the same run, so a reader
-recomputing the ratio a second way will not land on the published figure unless
-the formula is named. It is named here for the same reason the report does not
-publish a percentage at all: C<reached / sect_len> punishes a section for being
-half table, and a coverage number whose denominator is unstated is not a coverage
-number.
+cc370#383 is a different quantity, and it is the one least obvious from the
+name: B<the reached set INTERSECTED with the witness, over the witness> --- of
+the bytes a real source listing calls code, the fraction the traversal reached.
+Over the 30 control sections, one run, C<--reach-report=both>:
+
+    reached / section length                        62.1 %
+    reached / the witness's code bytes (62,078)     80.0 %
+    reached / dasm370's own code classification     75.4 %
+    (reached AND witness) / witness                 76.6 %   <- what is quoted
+
+B<A reader who divides the report's own byte counts by a code total gets 80.0 and
+will conclude this page is wrong.> They are not; they computed a different thing.
+Note also that the third and fourth rows agree to within 1.2 points for entirely
+unrelated reasons --- one narrows the numerator, the other widens the denominator
+by 3,810 bytes --- so B<numerical agreement between two figures is not evidence
+that they measure the same quantity>, and that near-coincidence was measured here
+rather than assumed away.
+
+The report publishes no percentage at all for the same reason:
+C<reached / sect_len> punishes a section for being half table, so the tool states
+what it counted and the reader states what they divided by. B<A coverage number
+whose denominator is unstated is not a coverage number.>
 
 Measured over 30 control sections whose real source says which bytes are code:
 the traversal reaches an aggregate of B<82.2 %> and a B<median of 97.7 %> by that
