@@ -1537,6 +1537,178 @@ static int load_member(const unsigned char *m, long n, const char *want, int all
     return 1;
 }
 
+/* ------------------------------------------------------ a section, once -- */
+
+/* Everything the two loaders write, cleared.  --align-diff reads two sections
+ * through this state one after the other, so "what does a load leave behind"
+ * stops being a question nobody had to ask.  Miss one of these and the second
+ * section inherits it -- which reads as a difference between the two modules,
+ * with nothing in either module to explain it. */
+static void section_reset(void)
+{
+    memset(img, 0, sizeof img);
+    memset(cov, 0, sizeof cov);
+    memset(lab, 0, sizeof lab);
+    memset(stbrk, 0, sizeof stbrk);
+    memset(rld, 0, sizeof rld);          nrld = 0;
+    memset(esdname, 0, sizeof esdname);
+    memset(esdtype, 0, sizeof esdtype);
+    memset(ld, 0, sizeof ld);            nld = 0;
+    sect_org = 0; sect_len = 0; sect_esdid = 0; sect_name[0] = 0;
+    from_member = 0; end_has_entry = 0; end_entry = 0;
+    seq = 100; nline = 0;
+}
+
+/* The file, the deck-or-member sniff, and whichever of the two readers it
+ * picks.  Lifted out of main so a SECOND section can be read after the first,
+ * and the `goto emit_source' went with it rather than surviving the move: the
+ * bound-member path used to jump from the sniff straight to the emitter, over
+ * everything in between, which is how --infer came to produce nothing at all
+ * for the one input format it exists for (#401).  A function that RETURNS
+ * cannot skip what follows it, so that trap is gone rather than documented.
+ *
+ * 0 = loaded, 2 = no such section, 16 = could not read it. */
+static int load_section(const char *src, const char *want, int allow_incomplete)
+{
+    unsigned char *deck;
+    long dn, ncards, c, maxaddr = 0;
+
+    section_reset();
+    {
+        FILE *f = fopen(src, "rb");
+        long got;
+        if (!f) { perror(src); return 16; }
+        fseek(f, 0, SEEK_END); dn = ftell(f); fseek(f, 0, SEEK_SET);
+        deck = malloc((size_t)dn ? (size_t)dn : 1);
+        if (!deck) { fprintf(stderr, "dasm370: %s: out of memory\n", src); fclose(f); return 16; }
+        got = (long)fread(deck, 1, (size_t)dn, f);
+        fclose(f);
+        if (got != dn) { fprintf(stderr, "dasm370: %s: short read\n", src); free(deck); return 16; }
+    }
+    /* An object deck is a multiple of 80 bytes whose cards begin X'02'; anything
+     * else is read as a bound member.  Both sniffs are the ones cmplmd370 uses
+     * and neither is a guess about the content. */
+    if (dn % 80 || dn == 0 || deck[0] != 0x02) {
+        int k = load_member(deck, dn, want, allow_incomplete);
+        free(deck);
+        if (k == 0) {
+            fprintf(stderr, "dasm370: no section named %s in %s\n", want ? want : "(any)", src);
+            return 2;
+        }
+        return k == 1 ? 0 : k;
+    }
+    ncards = dn / 80;
+
+    /* Pass 1: the ESD.  Sections first, because the RLD and the TXT are keyed
+     * on the ESDIDs it assigns. */
+    for (c = 0; c < ncards; c++) {
+        struct esd_collect cc;
+        int k;
+        cc.n = 0;
+        obj_esd_walk(deck + c * 80, dasm_esd_cb, &cc);
+        for (k = 0; k < cc.n; k++) {
+            struct esd_item *e = &cc.it[k];
+            if (e->id > 0 && e->id < MAXESD) {
+                memcpy(esdname[e->id], e->name, 9);
+                esdtype[e->id] = e->type;
+            }
+            if (e->type == OBJ_LD && nld < 256) {
+                ld[nld].addr = e->addr;
+                memcpy(ld[nld].name, e->name, 9);
+                ld[nld].owner = (int)e->len;
+                nld++;
+            }
+            if (obj_is_section(e->type) && !sect_esdid
+                && (!want || !strcmp(e->name, want))) {
+                sect_esdid = e->id;
+                sect_len = e->len;
+                memcpy(sect_name, e->name, 9);
+            }
+        }
+    }
+    if (!sect_esdid) {
+        fprintf(stderr, "dasm370: no section named %s in %s\n", want ? want : "(any)", src);
+        free(deck);
+        return 2;
+    }
+    if (sect_len > MAXSECT_BYTES) {
+        fprintf(stderr, "dasm370: %s is %ld bytes, over the %ld this build holds\n",
+                sect_name, sect_len, MAXSECT_BYTES);
+        free(deck);
+        return 16;
+    }
+
+    /* Pass 2: TXT for our section, and the RLD items filed under it. */
+    for (c = 0; c < ncards; c++) {
+        const unsigned char *card = deck + c * 80;
+        struct obj_txt t;
+        if (obj_txt_get(card, &t) && t.esdid == sect_esdid) {
+            if (t.addr >= 0 && t.addr + t.len <= MAXSECT_BYTES) {
+                memcpy(img + t.addr, t.data, (size_t)t.len);
+                memset(cov + t.addr, 1, (size_t)t.len);
+                if (t.addr + t.len > maxaddr) maxaddr = t.addr + t.len;
+            }
+        }
+    }
+    for (c = 0; c < ncards; c++) obj_rld_walk(deck + c * 80, dasm_rld_cb, NULL);
+
+    /* The END card's entry point.  It is neither text nor a relocation, so
+     * neither half of the acceptance sees it -- and it is what the linkage
+     * editor resolves a module's entry from, so a disassembly that drops it
+     * produces a deck that is byte-equal in everything measured and is not an
+     * equivalent.  Found by the caller against 23 of 30 modules.
+     * An entry in ANOTHER section is not ours to name: IEHPROG1's END points
+     * into IEHPROG6, id 11, and a bare END is right there. */
+    for (c = 0; c < ncards; c++) {
+        struct obj_end e;
+        if (obj_end_get(deck + c * 80, &e) && e.has_entry && e.entry_esdid == sect_esdid) {
+            end_has_entry = 1;
+            end_entry = e.entry_addr;
+        }
+    }
+    free(deck);
+    /* The ESD's length is the section's length, and the issue says so: a section
+     * is padded to what the ESD declares.  TXT reaching past it is not a longer
+     * section, it is a deck to report on -- extending the section to the text
+     * instead made `rldlen' come back 0x0C where the ESD says 0x07, and the
+     * whole ESD card then differed for a reason that had nothing to do with the
+     * decode. */
+    if (maxaddr > sect_len)
+        fprintf(stderr, "dasm370: %s: TXT reaches %06lX, past the ESD length %06lX\n",
+                sect_name, (unsigned long)maxaddr, (unsigned long)sect_len);
+    return 0;
+}
+
+/* The offsets the disassembly NAMES: the section's start, the END entry point,
+ * every ENTRY, and every A-con target that lands inside the section.  Lifted
+ * out of main for --align-diff, which must collect the statements dasm370 would
+ * print -- and a statement is cut at a label, so a collector carrying a
+ * different label set is a second reader of the section rather than the same
+ * one.  The LD addresses are made section-relative here, once: a bound member's
+ * ESD carries module-absolute ones. */
+static void derive_labels(void)
+{
+    long off = from_member ? sect_org : 0;
+    int i;
+
+    lab[0] = 1;
+    if (end_has_entry && end_entry >= 0 && end_entry < sect_len) lab[end_entry] = 1;
+    for (i = 0; i < nld; i++)
+        if (ld[i].owner == sect_esdid && ld[i].addr - off >= 0
+            && ld[i].addr - off < sect_len) {
+            ld[i].addr -= off;
+            lab[ld[i].addr] = 1;
+        }
+    for (i = 0; i < nrld; i++) {
+        if (rld[i].r == sect_esdid && rld[i].len == 4) {
+            long v = 0; int k;
+            for (k = 0; k < 4; k++) v = (v << 8) | img[rld[i].addr + k];
+            if (from_member) v -= sect_org;
+            if (v >= 0 && v < sect_len) lab[v] = 1;
+        }
+    }
+}
+
 /* --------------------------------------------------------------- derive -- */
 
 /* --derive-hints SRC: assemble the outdated source with as370 and write out what
@@ -2364,9 +2536,6 @@ int main(int argc, char **argv)
     char tsym[512], tuse[512], tobj[512], asver[128];
     long assize = 0;
     int ai, i, rc, allow_incomplete = 0;
-    unsigned char *deck;
-    long dn, ncards, c;
-    long maxaddr = 0;
 
     if (argc == 1) { usage(stdout); return 0; }
     for (ai = 1; ai < argc; ai++) {
@@ -2485,121 +2654,20 @@ int main(int argc, char **argv)
             fprintf(stderr, "dasm370: --isa %s not implemented, using full\n", isa);
     }
 
-    {
-        FILE *f = fopen(src, "rb");
-        long got;
-        if (!f) { perror(src); return 16; }
-        fseek(f, 0, SEEK_END); dn = ftell(f); fseek(f, 0, SEEK_SET);
-        deck = malloc((size_t)dn ? (size_t)dn : 1);
-        got = (long)fread(deck, 1, (size_t)dn, f);
-        fclose(f);
-        if (got != dn) { fprintf(stderr, "dasm370: %s: short read\n", src); return 16; }
-    }
-    /* An object deck is a multiple of 80 bytes whose cards begin X'02'; anything
-     * else is read as a bound member.  Both sniffs are the ones cmplmd370 uses
-     * and neither is a guess about the content. */
-    if (dn % 80 || dn == 0 || deck[0] != 0x02) {
-        int k = load_member(deck, dn, want, allow_incomplete);
-        if (k == 0) {
-            fprintf(stderr, "dasm370: no section named %s in %s\n", want ? want : "(any)", src);
-            return 2;
-        }
-        if (k != 1) return k;
-        goto emit_source;
-    }
-    ncards = dn / 80;
+    if ((rc = load_section(src, want, allow_incomplete)) != 0) return rc;
 
-    /* Pass 1: the ESD.  Sections first, because the RLD and the TXT are keyed
-     * on the ESDIDs it assigns. */
-    for (c = 0; c < ncards; c++) {
-        struct esd_collect cc;
-        int k;
-        cc.n = 0;
-        obj_esd_walk(deck + c * 80, dasm_esd_cb, &cc);
-        for (k = 0; k < cc.n; k++) {
-            struct esd_item *e = &cc.it[k];
-            if (e->id > 0 && e->id < MAXESD) {
-                memcpy(esdname[e->id], e->name, 9);
-                esdtype[e->id] = e->type;
-            }
-            if (e->type == OBJ_LD && nld < 256) {
-                ld[nld].addr = e->addr;
-                memcpy(ld[nld].name, e->name, 9);
-                ld[nld].owner = (int)e->len;
-                nld++;
-            }
-            if (obj_is_section(e->type) && !sect_esdid
-                && (!want || !strcmp(e->name, want))) {
-                sect_esdid = e->id;
-                sect_len = e->len;
-                memcpy(sect_name, e->name, 9);
-            }
-        }
-    }
-    if (!sect_esdid) {
-        fprintf(stderr, "dasm370: no section named %s in %s\n", want ? want : "(any)", src);
-        return 2;
-    }
-    if (sect_len > MAXSECT_BYTES) {
-        fprintf(stderr, "dasm370: %s is %ld bytes, over the %ld this build holds\n",
-                sect_name, sect_len, MAXSECT_BYTES);
-        return 16;
-    }
-
-    /* Pass 2: TXT for our section, and the RLD items filed under it. */
-    for (c = 0; c < ncards; c++) {
-        const unsigned char *card = deck + c * 80;
-        struct obj_txt t;
-        if (obj_txt_get(card, &t) && t.esdid == sect_esdid) {
-            if (t.addr >= 0 && t.addr + t.len <= MAXSECT_BYTES) {
-                memcpy(img + t.addr, t.data, (size_t)t.len);
-                memset(cov + t.addr, 1, (size_t)t.len);
-                if (t.addr + t.len > maxaddr) maxaddr = t.addr + t.len;
-            }
-        }
-    }
-    for (c = 0; c < ncards; c++) obj_rld_walk(deck + c * 80, dasm_rld_cb, NULL);
-
-    /* The END card's entry point.  It is neither text nor a relocation, so
-     * neither half of the acceptance sees it -- and it is what the linkage
-     * editor resolves a module's entry from, so a disassembly that drops it
-     * produces a deck that is byte-equal in everything measured and is not an
-     * equivalent.  Found by the caller against 23 of 30 modules.
-     * An entry in ANOTHER section is not ours to name: IEHPROG1's END points
-     * into IEHPROG6, id 11, and a bare END is right there. */
-    for (c = 0; c < ncards; c++) {
-        struct obj_end e;
-        if (obj_end_get(deck + c * 80, &e) && e.has_entry && e.entry_esdid == sect_esdid) {
-            end_has_entry = 1;
-            end_entry = e.entry_addr;
-        }
-    }
-    /* The ESD's length is the section's length, and the issue says so: a section
-     * is padded to what the ESD declares.  TXT reaching past it is not a longer
-     * section, it is a deck to report on -- extending the section to the text
-     * instead made `rldlen' come back 0x0C where the ESD says 0x07, and the
-     * whole ESD card then differed for a reason that had nothing to do with the
-     * decode. */
-    if (maxaddr > sect_len)
-        fprintf(stderr, "dasm370: %s: TXT reaches %06lX, past the ESD length %06lX\n",
-                sect_name, (unsigned long)maxaddr, (unsigned long)sect_len);
-
-emit_source:
-    /* THE TWO FILE-WRITING MODES LIVE AFTER THIS LABEL, and that is the fix for
-     * the bound-member defect rather than a tidy-up.  The path above reaches here
-     * by `goto emit_source', so anything placed BEFORE the label is unreachable
-     * from it -- and --infer sat there.  A deck fell through and produced
-     * candidates; a member jumped past and produced an ordinary disassembly with
-     * no candidates in it, which reads exactly like a module that has none.
-     * Measured by the caller: 374 candidates from the 30 control CSECTs' decks
-     * and 0 from the same CSECTs' members, with IEAVTCR1 identical so the bytes
-     * were the same either way -- and 648 of 648 no-source CSECTs silent, which
-     * is every module the mode exists for.
-     *
-     * --derive-hints never met it because it assembles its own deck and so
-     * always takes the fall-through path.  It is moved anyway: a latent trap
-     * that fires only when someone adds an input format is the one nobody is
-     * looking for. */
+    /* THE TWO FILE-WRITING MODES COME AFTER THE LOAD, and that ordering is the
+     * fix for the bound-member defect rather than a tidy-up.  The load used to
+     * be inline here, and the member path reached the emitter by `goto
+     * emit_source' -- jumping over everything in between, which is where --infer
+     * sat.  A deck fell through and produced candidates; a member jumped past
+     * and produced an ordinary disassembly with no candidates in it, which reads
+     * exactly like a module that has none.  Measured by the caller: 374
+     * candidates from the 30 control CSECTs' decks and 0 from the same CSECTs'
+     * members, with IEAVTCR1 identical so the bytes were the same either way --
+     * and 648 of 648 no-source CSECTs silent, which is every module the mode
+     * exists for.  load_section() RETURNS rather than jumps, so there is no
+     * label left to sit in front of and no way to sit before it. */
     if (derive_src) {
         FILE *o;
         if ((rc = load_sym(tsym, sect_name)) != 0) return rc;
@@ -2641,22 +2709,7 @@ emit_source:
      * Branch targets need a USING to resolve D(B) at all, and an inferred one is
      * #382's problem precisely because a wrong one produces symbols that are
      * plausible, consistent and false while the bytes stay put. */
-    lab[0] = 1;
-    if (end_has_entry && end_entry >= 0 && end_entry < sect_len) lab[end_entry] = 1;
-    for (i = 0; i < nld; i++)
-        if (ld[i].owner == sect_esdid && ld[i].addr - (from_member ? sect_org : 0) >= 0
-            && ld[i].addr - (from_member ? sect_org : 0) < sect_len) {
-            ld[i].addr -= (from_member ? sect_org : 0);
-            lab[ld[i].addr] = 1;
-        }
-    for (i = 0; i < nrld; i++) {
-        if (rld[i].r == sect_esdid && rld[i].len == 4) {
-            long v = 0; int k;
-            for (k = 0; k < 4; k++) v = (v << 8) | img[rld[i].addr + k];
-            if (from_member) v -= sect_org;
-            if (v >= 0 && v < sect_len) lab[v] = 1;
-        }
-    }
+    derive_labels();
 
     /* Now that lab[] exists: the file's own labels join it, its ranges are
      * checked against the section, and each USING's base is resolved to an
