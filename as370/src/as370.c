@@ -2777,12 +2777,29 @@ static void self_exe_dir(const char *argv0, char *out, size_t outsz)
     snprintf(tmp, sizeof tmp, "%s", real);          /* dirname() may modify its arg */
     snprintf(out, outsz, "%s", dirname(tmp));
 }
+/* THE NAME AS WRITTEN IS TRIED FIRST, because that is the real spelling: an
+ * MVS member name is uppercase and a library extracted from a PDS arrives that
+ * way. Across the ten -I directories the corpus gate passes, 2,041 files are
+ * uppercase, 0 are lowercase and the one mixed name is a README -- so the
+ * lowercase-only lookup this replaced resolved NONE of them on a case-sensitive
+ * filesystem. It went unseen because APFS answers open("ifcmacs") with IFCMACS,
+ * and the symptom does not look like a path problem: every macro call becomes an
+ * undefined operation code and every symbol it defines an undefined symbol, so
+ * the module assembles short with addressability errors (cc370#425).
+ *
+ * The lowercase attempt STAYS, for directories made by hand.
+ *
+ * BOTH SPELLINGS ARE TRIED INSIDE ONE LIBRARY BEFORE THE NEXT IS CONSULTED, so
+ * library PRECEDENCE is unchanged and only the spelling search within a library
+ * widens. Nest it the other way and a later -I directory starts winning over an
+ * earlier one, which on a corpus with colliding member names silently picks a
+ * different macro. */
 static int lib_path(const char *name, char *path) {
     const char *exts[] = { ".macro", ".copy", ".mac", ".asm", "", NULL };
     char low[40]; int i; for (i = 0; name[i] && i < 39; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
-    int di, e;
-    for (di = 0; di < nmaclib; di++) for (e = 0; exts[e]; e++) {
-        snprintf(path, 256, "%s/%s%s", maclib_dirs[di], low, exts[e]);
+    int di, e, pass, npass = strcmp(name, low) ? 2 : 1;   /* one pass if it is already lowercase */
+    for (di = 0; di < nmaclib; di++) for (pass = 0; pass < npass; pass++) for (e = 0; exts[e]; e++) {
+        snprintf(path, 256, "%s/%s%s", maclib_dirs[di], pass ? low : name, exts[e]);
         FILE *f = fopen(path, "r"); if (f) { fclose(f); return 1; }
     }
     return 0;

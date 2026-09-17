@@ -29,6 +29,13 @@ Write the object deck to I<objfile> (binary).
 
 Add a macro-library directory to the search list (repeatable).
 
+A member is looked for in each directory in turn, and within a directory under
+the name B<as written> first and then lowercased, each with the extensions
+F<.macro>, F<.copy>, F<.mac>, F<.asm> and none. An MVS member name is uppercase,
+so the name as written is the primary spelling; the lowercase attempt remains
+for directories made by hand. Both spellings are tried in one directory before
+the next is consulted, so the search order between directories is unaffected.
+
 =item B<-a>[I<sub-options>]
 
 Produce a listing. Sub-options include B<e> (external symbol dictionary) and

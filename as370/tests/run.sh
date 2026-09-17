@@ -3219,11 +3219,15 @@ rm -f /tmp/_sx$$.obj /tmp/_sx2$$.obj /tmp/_sx$$.tsv /tmp/_sx$$.out /tmp/_sx3$$.o
 # AIF ('&SYSPARM' NE 'TEST'), and neither assembler reports what it never reached.
 cpmdir=/tmp/_cpm$$
 mkdir -p "$cpmdir"
-# LOWERCASE: lib_path() lowercases the member name before looking for the file,
-# so `COPY CPYOK' opens `cpyok'. Written as CPYOK this passed on macOS -- a
-# case-insensitive filesystem matched it -- and failed on CI's Linux, where the
-# resolving control silently became a second missing member. The fixture could
-# not fail on the machine it was written on.
+# LOWERCASE, and since #425 that is no longer forced: lib_path() used to
+# lowercase the member name and try nothing else, so `COPY CPYOK' opened only
+# `cpyok'. Written as CPYOK this passed on macOS -- a case-insensitive
+# filesystem matched it -- and failed on CI's Linux, where the resolving control
+# silently became a second missing member; the fixture could not fail on the
+# machine it was written on. The name as written is tried first now, so either
+# spelling would do here. It stays lowercase on purpose: that keeps this an
+# exercise of the RETAINED fallback, and copycase below covers the uppercase
+# member, which is how a real library is stored.
 printf '%-71s\n' 'OKSYM    DS    CL4                      the member that resolves' \
     > "$cpmdir/cpyok"
 ./as370 -I "$cpmdir" -o /tmp/_cpm$$.obj tests/copymiss.s >/tmp/_cpm$$.out 2>/tmp/_cpm$$.err
@@ -3255,15 +3259,23 @@ rm -rf "$cpmdir" /tmp/_cpm$$.obj /tmp/_cpm$$.out /tmp/_cpm$$.err
 # lowercase, and the single mixed name is amaclib-live/README.md. On a
 # case-sensitive filesystem lib_path resolved NONE of the 2,041.
 #
-# THIS TEST CANNOT FAIL ON macOS, BEFORE OR AFTER THE FIX, and that is the whole
-# reason it is written this way. APFS answers open("cpyupr") with CPYUPR, so
-# both spellings resolve here whichever pass finds them. The host structurally
-# cannot see the class -- so the pre-fix score that the header of this file
-# demands was taken on CI's Linux, and is recorded here:
+# THIS TEST CANNOT FAIL WHERE run.sh RUNS IT, BEFORE OR AFTER THE FIX: /tmp is
+# on the case-insensitive root volume, and APFS answers open("cpyupr") with
+# CPYUPR, so both spellings resolve whichever pass finds them. The pre-fix score
+# the header of this file demands was therefore taken elsewhere, twice:
 #
-#   PRE-FIX, Linux (gcc and clang): CPYUPR does not resolve -- IFO068, the
-#   A1A2A3A4 bytes are absent, rc 8.       run PLACEHOLDER_RED
-#   POST-FIX, Linux: both resolve, rc 0.   run PLACEHOLDER_GREEN
+#   CI's Linux, pre-fix, gcc AND clang: copycase FAIL, rc 8, IFO068 on CPYUPR,
+#   the A1A2A3A4 bytes absent.                    run 35215871686
+#
+#   A case-sensitive APFS image on this Mac, which is the part worth knowing:
+#   THE CLASS IS LOCALLY REPRODUCIBLE AFTER ALL. `hdiutil create -fs
+#   'Case-sensitive APFS'`, copy the macro libraries and MVSBLD onto it, and
+#   as370 1bab9a3c assembles 1,131 of 5,528 modules clean against 4,639 here.
+#   The fix takes it to 4,639 -- 3,508 recovered, 0 regressed -- and the 5,528
+#   decks then come out BYTE-IDENTICAL to the ones this host produces.
+#
+# So do not write "only CI can see this". CI is the cheap instrument; a
+# case-sensitive image is the one that can measure the tree.
 #
 # ASSERT THE RESOLUTION, NEVER THE ABSENCE OF A DIAGNOSTIC. A check for "no
 # IFO068" passes on this host BECAUSE THE LOOKUP SUCCEEDED and on Linux because
