@@ -72,6 +72,10 @@ static unsigned char img[MAXSECT_BYTES];      /* the section's text */
 static unsigned char cov[MAXSECT_BYTES];      /* 1 = a TXT card covered it */
 static unsigned char lab[MAXSECT_BYTES];      /* 1 = something names this offset */
 static unsigned char stbrk[MAXSECT_BYTES];    /* 1 = a statement must start here */
+/* 1 = a statement DID start here in the scanning pass.  stbrk is what we impose
+ * on the walk; this is what the walk decided, and the two are not the same
+ * question -- which is the whole of cc370's mid-instruction base defect. */
+static unsigned char stbeg[MAXSECT_BYTES];
 static struct rlditem rld[MAXRLD];
 static int nrld;
 static char esdname[MAXESD][9];               /* ESDID -> name, for V-cons */
@@ -197,7 +201,8 @@ static void name_of(const unsigned char *e, char *out)
 
 struct hlabel { long at; char name[9]; int line; int dropped; };
 struct hrange { long at, len; int line; };
-struct hbase { int reg; long baseval; char basename[16]; int by_name; long from, to; int line; };
+struct hbase { int reg; long baseval; char basename[16]; int by_name; long from, to; int line;
+               int expr; };   /* 1 = baseval is not a statement boundary: render as label+X'delta' */
 struct hbytes { long at; unsigned char b[MAXHB]; int n; int kind; int line; };
                                        /* kind 0 = literal bytes, 1 = mm/dd/yy, 2 = yy.ddd */
 struct uev    { long at; int open; int u; };
@@ -1384,13 +1389,59 @@ static int hints_bind(void)
                 stbrk[ends[e]] = 1;
             }
         }
-        lab[u->baseval] = 1;
-        stbrk[u->baseval] = 1;
+        /* The label and the forced break used to go in HERE, unconditionally.
+         * Every other offset in this loop is CHECKED first -- the range ends
+         * above are refused when they fall inside a relocatable field or a fill
+         * -- and the base value was the one that never was.  It cannot be
+         * checked here: whether it can begin a statement depends on the decode,
+         * which has not run.  So the decision moves to after a scanning pass
+         * (see base_decide), and this loop only records the intent. */
         uevs[nuev].at = u->from; uevs[nuev].open = 1; uevs[nuev].u = i; nuev++;
         uevs[nuev].at = u->to;   uevs[nuev].open = 0; uevs[nuev].u = i; nuev++;
     }
     qsort(uevs, (size_t)nuev, sizeof uevs[0], uev_cmp);
     return 0;
+}
+
+static void walk_section(void);   /* fwd: base_decide runs one scanning pass */
+
+/* The nearest planted label at or below `a'.  lab[0] is always set, so this
+ * always answers. */
+static long label_at_or_below(long a)
+{
+    long L = a;
+    while (L > 0 && !lab[L]) L--;
+    return L;
+}
+
+/* Plant the base label where the value CAN begin a statement, and mark it for
+ * the expression form where it cannot.
+ *
+ * A value mid-instruction used to be forced into a boundary, which split the
+ * statement it landed in and left the decoder unable to re-sync: on TK5's
+ * IKJEFT01 a second base at X'103B' -- inside the `LA 1,556(0,12)' at X'103A' --
+ * turned 606 bytes of recovered code back into DC, and every round trip still
+ * reported IDENTICAL because no byte moved (mvs38src, measured).
+ *
+ * The expression form is not an invention: IBM's own PL/S prologue writes
+ * `USING @PSTART+4095,@11' and Pospischil's disassembler writes
+ * `USING IKJEFT01+4155,R11' -- both X'103B', neither planting a label there. */
+static void base_decide(void)
+{
+    int i;
+    memset(stbeg, 0, sizeof stbeg);
+    scanning = 1;
+    walk_section();
+    scanning = 0;
+    for (i = 0; i < nhbas; i++) {
+        struct hbase *u = &hbas[i];
+        if (u->baseval >= 0 && u->baseval < sect_len && stbeg[u->baseval]) {
+            lab[u->baseval] = 1;
+            stbrk[u->baseval] = 1;
+        } else {
+            u->expr = 1;
+        }
+    }
 }
 
 /* ----------------------------------------------------------------- emit -- */
@@ -3063,6 +3114,7 @@ static void walk_section(void)
     int ev = 0, af = 0, nt = 0;
 
     while (a < sect_len) {
+        if (scanning) stbeg[a] = 1;       /* where a statement REALLY began */
         const struct rlditem *r;
         long fl;
         /* A failed anchor, written where it failed.  The disassembly continues:
@@ -3092,8 +3144,15 @@ static void walk_section(void)
             char t[LABBUF + 8];
             if (uevs[ev].open) {
                 char nm[LABBUF];
-                label_name(u->baseval, nm);
-                snprintf(t, sizeof t, "%s,%d", nm, u->reg);
+                if (u->expr) {
+                    long L = label_at_or_below(u->baseval);
+                    label_name(L, nm);
+                    snprintf(t, sizeof t, "%s+X'%lX',%d", nm,
+                             (unsigned long)(u->baseval - L), u->reg);
+                } else {
+                    label_name(u->baseval, nm);
+                    snprintf(t, sizeof t, "%s,%d", nm, u->reg);
+                }
                 emit("", "USING", t, "");
             } else {
                 snprintf(t, sizeof t, "%d", u->reg);
@@ -4533,6 +4592,11 @@ int main(int argc, char **argv)
      * "until it settles" is not a termination argument. */
     if (nhbas) {
         int pass;
+        /* One scan with NO base label planted, to learn where statements really
+         * begin, then decide per base.  It must run before the iterated passes
+         * below: those exist to settle the labels a hint USING plants, and a
+         * label planted mid-instruction is exactly what they cannot settle. */
+        base_decide();
         for (pass = 0; pass < 8; pass++) {
             lab_changed = 0;
             scanning = 1;

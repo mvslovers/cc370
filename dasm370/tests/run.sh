@@ -205,6 +205,56 @@ else
         || { fail "round trip with hints: the deck differs"; cmp "$T/a.cut" "$T/hc.cut" | head -3; }
 fi
 
+# ---- a [[base]] whose value falls MID-INSTRUCTION (cc370, mvs38src case) ----
+# The value used to be FORCED into a statement boundary -- every other offset in
+# the hint loader is checked and refused, the base value was the one that never
+# was -- so it split the statement it landed in and the decoder could not
+# re-sync.  On TK5's IKJEFT01 a second base at X'103B', inside the LA at X'103A',
+# turned 606 bytes of recovered code back into DC, and EVERY ROUND TRIP STILL
+# SAID IDENTICAL because no byte moved.  No byte-level gate can see this class.
+#
+# The fixture: BALR at 0, LR at 2, LA at 4.  So X'2' is a real boundary and X'6'
+# is inside the LA -- the two cases, on one input.
+#
+# Scored against ae68438: at X'6' the old binary emits DC X'4130' for the LA's
+# first half and plants L000006 inside it, 97 DC bytes against 63.
+printf '[[base]]\nreg=12\nvalue=0x2\nfrom=0x0\nto=0x104\n' > "$H.bnd"
+printf '[[base]]\nreg=12\nvalue=0x6\nfrom=0x0\nto=0x104\n' > "$H.mid"
+"$D" --format free --hints "$H.bnd" "$T/a.obj" -o "$T/bnd.s" 2>/dev/null
+"$D" --format free --hints "$H.mid" "$T/a.obj" -o "$T/mid.s" 2>/dev/null
+
+# A BOUNDARY value must keep the old form exactly -- a label, and no expression.
+if ! grep -qE "^ +USING +L000002,12" "$T/bnd.s"; then
+    fail "a base ON a statement boundary no longer plants its label"; grep USING "$T/bnd.s"
+elif grep -qE "USING +[A-Z0-9]+\+X'" "$T/bnd.s"; then
+    fail "a base on a boundary was rendered as an expression"; grep USING "$T/bnd.s"
+else
+    pass "a base on a statement boundary still plants a label (the path is taken, not skipped)"
+fi
+
+# A MID-INSTRUCTION value must plant nothing and hang off the label below it.
+if ! grep -qE "^ +USING +ENTRYPT\+X'6',12" "$T/mid.s"; then
+    fail "a mid-instruction base is not rendered as label+X'delta'"; grep USING "$T/mid.s"
+elif grep -q 'L000006' "$T/mid.s"; then
+    fail "a label was still planted inside the instruction at X'4'"
+elif ! grep -qE "^ +LA +3," "$T/mid.s"; then
+    fail "the instruction at X'4' is still split by the base"; sed -n 4,8p "$T/mid.s"
+else
+    pass "a mid-instruction base plants no label and the instruction survives"
+fi
+
+# AND IT MUST STILL ASSEMBLE TO THE SAME BYTES.  That is the whole claim: the
+# output differs and the deck does not.  IFOX severity 4 is a warning, so the
+# threshold is 8 -- the same one this file uses above.
+"$A" "$T/mid.s" -o "$T/mid.obj" > "$T/mid.out" 2>&1
+if [ $? -ge 8 ]; then fail "the mid-instruction hinted disassembly does not assemble"; head -4 "$T/mid.out"
+else
+    head -c $n "$T/mid.obj" > "$T/mid.cut"
+    cmp -s "$T/a.cut" "$T/mid.cut" \
+        && pass "the expression form round-trips byte-identically" \
+        || { fail "the expression form moved the deck"; cmp "$T/a.cut" "$T/mid.cut" | head -3; }
+fi
+
 # TWO bases over one target, and the bytes name the register as370 would NOT
 # pick. R11 is a deliberate fiction -- nothing in the fixture loads it -- but
 # as370's rule is smallest displacement, so it wins the targets around X'A4'
