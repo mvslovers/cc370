@@ -1344,6 +1344,49 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-17, in flight — #415, PR #417 (`fix/dasm370-section-origin`,
+  `6ecc4e5`).** `dasm370` read a deck's TXT address as an offset into the
+  section. It is **module-absolute**, the same space as the section's ESD
+  address, so a section at origin *A* had every byte written at offset *A* — past
+  the declared length — and came out as one `DS XLn` over zeros **that
+  reassembles to the same zeros**. The round trip could not see it, and neither
+  could any gate this project owns. Four addresses were in that space and not
+  one: TXT, the RLD **P**-position, the **LD** entry address and the **END**
+  entry point, plus the *value* of an own-section adcon. Measured: 503 of 6,366
+  SD/PC sections in 309 of 5,528 modules, with **0 counter-examples** to
+  TXT-being-module-absolute. Gate: of 5,509 sections at address 0, **0 changed**;
+  of 472 at a non-zero address, **471 changed** — the one that did not is
+  `IGG019P2`'s `ICKTP05`, zero bytes long with no TXT card. Uncovered bytes over
+  those 472: **270,868 → 2,755, with 0 sections gaining any**. `0 of the 832` and
+  `0 of the 30` are non-first sections so no published verdict moves, **but their
+  decks carry 41 such sections** — the control corpus contains the class and
+  looks straight past it. `mvs38src` is running the tree-wide gate. Left open
+  deliberately: a **cross-section** adcon still prints its addend
+  module-absolute; unmeasured, unchanged by this, and not folded in.
+
+- **2026-09-17, filed — #416.** An unresolved `COPY` member is silent in as370:
+  rc 0, nothing on either stream, the card left in the stream and the location
+  counter moved. 72 modules / 196 statements on the gate's own macro path;
+  `IFFAAA01` reports eight "Undefined symbol" errors and names the member
+  nowhere. Whether those 72 are as370's silence or a gap in `work/macros` is a
+  separate question and is Mike's.
+
+- **2026-09-17, in flight — #411/#385, PR #414 (`feat/dasm370-385-translator`).**
+  Two corrections to the `as370 --stmts` export, both found by trying to write
+  #385's translator against it. `sect`/`sectname`/`secorg`, because **only 49.7 %
+  of the 5,538 sources declare a single section** and `loc` is module-absolute —
+  the section-relative offset is `loc - secorg`. Then `ORG` **claimed the bytes
+  it moved over** (`reserves=1` on a positive `len`): 18,485 records, 602,740
+  bytes, 2,295 modules. Three documentation facts were wrong with it: `len` is
+  the counter's **advance** including forced alignment, it goes **negative**
+  (59,443 records in 3,758 modules), and so **`loc` is not a key** — 5.97 % of
+  claimed bytes have more than one claimant, in 3,559 modules; the deck holds the
+  **last** in listing order. The card a repair edits is **`org`**, not
+  `mcall_stmt`, and the consumer checks it with a **prefix** test — 0 false
+  positives against 5 on equality over 47,534 open-code records. #385's
+  translator itself is parked on `feat/dasm370-385-json-source` and waits on
+  #417.
+
 - **2026-09-16 — #372.** Four load-module reader defects, two of them silent.
   4,500 CSECTs measured old against new: `error` 143 → 2, +18 identical, +123
   real differences, no identical↔differs movement. Also: `#112` rewritten to the
