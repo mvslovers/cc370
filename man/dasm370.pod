@@ -389,7 +389,11 @@ matched pair carries C<+8> at all.
 =head2 What the report says, and how strong it is
 
 Each finding and each consequence is one line at its own offset, and the last
-line is a C<SUMMARY> a population run can grep. Two things are printed on every
+line is a C<SUMMARY> a population run can grep. It carries its own denominators
+--- C<refstmt=>, C<candstmt=>, C<reflen=>, C<candlen=> --- because a finding
+count over a population cannot be normalised without a size, and C<first=>, the
+offset of the first finding, which is the scalar a triage run ranks on. A module
+with no finding reports C<first=->, never C<first=000000>. Two things are printed on every
 module because they decide what the classification is worth:
 
 =over 4

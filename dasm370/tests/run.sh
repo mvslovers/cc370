@@ -729,6 +729,18 @@ else
     grep '^SUMMARY' "$T/aln.txt"
 fi
 
+# The SUMMARY line is the only machine-readable thing a population run leaves, so
+# its denominators are asserted rather than assumed: a finding count over 832
+# modules cannot be normalised without a size, and `first' is what a triage run
+# ranks on.  `first=-' where there is no finding, because an absent offset must
+# not read as offset zero.
+if grep -q '^SUMMARY ALIGNX .* first=- refstmt=7 candstmt=7 reflen=28 candlen=28 ' "$T/aln.txt"; then
+    pass "SUMMARY carries its own denominators, and no finding is first=- not first=000000"
+else
+    fail "SUMMARY carries its own denominators, and no finding is first=- not first=000000"
+    grep '^SUMMARY' "$T/aln.txt"
+fi
+
 # Case 1.  One insertion, and the four displacements that follow it are
 # consequences -- but the FIRST of them is at 000002 and the insertion is at
 # 00000A.  #112 states the caller's assumption as "the shifts FOLLOWING an
@@ -742,6 +754,12 @@ if [ "$(asum "$T/al1.txt" ins)" = 1 ] && [ "$(asum "$T/al1.txt" findings)" = 1 ]
     pass "one insertion is ONE finding, and the shifts around it are consequences"
 else
     fail "one insertion is ONE finding, and the shifts around it are consequences"
+    grep '^SUMMARY' "$T/al1.txt"
+fi
+if grep -q '^SUMMARY ALIGNX .* first=00000A ' "$T/al1.txt"; then
+    pass "first= is the first FINDING's offset, not the first consequence's"
+else
+    fail "first= is the first FINDING's offset, not the first consequence's"
     grep '^SUMMARY' "$T/al1.txt"
 fi
 if grep -q '^CONSEQ  shift  000002 -> 000002' "$T/al1.txt" \

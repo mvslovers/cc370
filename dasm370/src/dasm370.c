@@ -2894,6 +2894,11 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
     int nsv = 0, np = 0, D, rc = 0, i, j, k, pi, pj;
     int ins = 0, del = 0, dchg = 0, chg = 0, cons = 0, same = 0, weak = 0;
     long firstchange = -1;
+    /* 24, and the arithmetic closes: an unsigned long is at most 16 hex digits,
+     * so "%06lX" writes at most 16 characters plus the NUL.  16 did not close it
+     * and gcc said so with _FORTIFY_SOURCE on -- a warning this project's Macs
+     * cannot see, because neither clang nor gcc-16 here defines it. */
+    char firstbuf[24];
     FILE *o;
 
     if ((rc = align_load(&R, refp, want)) != 0) return rc;
@@ -2915,7 +2920,8 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
     if (D < 0) {
         fprintf(o, "  ALIGNMENT ABANDONED: more than %d insertions and deletions%s\n",
                 ALIGN_MAXD, D == -2 ? " (or out of memory)" : "");
-        fprintf(o, "SUMMARY %s align=abandoned\n", R.name);
+        fprintf(o, "SUMMARY %s refstmt=%d candstmt=%d reflen=%ld candlen=%ld align=abandoned\n",
+                R.name, R.n, C.n, R.len, C.len);
         if (o != stdout) fclose(o);
         free(R.st); free(R.img); free(R.cov); free(C.st); free(C.img); free(C.cov);
         return 4;
@@ -3022,9 +3028,18 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
     if (firstchange >= 0) fprintf(o, ", first change at %06lX", (unsigned long)firstchange);
     fprintf(o, " -> %s\n", weak == 0 ? "EXACT" : weak == 1 ? "WEAK (a change precedes the base)"
                                                : "WEAK (no prologue base found)");
+    /* ONE MACHINE-READABLE LINE PER MODULE, and it carries its own denominator.
+     * A finding count over a population cannot be normalised without a size, and
+     * `first' is the scalar a triage run ranks on -- it is what the caller's
+     * first-divergence table is built from.  Both live here rather than in the
+     * header lines above, which are for a reader and are not greppable. */
+    if (firstchange >= 0) snprintf(firstbuf, sizeof firstbuf, "%06lX", (unsigned long)firstchange);
+    else                  snprintf(firstbuf, sizeof firstbuf, "-");
     fprintf(o, "SUMMARY %s findings=%d ins=%d del=%d data=%d const=%d conseq=%d unchanged=%d "
-               "shifts=%d edits=%d base=%s align=ok\n",
+               "shifts=%d edits=%d first=%s refstmt=%d candstmt=%d reflen=%ld candlen=%ld "
+               "base=%s align=ok\n",
             R.name, ins + del + dchg + chg, ins, del, dchg, chg, cons, same, nsv, D,
+            firstbuf, R.n, C.n, R.len, C.len,
             /* THREE STATES, NOT TWO, and the difference is not cosmetic: a
              * module with no prologue idiom at all is a different thing from
              * one whose base is established after the first change, and a
