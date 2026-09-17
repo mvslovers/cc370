@@ -3253,6 +3253,22 @@ elif [ "$(stf "         ORG   TBL" len)" -ge 0 ]; then
 # stop colliding the fixture has stopped testing the ambiguity it exists for.
 elif [ "$(stf "OVER     DC" loc)" != "$(stf "TBL      DC" loc)" ]; then
     echo "stmtexp: FAIL -- the ORG must make two statements claim ONE offset"; fail=$((fail + 1))
+# AND WHICH CLAIMANT THE DECK HOLDS, which the line above does not ask. It would
+# pass just as happily if the deck held TBL's 00 at that offset, and the half
+# #385 rests on is that the LAST claimant in listing order is the one there.
+elif [ "$(python3 -c "
+import sys
+d = open('/tmp/_st$$.obj','rb').read(); img = bytearray(64)
+for o in range(0, len(d)-79, 80):
+    c = d[o:o+80]
+    if c[:4] == bytes((0x02,0xE3,0xE7,0xE3)):
+        a = int.from_bytes(c[5:8],'big'); n = int.from_bytes(c[10:12],'big')
+        img[a:a+n] = c[16:16+n]
+print('%02X' % img[20])")" != FF ]; then
+    echo "stmtexp: FAIL -- the deck must hold the LAST claimant's byte at 000014"
+    echo "         (OVER's FF, not TBL's 00) -- that is what makes the collision"
+    echo "         a fact about the object and not only about the export"
+    fail=$((fail + 1))
 # mdepth 2: mcall_name is the INNERMOST macro, whose call card is inside OUTER's
 # body, while org still names the outermost open-code call -- the only card of the
 # three a caller can edit. 20.3 % of generated records over the corpus are here.
@@ -3269,6 +3285,82 @@ else
     echo "         claim one offset; depth 2 separates org from mcall_stmt)"
 fi
 rm -f /tmp/_st$$.tsv /tmp/_st$$.obj /tmp/_st2$$.obj /tmp/_st$$.out
+
+# THE TWO-SECTION CASE, and it is separate because stmtexp.s cannot be it: every
+# record there is sect=1 secorg=0, so subtracting secorg is a no-op and an export
+# reader that ignores the field entirely passes -- while sect/secorg are exactly
+# what 221c875 added. SECTA is opened, LEFT and RESUMED, so the counter continues
+# where SECTA left off while SECTB carries its own origin.
+#
+# THE DECK IS THE ORACLE HERE, not arithmetic on the export: the checker reads
+# the ESD origins and the TXT cards and requires every column to agree with them.
+# An export checked against itself agrees with any export at all.
+./as370 tests/stmtsect.s --stmts=/tmp/_sc$$.tsv -o /tmp/_sc$$.obj >/tmp/_sc$$.out 2>&1
+rcc=$?
+if [ $rcc != 0 ] || [ -s /tmp/_sc$$.out ]; then
+    echo "stmtsect: FAIL -- must be silent at RC 0, got $rcc"; cat /tmp/_sc$$.out
+    fail=$((fail + 1))
+elif ! python3 -c "
+import sys
+d = open('/tmp/_sc$$.obj','rb').read()
+esd, txt = {}, {}
+for o in range(0, len(d)-79, 80):
+    c = d[o:o+80]
+    if c[:4] == bytes((0x02,0xC5,0xE2,0xC4)):
+        first = int.from_bytes(c[14:16],'big'); n = int.from_bytes(c[10:12],'big')
+        for k in range(n // 16):
+            e = c[16+k*16:32+k*16]
+            esd[e[:8].decode('cp037').strip()] = (int.from_bytes(e[9:12],'big'),
+                                                  int.from_bytes(e[13:16],'big'),
+                                                  first + k)
+    if c[:4] == bytes((0x02,0xE3,0xE7,0xE3)):
+        a = int.from_bytes(c[5:8],'big'); n = int.from_bytes(c[10:12],'big')
+        txt.setdefault(int.from_bytes(c[14:16],'big'), []).append((a, c[16:16+n].hex().upper()))
+rows, hdr = [], None
+for line in open('/tmp/_sc$$.tsv'):
+    if line.startswith('#'): continue
+    f = line.rstrip('\\n').split('\\t')
+    if hdr is None: hdr = {n: i for i, n in enumerate(f)}; continue
+    rows.append(f)
+bad = []
+# every record's secorg must be its section's ESD origin, and the deck must file
+# that section's text under that section's ESD id at loc (module-absolute).
+for r in rows:
+    nm = r[hdr['sectname']]
+    if nm not in esd: bad.append('section %s is in no ESD' % nm); continue
+    org, ln, eid = esd[nm]
+    if int(r[hdr['secorg']]) != org:
+        bad.append('%s secorg %s but ESD says %d' % (nm, r[hdr['secorg']], org))
+    if int(r[hdr['loc']]) - org < 0 or int(r[hdr['loc']]) - org > ln:
+        bad.append('%s loc %s - secorg %d is outside its %d-byte section'
+                   % (nm, r[hdr['loc']], org, ln))
+# the resumed section must come back to its OWN sect id and origin, with the
+# counter continuing -- not restarting and not following the section it left.
+ids = [r[hdr['sect']] for r in rows]
+if ids.count(ids[0]) < 2 or ids[0] == ids[-1] and len(set(ids)) < 2:
+    bad.append('no section is opened, left and resumed: %s' % ids)
+a = [r for r in rows if r[hdr['sectname']] == 'SECTA' and int(r[hdr['len']]) > 0]
+b = [r for r in rows if r[hdr['sectname']] == 'SECTB' and int(r[hdr['len']]) > 0]
+if len(a) != 2 or len(b) != 1: bad.append('expected two SECTA bodies and one SECTB')
+elif int(a[1][hdr['loc']]) != int(a[0][hdr['loc']]) + int(a[0][hdr['len']]):
+    bad.append('SECTA resumed at %s, not where it left off' % a[1][hdr['loc']])
+elif int(b[0][hdr['loc']]) - esd['SECTB'][0] != 0:
+    bad.append('SECTB body is not at its own offset 0')
+# and the deck agrees: SECTB's text is filed under SECTB's id at SECTB's origin
+for nm, want in (('SECTA', ['AABB','EE']), ('SECTB', ['CCDD'])):
+    got = [h for _, h in sorted(txt.get(esd[nm][2], []))]
+    if got != want: bad.append('%s TXT %s, expected %s' % (nm, got, want))
+if bad:
+    for m in bad: print('  ' + m)
+    sys.exit(1)
+" ; then
+    echo "stmtsect: FAIL -- see above; a column disagreed with the deck"; fail=$((fail + 1))
+else
+    echo "stmtsect: OK (two sections and a resumed one: secorg is each section's own"
+    echo "          ESD origin, loc - secorg its offset in it, and the deck files each"
+    echo "          section's TXT under its own ESD id at that origin)"
+fi
+rm -f /tmp/_sc$$.tsv /tmp/_sc$$.obj /tmp/_sc$$.out
 
 # TABLE; usings[] is live STATE and holds nothing by the end of an assembly, so
 # the events have to be collected as they happen and there was no way to see
