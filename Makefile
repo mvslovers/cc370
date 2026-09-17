@@ -134,7 +134,7 @@ compiler: $(BUILD)/config.status
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370
+test: test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
 
 test-as370:
 	@$(MAKE) -C as370 test
@@ -162,6 +162,9 @@ test-cmplmd370: cmplmd370/cmplmd370
 
 test-idrdump370: idrdump370/idrdump370
 	@sh idrdump370/tests/run.sh
+
+test-file370: file370/file370
+	@sh file370/tests/run.sh
 
 # --- install --------------------------------------------------------------
 install: install-tools install-compiler install-man

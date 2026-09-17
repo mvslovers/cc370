@@ -86,6 +86,13 @@ static const char *esd_type(int t)
         case 0x04: return "PC";    /* private code (blank section) */
         case 0x05: return "CM";    /* common                       */
         case 0x0A: return "WX";    /* weak external reference      */
+        /* Composite-only codes.  A bound CESD carries these and an object deck
+         * cannot, so they are named HERE and not in obj_type_name(): dasm370
+         * relies on that function answering "??" for exactly this set, and
+         * says so at dasm370.c:1709. */
+        case 0x03: return "LR";    /* an LD, once bound            */
+        case 0x06: return "PR";    /* pseudo-register              */
+        case 0x07: return "Nul";   /* deleted entry, name survives */
         default:   return "??";
     }
 }
@@ -208,15 +215,71 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
     }
 }
 
+/* ---- the external symbol dictionary of a BOUND member -------------------
+ * file370 has always dumped an object deck's ESD under -v and never a bound
+ * member's CESD -- the same question, answered for one container and not the
+ * other.  The consumer is "can two distributions' copies of a CSECT be linked
+ * interchangeably", which is answered by comparing the two symbol lists, and
+ * hand-written CESD decoders get it wrong: mvs38src wrote two in one day, one
+ * inventing a name out of a header-length guess and one finding nothing.
+ * lmod_cesd_walk() is the shared reader and already knew all of this. */
+struct cesd_ctx { int json, first, n; };
+
+static int cesd_print(const struct lmod_esd *e, void *ctx)
+{
+    struct cesd_ctx *c = ctx;
+    const char *nm = mvs_nm(e->name);
+    int ty = e->type, flags = e->typebyte & 0xf0;
+    c->n++;
+    if (c->json) {
+        printf("%s\n      {\"esdid\": %d, \"name\": \"%s\", \"type\": \"%s\"",
+               c->first ? "" : ",", e->esdid, nm[0] ? nm : "", esd_type(ty));
+        if (flags) printf(", \"typebyte\": \"%02X\"", e->typebyte);
+        if (obj_is_section(ty)) printf(", \"addr\": %ld, \"len\": %ld", e->addr, e->len);
+        else if (ty == LMOD_LR)  printf(", \"addr\": %ld, \"owner\": %ld", e->addr, e->len);
+        if (e->seg) printf(", \"seg\": %d", e->seg);
+        printf("}");
+        c->first = 0;
+        return 1;
+    }
+    printf("    CESD %3d  %-8s  %-3s", e->esdid, nm[0] ? nm : "(blank)", esd_type(ty));
+    if (obj_is_section(ty))     printf("  addr=%06lX  len=%06lX", e->addr, e->len);
+    else if (ty == LMOD_LR)     printf("  addr=%06lX  owner=%ld", e->addr, e->len);
+    if (e->seg)   printf("  seg=%d", e->seg);
+    /* The high nibble is an edit-time control bit a finished module should have
+     * cleared, and 21 of TK5's 2,396 members do not.  Report what was seen. */
+    if (flags)    printf("  [typebyte %02X]", e->typebyte);
+    printf("\n");
+    return 1;
+}
+
+static int show_cesd(const unsigned char *b, long n, int json)
+{
+    struct cesd_ctx c;
+    c.json = json; c.first = 1; c.n = 0;
+    lmod_cesd_walk(b, n, cesd_print, &c);
+    return c.n;
+}
+
 /* ====================================================================== */
 /* MVS load module member                                                 */
 /* ====================================================================== */
 /* walk the byte-0 record stream; counts by type, notes the trailing MODEND */
-static void show_lmod(const char *path, const unsigned char *b, long n, int v)
+static void show_lmod(const char *path, const unsigned char *b, long n, int v,
+                      int csects, int json)
 {
     int ncesd = 0, nidr = 0, nctl = 0, ntext = 0, nrld = 0, nscat = 0, nsym = 0;
     int last_modend = 0, bad = 0;
     struct lmod_info info;
+
+    if (csects) {                          /* the symbol list and nothing else */
+        int ns;
+        if (json) { printf("  {\"file\": \"%s\", \"csects\": [", path); ns = show_cesd(b, n, 1);
+                    printf("%s  ],\n   \"count\": %d}\n", ns ? "\n" : "", ns); }
+        else      { printf("%s:\n", path); ns = show_cesd(b, n, 0);
+                    if (!ns) printf("    no CESD entries\n"); }
+        return;
+    }
 
     if (v) printf("%s:\n", path);          /* header printed after the summary below */
 
@@ -244,6 +307,7 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v)
         }
         if (rc < 0) bad = 1;
     }
+    if (v) show_cesd(b, n, 0);             /* the deck path has always done this */
     lmod_scan(b, n, &info);
 
     /* the summary line goes first when not verbose; when verbose it was preceded
@@ -561,7 +625,7 @@ static void show_xmit(const char *path, const unsigned char *b, long n, int v)
 }
 
 /* ====================================================================== */
-static int inspect(const char *path, int v)
+static int inspect(const char *path, int v, int csects, int json)
 {
     long n; unsigned char *b = mvs_read_file(path, &n);
     enum fmt f;
@@ -569,9 +633,9 @@ static int inspect(const char *path, int v)
     if (n == 0) { printf("%s: empty file\n", path); free(b); return 0; }
     f = detect(b, n);
     switch (f) {
-        case F_OBJ:     show_obj(path, b, n, v); break;
+        case F_OBJ:     show_obj(path, b, n, v || csects); break;
         case F_AR:      show_ar(path, b, n, v); break;
-        case F_LMOD:    show_lmod(path, b, n, v); break;
+        case F_LMOD:    show_lmod(path, b, n, v, csects, json); break;
         case F_IEBCOPY: show_iebcopy(path, b, n, v); break;
         case F_XMIT:    show_xmit(path, b, n, v); break;
         default:        printf("%s: data (not a recognized cc370 toolchain format)\n", path); break;
@@ -583,7 +647,15 @@ static int inspect(const char *path, int v)
 static void usage(FILE *f)
 {
     fprintf(f,
-        "usage: file370 [-v] FILE...\n"
+        "usage: file370 [-v] [--csects [--json]] FILE...\n"
+        "\n"
+        "  -v         structural dump\n"
+        "  --csects   list the external symbol dictionary and nothing else.\n"
+        "             For a BOUND MEMBER that is the CESD, which -v did not\n"
+        "             print until now although it has always printed an object\n"
+        "             deck's ESD.  For an object deck --csects is -v, which\n"
+        "             already lists it.\n"
+        "  --json     machine-readable form of --csects\n"
         "       file370 --help | --version\n"
         "\n"
         "Identify and analyze the MVS formats produced by the cc370 toolchain:\n"
@@ -597,12 +669,15 @@ static void usage(FILE *f)
 int main(int argc, char **argv)
 {
     int v = 0, i, rc = 0, nfiles = 0;
+    int csects = 0, json = 0;
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-v")) v = 1;
+        else if (!strcmp(argv[i], "--csects")) csects = 1;
+        else if (!strcmp(argv[i], "--json")) json = 1;
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(stdout); return 0; }
         else if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-V")) { printf("%s\n", VERSION_STR); return 0; }
         else if (argv[i][0] == '-' && argv[i][1]) { fprintf(stderr, "file370: unknown option '%s'\n", argv[i]); usage(stderr); return 2; }
-        else { int r = inspect(argv[i], v); if (r > rc) rc = r; nfiles++; }
+        else { int r = inspect(argv[i], v, csects, json); if (r > rc) rc = r; nfiles++; }
     }
     if (!nfiles) { usage(stderr); return 2; }
     return rc;
