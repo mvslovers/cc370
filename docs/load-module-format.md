@@ -300,6 +300,29 @@ Up to four IDR record kinds, written in this order:
 - Header constant `X'80FA0100'` (`HEWLFOUT.ASM:1434` `IDRZHDR`). Byte 0=`X'80'`, byte 1=`X'FA'` (=250), byte 2=`X'01'` subtype (HMASPZAP), byte 3=count of SPZAP entries (with `CHAIN X'40'` OR'd in if a continuation record follows, `:185,1049`).
 - Header length `HDRLEN=4` (`:221`); each SPZAP entry is 13 bytes (`ZAPSIZE DC F'13'`, `:1436`); count field max `ZAPMAX X'53'` (`:187`); record length `ZPRECLEN=251` (`:228`). Data starts at IDRBUF+4 (= byte 4).
 
+**The 13-byte entry, which this section used to give a size for and no layout.**
+From `HEWLFIDR.ASM` (the linkage editor's IDR module), `ZAPLOOP` at `:1165`:
+the entry's first field is read at `NODISP(ITEMPTR)` for `IDLEN` bytes, used to
+index the RNT and **renumbered on relink** — so it is a **CESDID**, and
+`IDLEN EQU 2` (`:~`), `NODISP EQU 0`, `FULWD EQU 4` (first entry at IDRBUF+4),
+`HEADLEN EQU 3` (count at byte 3), `ZAPLEN EQU 13` (`:369`).
+
+| offset | length | field |
+|---|---|---|
+| 0 | 2 | **CESDID** — binary, names the section the zap applies to |
+| 2 | 3 | date, packed `yyddd` |
+| 5 | 8 | zap identifier, EBCDIC; `NO IDENT` when none was given |
+
+**So an entry NAMES its section and carries no offset.** Attributing a zap to a
+CSECT is a CESDID lookup, not a test of whether an offset falls in a range —
+which is what a count of entries cannot tell you and is the whole reason to
+decode them.
+
+Validated against the four DLIB members carrying entries: `IEFVFA` CESDID 2
+`#DYN004`, `IEFVHE` 2 `#DYP005`, `IEFVHF` 2 `#DYP003`, `IGC018` **6** `NO IDENT`
+— all dated `26189F`, and `IGC018` differing in the CESDID is the discrimination
+the field exists for.
+
 ### 10.2 Linkage-editor IDR (always present)
 - Header `X'801102'` (`HEWLFOUT.ASM:1437` `LKIDR`): byte 0=`X'80'`, byte 1=`X'11'` (=17 = record length 18 − 1), byte 2=`X'02'` subtype (Linkage Editor).
 - Component name `CL10'5752SC104'` (`HEWLFOUT.ASM:1438`).
