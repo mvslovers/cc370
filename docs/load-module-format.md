@@ -348,6 +348,35 @@ It identifies itself as `LD370` V01 M00 rather than claiming to be `5752SC104` a
 ### 10.4 User-data IDR(s)
 - Subtype `USERTYPE X'08'` (`HEWLFOUT.ASM:201,1302`). From IDENTIFY control statements.
 
+**The entry, and it has the same first field as an SPZAP entry — a CESDID.**
+Variable length, packed back to back until the record ends:
+
+| offset | length | field |
+|---|---|---|
+| 0 | 2 | **CESDID** — names the section the identification belongs to |
+| 2 | 3 | date, packed `yyddd` |
+| 5 | 1 | length of the text that follows |
+| 6 | *len* | EBCDIC text — in practice the APAR/PTF number |
+
+Confirmed by two instruments rather than assumed. `mvs38src` read `IKJEFT01`'s
+42-byte record by hand — three entries, all `84028`, `UZ42826` / `UY13431` /
+`UY43678` — and, *separately*, read one such id out of each of the three DLIB
+elements the member is bound from. The CESDIDs here put each id back on the
+element it came from: **1 `IKJEFT01` `UY13431`, 2 `IKJEFT06` `UZ42826`, 33
+`IKJEFTSC` `UY43678`** — and all three are `SD` entries where the rest of that
+CESD is `LR`/`ER`. Three agreements, from two readers that failed differently.
+
+**This is the record that answers "was this CSECT serviced", and the SPZAP one
+is not.** Measured over both corpora:
+
+```
+TARGET  2,396 members   2,297 carry APAR ids (3,951 ids)   33 carry a zap
+DLIB    5,252 members   5,112 carry APAR ids (5,278 ids)    4 carry a zap
+```
+
+`IKJEFT01` itself carries **three APARs and zero zap entries**, so a zap-only
+reader reports "no service applied" about a module carrying three.
+
 ### 10.5 Last-IDR marker
 - The final IDR written has `LASTIDR X'80'` OR'd into its **subtype byte** (`HEWLFOUT.ASM:1155` `OI SUBTYPE,LASTIDR`, `:195`). This is how the loader knows IDR processing is complete.
 

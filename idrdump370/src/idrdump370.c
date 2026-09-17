@@ -123,9 +123,9 @@ static void show_idr(const unsigned char *r, long rlen, long off,
                 printf(", \"zap\": "); jstr(zap); printf("}");
                 *first = 0;
             } else {
-                printf("  @%06lX  HMASPZAP  csect=%-8s cesdid=%-3d date=%s  zap=%s%s\n",
+                printf("  @%06lX  HMASPZAP  csect=%-8s cesdid=%-3d date=%s  zap=%s%s%s\n",
                        off, owner ? owner : "(unknown)", esdid, date, zap,
-                       chain ? "  [chain continues]" : "");
+                       chain ? "  [chain continues]" : "", last ? "  [LAST]" : "");
             }
         }
         if (!json && n == 0)
@@ -133,13 +133,59 @@ static void show_idr(const unsigned char *r, long rlen, long off,
         return;
     }
 
-    if (only) return;          /* the other subtypes are not per-CSECT */
+    /* X'08' USER (IDENTIFY) -- the same first field as X'01', confirmed rather
+     * than assumed: mvs38src read three APARs out of IKJEFT01's record by hand
+     * and, separately, out of the three DLIB elements it is bound from; the
+     * CESDIDs this reader resolves put each APAR on the element it came from
+     * (1 IKJEFT01 UY13431, 2 IKJEFT06 UZ42826, 33 IKJEFTSC UY43678), and all
+     * three are SD entries while the rest of that CESD is LR/ER.  Two
+     * instruments, three agreements.
+     *
+     * Entry: CESDID(2) date(3, packed yyddd) len(1) text(len), variable, packed
+     * back to back until the record ends -- 3 x (6+7) = 39 = the 42-byte
+     * record less its 3-byte header.
+     *
+     * THIS IS THE DIRECT ANSWER TO "WAS THIS CSECT SERVICED" and the zap
+     * entries are not: IKJEFT01 carries THREE APARs and ZERO zap entries, so a
+     * zap-only reader reports "no service" about a module carrying three. */
+    if (base == IDR_USER) {
+        long q = 3;
+        while (q + 6 <= rlen) {
+            const unsigned char *e = r + q;
+            int esdid = e[0] << 8 | e[1], tl = e[5], j;
+            char date[16], txt[64];
+            const char *owner;
+            if (q + 6 + tl > rlen) break;               /* framed short */
+            packed_date(date, e + 2);
+            if (tl > 63) tl = 63;
+            for (j = 0; j < tl; j++) txt[j] = mvs_e2a_pr(e[6 + j]);
+            txt[tl] = 0;
+            owner = sect_name(esdid);
+            q += 6 + e[5];
+            if (only && (!owner || strcmp(owner, only))) continue;
+            if (json) {
+                printf("%s\n    {\"record\": %ld, \"subtype\": \"user\", \"last\": %s, \"csect\": ",
+                       *first ? "" : ",", off, last ? "true" : "false");
+                if (owner) jstr(owner); else printf("null");
+                printf(", \"cesdid\": %d, \"date\": ", esdid); jstr(date);
+                printf(", \"id\": "); jstr(txt); printf("}");
+                *first = 0;
+            } else {
+                printf("  @%06lX  user      csect=%-8s cesdid=%-3d date=%s  id=%s%s\n",
+                       off, owner ? owner : "(unknown)", esdid, date, txt,
+                       last ? "  [LAST]" : "");
+            }
+        }
+        return;
+    }
+
+    if (only) return;          /* the remaining subtypes are not per-CSECT */
 
     if (json) {
         printf("%s\n    {\"record\": %ld, \"subtype\": ", *first ? "" : ",", off);
         jstr(nm);
         printf(", \"last\": %s, \"bytes\": %ld", last ? "true" : "false", rlen);
-        if (base == IDR_XLATE || base == IDR_LKED || base == IDR_USER) {
+        if (base == IDR_XLATE || base == IDR_LKED) {
             char txt[256]; long j, m = rlen - 3; if (m > 255) m = 255;
             for (j = 0; j < m; j++) txt[j] = mvs_e2a_pr(r[3 + j]);
             txt[m] = 0;
@@ -149,7 +195,7 @@ static void show_idr(const unsigned char *r, long rlen, long off,
         *first = 0;
     } else {
         printf("  @%06lX  %-9s %ld bytes%s", off, nm, rlen, last ? "  [LAST]" : "");
-        if (base == IDR_XLATE || base == IDR_LKED || base == IDR_USER) {
+        if (base == IDR_XLATE || base == IDR_LKED) {
             long j; printf("  ");
             for (j = 3; j < rlen && j < 3 + 40; j++) putchar(mvs_e2a_pr(r[j]));
         }

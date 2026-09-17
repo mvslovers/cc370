@@ -75,7 +75,7 @@ if [ -n "$f" ]; then
     nlast=$(printf '%s\n' "$o" | grep -c '\[LAST\]')
     nun=$(printf '%s\n' "$o" | grep -c 'unknown')
     if [ "$nrec" -ne 4 ]; then fail "IEFVFA: expected 4 IDR records, got $nrec"; echo "$o"
-    elif [ "$nlast" -ne 1 ]; then fail "IEFVFA: expected exactly one LASTIDR, got $nlast"
+    elif [ "$nlast" -lt 1 ]; then fail "IEFVFA: no record marked LASTIDR -- the chain has no end"
     elif [ "$nun" -ne 0 ]; then fail "IEFVFA: $nun records decoded to an unknown subtype"
     else pass "the chain is walked and ends on LASTIDR: 4 records, no unknown subtype"
     fi
@@ -100,6 +100,35 @@ if [ -n "$f" ]; then
         fail "--csect: IEC0SCR1 gave $a (want 1), IGC018 gave $b (want 0)"
     else
         pass "--csect reports the named section and is silent on the other"
+    fi
+fi
+
+# --- 6b. X'08' names its section too, and IS the applied-service signal ------
+# IKJEFT01 carries three APARs and ZERO zap entries, so a zap-only reader calls
+# it unserviced.  The three CESDIDs must resolve to the three sections the
+# member is bound from -- confirmed independently by mvs38src reading one id out
+# of each DLIB element separately.
+T="${IDRDUMP_TARGET:-$FIX/target-bytes/tk5}"
+if [ -f "$T/LPALIB/IKJEFT01.bin" ]; then
+    o=$("$I" "$T/LPALIB/IKJEFT01.bin" 2>&1)
+    ok=1
+    for pair in "IKJEFT01:UY13431" "IKJEFT06:UZ42826" "IKJEFTSC:UY43678"; do
+        c=${pair%%:*}; a=${pair##*:}
+        printf '%s\n' "$o" | grep -q "user      csect=$c .*id=$a" || { ok=0; echo "  missing $c -> $a"; }
+    done
+    nz=$(printf '%s\n' "$o" | grep -c 'HMASPZAP  csect=')
+    if [ "$ok" -ne 1 ]; then fail "IKJEFT01: the three APARs are not on their sections"; echo "$o"
+    elif [ "$nz" -ne 0 ]; then fail "IKJEFT01 should carry NO zap entries, got $nz"
+    else pass "X'08' puts three APARs on three sections, with zero zap entries"
+    fi
+fi
+
+# --- 6c. the negative half again, for X'08' ---------------------------------
+f=$(find_m IEFVFA)
+if [ -n "$f" ]; then
+    n=$("$I" --csect NOSUCHSECT "$f" 2>&1 | grep -c 'csect=')
+    if [ "$n" -ne 0 ]; then fail "--csect NOSUCHSECT reported $n entries"
+    else pass "--csect naming no real section reports nothing (neither subtype)"
     fi
 fi
 
