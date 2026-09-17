@@ -679,6 +679,32 @@ else
     pass "--infer writes NO applicable table -- every candidate is a comment"
 fi
 
+# ---- the two lists in one control record ---------------------------------
+# A control record carrying BOTH an ID/length list and RLD info holds the RLD
+# FIRST.  Every other record has one or the other, and in those the two orders
+# produce identical bytes -- which is why a reader can have the order wrong and
+# still be right about every member it has ever been shown.  Reading the list
+# first began the RLD parse four bytes late, took the first item's flag and
+# address for an R/P pair, and lost the item.
+#
+# IT IS QUIET, WHICH IS THE POINT OF ASSERTING IT HERE.  A lost adcon comes back
+# as DC X'..', which reproduces its own bytes, so the round trip stays green over
+# it -- byte-safe, therefore invisible to the gate that would have to fail.
+# Measured over 13,102 DLIB and target members: 2,489 records carry both lists,
+# 2,489 of them put the list after the RLD info, 0 put it first, and 1,339 of the
+# members (10.2 %) carry at least one.  On the real corpus the fix recovered
+# 3,237 address constants over 300 affected members and withdrew none.
+if python3 ../cmplmd370/tests/mkmember.py rldorder "$T/rldorder.bin" 2>/dev/null; then
+    if "$D" --format free "$T/rldorder.bin" 2>/dev/null | grep -q "^         DC    A(L000008) "; then
+        pass "an adcon survives a control record that carries BOTH lists"
+    else
+        fail "an adcon survives a control record that carries BOTH lists"
+        "$D" --format free "$T/rldorder.bin" 2>&1 | sed -n 5,7p
+    fi
+else
+    fail "an adcon survives a control record that carries BOTH lists (mkmember failed)"
+fi
+
 # Fed back to --hints it must change NOTHING. That is what "written, never
 # applied" means operationally, and a table would break it.
 "$D" --format free "$T/inf.obj" -o "$T/inf-plain.s" 2>/dev/null

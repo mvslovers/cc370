@@ -25,7 +25,7 @@ cc -O2 -Wall -Wextra -Werror -Icommon/include \
 # proprietary is committed.  Each one stood for a real refusal or a real
 # silent error before #372.
 MK=cmplmd370/tests/mkmember.py
-for k in overlay segmap trailing sym flagtype truncated; do
+for k in overlay segmap trailing sym flagtype truncated rldorder; do
     python3 "$MK" "$k" "$TMP/$k.bin" || exit 99
 done
 python3 "$MK" deck:ROOT:11:0x40    "$TMP/ROOT.obj"    || exit 99
@@ -36,6 +36,21 @@ python3 "$MK" deck:WITHSYM:7E:0x20 "$TMP/WITHSYM.obj" || exit 99
 python3 "$MK" deck:SEG3:33:0x20    "$TMP/SEG3.obj"    || exit 99
 python3 "$MK" deck:SEG4:44:0x20    "$TMP/SEG4.obj"    || exit 99
 python3 "$MK" deck:FLAGGED:3C:0x20 "$TMP/FLAGGED.obj" || exit 99
+python3 "$MK" rldorderdeck         "$TMP/RLDORDER.obj" || exit 99
+
+# THE ORDER OF THE TWO LISTS IN A CONTROL RECORD.  A record carrying both an
+# ID/length list and RLD info holds the RLD FIRST; every other record has one or
+# the other, and in those the two orders produce the same bytes -- so no member
+# anyone had looked at could tell them apart.  Reading the list first began the
+# RLD parse four bytes late and desynchronised the record, and here that costs
+# the one item: the relocated fullword at X'10' goes unmasked, and the member's
+# resolved address then reads as an ordinary text difference against the deck's
+# zero addend.  Measured over 13,102 members: 2,489 records carry both lists and
+# 2,489 of them put the list after the RLD.
+if $C --csect RLDORDER "$TMP/RLDORDER.obj" "$TMP/rldorder.bin" >/dev/null 2>&1
+then pass "a relocated field is masked when its record carries BOTH lists"
+else fail "a relocated field is masked when its record carries BOTH lists"
+fi
 
 # An SD whose type byte kept an edit-time control bit (X'20').  Testing the
 # whole byte made the section invisible: "no section named FLAGGED", exit 2.

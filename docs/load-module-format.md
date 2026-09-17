@@ -72,7 +72,36 @@ Verified against the `HEWLFSCD.ASM:74-106` prologue **and** the literal single-b
 | 4–5 | 2 | `00 04` | **count of ID/length-list bytes** in this record = 4 × (#CSECTs in following text). **Zero** for control indicators `02`,`06`,`0E` (RLD-only). | `HEWLFSCD.ASM:94-96`; template byte 5 = `X'04'` at `:1061` |
 | 6–7 | 2 | `00 00` | **count of RLD-info bytes** in this record (=0 here; nonzero on `02/03/06/07/0E/0F`). | `HEWLFSCD.ASM:97-98`; reader `RLDLEN EQU 6` (`IEWFETCH.ASM:215`) |
 | 8–15 | 8 | (CCW) | **read CCW for program fetch** — see breakdown below | `HEWLFSCD.ASM:99-102`; `IEWFETCH.ASM:212` `CTLCCW EQU 8` |
-| 16… | 4·n | per CSECT | **ID/length list**: for each CSECT in the following text, a 2-byte CESD-ID + 2-byte CSECT length | `HEWLFSCD.ASM:94`; template `BYTCTRRD+16` (ID-length area), byte 19 = `X'01'` length low byte at `:1069` |
+| 16… | rld | RLD info | **the RLD items, when byte 0 has `RLD X'02'`** — and they come BEFORE the ID/length list, not after it | measured; see the note below |
+| 16+rld… | 4·n | per CSECT | **ID/length list**: for each CSECT in the following text, a 2-byte CESD-ID + 2-byte CSECT length | `HEWLFSCD.ASM:94`; template `BYTCTRRD+16` (ID-length area), byte 19 = `X'01'` length low byte at `:1069` |
+
+**THE ORDER OF THOSE TWO IS MEASURED, AND AN EARLIER REVISION OF THIS TABLE HAD
+IT WRONG.** It put the ID/length list at off 16 unconditionally, which is right
+for every record that carries no RLD info — `X'01'`, `X'05'`, `X'0D'` — and in
+those the two orders produce identical bytes, so no member can tell them apart.
+Only a record carrying BOTH (`X'03'`, `X'07'`, `X'0F'`) can, and there the RLD
+info comes first.
+
+**So the two counts in the header are what locates them**: the RLD info is
+`rldlen` bytes at off 16, where `rldlen` is the count at off 6–7, and the
+ID/length list is `idlen` bytes at off `16 + rldlen`, where `idlen` is the count
+at off 4–5. Either may be zero, and the record is `16 + idlen + rldlen` long
+whichever way round they are read — which is why the length never gave it away.
+
+The arbiter is the CCW count at off 14–15, which is the loader's own byte count
+for the text record that follows: **the ID/length list's lengths must sum to it**.
+That is a closed check on a single record — it needs no second tool, no reference
+module, and no assumption about what an RLD item means. Anyone can re-run it.
+Over 13,102 DLIB and target members, 2,489 control records carry both lists, and
+the sum matches for **2,489 of them with the list after the RLD info and 0 of
+them with it first**. 1,339 of the members (10.2 %) carry at least one.
+
+Two tools read the list first and so began their RLD parse four bytes late,
+taking the first item's flag and address for an R/P pair and desynchronising the
+rest of the record. It is quiet: the items are lost rather than corrupted, a lost
+address constant is written as `DC X'..'`, and that reproduces its own bytes — so
+a round-trip gate stays green over it. `cmplmd370/tests/mkmember.py rldorder`
+builds the smallest member that can tell the two orders apart.
 
 **Bytes 8–15 are a standard 8-byte CCW** (`cmd(1) + addr(3) + flags(1) + rsvd(1) + count(2)`), built so program fetch reads the following text directly:
 

@@ -221,8 +221,13 @@ static void load_lmod(struct side *sd, const unsigned char *m, long n)
     lmod_iter_init(&it, m, n);
     while ((rc = lmod_iter_next(&it, &r)) == 1)
         if (r.kind == LMOD_CTL && (r.flags & LMOD_CTL_RLD)) {
-            long idl = mvs_be16(m + r.off + 4), rl = mvs_be16(m + r.off + 6);
-            long dat = r.off + 16 + idl;
+            /* The RLD info comes FIRST and the ID/length list after it; see
+             * the note in dasm370's load_member.  Reading the list first made
+             * this parse start 4 bytes late and desynchronise the record, so a
+             * relocated field could go unmarked -- and an unmarked one reads as
+             * an ordinary text difference. */
+            long rl = mvs_be16(m + r.off + 6);
+            long dat = r.off + 16;
             if (rl > 0 && dat + rl <= n) obj_rld_items(m + dat, rl, mark_relo, sd);
         }
     /* rc < 0 used to die here.  It still means the image is incomplete, but

@@ -1502,8 +1502,22 @@ static int load_member(const unsigned char *m, long n, const char *want, int all
             segend = (r.flags & LMOD_CTL_SEGEND) && !(r.flags & LMOD_CTL_END);
             if (pend < 0 && segend) { cs++; segend = 0; }
             if (r.flags & LMOD_CTL_RLD) {
-                long idl = mvs_be16(m + r.off + 4), rl = mvs_be16(m + r.off + 6);
-                long dat = r.off + 16 + idl;
+                /* THE RLD INFO COMES FIRST, and the ID/length list after it.
+                 * docs/load-module-format.md puts the list at off 16, which is
+                 * right only when there is no RLD info to precede it -- and the
+                 * two orders are indistinguishable in exactly that case.
+                 * Reading the list first made the RLD parse start 4 bytes late,
+                 * so the first item's flag+address was read as an R/P pair and
+                 * the whole record desynchronised: HMASMADD's member came back
+                 * with 85 items where its deck has 100, and the lost ones
+                 * carried P values of 1660 and 2956, which are X'67C' and
+                 * X'B8C' -- the ADDRESSES of the items being misread.
+                 * Measured over 13,102 DLIB and target members: 2,488 control
+                 * records carry both lists, and the sum of the ID/length list's
+                 * lengths equals the CCW text count for 2,488 of them with the
+                 * list AFTER the RLD and 0 of them with it first. */
+                long rl = mvs_be16(m + r.off + 6);
+                long dat = r.off + 16;
                 if (rl > 0 && dat + rl <= n) obj_rld_items(m + dat, rl, mrld_cb, NULL);
             }
         } else if (r.kind == LMOD_TEXT) {

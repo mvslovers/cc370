@@ -18,6 +18,9 @@ trailing  a well-formed module with bytes after the MODEND record
 sym       a SYM record ahead of the CESD, which used to end the walk at -1
 flagtype  a CESD whose SD entry keeps an edit-time control bit (X'20')
 truncated a member whose last record runs past the end of the image
+rldorder  a control record carrying BOTH an ID/length list and RLD info, which
+          is the only case in which their ORDER can be told apart -- the RLD
+          info comes first and the list after it
 """
 import sys
 
@@ -46,6 +49,26 @@ def ctl_text(addr, text, segend=False, modend=False):
     rec += b"\0" + be(addr, 3) + b"\0" * 2 + be(len(text), 2)   # addr +9, len +14
     assert len(rec) == 16, len(rec)
     return rec + text
+
+
+def ctl_text_rld(addr, text, rlds, esdid=1, modend=False):
+    """A control record carrying an ID/length list AND RLD info, plus its text.
+
+    THE RLD INFO COMES FIRST AND THE ID/LENGTH LIST AFTER IT.  Every other
+    record here has one or the other, and in those the two orders produce the
+    same bytes -- which is why a reader can have the order wrong and be right
+    about every member it has ever been shown.  `rlds' is a list of (r, p,
+    flag, addr); the first item carries its own R/P pair.
+    """
+    rld = b""
+    for r, pp, flag, a in rlds:
+        rld += be(r, 2) + be(pp, 2) + bytes([flag]) + be(a, 3)
+    idlist = be(esdid, 2) + be(len(text), 2)
+    b0 = 0x01 | 0x02 | (0x0C if modend else 0)   # MODEND X'08' is always also SEGEND X'04'
+    rec = bytes([b0]) + b"\0" * 3 + be(len(idlist), 2) + be(len(rld), 2)
+    rec += b"\0" + be(addr, 3) + b"\0" * 2 + be(len(text), 2)
+    assert len(rec) == 16, len(rec)
+    return rec + rld + idlist + text
 
 
 def sym_record(payload, esd_images=False):
@@ -135,6 +158,25 @@ def build(kind):
         m = cesd([("CHOPPED", 0x00, 0x00, 1, 0x20)])
         m += ctl_text(0x00, bytes([0x99]) * 0x20, segend=True, modend=True)
         return m[:-8]
+    if kind == "rldorder":
+        # The address constant at X'10' points at X'08' inside the section, and
+        # it is reachable ONLY through the RLD -- the bytes X'00000008' are an
+        # ordinary fullword otherwise.  A reader that puts the ID/length list
+        # first starts four bytes late, takes the list for an R/P pair, and
+        # loses the item: the adcon comes back as DC X'..', which reproduces
+        # its own bytes and leaves a round trip green.
+        text = bytearray(bytes([0x5A]) * 0x20)
+        text[0x10:0x14] = be(0x08, 4)
+        m = cesd([("RLDORDER", 0x00, 0x00, 1, 0x20)])
+        m += ctl_text_rld(0x00, bytes(text), [(1, 1, 0x0C, 0x10)], modend=True)
+        return m
+    if kind == "rldorderdeck":
+        # The same section as an object deck.  An adcon's text in a DECK is the
+        # ADDEND -- zero here -- while the bound member holds the resolved
+        # address, so the two agree only where the relocated field is masked.
+        text = bytearray(bytes([0x5A]) * 0x20)
+        text[0x10:0x14] = be(0, 4)
+        return deck("RLDORDER", bytes(text))
     if kind.startswith("deck:"):
         _, nm, fill, ln = kind.split(":")
         return deck(nm, bytes([int(fill, 16)]) * int(ln, 0))
