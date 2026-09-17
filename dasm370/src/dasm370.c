@@ -927,6 +927,23 @@ static int reencode_ok(const struct opc *o, const unsigned char *b, int len)
         t[1] = (unsigned char)(o->op & 0xff);
     }
     else t[0] = (unsigned char)(o->op & 0xff);
+    /* AN F_S0 HAS NO OPERAND, so bytes 2-3 are not a field either: what this
+     * pass emits is the bare mnemonic, and as370 assembles that to <op>0000.
+     * Leaving the bytes as read made the check compare the input with itself and
+     * pass on any tail at all.
+     *
+     * IFOX51's IFNX5M00 carries `B20D 28B2' at 000A1A -- a PTLB whose
+     * hardware-ignored halfword is not zero.  It came back as `PTLB', which
+     * reassembles to `B20D 0000': two bytes lost silently, and that module was
+     * the ONE of 599 whose round trip caught anything at all.
+     *
+     * The same defect as the note above, two bytes further out: THE COMPARISON
+     * MUST BE AGAINST WHAT THE STATEMENT ASSEMBLES TO and never against the
+     * bytes it was read from.  Written outside the branches above because an
+     * F_S0's opcode is two bytes wide, so `opw == 2' claims it first and a guard
+     * inside the F_S/F_S0 arm never runs -- which is how the first version of
+     * this fix changed nothing and said nothing. */
+    if (o->fmt == F_S0 && len >= 4) { t[2] = 0; t[3] = 0; }
     if (o->fmt == F_BC) t[1] = (unsigned char)((o->m1 << 4) | (b[1] & 0x0f));
     if (o->fmt == F_BR) t[1] = (unsigned char)((o->m1 << 4) | (b[1] & 0x0f));
     for (i = 0; i < len; i++) if (t[i] != b[i]) return 0;

@@ -679,6 +679,52 @@ else
     pass "--infer writes NO applicable table -- every candidate is a comment"
 fi
 
+# ---- an F_S0's tail is not a field ---------------------------------------
+# An S-format opcode with NO OPERAND is four bytes wide and the last two are
+# ignored by the hardware. What dasm370 emits for one is the bare mnemonic, and
+# as370 assembles that to <op>0000 -- so a PTLB whose tail is not zero cannot be
+# written as `PTLB' without losing two bytes.
+#
+# reencode_ok() compared the decode against THE BYTES IT WAS READ FROM, so for
+# an F_S0 it compared the input with itself and passed on any tail at all. The
+# comparison has to be against what the STATEMENT assembles to.
+#
+# Found by the caller as a case, not a diagnosis: IFOX51's IFNX5M00 at 000A1A,
+# `B20D 28B2', the ONE module of 599 whose round trip caught anything. The fix
+# moves exactly 1 of 649 readable sections, and that one now round-trips.
+#
+# The first version of the fix put the guard inside the F_S/F_S0 arm of
+# reencode_ok and CHANGED NOTHING: an F_S0's opcode is two bytes wide, so the
+# `opw == 2' arm claims it first. A guard in an unreachable branch is a guard
+# that reports success.
+# The adcon is not decoration: a DC run swallows up to sixteen bytes, so without
+# something that breaks it the bad four bytes take the good four with them and
+# the control below cannot fire. An address constant breaks the run.
+cat > "$T/s0.s" <<'ASM'
+S0TAIL   CSECT
+         DC    X'B20D0000'
+         BR    14
+         DC    A(S0TAIL)
+         DC    X'B20D28B2'
+         END
+ASM
+"$A" "$T/s0.s" -o "$T/s0.obj" >/dev/null 2>&1 || fail "the F_S0 fixture does not assemble"
+"$D" --format free "$T/s0.obj" > "$T/s0.txt" 2>/dev/null
+if grep -q "B20D28B2" "$T/s0.txt"; then
+    pass "an F_S0 with a non-zero tail is DC -- the mnemonic would lose two bytes"
+else
+    fail "an F_S0 with a non-zero tail is DC -- the mnemonic would lose two bytes"
+    sed -n 2,6p "$T/s0.txt"
+fi
+# THE CONTROL, and without it the assertion above is satisfied by refusing every
+# PTLB: a zero tail IS writable as the mnemonic and must still decode.
+if grep -qE '(^|[^A-Z0-9])PTLB( |$)' "$T/s0.txt"; then
+    pass "and an F_S0 with a zero tail still decodes as the mnemonic"
+else
+    fail "and an F_S0 with a zero tail still decodes as the mnemonic"
+    sed -n 2,6p "$T/s0.txt"
+fi
+
 # ---- a refusal that names what it DID find --------------------------------
 # By the time dasm370 says "no section named X" the CESD walk has already stored
 # every LD/LR entry and every ESD name -- so when it refused AHLDMPMD it already
