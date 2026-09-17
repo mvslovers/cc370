@@ -1531,6 +1531,41 @@ cmp -s "$T/isa-s370.s" "$T/isa-def.s" \
     && pass "--isa s360 is refused, and the refusal carries what it would cost" \
     || { fail "--isa s360 must be refused WITH the measurement"; cat "$T/isa-s360.err"; }
 
+# ---- a cross-section adcon's addend (cc370#418) ----------------------------
+# A deck numbers module-absolute throughout (cc370#415), so an adcon naming
+# ANOTHER SECTION of the same deck holds THAT SECTION'S ORIGIN plus the offset
+# into it. AHLMCER is the worked case: the TXT at X'4A4' holds 00000548,
+# AHLMCMSG's origin is X'548', and the old output `A(AHLMCMSG+X'548')' landed
+# 1,352 bytes past its target.
+#
+# THE BACK-POINTING SECTION IS THE NULL CONTROL. XSECTB's adcons name XSECTA,
+# which is at ORIGIN 0, so subtracting changes nothing -- and 131 of the corpus's
+# 814 cross-section RLD entries are exactly that case and were always right. A
+# fixture with only the non-zero direction would pass on a rule that subtracted
+# the WRONG origin.
+"$A" tests/xsect.s -o "$T/xs.obj" > "$T/xs.asm" 2>&1
+if [ $? -ge 8 ]; then fail "the cross-section fixture does not assemble"; head -3 "$T/xs.asm"; fi
+"$D" --csect XSECTA "$T/xs.obj" -o "$T/xs-a.s" 2>/dev/null
+"$D" --csect XSECTB "$T/xs.obj" -o "$T/xs-b.s" 2>/dev/null
+grep -qE "DC +V\(XSECTB\)" "$T/xs-a.s" \
+    && pass "an adcon at offset 0 of a sibling is V(name), not A(name+origin)" \
+    || { fail "A(XSECTB) at offset 0 must not carry the sibling's origin"
+         grep -E 'DC +A|DC +V' "$T/xs-a.s"; }
+grep -qE "DC +A\(XSECTB\+X'4'\)" "$T/xs-a.s" \
+    && pass "and at offset 4 the addend is 4 -- the offset alone, not origin+4" \
+    || { fail "the addend must be the offset into the sibling"
+         grep -E 'DC +A|DC +V' "$T/xs-a.s"; }
+grep -qE "DC +A\(L000000\)" "$T/xs-a.s" \
+    && pass "an adcon into its OWN section is untouched -- a different path" \
+    || { fail "the own-section adcon moved"; grep -E 'DC +A' "$T/xs-a.s"; }
+# THE NULL CONTROL: XSECTA is at origin 0, so nothing may be subtracted.
+if grep -qE "DC +V\(XSECTA\)" "$T/xs-b.s" && grep -qE "DC +A\(XSECTA\+X'8'\)" "$T/xs-b.s"; then
+    pass "a sibling at ORIGIN 0 reads exactly as before -- nothing subtracted"
+else
+    fail "the null control moved: an origin-0 sibling must be unchanged"
+    grep -E 'DC +A|DC +V' "$T/xs-b.s"
+fi
+
 # ---- refusals -------------------------------------------------------------
 "$D" --csect NOSUCHCS "$T/a.obj" -o /dev/null >/dev/null 2>&1
 [ $? = 2 ] && pass "an unknown --csect exits 2, not 0" || fail "an unknown --csect exits 2, not 0"

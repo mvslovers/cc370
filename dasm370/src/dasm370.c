@@ -76,6 +76,11 @@ static struct rlditem rld[MAXRLD];
 static int nrld;
 static char esdname[MAXESD][9];               /* ESDID -> name, for V-cons */
 static int  esdtype[MAXESD];
+/* cc370#418: the ASSEMBLED ORIGIN of every section in the deck.  A deck numbers
+ * module-absolute throughout (cc370#415), so an address constant pointing at
+ * ANOTHER section of the same deck holds that section's origin plus the offset
+ * into it -- and the addend a disassembly must print is the offset alone. */
+static long esdaddr[MAXESD];
 
 /* An LD is an ENTRY: a name the module exports at an offset inside a section.
  * It carries no ESDID of its own -- its `len' field is the owning section's id
@@ -1477,13 +1482,29 @@ static void emit_adcon(long a, const struct rlditem *r)
          * it is not always zero: BLSRLSYM holds X'00000A70' at X'7B8' under an
          * RLD item naming PC, which is `A(PC+X'A70')' and not `V(PC)'.  Writing
          * V(...) there loses the addend -- two bytes, in the middle of a field
-         * nothing else reports on. */
-        if (v == 0 || from_member) {
+         * nothing else reports on.
+         *
+         * BUT A SIBLING SECTION OF THE SAME DECK IS NOT AN EXTERNAL REFERENCE,
+         * and its origin is in the addend twice (cc370#418).  A deck numbers
+         * module-absolute throughout, so an adcon naming another SD or PC of this
+         * deck holds THAT SECTION'S ORIGIN plus the offset into it -- AHLMCER at
+         * X'4A4' holds 00000548 and AHLMCMSG's origin is X'548', so the target is
+         * AHLMCMSG+0 and the old output `A(AHLMCMSG+X'548')' lands 1,352 bytes
+         * past it.  An ER has no origin to take off and keeps its addend whole.
+         *
+         * Measured over the corpus by mvs38src: 3,061 RLD entries in
+         * multi-section decks, 814 cross-section, and 683 of those into a section
+         * whose origin is non-zero, in 124 modules.  The other 131 point at a
+         * section at origin 0, where the two readings coincide -- which is why
+         * this survived. */
+        long addend = v;
+        if (!from_member && obj_is_section(esdtype[r->r])) addend -= esdaddr[r->r];
+        if (addend == 0 || from_member) {
             if (aligned) snprintf(opnd, sizeof opnd, "V(%s)", esdname[r->r]);
             else snprintf(opnd, sizeof opnd, "VL%d(%s)", r->len, esdname[r->r]);
         } else {
-            if (aligned) snprintf(opnd, sizeof opnd, "A(%s+X'%lX')", esdname[r->r], (unsigned long)v);
-            else snprintf(opnd, sizeof opnd, "AL%d(%s+X'%lX')", r->len, esdname[r->r], (unsigned long)v);
+            if (aligned) snprintf(opnd, sizeof opnd, "A(%s+X'%lX')", esdname[r->r], (unsigned long)addend);
+            else snprintf(opnd, sizeof opnd, "AL%d(%s+X'%lX')", r->len, esdname[r->r], (unsigned long)addend);
         }
         sprintf(rem, "%06lX", (unsigned long)a);
     } else {
@@ -1637,6 +1658,7 @@ static void section_reset(void)
     memset(rld, 0, sizeof rld);          nrld = 0;
     memset(esdname, 0, sizeof esdname);
     memset(esdtype, 0, sizeof esdtype);
+    memset(esdaddr, 0, sizeof esdaddr);
     memset(ld, 0, sizeof ld);            nld = 0;
     sect_org = 0; sect_len = 0; sect_esdid = 0; sect_name[0] = 0;
     from_member = 0; end_has_entry = 0; end_entry = 0;
@@ -1756,6 +1778,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
             if (e->id > 0 && e->id < MAXESD) {
                 memcpy(esdname[e->id], e->name, 9);
                 esdtype[e->id] = e->type;
+                esdaddr[e->id] = e->addr;   /* cc370#418 */
             }
             if (e->type == OBJ_LD && nld < 256) {
                 ld[nld].addr = e->addr;
