@@ -53,6 +53,17 @@ statement, so that a displacement which moved because something before it change
 length is reported as a B<consequence> rather than as a change of its own. Writes
 a report, not a disassembly; reads no hint file. See L</ALIGN-DIFF> below.
 
+B<The pairing is reliable where the statement shape is unique, and a symbol table
+is what checks it where it is not.> Measured on TK5's C<IKJEFT01> while rebuilding
+a DSECT from the report: of 40 distinct displacement pairs, 38 were sound and the
+two that were not sit at C<ORG>-overlaid and macro-generated fields, where two
+statements of the same shape can pair with each other. The report alone reads
+those as movement; joined to C<as370 --sym> they resolve, and a delta sequence
+that looked non-monotone turned out to contain a deletion rather than noise
+(C<+4, +16, +16, +4, -12>, closing against two independently measured section
+lengths). So treat a lone out-of-sequence pair as a question for the symbol
+table, not as a finding.
+
 =item B<--json> I<FILE>
 
 With B<--align-diff>, write the repair contract (cc370#385): one JSON record per

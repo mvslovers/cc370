@@ -289,6 +289,72 @@ if [ -f "$FIX/dlib-102/IEFJDSNA.obj" ]; then
         fail "--difout: the file it wrote does not close the comparison"
     fi
 
+# ---- a LOAD MODULE on the LEFT ---------------------------------------------
+# cmplmd370 refused it -- "not an object deck" -- although load_lmod() already
+# existed and served side B.  The consumer is "what does the TARGET member have
+# that the DLIB element does not", and 17 TSO CSECTs are identical to their DLIB
+# element while differing from the target.  Without this the question cannot be
+# asked, and the first hypothesis for those is a LOCAL ZAP: TK5 carries 51 ZP
+# entries from 2012-2024 that exist in no source, so reaching for the source on
+# one of them replaces a repaired module with an unrepaired one while every
+# condition code says it worked.
+#
+# MEASURED, on the four same-length cases mvs38src named: each differs from its
+# DLIB element AND carries an applied APAR on exactly that CSECT.
+#   BLSRCOMP 14 bytes UZ58904 · IKJCT430 9 UY16532
+#   IKJEFT09  8 bytes UZ82014 · IKJEFTSC 11 UY43678
+MEAS="${CMPLMD_MEASUREMENTS:-../mvs38src/work/measurements}"
+DL=$(find "$MEAS/dlib-bytes/tk5" -name 'IKJEFT09.bin' 2>/dev/null | head -1)
+TG="$MEAS/target-bytes/tk5/LPALIB/IKJEFT09.bin"
+TG01="$MEAS/target-bytes/tk5/LPALIB/IKJEFT01.bin"
+DLSC=$(find "$MEAS/dlib-bytes/tk5" -name 'IKJEFTSC.bin' 2>/dev/null | head -1)
+if [ -n "$DL" ] && [ -f "$TG" ]; then
+    out=$($C --csect IKJEFT09 "$DL" "$TG" 2>&1)
+    if printf '%s' "$out" | grep -q 'not an object deck'; then
+        fail "a load module on the LEFT is still refused"
+    elif ! printf '%s\n' "$out" | grep -qE 'IKJEFT09 +8 byte\(s\) differ in 2 cluster'; then
+        fail "load module on the left: expected 8 bytes in 2 clusters"; printf '%s\n' "$out" | head -3
+    else
+        pass "a load module on the left compares against a DLIB element"
+    fi
+
+    # THE SPLIT MUST NOT BE CLAIMED.  `made' is filled from TXT cards, so only a
+    # DECK has it; a bound member's bytes were all put there by the binder and
+    # nothing in it says which a DS merely reserved.  Printing "ALL in DS holes"
+    # would be a measurement of an array that was never filled.
+    if printf '%s\n' "$out" | grep -qE 'ALL in DS holes|all in GENERATED TEXT'; then
+        fail "the hole/text split was claimed from a bound member, where it is not determinable"
+    elif ! printf '%s\n' "$out" | grep -q 'not determinable from a bound member'; then
+        fail "the hole/text split is neither reported nor declared unavailable"
+    else
+        pass "the hole/text split is declared undeterminable, not printed as zeros"
+    fi
+
+    # and --json must say null rather than 0, for the same reason
+    if command -v python3 >/dev/null; then
+        if $C --json --csect IKJEFT09 "$DL" "$TG" 2>/dev/null | python3 -c '
+import json,sys
+d=json.load(sys.stdin); s=d["sections"][0]
+assert s["diff_in_holes"] is None and s["diff_in_text"] is None, s
+assert s["verdict"]=="differs", s["verdict"]
+' 2>/dev/null; then
+            pass "--json reports the split as null and the verdict as differs"
+        else
+            fail "--json still reports a split, or a verdict, it cannot determine"
+        fi
+    fi
+fi
+
+# A CSECT inside a DIFFERENTLY NAMED member -- 8 of the 17 are like this, and a
+# synthetic pair would never have forced it.
+if [ -n "$DLSC" ] && [ -f "$TG01" ]; then
+    if $C --csect IKJEFTSC "$DLSC" "$TG01" 2>&1 | grep -qE 'IKJEFTSC +11 byte\(s\) differ'; then
+        pass "a CSECT is found inside a member with a different name (IKJEFTSC in IKJEFT01)"
+    else
+        fail "IKJEFTSC inside IKJEFT01 was not compared"; $C --csect IKJEFTSC "$DLSC" "$TG01" 2>&1 | head -3
+    fi
+fi
+
     # --- #110: --difout must CARRY --difin FORWARD --------------------------
     # "so a reviewed run can seed the next one" is the deliverable's own wording,
     # and it did the opposite: write_difout emitted only the clusters it FOUND,

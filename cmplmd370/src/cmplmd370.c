@@ -407,6 +407,8 @@ struct result {
     int paired, length_differs, identical;
     long len_new, len_ref;
     long diff, nrelo, nign, in_hole, in_text;
+    int  nomade;                /* side A is a BOUND MEMBER: the hole/text split
+                                 * is not determinable -- see compare() */
     struct clu *c;
     long nc, ccap;
     struct clu *ic;             /* ranges --difin masked a REAL difference at */
@@ -435,7 +437,7 @@ static void clu_add(struct result *r, long off, int in_hole)
     r->nc++;
 }
 
-static void compare(const struct sect *a, const struct sect *b, int clearrld,
+static void compare(const struct sect *a, const struct sect *b, int clearrld, int a_is_lmod,
                     const char *label, struct result *r)
 {
     long i;
@@ -446,6 +448,12 @@ static void compare(const struct sect *a, const struct sect *b, int clearrld,
     r->paired = 1;
     r->len_new = a->len;
     r->len_ref = b->len;
+    /* `made' is filled from TXT cards, so only a DECK has it.  A bound member's
+     * bytes were all put there by the binder and nothing in the member says
+     * which of them a DS merely reserved -- so with a load module on the LEFT
+     * the hole/text split is not wrong, it is NOT DETERMINABLE, and every one
+     * of the four places that reports it says so rather than printing zeros. */
+    r->nomade = a_is_lmod;
     if (a->len != b->len) { r->length_differs = 1; return; }
 
     for (i = 0; i < a->len; i++) {
@@ -476,6 +484,7 @@ static const char *verdict(const struct result *r)
     if (!r->paired)        return "unpaired";
     if (r->length_differs) return "length";
     if (r->identical)      return "identical";
+    if (r->nomade)         return "differs";   /* split not determinable */
     if (!r->in_text)       return "holes";
     if (!r->in_hole)       return "text";
     return "mixed";
@@ -499,7 +508,8 @@ static void report_text(const struct result *r, const struct sect *a,
     }
     printf("  %-8s %ld byte(s) differ in %ld cluster(s) of %ld -- %s\n",
            r->name, r->diff, r->nc, r->len_new,
-           !r->in_text ? "ALL in DS holes (no byte as370 wrote)"
+           r->nomade ? "hole/text split not determinable from a bound member"
+                     : !r->in_text ? "ALL in DS holes (no byte as370 wrote)"
                        : !r->in_hole ? "all in GENERATED TEXT"
                                      : "some in DS holes, some in generated text");
     if (!verbose) return;
@@ -508,7 +518,7 @@ static void report_text(const struct result *r, const struct sect *a,
         hexrun(a->bytes + r->c[i].off, r->c[i].len);
         printf("  ref ");
         hexrun(b->bytes + r->c[i].off, r->c[i].len);
-        printf("%s\n", r->c[i].in_hole ? "  (hole)" : "");
+        printf("%s\n", r->nomade ? "" : r->c[i].in_hole ? "  (hole)" : "");
     }
     if (r->nc > TEXTCLU)
         printf("      ... %ld more cluster(s) not listed (use --json for all)\n",
@@ -567,8 +577,11 @@ static void report_json(const struct result *r, const struct sect *a,
     printf("      \"length_new\": %ld,\n      \"length_ref\": %ld,\n", r->len_new, r->len_ref);
     printf("      \"length_differs\": %s,\n", r->length_differs ? "true" : "false");
     printf("      \"diff_bytes\": %ld,\n", r->diff);
-    printf("      \"diff_in_holes\": %ld,\n      \"diff_in_text\": %ld,\n",
-           r->in_hole, r->in_text);
+    if (r->nomade)
+        printf("      \"diff_in_holes\": null,\n      \"diff_in_text\": null,\n");
+    else
+        printf("      \"diff_in_holes\": %ld,\n      \"diff_in_text\": %ld,\n",
+               r->in_hole, r->in_text);
     printf("      \"bytes_cleared_rld\": %ld,\n      \"bytes_ignored_difin\": %ld,\n",
            r->nrelo, r->nign);
     printf("      \"clusters\": [");
@@ -692,8 +705,19 @@ int main(int argc, char **argv)
     ba = mvs_read_file(fa, &na); if (!ba) { perror(fa); return 2; }
     bb = mvs_read_file(fb, &nb); if (!bb) { perror(fb); return 2; }
 
-    if (na < 4 || obj_card_type(ba) == OBJ_OTHER) die("not an object deck", fa);
-    load_deck(&A, ba, na);
+    /* A LOAD MODULE IS LEGITIMATE ON THE LEFT TOO.  The reader for it already
+     * existed and served only side B; this mirrors the sniff below.  The
+     * consumer is "what does the target member have that the DLIB element does
+     * not" -- 17 TSO CSECTs are identical to their DLIB element and differ from
+     * the target, and without this the question cannot be asked at all.  It
+     * matters because the first hypothesis for those is a LOCAL ZAP: TK5 carries
+     * 51 ZP entries from 2012-2024 that exist in no source anywhere, and
+     * reaching for the source on one of them replaces a repaired module with an
+     * unrepaired one while every condition code says it worked. */
+    if (na >= 1 && ((ba[0] & 0xf0) == 0x20 || (na >= 8 && (ba[0] & 0xf0) == 0x40)))
+        load_lmod(&A, ba, na);
+    else if (na >= 4 && obj_card_type(ba) != OBJ_OTHER) load_deck(&A, ba, na);
+    else die("neither a load module nor an object deck", fa);
 
     /* A bound member leads with its CESD, or with a SYM record when it was
      * linked with TEST (docs/load-module-format.md section 2). */
@@ -710,11 +734,13 @@ int main(int argc, char **argv)
         printf("  \"clearrld\": %s,\n", clearrld ? "true" : "false");
         printf("  \"difin\": %s%s%s,\n", difin ? "\"" : "null",
                difin ? difin : "", difin ? "\"" : "");
+        if (A.is_lmod) report_reader(&A.info, 1, fa);
         if (B.is_lmod) report_reader(&B.info, 1, fb);
         printf("  \"sections\": [");
     } else {
         printf("%s vs %s%s%s\n", fa, fb, clearrld ? "" : "  (adcons compared)",
                difin ? "  (difin applied)" : "");
+        if (A.is_lmod) report_reader(&A.info, 0, fa);
         if (B.is_lmod) report_reader(&B.info, 0, fb);
     }
 
@@ -766,7 +792,7 @@ int main(int argc, char **argv)
             continue;
         }
         npair++;
-        compare(&A.s[i], b2, clearrld, label, &r);
+        compare(&A.s[i], b2, clearrld, A.is_lmod, label, &r);
         if (!r.identical) rc = 1;
         if (json) { report_json(&r, &A.s[i], b2, firstj); firstj = 0; }
         else report_text(&r, &A.s[i], b2, verbose);
@@ -796,7 +822,8 @@ int main(int argc, char **argv)
          * gcc says so under _FORTIFY_SOURCE and clang does not, so the Mac
          * builds clean and CI does not. */
         char errbuf[256];
-        if (B.is_lmod && (B.info.anomalies & LMOD_IMAGE_INCOMPLETE)
+        if (((B.is_lmod && (B.info.anomalies & LMOD_IMAGE_INCOMPLETE))
+             || (A.is_lmod && (A.info.anomalies & LMOD_IMAGE_INCOMPLETE)))
             && !allow_incomplete) {
             /* The peer's rule, and the reason it is a refusal rather than a
              * footnote: a section sliced out of an image the reader could not
