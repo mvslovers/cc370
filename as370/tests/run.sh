@@ -3595,11 +3595,24 @@ rm -f /tmp/_oi$$ /tmp/_oi$$.out /tmp/_oi$$.err
 # card, whose IDR is legitimately IFOX-specific.  So this block reads the two
 # fields directly.
 #
-# THE ENTRY POINT IS IN THE SECOND SECTION ON PURPOSE.  Measured over all 5,528
-# MVSBLD modules: in every single one that writes this form, the entry symbol
-# IS the first CSECT's name -- so the corpus, tree-wide gate included, cannot
-# tell "resolve the symbol" from "write a constant 0001" apart.  This fixture is
-# the only thing that can, and without it the gate is green for both.
+# THE ENTRY POINT IS IN THE SECOND SECTION ON PURPOSE: it separates "resolve
+# the symbol" from "write a constant 0001", which the target case alone does
+# not.
+#
+# This comment first claimed the fixture was the ONLY instrument that could
+# separate them, on a measurement that in every one of the 5,528 MVSBLD modules
+# writing this form, the entry symbol IS the first CSECT's name.  That
+# measurement is right and the conclusion drawn from it was wrong: the ESDID is
+# not the symbol.  A source with statements before its first CSECT puts an
+# unnamed private-code section on ESD 1 and pushes the named one to 2, so TEN
+# corpus modules resolve to 0002 -- AHLMCER, AHLREADR, AMDPRLPA, IDA019ST,
+# IDA019SU, IRBMFEVT, IRBMFLCV, IRBMFLMV, IRBMFLPV, ISTCSCMR.  All ten agree
+# with IFOX00 and all ten read 0000 before the fix, so the tree-wide gate would
+# have caught a constant-0001 repair after all.
+#
+# The fixture is the FASTEST instrument that separates them, not the only one.
+# Keep both arms: the wrong version of this sentence argues for dropping a
+# tree-wide run that does discriminate.
 #
 # Pre-fix scores (as370 from main, 3bc0812):
 #   endesd   000000/0000   wanted 000008/0002   <- fails
