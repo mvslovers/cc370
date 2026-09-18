@@ -180,6 +180,7 @@ install-tools: tools
 	@install -m 755 cmplmd370/cmplmd370 $(TGTBIN)/cmplmd370
 	@install -m 755 xmit370/xmit370 $(TGTBIN)/xmit370
 	@install -m 755 dasm370/dasm370 $(TGTBIN)/dasm370
+	@install -m 755 idrdump370/idrdump370 $(TGTBIN)/idrdump370
 	@ln -sf ../$(TRIPLE)/bin/as370 $(BINDIR)/as370
 	@ln -sf ../$(TRIPLE)/bin/ld370 $(BINDIR)/ld370
 	@ln -sf ../$(TRIPLE)/bin/ar370 $(BINDIR)/ar370
@@ -187,6 +188,7 @@ install-tools: tools
 	@ln -sf ../$(TRIPLE)/bin/cmplmd370 $(BINDIR)/cmplmd370
 	@ln -sf ../$(TRIPLE)/bin/xmit370 $(BINDIR)/xmit370
 	@ln -sf ../$(TRIPLE)/bin/dasm370 $(BINDIR)/dasm370
+	@ln -sf ../$(TRIPLE)/bin/idrdump370 $(BINDIR)/idrdump370
 	@ln -sf ../../../$(TRIPLE)/bin/as370 $(LIBEXEC)/as
 	@ln -sf ../../../$(TRIPLE)/bin/ld370 $(LIBEXEC)/ld
 	@ln -sf ../../../$(TRIPLE)/bin/ar370 $(LIBEXEC)/ar
@@ -212,9 +214,9 @@ clean:
 
 uninstall:
 	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 $(BINDIR)/file370 \
-	      $(BINDIR)/xmit370 $(BINDIR)/cmplmd370 $(BINDIR)/dasm370 \
+	      $(BINDIR)/xmit370 $(BINDIR)/cmplmd370 $(BINDIR)/dasm370 $(BINDIR)/idrdump370 \
 	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 $(TGTBIN)/file370 $(TGTBIN)/xmit370 \
-	      $(TGTBIN)/cmplmd370 $(TGTBIN)/dasm370 \
+	      $(TGTBIN)/cmplmd370 $(TGTBIN)/dasm370 $(TGTBIN)/idrdump370 \
 	      $(LIBEXEC)/as $(LIBEXEC)/ld $(LIBEXEC)/ar $(LIBEXEC)/cc1 \
 	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1 \
 	      $(MANDIR)/file370.1 $(MANDIR)/xmit370.1 $(MANDIR)/dasm370.1
