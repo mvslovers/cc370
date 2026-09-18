@@ -3584,5 +3584,52 @@ else
 fi
 rm -f /tmp/_oi$$ /tmp/_oi$$.out /tmp/_oi$$.err
 
+# ------------------------------------------------------------------ endesd --
+# cc370: the END card's ESDID comes from the FIRST sub-operand.  as370 handed
+# sym_find the whole operand, so `END name,(C'PLS1911',0701,78177)' resolved
+# nothing and the card went out as address 0 / ESDID 0.  IEWL answers IEW0102
+# and ENDS THE INPUT MODULE there -- three INCLUDEs became three load modules
+# on MVSTK5-BLD.  1,834 of MVSBLD's 5,528 modules write this form.
+#
+# The suite's own ref-deck comparison CANNOT see this: it stops before the END
+# card, whose IDR is legitimately IFOX-specific.  So this block reads the two
+# fields directly.
+#
+# THE ENTRY POINT IS IN THE SECOND SECTION ON PURPOSE.  Measured over all 5,528
+# MVSBLD modules: in every single one that writes this form, the entry symbol
+# IS the first CSECT's name -- so the corpus, tree-wide gate included, cannot
+# tell "resolve the symbol" from "write a constant 0001" apart.  This fixture is
+# the only thing that can, and without it the gate is green for both.
+#
+# Pre-fix scores (as370 from main, 3bc0812):
+#   endesd   000000/0000   wanted 000008/0002   <- fails
+#   endesd1  000008/0002                        <- control, already right
+#   endesd0  404040/4040                        <- control, blank stays blank
+# IFOX00 on MVSTK5-REF writes the same ESDID for both operand forms, including
+# the two-field second operand it rejects with IFO254 and still stamps.
+endfail=0
+for t in endesd endesd1 endesd0; do
+    case $t in
+        endesd|endesd1) wantaddr=000008; wantesd=0002 ;;
+        endesd0)        wantaddr=404040; wantesd=4040 ;;
+    esac
+    rm -f /tmp/_end$$.obj
+    if ! ./as370 -o /tmp/_end$$.obj tests/$t.s >/dev/null 2>&1; then
+        echo "$t: FAIL -- as370 did not assemble it"; endfail=1; continue
+    fi
+    got=$(od -An -v -tx1 /tmp/_end$$.obj | tr -d ' \n' | \
+          awk '{ for (i = 1; i <= length($0); i += 160) {
+                     c = substr($0, i, 160)
+                     if (substr(c, 1, 2) == "02" && substr(c, 3, 6) == "c5d5c4")
+                         printf "%s/%s", substr(c, 11, 6), substr(c, 29, 4) } }')
+    if [ "$got" = "$wantaddr/$wantesd" ]; then
+        echo "$t: OK (END card $got)"
+    else
+        echo "$t: FAIL -- END card $got, wanted $wantaddr/$wantesd"; endfail=1
+    fi
+done
+[ $endfail = 0 ] || fail=$((fail + 1))
+rm -f /tmp/_end$$.obj
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

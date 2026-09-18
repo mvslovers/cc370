@@ -5965,14 +5965,34 @@ static void do_pass(int pass, char **lines, int nlines) {
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
             if (!strcmp(op, "END") && opnd[0]) {
-                end_has = 1;
-                /* The END card's ESDID names the section the entry point is IN --
-                 * the loader adds that section's origin to end_addr. Same lookup
-                 * as the ESD's LD entry and the RLD's R (#52): an ENTRY symbol
-                 * carries no ESDID of its own, and taking the module's first
-                 * section for it stamped an offset into CSECT 2 against CSECT 1. */
-                if (pass == 2) { struct sym *s = sym_find(opnd); if (s) { end_addr = s->val;
-                    end_esdid = s->esdid ? s->esdid : sect_esdid(s->sect); } }
+                /* END takes TWO operands and only the first names a symbol:
+                 * `END IKJEFT01,(C'PLS1911',0701,78177)'.  The second is the
+                 * translator's IDR and belongs in the card, never in the
+                 * lookup -- handing sym_find the whole string finds nothing,
+                 * and the card then went out claiming an entry point at
+                 * address 0 in ESDID 0.  IEWL answers IEW0102 and ENDS THE
+                 * INPUT MODULE there, so three INCLUDEs became three load
+                 * modules; measured on MVSTK5-BLD.  1,834 of MVSBLD's 5,528
+                 * modules write this form, and the tree-wide gate cannot see
+                 * it because the END card is excluded from the byte
+                 * comparison (its IDR is IFOX-specific).  IFOX00 writes the
+                 * same ESDID for both forms -- measured on MVSTK5-REF, five
+                 * assemblies, including the two-field second operand it
+                 * rejects with IFO254 and still stamps correctly. */
+                char ent[64]; size_t ei = 0;   /* not `k': the outer one is the literal loop's */
+                while (opnd[ei] && opnd[ei] != ',' && ei < sizeof ent - 1) { ent[ei] = opnd[ei]; ei++; }
+                while (ei && ent[ei - 1] == ' ') ei--;
+                ent[ei] = '\0';
+                if (ent[0]) {
+                    end_has = 1;
+                    /* The END card's ESDID names the section the entry point is IN --
+                     * the loader adds that section's origin to end_addr. Same lookup
+                     * as the ESD's LD entry and the RLD's R (#52): an ENTRY symbol
+                     * carries no ESDID of its own, and taking the module's first
+                     * section for it stamped an offset into CSECT 2 against CSECT 1. */
+                    if (pass == 2) { struct sym *s = sym_find(ent); if (s) { end_addr = s->val;
+                        end_esdid = s->esdid ? s->esdid : sect_esdid(s->sect); } }
+                }
             }
             if (!strcmp(op, "END") && in_dsect) {   /* a trailing DSECT must not capture the pending literal pool: flush it into the control section */
                 in_dsect = 0; lc = main_lc; cur_sect_id = main_sect_id; cur_sect_esdid = main_sect_esdid;
