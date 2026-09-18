@@ -52,6 +52,10 @@ ENTRY. B<-> writes to standard output. The file carries its own C<#columns>
 header, and a destination that cannot be opened is an error of the invocation
 (exit 16), never a silent fall back to standard output.
 
+B<One record per symbol, which is one record per NAME.> Where a name is defined
+twice the table carries the definition that won and no trace of the other -- see
+L</DUPLICATE SYMBOLS>.
+
 This is data, not the listing: the C<s> and C<x> sub-options of B<-a> remain the
 human cross-reference pages that B<IFOX00> prints, and still produce nothing.
 Values are decimal, and are section-relative for a symbol in a DSECT and
@@ -144,6 +148,45 @@ Print the assembler version.
 Show usage and exit.
 
 =back
+
+=head1 DUPLICATE SYMBOLS
+
+A symbol defined twice is accepted, the later definition wins, and B<nothing is
+said> -- no diagnostic, no change to the return code. This is B<not> an
+oversight: it is what Assembler XF does, measured rather than assumed.
+
+Two real modules of the MVSBLD corpus were run through IFOX00 on the pinned
+oracle in September 2026, one of each shape:
+
+=over 4
+
+=item *
+
+C<IFCRDESM> -- a B<conflicting> pair: C<IPLTIME DS XL4> inside one section and
+C<IPLTIME EQU IPLHEAD+12> in another, two sections and two values.
+
+=item *
+
+C<AMDSAUCB> -- a B<same-value> pair: C<CVT EQU 0> and, 1730 cards later,
+C<CVT EQU CVTMAP> where C<CVTMAP> is also 0.
+
+=back
+
+IFOX00 answered C<NO STATEMENTS FLAGGED IN THIS ASSEMBLY>, C<HIGHEST SEVERITY
+WAS 0>, for both. C<as370> gives rc 0 and no diagnostics for both. So the
+silence is a B<fidelity match> and not a gap, and adding a diagnostic here would
+make C<as370> diverge from its reference.
+
+B<What follows from it is a working hazard rather than a defect.> The losing
+definition is recoverable from no C<as370> output at all: the object carries the
+winner's value, the listing shows the statement as written, and C<--sym> holds
+one record for the name. A field added to a DSECT that collides with a register
+equate defined elsewhere in the same assembly therefore keeps its bytes and
+loses its name, and the module still assembles clean. When editing a large
+source against a fixed object -- bringing an old level up to a shipped one, say --
+that is a mistake nothing in the toolchain will report, and the cheapest guard
+is to choose names that cannot collide rather than to look for a warning that
+neither assembler will give.
 
 =head1 MACRO SEARCH ORDER
 
