@@ -177,10 +177,13 @@ WAS 0>, for both. C<as370> gives rc 0 and no diagnostics for both. So the
 silence is a B<fidelity match> and not a gap, and adding a diagnostic here would
 make C<as370> diverge from its reference.
 
-B<What follows from it is a working hazard rather than a defect.> The losing
-definition is recoverable from no C<as370> output at all: the object carries the
-winner's value, the listing shows the statement as written, and C<--sym> holds
-one record for the name. A field added to a DSECT that collides with a register
+B<What follows from it is a working hazard rather than a defect.> The object
+carries the winner's value and C<--sym> holds one record for the name, so the
+losing definition survives in no machine-readable output. Where the loser is a
+C<DS> its value is still readable from the listing's location column -- a C<DS>
+symbol's value IS its location, and both cards are printed as written. Where the
+loser is an C<EQU> even that is gone: the listing's address column shows the
+B<winner's> value against the loser's card. A field added to a DSECT that collides with a register
 equate defined elsewhere in the same assembly therefore keeps its bytes and
 loses its name, and the module still assembles clean. When editing a large
 source against a fixed object -- bringing an old level up to a shipped one, say --
