@@ -67,9 +67,27 @@ static void scan_esd(int oi)
 }
 
 /* write a 60-byte `ar` member header with a verbatim 16-byte name field */
+/* The `ar` size field is ten characters wide, so a header cannot express a
+ * member of 10**10 bytes or more -- and h[] is exactly the 60-byte header
+ * plus its NUL, with no slack for an eleventh digit.  Refusing is the only
+ * honest answer: truncating would write a header that looks well-formed for
+ * the wrong length, and every member after it is found by walking from that
+ * length, so the whole archive past this point would be misread.
+ *
+ * Narrowing the range is also what silences GCC's -Wformat-truncation here
+ * (#452), which on GCC 12 is an error under -Werror and on 16.1 needs
+ * -Wformat-truncation=2 to show.  The diagnostic going away is a consequence
+ * of the bound, not the reason for it. */
+#define AR_SIZE_MAX 9999999999L
+
 static void ar_hdr(FILE *f, const char *namefield, long size)
 {
     char h[61];
+    if (size < 0 || size > AR_SIZE_MAX) {
+        fprintf(stderr, "ar370: member is %ld bytes; an ar header's size field "
+                        "holds 10 digits and cannot express it\n", size);
+        exit(1);
+    }
     snprintf(h, sizeof h, "%-16.16s%-12d%-6d%-6d%-8.8s%-10ld`\n",
              namefield, 0, 0, 0, "100644", size);
     fwrite(h, 1, 60, f);
