@@ -3598,7 +3598,15 @@ static int stmts_load(struct sside *s, const char *fn, const char *sect)
     char line[4096];
     char *name[64];
     int ncol = 0, cap = 0;
-    int c_sn, c_so, c_org, c_cards, c_loc, c_len, c_stmt, c_gen, c_md, c_ms, c_mn, c_res, c_txt;
+    /* Set in the `if (!ncol)` header branch and read only once ncol is
+     * non-zero, so they are always assigned before use -- but that is a
+     * relationship across loop iterations, which gcc 12 does not track and
+     * rejects under -Werror=maybe-uninitialized (#452).  -1 is also the
+     * honest initial value: it is what scol() returns for a column the
+     * export does not have, so a path that ever did reach here unset would
+     * index fld[-1] visibly rather than at a garbage offset. */
+    int c_sn = -1, c_so = -1, c_org = -1, c_cards = -1, c_loc = -1, c_len = -1;
+    int c_stmt = -1, c_gen = -1, c_md = -1, c_ms = -1, c_mn = -1, c_res = -1, c_txt = -1;
     char seen[16][9];
     int nseen = 0, i;
 
