@@ -43,7 +43,6 @@ static size_t bcat(char *d, size_t dsz, size_t at, const char *s) {
 #define MAXSYM 65536
 #define MAXLIT 65536
 #define MAXREL 131072
-#define TEXTMAX (16 * 1024 * 1024)
 /* Sizes the expanded-statement arrays of the macro preprocessor below, and the
  * flagged-statement bitmaps right after this -- which the recorders start
  * marking at note_overlong, long before the preprocessor is declared. */
@@ -132,8 +131,38 @@ struct reloc { long addr; int pos, rel, isV, len, neg; };
 static struct reloc rels[MAXREL];
 static int nrel;
 
-static unsigned char text[TEXTMAX];
-static unsigned char defn[TEXTMAX];   /* 1 = byte has content (for TXT segmentation) */
+/* The assembled text and its per-byte "something wrote this" map.  put()
+ * indexes both with the same offset, so they grow together through one
+ * capacity and cannot come to differ in length.  They were 16 MB static
+ * arrays; a fixed buffer that is merely larger has the same failure mode
+ * further out (#449).
+ *
+ * Offsets past what has been written stay readable and read as zero, which
+ * is what the fixed arrays gave for free and what the listing and object
+ * code paths rely on for a DS that nothing filled -- hence txt_def()/txt_at()
+ * rather than bare indexing on the read side. */
+static unsigned char *text, *defn;
+static long textcap;
+
+static void txt_reserve(long need)
+{
+    long nc;
+    if (need <= textcap) return;
+    nc = textcap ? textcap : 65536;
+    while (nc < need) nc *= 2;
+    text = realloc(text, (size_t)nc);
+    defn = realloc(defn, (size_t)nc);
+    if (!text || !defn) {
+        fprintf(stderr, "as370: out of memory for %ld bytes of text\n", nc);
+        exit(2);
+    }
+    memset(text + textcap, 0, (size_t)(nc - textcap));
+    memset(defn + textcap, 0, (size_t)(nc - textcap));
+    textcap = nc;
+}
+
+static int txt_def(long i) { return i >= 0 && i < textcap ? defn[i] : 0; }
+static unsigned char txt_at(long i) { return i >= 0 && i < textcap ? text[i] : 0; }
 /* Pass-2 TXT emission log: every put(), in emission order, with the bytes AS
  * WRITTEN -- so an ORG overlay's pre-overwrite bytes survive (the final image
  * keeps only the last write). IFOX punches TXT in this order and cuts a card
@@ -163,10 +192,27 @@ struct punchev { int ridx, before_esd; long at_bytes; };
 static struct punchev punches[MAXREPRO]; static int npunch;
 static int g_sect_seen;                         /* pass 2: a control section has been established */
 #define TXL_EV  131072
-#define TXL_BUF (TEXTMAX * 2)
 static long txl_addr[TXL_EV]; static int txl_len[TXL_EV]; static long txl_boff[TXL_EV];
 static int  txl_esdid[TXL_EV];   /* ESDID of the section that emitted each event (for the TXT card's ID, since overlaid sections share an address) */
-static unsigned char txl_bytes[TXL_BUF];
+/* The emission log's byte store.  Grown on demand like text/defn above; it
+ * was twice the text buffer, i.e. 32 MB, which is where half of as370's
+ * 64 MB of static arrays went (#449). */
+static unsigned char *txl_bytes;
+static long txl_cap;
+
+static void txl_reserve(long need)
+{
+    long nc;
+    if (need <= txl_cap) return;
+    nc = txl_cap ? txl_cap : 65536;
+    while (nc < need) nc *= 2;
+    txl_bytes = realloc(txl_bytes, (size_t)nc);
+    if (!txl_bytes) {
+        fprintf(stderr, "as370: out of memory for a %ld-byte TXT log\n", nc);
+        exit(2);
+    }
+    txl_cap = nc;
+}
 static int  ntxl; static long txl_blen, txl_maxend;
 static int  txl_on;        /* logging active (pass 2 only) */
 static int  txl_revisit;   /* a put() wrote below the high-water mark -> overlap (ORG overlay etc.) */
@@ -241,7 +287,23 @@ static long sect_hwm[MAXSECT];
 static int  first_ctl_sect;   /* fwd: the pool must not count as that section's own content */
 static long first_content;    /* the first control section's extent EXCLUDING a reserved END pool */
 static int  pool_placing;     /* set while pool_reserve() is writing its reservation */
+/* A section's bytes are reached by 24-bit A-cons and base/displacement, so
+ * 2**24 is the architecture's ceiling and not a buffer's.  The old fixed
+ * TEXTMAX sat exactly there and refused this by accident -- but only for
+ * TEXT: a section built from DS never reaches put(), so 19.66 MB of
+ * reservations assembled at rc=0 and the ESD carried its length modulo
+ * 2**24 (2,882,986) in a 240-byte deck.  Bounding the high-water mark
+ * catches DS, DC and ORG alike, since all three arrive here.  A DSECT is
+ * exempt: it occupies nothing and only maps a layout. */
+#define SECT_ARCH_MAX (1L << 24)
+
 static void sect_lc_of(int sect, long end) {
+    if (!in_dsect && end > SECT_ARCH_MAX) {
+        fprintf(stderr, "as370: section location counter past 24 bits "
+                        "(%ld > %ld); a section cannot be addressed beyond 16MB\n",
+                end, SECT_ARCH_MAX);
+        exit(2);
+    }
     if (sect > 0 && sect < MAXSECT && end > sect_hwm[sect]) sect_hwm[sect] = end;
     /* The reserved END pool raises sect_hwm, which then hides the section's own
      * growth: a CSECT resumed after the reservation can add content and still
@@ -947,15 +1009,17 @@ static long eval_reg(const char *s) {
 }
 static void put(long at, long v, int n) {
     if (in_dsect) return;                       /* a DSECT generates no object text */
-    if (at < 0 || at + n > TEXTMAX) { fprintf(stderr, "as370: text beyond TEXTMAX at %ld\n", at); exit(2); }
+    if (at < 0) { fprintf(stderr, "as370: text at a negative location %ld\n", at); exit(2); }
+    txt_reserve(at + n);
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
     if (txl_on) {                               /* record the emission for the TXT writer (emission-order replay) */
         if (at < txl_maxend) txl_revisit = 1;   /* writing below the high-water mark = an overlay */
         if (ntxl > 0 && at == txl_addr[ntxl - 1] + txl_len[ntxl - 1] && cur_sect_esdid == txl_esdid[ntxl - 1]) {   /* contiguous AND same section -> extend the previous event */
-            if (txl_blen + n > TXL_BUF) { fprintf(stderr, "as370: TXT log buffer overflow\n"); exit(2); }
+            txl_reserve(txl_blen + n);
             memcpy(txl_bytes + txl_blen, text + at, (size_t)n); txl_len[ntxl - 1] += n; txl_blen += n;
         } else {
-            if (ntxl >= TXL_EV || txl_blen + n > TXL_BUF) { fprintf(stderr, "as370: TXT log overflow\n"); exit(2); }
+            if (ntxl >= TXL_EV) { fprintf(stderr, "as370: TXT log overflow\n"); exit(2); }
+            txl_reserve(txl_blen + n);
             txl_addr[ntxl] = at; txl_len[ntxl] = n; txl_boff[ntxl] = txl_blen; txl_esdid[ntxl] = cur_sect_esdid;
             memcpy(txl_bytes + txl_blen, text + at, (size_t)n); txl_blen += n; ntxl++;
         }
@@ -4569,7 +4633,7 @@ static int listing = 0;
 static int strict_cont = 0;                 /* -L: print a LOC/object/source listing in pass 2 */
 static void emit_listing(long a, long b, const char *src) {
     char hex[20]; int hn = 0; long i;
-    for (i = a; i < b && i < a + 8; i++) hn += snprintf(hex + hn, sizeof hex - hn, "%02X", defn[i] ? text[i] : 0);
+    for (i = a; i < b && i < a + 8; i++) hn += snprintf(hex + hn, sizeof hex - hn, "%02X", txt_def(i) ? txt_at(i) : 0);
     hex[hn] = 0;
     char ln[90]; int j = 0; const char *p = src;
     while (*p && *p != '\n' && j < 88) ln[j++] = *p++;
@@ -6299,11 +6363,11 @@ static void a_rld_section(void) {
  * with no emitted bytes (a DS reservation) prints blank. */
 static void a_objcode(long loc, int len, int instr, char *out) {
     int n = len; if (n > 8) n = 8; if (n < 0) n = 0;
-    if (!instr && (n == 0 || !defn[loc])) { out[0] = 0; return; }   /* DS / nothing emitted */
+    if (!instr && (n == 0 || !txt_def(loc))) { out[0] = 0; return; }   /* DS / nothing emitted */
     int o = 0, i;
     for (i = 0; i < n; i++) {
         if (instr && i && (i % 2) == 0) out[o++] = ' ';
-        o += sprintf(out + o, "%02X", defn[loc + i] ? text[loc + i] : 0);
+        o += sprintf(out + o, "%02X", txt_def(loc + i) ? txt_at(loc + i) : 0);
     }
     out[o] = 0;
 }

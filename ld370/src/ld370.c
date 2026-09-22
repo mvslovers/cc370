@@ -216,6 +216,29 @@ static void *grow_arr(void *arr, long *cap, long need, size_t elsz)
     *cap = nc;
     return arr;
 }
+/* The module image and its definedness map.  The emit loop indexes both with
+ * the same offset, so they are grown together through one capacity and cannot
+ * come to differ in length -- which is why this is not two grow_arr calls.
+ * They were 16 MB static arrays apiece; a fixed buffer that is merely larger
+ * has the same failure mode further out (#449). */
+static unsigned char *mod, *moddef;
+static long modcap;
+
+static void mod_reserve(long need)
+{
+    long nc;
+    if (need <= modcap) return;
+    nc = modcap ? modcap : 65536;
+    while (nc < need) nc *= 2;
+    mod = realloc(mod, (size_t)nc);
+    moddef = realloc(moddef, (size_t)nc);
+    if (!mod || !moddef) {
+        fprintf(stderr, "ld370: out of memory for a %ld-byte module image\n", nc);
+        exit(1);
+    }
+    modcap = nc;
+}
+
 static struct obj *O; static long Ocap;   /* grow on demand (was O[MAXOBJ]); cached
                                            * &O[i] are only taken in PASS 2 / emit,
                                            * after all parse/pull grows are done */
@@ -1809,8 +1832,7 @@ int main(int argc, char **argv)
     trace("  module length = %ld  entry point = %06lX", modlen, entry_addr);
 
     /* --- build module text image + relocate address constants --- */
-    static unsigned char mod[16 << 20];
-    static unsigned char moddef[16 << 20];     /* 1 = a TXT card covered this module byte */
+    mod_reserve(modlen);
     memset(mod, 0, modlen);
     memset(moddef, 0, modlen);
     for (i = 0; i < nO; i++) if (O[i].textlen) {
