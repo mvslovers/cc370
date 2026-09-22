@@ -1787,7 +1787,7 @@ int main(int argc, char **argv)
     trace("  module length = %ld  entry point = %06lX", modlen, entry_addr);
 
     /* --- build module text image + relocate address constants --- */
-    static unsigned char mod[1 << 20];
+    static unsigned char mod[16 << 20];
     memset(mod, 0, modlen);
     for (i = 0; i < nO; i++) if (O[i].textlen) memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
     trace("=== relocate address constants ===");
