@@ -1368,6 +1368,11 @@ Nothing in the ecosystem needs it. The deck-side win is already had from #446,
 which is semantically free; the member-side win only matters at cobc370's scale,
 and that is not our module.
 
+The predicate itself is guarded now — #450 put a `DS` reservation and a written
+`DC` zero region in one fixture and reads the object deck for ground truth, so a
+future change that drops written zeros fails instead of merely shrinking the
+member. It was proven red against the pre-fix binary before being trusted green.
+
 ---
 
 ### #36 — `'\n'` compiles to NEL `X'15'`, not LF `X'25'`
@@ -1407,6 +1412,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   and the one that was load-bearing. Also there: the `put()` overflow #444 fixes
   is **silent** between 1 MB and 16 MB rather than a crash, and ASan does not see
   it, because the write lands deep inside the next global instead of a redzone.
+  The flag's test is #450 and its documentation #451; neither changes behaviour.
 
 - **2026-09-17 — #418's arithmetic half, MERGED as `1d6cf6f` (PR #424).** A
   cross-section adcon carried the target's origin **twice**: `AHLMCER` read
