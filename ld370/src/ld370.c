@@ -1627,7 +1627,7 @@ int main(int argc, char **argv)
         fprintf(stderr,
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
                 "             [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
-                "             [--ac N] [--norent] [--noreus] OBJ...\n"
+                "             [--ac N] [--norent] [--noreus] [--sparse-text] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
                 "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
@@ -1642,7 +1642,12 @@ int main(int argc, char **argv)
                 "         A bare member packs at entry 0 (--entry is not honoured here) and\n"
                 "         takes --ac/--norent/--noreus from THIS command, not from its build.\n"
                 "         --blocksize N sets the target library BLKSIZE (default 15040;\n"
-                "         use the SAME value when building and packing a module).\n");
+                "         use the SAME value when building and packing a module).\n"
+                "         --sparse-text omits text records no TXT card covered, so a DS\n"
+                "         reservation is left unwritten.  OFF by default: it costs\n"
+                "         byte-fidelity to IEWL (which writes those records) and relies on\n"
+                "         program fetch zeroing what it does not load -- measured on MVS\n"
+                "         3.8j, but not under storage pressure.  docs/measurements/.\n");
         return 2;
     }
 
