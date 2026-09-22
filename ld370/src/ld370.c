@@ -1913,6 +1913,16 @@ int main(int argc, char **argv)
                     } else {                            /* one section (whole or a split piece) */
                         mvs_put16(cr + 16, G[gidx[first]].gid); mvs_put16(cr + 18, (int)rlen);
                     }
+                    /* An all-zero record carries nothing fetch cannot get
+                     * from freshly obtained storage, which is zeroed -- the
+                     * same behavior IEWL gives assembler DS gaps.  Elide it,
+                     * unless it is the record that must carry MODEND. */
+                    {
+                        long zi; int allz = 1;
+                        for (zi = 0; zi < rlen; zi++)
+                            if (mod[p + zi]) { allz = 0; break; }
+                        if (allz && !(is_last && !have_rld)) { p += rlen; continue; }
+                    }
                     emit(cr, 16 + idlen);               /* control record */
                     emit(mod + p, rlen);                /* text record (<= MAXTEXT) */
                     nchunk++; p += rlen;

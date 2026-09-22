@@ -1569,6 +1569,11 @@ enum reg_class
    bytes should be zero when loaded.  */
 
 #ifdef TARGET_PDPMAC
+/* DS, not DC nX'00': a skip's bytes need only BE zero when loaded, and a
+   DS gap emits no object text, so zero-initialized data stops inflating
+   the deck and the load module.  as370 tracks defined ranges and ld370
+   elides all-zero records; program fetch reads sparse text into freshly
+   obtained (zeroed) storage, exactly as IEWL-linked assembler DS behaves. */
 #define ASM_OUTPUT_SKIP(FILE, SIZE)  					\
 {									\
   int s, k;								\
@@ -1578,7 +1583,7 @@ enum reg_class
 	k = MAX_CHUNK;							\
       else								\
 	k = s;								\
-      fprintf (FILE, "\tDC\t%dX'00'\n", k);				\
+      fprintf (FILE, "\tDS\tXL%d\n", k);				\
     }									\
 }
 #else
