@@ -41,9 +41,9 @@ static size_t bcat(char *d, size_t dsz, size_t at, const char *s) {
 /* as370 runs on the host (not MVS), so these limits are sized for real
  * modules, not the 24-bit target. Largest rexx370 CSECT is well under these. */
 #define MAXSYM 65536
-#define MAXLIT 8192
+#define MAXLIT 65536
 #define MAXREL 131072
-#define TEXTMAX (1024 * 1024)
+#define TEXTMAX (16 * 1024 * 1024)
 /* Sizes the expanded-statement arrays of the macro preprocessor below, and the
  * flagged-statement bitmaps right after this -- which the recorders start
  * marking at note_overlong, long before the preprocessor is declared. */
@@ -947,6 +947,7 @@ static long eval_reg(const char *s) {
 }
 static void put(long at, long v, int n) {
     if (in_dsect) return;                       /* a DSECT generates no object text */
+    if (at < 0 || at + n > TEXTMAX) { fprintf(stderr, "as370: text beyond TEXTMAX at %ld\n", at); exit(2); }
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
     if (txl_on) {                               /* record the emission for the TXT writer (emission-order replay) */
         if (at < txl_maxend) txl_revisit = 1;   /* writing below the high-water mark = an overlay */
