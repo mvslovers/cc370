@@ -1396,6 +1396,16 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-22 — #461, the repair contract says when it cut the bytes.** `bytes`
+  is capped at 64 and the cap was stated only in the document note, so a consumer
+  had to know the rule or compute `len(bytes)/2 < length` to tell a whole block
+  from a cut one — and 64 hex bytes of a 130-byte block look exactly like a whole
+  block. `bytes_truncated` is now on every side of every finding, always a
+  boolean. Schema **`dasm370-repair/3`**: the key is additive, but a consumer
+  that reads it and tolerates its absence gets `false` out of a /2 document,
+  which is the silent wrong answer /2 itself was cut to avoid for `source`.
+  No `bytes_len` — `length` in the same object already is it.
+
 - **2026-09-22 — #443 closed; #444, #446 and #447 merged.** An outside report
   (@brazilofmux, porting a 12K-line COBOL compiler) found `TARGET_PDPMAC`'s
   `ASM_OUTPUT_SKIP` emitting `DC nX'00'` where the other flavor emits `DS XLn`,
