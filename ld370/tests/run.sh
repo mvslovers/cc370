@@ -539,6 +539,28 @@ else
     echo "  OK: guard refused the oversized member block (13312 > 6144)"
 fi
 
+# 24-bit module length: a text record's load address is written with mvs_put24,
+# so a module past 2**24 wraps -- the tail loads over its own entry code, with
+# no diagnostic and a member file370 reads as well-formed (#455).  as370 bounds
+# each SECTION; this is the sum, which it cannot see.  The two fixtures reserve
+# 9,830,100 bytes each: legal alone, 240-byte decks because DS emits no TXT,
+# and 19,660,200 together.
+printf '\n=== module length: a link past 24-bit addressing is refused ===\n'
+"$AS" -o "$TMP/sum24a.o" "$FIX/sum24a.s" >/dev/null 2>&1
+"$AS" -o "$TMP/sum24b.o" "$FIX/sum24b.s" >/dev/null 2>&1
+if "$LD" -o "$TMP/sum24.lm" --name SUMBIG "$TMP/sum24a.o" "$TMP/sum24b.o" >/dev/null 2>&1; then
+    echo "  FAIL: linked a 19,660,200-byte module; its load addresses wrap at 2**24"
+    fails=$((fails + 1))
+else
+    echo "  OK: refused a module past 24-bit addressing"
+fi
+# and one half must still link, or the bound is simply too tight
+if "$LD" -o "$TMP/sum24half.lm" --name SUMHALF "$TMP/sum24a.o" >/dev/null 2>&1; then
+    echo "  OK: one 9,830,100-byte section still links"
+else
+    echo "  FAIL: refused a section that is inside 2**24"; fails=$((fails + 1))
+fi
+
 # --sparse-text: the flag may drop a DS reservation, which no TXT card covers,
 # and must NOT drop DC zeros, which a programmer wrote and which ARE text.  In
 # the loaded module the two regions are identical bytes; only the object deck
