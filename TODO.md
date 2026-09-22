@@ -1346,6 +1346,30 @@ time looking. Their profile: `docs/tso-and-smp.md`.
 
 ## Deferred
 
+### `--sparse-text` is off by default, and the measurement that would change that does not exist
+
+*waiting on a measurement nobody has a reason to make yet*
+
+`ld370 --sparse-text` (#447) omits text records no TXT card covered. It is off,
+and the reason is in [`docs/measurements/fetch-zeroing.md`](docs/measurements/fetch-zeroing.md):
+program fetch was measured delivering a zeroed area for such a record, twice,
+with independent apparatus — but both runs are batch steps on one system with
+storage to spare. Fragmentation, a long-running address space over hours, other
+subpools and a module large enough to take a different allocation path are all
+unmeasured. That is enough for an opt-in flag and it is not enough for a default.
+
+The other half of the reason will not move at all: the default keeps ld370
+byte-faithful to IEWL, which **does** write such records — 33 of them across the
+5,230-member corpus. A default that elides would diverge from the oracle this
+linker is checked against, so turning the flag on by default costs the byte-identity
+property even if the storage question comes back clean.
+
+Nothing in the ecosystem needs it. The deck-side win is already had from #446,
+which is semantically free; the member-side win only matters at cobc370's scale,
+and that is not our module.
+
+---
+
 ### #36 — `'\n'` compiles to NEL `X'15'`, not LF `X'25'`
 
 *the first deliverable is a survey, not a change*
@@ -1366,6 +1390,23 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-22 — #443 closed; #444, #446 and #447 merged.** An outside report
+  (@brazilofmux, porting a 12K-line COBOL compiler) found `TARGET_PDPMAC`'s
+  `ASM_OUTPUT_SKIP` emitting `DC nX'00'` where the other flavor emits `DS XLn`,
+  plus three size limits that a 6 MB module walks past. The limits landed as
+  #444, the skip as #446, and the sparse-text flag as #447 after the predicate
+  was changed from the byte value to definedness — the first attempt dropped
+  `DC X'00'` as readily as a reservation, which `ld370/tests` caught on its own
+  `DC 8000F'0'` fixture.
+
+  What is worth keeping is in [`docs/measurements/`](docs/measurements/): IFOX00
+  reserves and IEWL fills it in with non-zero residue, so "as IEWL-linked
+  assembler `DS` has always behaved" is not a thing to reason from; and program
+  fetch does deliver zeros for an uncovered record, which is a different claim
+  and the one that was load-bearing. Also there: the `put()` overflow #444 fixes
+  is **silent** between 1 MB and 16 MB rather than a crash, and ASan does not see
+  it, because the write lands deep inside the next global instead of a redzone.
 
 - **2026-09-17 — #418's arithmetic half, MERGED as `1d6cf6f` (PR #424).** A
   cross-section adcon carried the target's origin **twice**: `AHLMCER` read
