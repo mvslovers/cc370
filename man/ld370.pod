@@ -6,7 +6,7 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 
 B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
 [B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>]
-[B<--ac> I<n>] [B<--norent>] [B<--noreus>] I<obj>...
+[B<--ac> I<n>] [B<--norent>] [B<--noreus>] [B<--sparse-text>] I<obj>...
 
 B<ld370> B<--pack> I<member> [I<member> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
 
@@ -88,6 +88,35 @@ with modifiable storage that must not be marked reentrant. Like B<--ac>, the fla
 apply to the module being linked; a B<--pack> of a B<-iebcopy> member keeps that
 member's own attributes (set when it was built), so per-member attributes mix in
 one library.
+
+=item B<--sparse-text>
+
+Omit text records that no TXT card covered, so a C<DS> reservation is left
+unwritten in the member instead of being carried as zeros. B<Off by default>, and
+the default is the conservative one.
+
+The predicate is B<definedness, never the byte value>. C<DC X'00'> is text a
+programmer wrote and it stays; only a range nothing ever defined is dropped. The
+object deck carries that distinction -- a C<DS> gap is the I<absence> of a TXT
+card, C<DC X'00'> is a TXT card of zeros -- and ld370 keeps it through the link.
+A record is dropped only if the whole record is undefined, so a reservation whose
+ends share a record with real text keeps those records.
+
+Two things to know before turning it on.
+
+It costs byte-fidelity to IEWL, which does write such records: 33 of them across
+the 5,230-member C<SYS1.AOS*> corpus, one of them a whole member's text. The
+default keeps ld370 byte-faithful to the linker it is checked against; this flag
+does not.
+
+It relies on program fetch supplying zeros for a record that is not there. That
+was measured on MVS 3.8j and it held, twice and with independent apparatus -- but
+both runs were batch steps on one system with storage to spare. Fragmentation, a
+long-running address space, other subpools, and a module large enough to take a
+different allocation path are B<unmeasured>. Any C program depends on this
+holding wherever it runs, because C requires static storage to start at zero.
+
+Both measurements, and what they did not cover, are in F<docs/measurements/>.
 
 =item B<--pack> I<member> [I<member> ...]
 
