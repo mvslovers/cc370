@@ -224,9 +224,25 @@ static void *grow_arr(void *arr, long *cap, long need, size_t elsz)
 static unsigned char *mod, *moddef;
 static long modcap;
 
+/* A text record's load address is written with mvs_put24, and an adcon into
+ * the module is reached the same way, so 2**24 is the ceiling for the WHOLE
+ * module and not just for one section.  as370 bounds each section, but
+ * several individually-legal sections can still sum past this -- two of
+ * 9,830,100 bytes did, linking at rc=0 into a 19.6MB member whose records
+ * wrapped: record 1261 claimed 0x6D8 after 1260 ended at 0x10006D8, delta
+ * exactly 2**24, so the tail loaded over the module's own entry code.  No
+ * diagnostic, and file370 read it as well-formed (#455). */
+#define MOD_ARCH_MAX (1L << 24)
+
 static void mod_reserve(long need)
 {
     long nc;
+    if (need > MOD_ARCH_MAX) {
+        fprintf(stderr, "ld370: module length %ld exceeds 24-bit addressing (%ld); "
+                        "the text records' load addresses would wrap\n",
+                need, MOD_ARCH_MAX);
+        exit(1);
+    }
     if (need <= modcap) return;
     nc = modcap ? modcap : 65536;
     while (nc < need) nc *= 2;
