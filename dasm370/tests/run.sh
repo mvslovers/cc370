@@ -1203,7 +1203,7 @@ print("base-%s" % d["base"])
 PY
 jwant() { if grep -qx "$1" "$T/json.out"; then pass "$2"; else fail "$2"; cat "$T/json.out"; fi; }
 jwant "parse ok"      "the repair contract is valid JSON"
-jwant "schema-dasm370-repair/2" "the schema names its version, and /2 is where source moved to the sides"
+jwant "schema-dasm370-repair/3" "the schema names its version, and /3 is where bytes_truncated arrived"
 jwant "count-matches" "the findings array length equals counts.findings"
 jwant "source-null"   "every finding carries source:null WITH the reason it is absent"
 jwant "has-shift-set" "the shift set travels with the findings -- how strong the test was"
@@ -1216,6 +1216,44 @@ if cmp -s "$T/rep.json" "$T/rep2.json"; then
 else
     fail "the contract is reproducible: two runs, one byte-identical document"
 fi
+
+# ---- bytes_truncated (#461) ----------------------------------------------
+# `bytes' is capped at JBYTES_MAX, and the cap was visible only in the document
+# note -- so a consumer had to KNOW the rule, or compute len(bytes)/2 < length,
+# to tell a complete block from a cut one.  64 hex bytes of a 130-byte block
+# look exactly like a whole block, and the natural next step is to decode them
+# and name a mechanism: a conclusion about code the reader never saw.
+#
+# The fixture carries BOTH values in one document on purpose.  A pair that only
+# ever truncates cannot tell "the emitter sets it" from "the emitter hardcodes
+# true", and a flag tested in one direction is half a flag.  The 256 identical
+# bytes between the two divergences are what keeps them two findings rather
+# than one merged block -- without them the small case disappears into the big
+# one and the false branch goes unexercised while everything still passes.
+"$A" tests/jtrunc-a.s -o "$T/ta.obj" >/dev/null 2>&1
+"$A" tests/jtrunc-b.s -o "$T/tb.obj" >/dev/null 2>&1
+"$D" --align-diff "$T/ta.obj" "$T/tb.obj" --json "$T/trunc.json" -o /dev/null 2>/dev/null
+python3 - "$T/trunc.json" > "$T/trunc.out" 2>&1 <<'JPY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+f = d["findings"]
+CAP = 64
+print("always-present" if all(isinstance(x[s].get("bytes_truncated"), bool)
+                              for x in f for s in ("ref", "cand")) else "NOT-always-present")
+print("agrees-with-length" if all(
+        x[s]["bytes_truncated"] == (len(x[s]["bytes"]) // 2 < x[s]["length"])
+        for x in f for s in ("ref", "cand")) else "DISAGREES-with-length")
+print("cap-64" if all(len(x[s]["bytes"]) // 2 == min(x[s]["length"], CAP)
+                      for x in f for s in ("ref", "cand")) else "cap-WRONG")
+print("both-branches" if {x[s]["bytes_truncated"] for x in f for s in ("ref", "cand")}
+                         == {True, False} else "ONE-BRANCH-ONLY")
+JPY
+# jwant() reads json.out by name, so this block needs its own reader.
+twant() { if grep -qx "$1" "$T/trunc.out"; then pass "$2"; else fail "$2"; cat "$T/trunc.out"; fi; }
+twant "always-present"     "bytes_truncated is on every side of every finding, as a boolean"
+twant "agrees-with-length" "bytes_truncated agrees with len(bytes)/2 < length"
+twant "cap-64"             "bytes is emitted up to the cap and no further"
+twant "both-branches"      "the fixture exercises truncated AND untruncated in one document"
 
 # --json without --align-diff has nothing to describe, and says so.
 "$D" --json "$T/x.json" "$T/ja.obj" >/dev/null 2>&1

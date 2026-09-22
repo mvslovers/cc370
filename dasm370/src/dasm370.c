@@ -3824,11 +3824,17 @@ static void jstr(FILE *o, const char *s)
  * a difference belonging to the transport.  By the time a finding is emitted
  * there are none left: 0 of 240,326 byte fields over the caller's 832 modules.
  * A branch for them here would be dead code that reads as a guarantee. */
+/* The cap on `bytes'.  A finding's block is routinely larger than this in a
+ * len-differs tier -- 48 of 118 open rows there carry a delta past 64 and the
+ * largest is 5804 -- and a JSON field carrying five kilobytes of hex is its own
+ * problem, so the cap stays.  What travels with it is `bytes_truncated', below. */
+#define JBYTES_MAX 64
+
 static void jbytes(FILE *o, const unsigned char *img8, long at, long n)
 {
     long i;
     fputc('"', o);
-    for (i = 0; i < n && i < 64; i++) fprintf(o, "%02X", img8[at + i]);
+    for (i = 0; i < n && i < JBYTES_MAX; i++) fprintf(o, "%02X", img8[at + i]);
     fputc('"', o);
 }
 
@@ -3880,6 +3886,11 @@ static void jside(FILE *o, const char *tag, const struct aside *s,
 {
     fprintf(o, "\"%s\":{\"offset\":%ld,\"length\":%ld,\"bytes\":", tag, at, len);
     if (len > 0) jbytes(o, s->img, at, len); else fputs("\"\"", o);
+    /* ALWAYS, true or false.  A key that appears only when true is a key whose
+     * absence a consumer must interpret, which is the derivation this exists to
+     * remove.  There is no `bytes_len': `length' above IS the true length, in
+     * this same object, and a second key for it could only ever disagree. */
+    fprintf(o, ",\"bytes_truncated\":%s", len > JBYTES_MAX ? "true" : "false");
     if (op) {
         fputs(",\"statement\":{\"op\":", o); jstr(o, op);
         fputs(",\"operands\":", o); jstr(o, opnd ? opnd : "");
@@ -3986,9 +3997,15 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
          * finding has two sides, they are two maintenance levels of one section,
          * and they have two different sources -- one document-level `source'
          * would have to pick one silently. */
-        fputs("{\n  \"schema\": \"dasm370-repair/2\",\n", jout);
+        fputs("{\n  \"schema\": \"dasm370-repair/3\",\n", jout);
         fputs("  \"note\": \"Offsets and lengths are section-relative BYTES as "
-              "integers; `bytes' is uppercase hex, truncated at 64 bytes. A byte "
+              "integers; `bytes' is uppercase hex, truncated at 64 bytes -- and "
+              "`bytes_truncated' beside it SAYS SO PER RECORD, always present and "
+              "always a boolean. /3 AND NOT /2: the key is additive, but a consumer "
+              "that reads it and tolerates its absence gets false out of a /2 "
+              "document, which is the same silent wrong answer /2 was cut to avoid "
+              "for `source'. There is no `bytes_len': `length' in the same object "
+              "IS the true length. A byte "
               "no TXT card covered was read as zero before comparison, because a "
               "deck records its holes and a bound member cannot. EACH SIDE CARRIES ITS "
               "OWN `source\' -- in dasm370-repair/1 it sat on the FINDING and was always "
@@ -4254,7 +4271,7 @@ static void usage(FILE *o)
 "                     shift function's value set and a FINDING when it is not.\n"
 "                     Reads no hint file and writes no disassembly\n"
 "  --json FILE        with --align-diff, the repair contract: one record per\n"
-"                     divergence, schema dasm370-repair/2 (cc370#385)\n"
+"                     divergence, schema dasm370-repair/3 (cc370#385)\n"
 "  --ref-stmts FILE   the as370 --stmts export of each side's SOURCE, which\n"
 "  --cand-stmts FILE  fills that side's `source\' in --json.  Two flags because\n"
 "                     the two objects have two different sources, and a single\n"
