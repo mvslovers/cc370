@@ -539,6 +539,29 @@ else
     echo "  OK: guard refused the oversized member block (13312 > 6144)"
 fi
 
+# --sparse-text: the flag may drop a DS reservation, which no TXT card covers,
+# and must NOT drop DC zeros, which a programmer wrote and which ARE text.  In
+# the loaded module the two regions are identical bytes; only the object deck
+# tells them apart, which is exactly why the first version of this flag tested
+# the byte value and silently dropped both (#445, caught by the DC 8000F'0' in
+# the blocksize fixture above).  The fixture carries one of each with markers
+# between, and sparse_scan.py takes its expectations from the deck rather than
+# from offsets written down here.
+printf '\n=== --sparse-text: elides a DS reservation, keeps DC zeros ===\n'
+if "$AS" -o "$TMP/sparse.o" "$FIX/sparse.s" >/dev/null 2>&1 &&
+   "$LD" -o "$TMP/sparse_off" --name SPARSE "$TMP/sparse.o" >/dev/null 2>&1 &&
+   "$LD" --sparse-text -o "$TMP/sparse_on" --name SPARSE "$TMP/sparse.o" >/dev/null 2>&1
+then
+    python3 ld370/tests/sparse_scan.py "$TMP/sparse.o" "$TMP/sparse_off" "$TMP/sparse_on" \
+        || fails=$((fails + 1))
+    if cmp -s "$TMP/sparse_off" "$TMP/sparse_on"; then
+        echo "  FAIL: --sparse-text produced the same member as the default"
+        fails=$((fails + 1))
+    fi
+else
+    echo "  FAIL: could not assemble or link the sparse fixture"; fails=$((fails + 1))
+fi
+
 # --norent / --noreus: clear the PDS2ATR1 reentrant / reusable attributes for a
 # module that must not be marked RENT (a REXX370 module needs this).  The template
 # marks every module RENT+REUS; RENT (0x80) implies REUS (0x40).  --norent clears
