@@ -94,6 +94,11 @@ static long src_blksize = 15040;
  * larger than BLKSIZE would span and break the IEBCOPY reload, IEB139I).  Set in
  * main() from src_blksize via pick_maxtext(); 13312 = pick_maxtext(15040). */
 static long maxtext = 13312;
+/* --sparse-text: omit text records that no TXT card covered.  Off by default:
+ * IEWL writes such records (33 of them across the 5,230-member SYS1.AOS*
+ * corpus, ISTPATCH's whole text among them), and byte-fidelity to IEWL is the
+ * default this linker promises.  See mvslovers/cc370#443. */
+static int sparse_text = 0;
 #define MAXTEXT            maxtext
 #define UNLOAD_SRC_BLKSIZE src_blksize
 /* The IEBCOPY-unloaded form's BLKSIZE.  Real IEBCOPY's unload DCB-exit forces
@@ -178,6 +183,12 @@ struct obj {
     unsigned char *text;              /* object text, grown on demand (was a fixed 16384-byte */
     long textcap;                     /*   buffer that SILENTLY dropped text past 16K -> any   */
     long textlen;                     /*   module > 16K truncated to zeros, S0C1 at run time)  */
+    /* Which of those bytes a TXT card actually covered.  text[] alone cannot
+     * say: a byte no card reached and a byte a card set to zero are both zero
+     * once the gap-fill below has run.  The distinction is the object deck's
+     * -- a DS gap is the ABSENCE of a TXT card, DC X'00' is a TXT card of
+     * zeros -- and --sparse-text needs it to tell them apart. */
+    unsigned char *defn;              /* 1 = some TXT card covered this byte */
     /* rld and ld grow on demand.  They were fixed rld[512]/ld[64] arrays with NO
      * bounds check on the write; an object with >512 RLD items (large C cores --
      * rexx370's irx#pars/bcom/bifs/bvm) overflowed rld[] into the adjacent ld[]
@@ -256,10 +267,15 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                 nt = realloc(o->text, (size_t)ncap);
                 if (!nt) { fprintf(stderr, "ld370: out of memory for object text (%ld bytes)\n", ncap); exit(1); }
                 memset(nt + o->textcap, 0, (size_t)(ncap - o->textcap));   /* zero-fill gaps */
-                o->text = nt; o->textcap = ncap;
+                o->text = nt;
+                nt = realloc(o->defn, (size_t)ncap);
+                if (!nt) { fprintf(stderr, "ld370: out of memory for object text (%ld bytes)\n", ncap); exit(1); }
+                memset(nt + o->textcap, 0, (size_t)(ncap - o->textcap));   /* gaps are undefined */
+                o->defn = nt; o->textcap = ncap;
             }
             if (cnt > 0) {
                 memcpy(o->text + addr, c + 16, cnt);
+                memset(o->defn + addr, 1, (size_t)cnt);    /* this card covered these bytes */
                 if (need > o->textlen) o->textlen = need;
             }
             trace("  TXT  %ld bytes -> local section id=%d at offset %06lX", cnt, mvs_be16(c + 14), addr);
@@ -1465,6 +1481,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
         else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc) incspec[ninc++] = argv[++i];
+        else if (!strcmp(argv[i], "--sparse-text")) sparse_text = 1;  /* elide records no TXT card covered */
         else if (!strcmp(argv[i], "--pack")) pack_mode = 1;       /* positional args after this are members to pack */
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
@@ -1788,8 +1805,13 @@ int main(int argc, char **argv)
 
     /* --- build module text image + relocate address constants --- */
     static unsigned char mod[16 << 20];
+    static unsigned char moddef[16 << 20];     /* 1 = a TXT card covered this module byte */
     memset(mod, 0, modlen);
-    for (i = 0; i < nO; i++) if (O[i].textlen) memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
+    memset(moddef, 0, modlen);
+    for (i = 0; i < nO; i++) if (O[i].textlen) {
+        memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
+        memcpy(moddef + O[i].object_base, O[i].defn, O[i].textlen);
+    }
     trace("=== relocate address constants ===");
     for (i = 0; i < nO; i++) {
         struct obj *o = &O[i];
@@ -1912,6 +1934,18 @@ int main(int argc, char **argv)
                         }
                     } else {                            /* one section (whole or a split piece) */
                         mvs_put16(cr + 16, G[gidx[first]].gid); mvs_put16(cr + 18, (int)rlen);
+                    }
+                    /* --sparse-text: a record no TXT card ever covered carries
+                     * nothing the module actually said, so drop it and let the
+                     * bytes come from the storage fetch is given.  The predicate
+                     * is definedness, never the byte value: DC X'00' IS text and
+                     * stays.  Off by default -- the default keeps ld370
+                     * byte-faithful to IEWL, which does write such records. */
+                    if (sparse_text) {
+                        long zi; int any = 0;
+                        for (zi = 0; zi < rlen; zi++)
+                            if (moddef[p + zi]) { any = 1; break; }
+                        if (!any && !(is_last && !have_rld)) { p += rlen; continue; }
                     }
                     emit(cr, 16 + idlen);               /* control record */
                     emit(mod + p, rlen);                /* text record (<= MAXTEXT) */
