@@ -26,6 +26,15 @@
 #                and green; wiring it in for the 27 would also need fetch-depth 0
 #                so the baseline revision is present.
 #   test-cc370   needs the GCC fork (`make compiler`)
+#
+# The `bookworm` job below exists because the matrix above covers two
+# COMPILERS but one VERSION each, which is the same blind spot one level
+# down from the one that put -Werror here.  ubuntu-latest's gcc did not
+# diagnose ar370's exactly-sized `ar` header under -Wformat-truncation;
+# Debian 12's gcc 12 did, as an error, so `make tools` failed on a common
+# build host while CI stayed green (#452).  It is pinned BY DIGEST rather
+# than by tag: ubuntu-latest moving under us is how this was missed, and a
+# floating `debian:bookworm` would reintroduce exactly that.
 
 name: Build
 
@@ -80,3 +89,28 @@ jobs:
 
       - name: xmit370 suite
         run: make test-xmit370
+
+  # A second GCC version, pinned, for the -Werror surface only.  The suites
+  # are already covered above and are compiler-independent, so this builds
+  # the tools and stops -- it is a diagnostic gate, not a second test run.
+  bookworm:
+    name: tools -Werror (gcc 12, Debian 12 pinned)
+    runs-on: ubuntu-latest
+    container:
+      image: debian@sha256:704583dbf243593da87cf949fc0543ffeca24a28d36c2760dc9545410cb8ed02
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates git
+
+      - uses: actions/checkout@v4
+
+      - name: Compiler version
+        run: gcc --version
+
+      # The point of the job: -Werror under a gcc that ubuntu-latest's does
+      # not match.  A failure here is a real portability break on a stable
+      # distro, not a stricter opinion.
+      - name: Build the standalone tools
+        run: make tools HOSTCC=gcc
