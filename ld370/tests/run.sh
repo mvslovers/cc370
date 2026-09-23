@@ -623,6 +623,76 @@ PY
 if [ "$pa" = "43" ]; then echo "  OK: --pack preserves the member's cleared RENT (ATR1=$pa)"
 else echo "  FAIL: --pack did not preserve --norent (ATR1=$pa)"; fails=$((fails + 1)); fi
 
+# ---- --rent / --reus / --refr: SET the attributes (cc370#100) --------------
+# Measured against IEWL itself on MVS 3.8j (mvsdev, 2026-09-23), because a bit
+# position checked only against our own decoder is checked against the same
+# assumption that encoded it.  One IFOX00 assembly, three IEWL links differing
+# only in PARM, read back with IEHLIST -- IBM's linker setting the bits and
+# IBM's lister naming them:
+#
+#   PLAIN     PARM='NCAL,LIST,XREF'             ATTR 03F2
+#   WITHREFR  PARM='NCAL,LIST,XREF,REFR'        ATTR 03F3
+#   RENTREFR  PARM='NCAL,LIST,RENT,REFR'        ATTR C3F3
+#
+# and IEHLIST's own ATTRIBUTE INDEX: bit 0 RENT, bit 1 REUS, bit 6 EXEC,
+# bit 7 "1 TXT", bit 11 "NO RLD", **bit 15 REFR** -- the low bit of the SECOND
+# byte.  So REFR is PDS2ATR2, ud[9] 0x01, and IHAPDS agrees (PDS2REFR EQU BIT7
+# under PDS2ATR2).  cc370#100's text and docs/ld370-iewl-divergences.md both
+# said PDS2ATR1; writing it there would have set 0x01 of ATR1, which is
+# PDS21BLK and already on -- a --refr that changes nothing and looks done.
+#
+# Our own members, installed on the same system and listed by the same IEHLIST:
+#
+#   --norent --noreus          03F2   == IEWL's PLAIN
+#   --norent --noreus --refr   03F3   == IEWL's WITHREFR
+#
+# --rent/--reus are idempotent against today's template (which already sets
+# both), so the assertions for them are weak ON PURPOSE and say so: they exist
+# so the default can be inverted later without a flag day, and they become
+# meaningful then.  --refr and the contradiction refusal are the real tests.
+printf '\n=== --rent / --reus / --refr: PDS2 attribute set-flags ===\n'
+get_atr() {                                    # $1 = flags -> "ATR1 ATR2" in hex
+    # shellcheck disable=SC2086
+    "$LD" $1 -o "$TMP/sat" --name SAT "$TMP/attr.o" -iebcopy 2>/dev/null
+    python3 - "$TMP/sat.iebcopy" <<'JPY'
+import sys
+b = open(sys.argv[1], 'rb').read()
+o = 328 + 12 + 8 + 2 + 20
+print("%02x %02x" % (b[o], b[o + 1]))
+JPY
+}
+expect_atr() {                                 # $1=flags $2=want $3=label
+    rm -f "$TMP/sat.iebcopy"
+    got=$(get_atr "$1")
+    if [ "$got" = "$2" ]; then echo "  OK: $3 -> $got"
+    else echo "  FAIL: $3 got '$got' (want '$2')"; fails=$((fails + 1)); fi
+}
+expect_atr ""                            "c3 f2" "default                  (no REFR)"
+expect_atr "--refr"                      "c3 f3" "--refr                   (ATR2 bit 0x01)"
+expect_atr "--norent --noreus"           "03 f2" "--norent --noreus        == IEWL default"
+expect_atr "--norent --noreus --refr"    "03 f3" "--norent --noreus --refr == IEWL REFR"
+expect_atr "--rent --reus"               "c3 f2" "--rent --reus            (idempotent today)"
+# A set/clear pair is refused, and nothing is written -- there is no half-built
+# member to mistake for output.
+# The MESSAGE is asserted, not just the failure.  A build that does not know
+# --rent treats it as an object file and fails too, so "it did not write a
+# member" is satisfied for the wrong reason -- measured: this check passed
+# against origin/main before the flags existed.
+rm -f "$TMP/contra" "$TMP/contra.iebcopy"
+"$LD" --rent --norent -o "$TMP/contra" --name C "$TMP/attr.o" -iebcopy \
+      >"$TMP/contra.out" 2>&1
+crc=$?
+if [ $crc = 0 ]; then
+    echo "  FAIL: --rent with --norent was accepted"; fails=$((fails + 1))
+elif [ -f "$TMP/contra.iebcopy" ]; then
+    echo "  FAIL: --rent with --norent refused but still wrote a member"; fails=$((fails + 1))
+elif ! grep -q "opposite attributes" "$TMP/contra.out"; then
+    echo "  FAIL: --rent with --norent failed for the wrong reason:"; sed 's/^/        /' "$TMP/contra.out"
+    fails=$((fails + 1))
+else
+    echo "  OK: --rent with --norent is refused BY NAME and writes nothing"
+fi
+
 # dropped-text on early-ref / late-def section (S106-0F on FETCH of large modules).
 # The text packer walked sections in gid order (G[] creation order) but ASSUMED
 # origin order.  A section referenced early (low gid) but DEFINED in the last linked

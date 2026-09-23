@@ -6,7 +6,8 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 
 B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
 [B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>]
-[B<--ac> I<n>] [B<--norent>] [B<--noreus>] [B<--sparse-text>] I<obj>...
+[B<--ac> I<n>] [B<--rent>|B<--norent>] [B<--reus>|B<--noreus>] [B<--refr>]
+[B<--sparse-text>] I<obj>...
 
 B<ld370> B<--pack> I<member> [I<member> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
 
@@ -117,6 +118,43 @@ different allocation path are B<unmeasured>. Any C program depends on this
 holding wherever it runs, because C requires static storage to start at zero.
 
 Both measurements, and what they did not cover, are in F<docs/measurements/>.
+
+=item B<--rent>, B<--reus>, B<--refr>
+
+Set the PDS2 attributes, where B<--norent> / B<--noreus> clear them. B<--refr>
+marks the module refreshable.
+
+B<REFR lives in PDS2ATR2, not PDS2ATR1> -- it is the low bit of the second
+attribute byte. This is worth stating because getting it wrong is silent rather
+than visible: C<0x01> of ATR1 is C<PDS21BLK>, which the template already sets, so
+a B<--refr> written against the first byte would change nothing and still look
+implemented.
+
+The bit position is measured against IEWL itself rather than against our own
+decoder. One assembly, three IEWL links differing only in C<PARM>, read back with
+C<IEHLIST LISTPDS FORMAT> on MVS 3.8j:
+
+    PARM='NCAL,LIST,XREF'          ATTR 03F2
+    PARM='NCAL,LIST,XREF,REFR'     ATTR 03F3
+    PARM='NCAL,LIST,RENT,REFR'     ATTR C3F3
+
+and IEHLIST's own attribute index names bit 15 C<REFR>. Our B<--norent>
+B<--noreus> reproduces the first of those and B<--norent> B<--noreus> B<--refr>
+the second, listed by the same utility.
+
+The set-flags are B<orthogonal>: each does exactly what it names. RENT implies
+REUS as an attribute, but B<--rent> does not set REUS on the caller's behalf --
+pass both for IEWL's C<RENT>. Against today's template B<--rent> and B<--reus>
+are idempotent, since it already sets both; they exist so that default can be
+inverted later without a flag day (see cc370#100).
+
+Giving a set and a clear for the same attribute is B<refused>, not resolved by
+precedence: either resolution would be a guess at what was meant.
+
+Like B<--ac>, these apply to the module being linked and reach the B<directory
+entry>, so they are visible only in the B<-iebcopy> / B<-xmit> form -- a bare
+B<-o> member is byte-identical with and without them. A B<--pack> of a
+B<-iebcopy> member keeps that member's own attributes.
 
 =item B<--pack> I<member> [I<member> ...]
 
