@@ -143,8 +143,20 @@ on:
 **Present in IEWL, absent in ld370, no known consequence** — `OL`, `NE`, `TEST`,
 `REFR`, `DC`, `DCBS`, `HIAR`, `SIZE`, `SCTR`, `ALIGN2`, `TERM`, `LET`, `LIST`,
 `XCAL`, `NCAL`/`CALL` (ld370 autocalls only when `-l` is given, so `NCAL` is the
-implicit default). Of these, **`REFR` is worth four lines** if the attribute
-handling is touched for #100 anyway — another `PDS2ATR1` bit with no control.
+implicit default). Of these, **`REFR` is done** — `--refr`, added with `--rent`
+and `--reus` under #100.
+
+**This line said `PDS2ATR1` and that was wrong; REFR is `PDS2ATR2`.** Recording
+the correction rather than quietly fixing it, because of how it would have
+failed: `0x01` of ATR1 is `PDS21BLK`, which the template already sets, so a
+`--refr` written from this sentence would have changed no byte and still looked
+implemented. Measured against IEWL on MVS 3.8j — three links differing only in
+`PARM`, read with `IEHLIST LISTPDS FORMAT`: `03F2` plain, `03F3` with `REFR`,
+`C3F3` with `RENT,REFR`, and IEHLIST's own index naming bit 15 `REFR`. IBM's
+`IHAPDS` agrees (`PDS2REFR EQU BIT7` under `PDS2ATR2`), and so did our own
+`file370` decoder all along — **the error was in the prose, in two places, while
+two implementations had it right.** That is what this file's own caution at the
+end is about: confirm against the option table and the artefact, not the notes.
 
 `OVLY` is **not** an option gap: ld370 has no overlay support at all. Different
 conversation.

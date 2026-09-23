@@ -52,6 +52,25 @@ static int apfcode = 0;
  * a module that can't even be serially reused wants both.  For a module with
  * modifiable storage that must not be marked reentrant (a REXX370 module needs this). */
 static int no_rent = 0, no_reus = 0;
+/* Set the same attributes, for a module that must carry one the template does
+ * not give it.  --rent sets PDS2RENT, --reus PDS2REUS, --refr PDS2REFR.
+ *
+ * REFR IS IN PDS2ATR2 (ud[9]) AND NOT PDS2ATR1, and getting that wrong is a
+ * silent no-op rather than a visible bug: 0x01 in ATR1 is PDS21BLK, which the
+ * template already sets, so a --refr written against the wrong byte would
+ * change nothing and still look implemented.  cc370#100's own text and
+ * docs/ld370-iewl-divergences.md both said ATR1; file370's decoder has had it
+ * right all along ({9, 0x01, "REFR"}).  Named consumer: rexx370 replaces
+ * SYS1.LPALIB(IKJEFT01), whose IBM original is linked REFR,RENT, and a module
+ * that lands in the PLPA should not differ from the one it replaces.
+ *
+ * These are ORTHOGONAL set-flags, each doing exactly what it names. RENT
+ * implies REUS as an attribute, but --rent does NOT set REUS on the caller's
+ * behalf: this linker's business is to write what it was told, and a caller
+ * wanting IEWL's RENT should pass --rent --reus. Contradicting a --no* flag is
+ * refused rather than resolved by precedence, because either resolution is a
+ * guess about what the caller meant. */
+static int set_rent = 0, set_reus = 0, set_refr = 0;
 static void trace(const char *fmt, ...)
 {
     va_list ap;
@@ -934,6 +953,9 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
      * the module serially reusable; --noreus drops that too. */
     if (no_rent) ud[8] = (unsigned char)(ud[8] & ~0x80);     /* clear PDS2RENT */
     if (no_reus) ud[8] = (unsigned char)(ud[8] & ~0x40);     /* clear PDS2REUS */
+    if (set_rent) ud[8] = (unsigned char)(ud[8] | 0x80);     /* set PDS2RENT */
+    if (set_reus) ud[8] = (unsigned char)(ud[8] | 0x40);     /* set PDS2REUS */
+    if (set_refr) ud[9] = (unsigned char)(ud[9] | 0x01);     /* set PDS2REFR -- ATR2 */
 }
 
 /* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
@@ -1527,6 +1549,9 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--norent")) no_rent = 1;       /* clear PDS2RENT */
         else if (!strcmp(argv[i], "--noreus")) no_reus = 1;       /* clear PDS2REUS */
+        else if (!strcmp(argv[i], "--rent")) set_rent = 1;        /* set PDS2RENT */
+        else if (!strcmp(argv[i], "--reus")) set_reus = 1;        /* set PDS2REUS */
+        else if (!strcmp(argv[i], "--refr")) set_refr = 1;        /* set PDS2REFR (ATR2) */
         else if (!strcmp(argv[i], "--blocksize") && i + 1 < argc) src_blksize = atol(argv[++i]);
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) Ldir[nLdir++] = argv[++i];
         else if (!strncmp(argv[i], "-L", 2)) Ldir[nLdir++] = argv[i] + 2;
@@ -1537,6 +1562,18 @@ int main(int argc, char **argv)
         else objfiles[nobjf++] = argv[i];
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INM_DSNAM default; RECEIVE DA(...) overrides */
+
+    /* Refuse a set/clear pair rather than resolve it.  Last-wins and set-wins are
+     * both defensible, which is the reason neither is right: the caller asked for
+     * two incompatible things and the only honest answer is to say so.  Same shape
+     * as --blocksize's range check below and ar370's size-field bound. */
+    if ((set_rent && no_rent) || (set_reus && no_reus)) {
+        fprintf(stderr, "ld370: %s given with %s; the two ask for opposite "
+                        "attributes and ld370 will not choose between them\n",
+                (set_rent && no_rent) ? "--rent" : "--reus",
+                (set_rent && no_rent) ? "--norent" : "--noreus");
+        return 2;
+    }
 
     /* --blocksize bounds: >= 1K (smallest IEWL text size), and small enough that the
      * unloaded-PS BLKSIZE (UNLOAD_BLKSIZE = src_blksize + 20) stays within the
@@ -1666,7 +1703,8 @@ int main(int argc, char **argv)
         fprintf(stderr,
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
                 "             [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
-                "             [--ac N] [--norent] [--noreus] [--sparse-text] OBJ...\n"
+                "             [--ac N] [--rent|--norent] [--reus|--noreus] [--refr]\n"
+                "             [--sparse-text] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
                 "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
@@ -1682,6 +1720,10 @@ int main(int argc, char **argv)
                 "         takes --ac/--norent/--noreus from THIS command, not from its build.\n"
                 "         --blocksize N sets the target library BLKSIZE (default 15040;\n"
                 "         use the SAME value when building and packing a module).\n"
+                "         --rent/--reus/--refr SET the PDS2 attributes; --norent/--noreus\n"
+                "         clear them.  REFR is PDS2ATR2, not ATR1.  They reach the DIRECTORY\n"
+                "         entry, so they are visible only in -iebcopy/-xmit output --\n"
+                "         a bare -o member is byte-identical with and without them.\n"
                 "         --sparse-text omits text records no TXT card covered, so a DS\n"
                 "         reservation is left unwritten.  OFF by default: it costs\n"
                 "         byte-fidelity to IEWL (which writes those records) and relies on\n"
