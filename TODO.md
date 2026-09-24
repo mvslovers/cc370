@@ -136,7 +136,7 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 | 2 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
 | 3 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
 | 4 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 5 | #100 | ld370 | silent — inverted attribute default | **a decision**, after one survey |
+| 5 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 6 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
 | 7 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
 | 8 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
@@ -465,7 +465,7 @@ corpus that quietly depends on this would move decks.
 
 ### 5 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
-*the decision is which default*
+*the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
 The PDS2 template hardcodes `0xC3`, and `build_userdata` only ever *clears* those
 bits. IEWL zeroes both attribute bytes before PARM processing (`NI PDSE7,ZERO` /
@@ -479,14 +479,46 @@ flag per module, and forgetting is silent.
 
 Whoever touches `build_userdata` should read #37 in the same sitting — #37 is
 about a value that never arrives, this is about a default that is wrong when
-nothing arrives — and `REFR` is worth four more lines while in there (another
-`PDS2ATR1` bit with no control at all).
+nothing arrives.
 
-**Two open points.** The decision: invert the default to match IEWL, or keep it
-and *require* an explicit `--rent`/`--norent`. And the survey that sizes it —
-mbt v2 links every ecosystem module through ld370, so how many of them actually
-want RENT decides whether inverting is a one-line change or a sweep across every
-`project.toml`. Do the survey before the decision.
+**The REFR half is done** — `--rent`, `--reus`, `--refr` as orthogonal set-flags,
+PR #463. Two things from it belong here rather than only in the thread.
+
+**This section said `REFR` was "another `PDS2ATR1` bit" and that was wrong**; so
+did `docs/ld370-iewl-divergences.md`. REFR is `PDS2ATR2`. The correction is kept
+rather than quietly applied because of how it would have failed: `0x01` of ATR1
+is `PDS21BLK`, which the template already sets, so a `--refr` written from this
+paragraph would have changed no byte, raised nothing, and looked implemented.
+Two implementations had it right — `file370`'s decoder and IBM's `IHAPDS` — while
+the prose had it wrong in two places.
+
+**And the ticket's central claim is now measured rather than read.** It had
+IEWL's default from `HEWLFINT`; the machine agrees. One IFOX00 assembly, three
+IEWL links differing only in PARM, read with `IEHLIST LISTPDS FORMAT`: `03F2`
+plain, `03F3` with `REFR`, `C3F3` with `RENT,REFR` — no RENT, no REUS unless the
+PARM asks. Our own members, listed by the same utility on the same system, give
+`03F2` for `--norent --noreus` and `03F3` with `--refr` added.
+
+**The survey is done, and it is a sweep.** `mbt/mk/mbt.mk:175` passes only
+`--norent`/`--noreus` and never a positive, so the ecosystem takes RENT+REUS from
+the template: **25 of 27 modules across nine projects carry it because nobody
+said otherwise** — only mvsmf (11 lines) and rexx370 (1) opt out. So inverting is
+step four of four, not one line: ld370 has the set-flags now, `mbt` needs the
+pass-through, the projects declare, and only then does the default flip. A
+`--pack` of an `-iebcopy` keeps that member's own attributes, so a flip reaches
+freshly linked modules only.
+
+**The sharper form of the defect, which this section did not have.** A C module
+with mutable statics cannot be reentrant, and cc370 puts those statics in the
+CSECT. The wrongly marked modules are therefore not an edge case — they are every
+C module we build.
+
+**What decides whether this is housekeeping or a bug, and it is unmeasured.**
+RENT permits a second `LOAD` to share one copy concurrently. Whether httpd ever
+overlaps requests so that two users sit on one copy of a module's statics is not
+known here. Without overlap this is an untrue claim with no current victim; with
+it, it is silent corruption. **Measure that before flipping anything** — it is
+about an hour, and it is the only input the decision is still short of.
 
 ### 6 · #86 — the diagnostic recorders drop everything past 128 entries
 
@@ -1395,6 +1427,17 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-23 — #100's set-flag half, MERGED as `750fca9` (PR #463).** `--rent`,
+  `--reus`, `--refr`; the default is untouched and the inversion is still open.
+  The bit position was measured against IEWL and `IEHLIST` rather than against
+  our own decoder, which is what caught this file saying `PDS2ATR1` where the
+  byte is `PDS2ATR2`. Two lessons from the test rather than the code: swapping
+  the `ld370` binary to prove a new assertion red proves nothing, because
+  `ld370/tests/run.sh:30` rebuilds it from source — revert the source; and a
+  refusal asserted only as "no member was written" passes against a build that
+  does not know the flag and fails for that reason instead, so the message is
+  asserted by name.
 
 - **2026-09-22 — #461, the repair contract says when it cut the bytes.** `bytes`
   is capped at 64 and the cap was stated only in the document note, so a consumer
