@@ -175,5 +175,39 @@ else
     echo "di-reversed: FAIL (no reversed pair found -- fix path never fired)"; fail=1
 fi
 
+# --- issue #468: a 64-bit shift left was emitted as SLDA, the ARITHMETIC ---
+# double shift, which keeps bit 0 of the even register and shifts only the
+# 63-bit magnitude -- so (unsigned long long)0xFFFFFFFF << 32 came back as
+# 7FFFFFFF00000000.  A C left shift is logical on the bit pattern: SLDL.
+
+# (1) the issue's three functions plus a variable shift count: no SLDA, and
+# one SLDL each -- the count guards against the shift being lowered to
+# something else entirely, which would also have no SLDA.
+cat > "$WORK/shl.c" <<'EOF'
+unsigned long long shl32u(unsigned long h) { return (unsigned long long)h << 32; }
+long long          shl32s(long h)          { return (long long)h << 32; }
+unsigned long long join(unsigned long h, unsigned long l) { return ((unsigned long long)h << 32) | l; }
+unsigned long long shlv(unsigned long long x, int n) { return x << n; }
+EOF
+compile shl "$WORK/shl.c" "-std=gnu99 -O1"
+slda=$(grep -c '^ *SLDA ' "$WORK/shl.s")
+sldl=$(grep -c '^ *SLDL ' "$WORK/shl.s")
+if [ "$slda" = 0 ] && [ "$sldl" -ge 4 ]; then
+    echo "di-shl: OK (no SLDA, $sldl SLDL)"
+else
+    echo "di-shl: FAIL ($slda SLDA, $sldl SLDL; want 0 and >= 4)"; fail=1
+fi
+
+# (2) control: a signed 64-bit shift RIGHT is arithmetic and must stay SRDA.
+cat > "$WORK/sra.c" <<'EOF'
+long long sra3(long long x) { return x >> 3; }
+EOF
+compile sra "$WORK/sra.c" "-std=gnu99 -O1"
+if grep -q '^ *SRDA ' "$WORK/sra.s"; then
+    echo "di-sra: OK (signed shift right is still SRDA)"
+else
+    echo "di-sra: FAIL (no SRDA for a signed 64-bit shift right)"; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
