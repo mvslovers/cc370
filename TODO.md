@@ -1445,6 +1445,13 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-27 — #466, MERGED as `4d8ea0a` (PR #480).** `ld370 --alias NAME`
+  writes IEWL's alias directory entry, byte for byte bar the TTRs (MVSCE-LAB
+  JOB01367), with IEWL's entry rule: an alias naming a symbol of the module
+  enters there. `--pack` keeps aliases; directory blocks are filled by bytes.
+  Ran on MVS (JOB01375). The mbt key and the SMP question are mvslovers/mbt#112;
+  #478 and #479 were split off.
+
 - **2026-09-27 — #465, MERGED as `039a968` (PR #475).** `scan_undef_terms()`
   no longer opens a string on the apostrophe of `L'`, so a literal after it is
   not scanned as symbols. The symbol after `L'` is now looked up, as IFOX00 does:
