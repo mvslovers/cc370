@@ -1428,6 +1428,14 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-27 — #470, MERGED as `f3f7e21` (PR #471).** The four libcall pairs that
+  cut to one 8-character name now have their own (`@@FXUNSF`/`@@FXUNDF`,
+  `@@FLTDSF`/`@@FLTDDF`, `@@POPCSI`/`@@POPCDI`, `@@PARTSI`/`@@PARTDI`). An
+  `asm()` label could not do it, because GCC 3.4 names a libcall from the optab.
+  The rest of the libfunc table collides only where the i370 never calls a
+  helper. Defining the names is `mvslovers/libc370#190`; the long-name question
+  behind it is #472.
+
 - **2026-09-23 — #100's set-flag half, MERGED as `750fca9` (PR #463).** `--rent`,
   `--reus`, `--refr`; the default is untouched and the inversion is still open.
   The bit position was measured against IEWL and `IEHLIST` rather than against
