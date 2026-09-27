@@ -209,5 +209,52 @@ else
     echo "di-sra: FAIL (no SRDA for a signed 64-bit shift right)"; fail=1
 fi
 
+# --- issue #470: a libcall's name is the libgcc name cut to 8 characters, ---
+# and four pairs cut to the same one: __fixunssfdi/__fixunsdfdi -> @@FIXUNS,
+# __floatdisf/__floatdidf -> @@FLOATD, __popcountsi2/__popcountdi2 ->
+# @@POPCOU, __paritysi2/__paritydi2 -> @@PARITY.  One library member cannot
+# serve two signatures.  Each call must now name its own helper.
+
+# (1) each function below calls exactly one helper, and each a different one.
+cat > "$WORK/lf.c" <<'EOF'
+unsigned long long fxunsf(float f)  { return (unsigned long long)f; }
+unsigned long long fxundf(double d) { return (unsigned long long)d; }
+float              fltdsf(long long x) { return (float)x; }
+double             fltddf(long long x) { return (double)x; }
+int popcsi(unsigned x)           { return __builtin_popcount(x); }
+int popcdi(unsigned long long x) { return __builtin_popcountll(x); }
+int partsi(unsigned x)           { return __builtin_parity(x); }
+int partdi(unsigned long long x) { return __builtin_parityll(x); }
+EOF
+compile lf "$WORK/lf.c" "-std=gnu99 -O1"
+got=$(awk '/^\* X-func/{f=$3} /V\(@@/{match($0,/V\([^)]*\)/); print f "=" substr($0,RSTART+2,RLENGTH-3)}' "$WORK/lf.s" | tr '\n' ' ')
+want="fxunsf=@@FXUNSF fxundf=@@FXUNDF fltdsf=@@FLTDSF fltddf=@@FLTDDF popcsi=@@POPCSI popcdi=@@POPCDI partsi=@@PARTSI partdi=@@PARTDI "
+if [ "$got" = "$want" ]; then
+    echo "libcall-names: OK (eight helpers, eight names)"
+else
+    echo "libcall-names: FAIL"; echo "   got:  $got"; echo "   want: $want"; fail=1
+fi
+
+# (2) control: the helpers whose names did not collide keep them -- libc370
+# defines the first six, so moving one would break every consumer's link.
+cat > "$WORK/lk.c" <<'EOF'
+long long          mul(long long a, long long b) { return a * b; }
+long long          dv(long long a, long long b)  { return a / b; }
+long long          md(long long a, long long b)  { return a % b; }
+unsigned long long ud(unsigned long long a, unsigned long long b) { return a / b; }
+unsigned long long um(unsigned long long a, unsigned long long b) { return a % b; }
+long long          ng(long long a) { return -a; }
+long long          fxdf(double d) { return (long long)d; }
+long long          fxsf(float f)  { return (long long)f; }
+EOF
+compile lk "$WORK/lk.c" "-std=gnu99 -O1"
+got=$(grep -o 'V(@@[A-Z0-9@]*)' "$WORK/lk.s" | tr '\n' ' ')
+want="V(@@MULDI3) V(@@DIVDI3) V(@@MODDI3) V(@@UDIVDI) V(@@UMODDI) V(@@NEGDI2) V(@@FIXDFD) V(@@FIXSFD) "
+if [ "$got" = "$want" ]; then
+    echo "libcall-keep: OK (the non-colliding names are unchanged)"
+else
+    echo "libcall-keep: FAIL"; echo "   got:  $got"; echo "   want: $want"; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail

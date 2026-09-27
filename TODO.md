@@ -2585,7 +2585,7 @@ Small things with no issue, recorded here so they are not lost twice.
 
 ## Cross-repo
 
-This file is cc370-only, and two threads are not.
+This file is cc370-only, and some threads are not.
 
 **The entry-point work.** Its libc370 half is `mvslovers/libc370#159` (the CRT
 variants) and — now that #99 is in — the `__premain()` hook that closes #10. Do
@@ -2601,6 +2601,13 @@ carry the half of #37 that was measured **not** to reproduce — `cc370` does pa
 to a link without it"*, is the member-versus-directory trap that had to be
 corrected twice inside #37 itself. Ours is closed; that is theirs, and it is
 documentation rather than code.
+
+**#470's names are an interface with libc370.** The compiler now calls
+`@@FXUNSF`/`@@FXUNDF`, `@@FLTDSF`/`@@FLTDDF`, `@@POPCSI`/`@@POPCDI` and
+`@@PARTSI`/`@@PARTDI`; defining them is `mvslovers/libc370#190`, which also
+carries the non-colliding rest (`@@FIXDFD`, `@@FIXSFD`, `@@CMPDI2`, ffs/clz/ctz).
+Once a release ships these names they do not move. The first six helpers
+(`@@MULDI3` ... `@@NEGDI2`) are `mvslovers/libc370#187`.
 
 **Settled the same day it was raised, and the answer is worth more than the
 identity it recovered.** `mvs38src`'s `25679ba` put `work/macros/amaclib-live` at

@@ -45,6 +45,7 @@ Boston, MA 02111-1307, USA.  */
 #include "tm_p.h"
 #include "target.h"
 #include "target-def.h"
+#include "optabs.h"
 
 
 #ifdef TARGET_EBCDIC
@@ -225,6 +226,7 @@ static void i370_file_end (void);
 
 static void i370_internal_label (FILE *, const char *, unsigned long);
 static bool i370_rtx_costs (rtx, int, int, int *);
+static void i370_init_libfuncs (void);
 
 /* Perform sign extension of an HI "half-integer" aka 16-bit signed int.
  * Apparently, we sometimes get 16-bit signed shorts that have not been
@@ -373,6 +375,8 @@ static const char *const mvs_function_table[MVS_FUNCTION_TABLE_LENGTH] =
 #define  TARGET_ASM_INTERNAL_LABEL i370_internal_label
 #undef TARGET_RTX_COSTS
 #define TARGET_RTX_COSTS i370_rtx_costs
+#undef TARGET_INIT_LIBFUNCS
+#define TARGET_INIT_LIBFUNCS i370_init_libfuncs
 
 #ifdef TARGET_HLASM
 #undef	TARGET_ENCODE_SECTION_INFO
@@ -382,6 +386,34 @@ static const char *const mvs_function_table[MVS_FUNCTION_TABLE_LENGTH] =
 #endif /* TARGET_HLASM */
 
 struct gcc_target targetm = TARGET_INITIALIZER;
+
+/* A libcall's external name is its libgcc name, which ASM_OUTPUT_LABELREF
+   cuts to 8 characters with '_' mapped to '@'.  Four pairs of helpers the
+   i370 can reach cut to the same name, so one library member would have to
+   serve two signatures (#470):
+
+     __fixunssfdi  __fixunsdfdi    @@FIXUNS   float/double -> unsigned DI
+     __floatdisf   __floatdidf     @@FLOATD   DI -> float/double
+     __popcountsi2 __popcountdi2   @@POPCOU   __builtin_popcount[ll]
+     __paritysi2   __paritydi2     @@PARITY   __builtin_parity[ll]
+
+   Give each its own 8-character name.  These are an interface with the
+   library (libc370), so once released they do not change.  Every other
+   collision in the libfunc table is in a mode the i370 never calls a helper
+   for (QI, HI, TI, XF) or in an operation it expands inline.  */
+
+static void
+i370_init_libfuncs (void)
+{
+  set_conv_libfunc (ufix_optab, DImode, SFmode, "__fxunsf");
+  set_conv_libfunc (ufix_optab, DImode, DFmode, "__fxundf");
+  set_conv_libfunc (sfloat_optab, SFmode, DImode, "__fltdsf");
+  set_conv_libfunc (sfloat_optab, DFmode, DImode, "__fltddf");
+  set_optab_libfunc (popcount_optab, SImode, "__popcsi");
+  set_optab_libfunc (popcount_optab, DImode, "__popcdi");
+  set_optab_libfunc (parity_optab, SImode, "__partsi");
+  set_optab_libfunc (parity_optab, DImode, "__partdi");
+}
 
 /* Set global variables as needed for the options enabled.
    This is also our last chance to clean up before starting to compile,
