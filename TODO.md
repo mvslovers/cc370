@@ -1445,6 +1445,19 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-27 — #465, MERGED as `039a968` (PR #475).** `scan_undef_terms()`
+  no longer opens a string on the apostrophe of `L'`, so a literal after it is
+  not scanned as symbols. The symbol after `L'` is now looked up, as IFOX00 does:
+  `L'NOSUCH` in a machine instruction is IFO188 and zeroed (MVSTK5-REF JOB00270,
+  JOB00271). Tree gate 5,230 → 5,230, 0 lost, one deck moved (`IECVMAP`). The rest
+  of the family is #473 and #474, ranked under #184 above.
+
+- **2026-09-27 — #468, MERGED as `335e7d0` (PR #469).** A 64-bit shift left was
+  `SLDA`, which keeps the sign bit, so bit 63 was lost whenever a 1 was shifted
+  into it; it is `SLDL` now and no longer claims to set the CC. Measured on
+  MVSCE-LAB (JOB01338): the old build fails 3 of 6 cases, the new one none. A
+  signed shift of a sign-extended word was right before too.
+
 - **2026-09-27 — #470, MERGED as `f3f7e21` (PR #471).** The four libcall pairs that
   cut to one 8-character name now have their own (`@@FXUNSF`/`@@FXUNDF`,
   `@@FLTDSF`/`@@FLTDDF`, `@@POPCSI`/`@@POPCDI`, `@@PARTSI`/`@@PARTDI`). An
