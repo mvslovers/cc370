@@ -138,7 +138,7 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 | 4 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
 | 5 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 6 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 7 | #184 | as370 | silent under-reporting — three scans left | **a separating construct** |
+| 7 | #184 | as370 | silent under-reporting — two scans left (#465 fixed one); `undefined_term()` is #473, measured | #473: nothing; the literal loop: **a separating construct** |
 | 8 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
 | 10 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 | 9 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
@@ -553,6 +553,23 @@ under-reporting rather than wrong output.
 a correct diagnostic from a suppressed one on those three paths. Until one
 exists, a fix here is unfalsifiable by every instrument this project owns — the
 tree gate included.
+
+**#465 found the construct for the first of them** (2026-09-27): an attribute
+followed by a literal with a blank in it, `MVC F+1+L'G+3(5),=C'AB CD'` — the
+literal's text was scanned as symbols, rc 8, the MVC zeroed. The outer toggle of
+`scan_undef_terms()` now carries the guard, oracle-measured on MVSTK5-REF
+(`tests/attrundef.s`, JOB00270). It also showed the symbol *after* `L'` must be
+reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
+`tests/attrnosu.s`). What is left:
+
+- `undefined_term()` — **#473**, measured: `DS (L'G+X)C` with a forward `X` gets
+  IFO231 + IFO206 from IFOX00 (JOB00272) and nothing from as370, which also
+  reserves 10 bytes where IFOX00 reserves none.
+- the literal loop inside `scan_undef_terms()` — still no separating construct;
+  `CLC =A(L'G),NOSUCH` reports `NOSUCH` today, which says some path reported it,
+  not that the loop is sound.
+- not one of the three, same family: `x_factor` is silent on `DC AL2(L'NOSUCH)`
+  where IFOX00 raises IFO188 — **#474** (`IECVMAP`, from the recorded decks).
 
 ### 8 · #241 — twenty modules longer than IFOX00, one of them readable
 
