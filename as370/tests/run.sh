@@ -759,7 +759,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          litdup pool contsev align blankcont litscale litpz litlist \
          adcon aliasext attrdup regexpr sconabs fpopc droplist \
          tattr_expr endpool dsectpool blank_csect usingparen usingparenpc \
-         rldorg; do
+         rldorg attrundef; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
@@ -1392,6 +1392,26 @@ else
     echo "undefsym: OK (X'..'/C'..'/B'..'/L'..'/=A() and forward references stay clean at RC 0)"
 fi
 rm -f /tmp/_uok.s /tmp/_uok.obj /tmp/_uok.out
+# --- issue #465: the symbol after an attribute prefix is a term ----------------
+# scan_undef_terms() toggled its string state on the ' of L'SYM, so SYM and the
+# rest of the operand were never looked up -- and a literal after it had its TEXT
+# scanned as symbols (attrundef, in the loop above). The other half is here:
+# IFOX00 flags `MVC F+L'NOSUCH(5),F' IFO188 at rc 8 and zeroes the instruction
+# (MVSTK5-REF JOB00271). The pre-fix as370 scored rc 0 and assembled
+# MVC 7(5,15),6(15), so both the rc and the deck are asserted.
+./as370 tests/attrnosu.s -o /tmp/_an.obj >/tmp/_an.out 2>&1; rcan=$?
+anref=tests/ref/attrnosu.obj
+ansz=$(wc -c < /tmp/_an.obj); anrsz=$(wc -c < "$anref")
+annbe=$(( (anrsz / 80 - 1) * 80 ))
+head -c "$annbe" /tmp/_an.obj > /tmp/_an_a.$$; head -c "$annbe" "$anref" > /tmp/_an_b.$$
+if [ $rcan != 8 ]; then
+    echo "attrnosu: expected RC 8 (IFO188 on L'NOSUCH), got $rcan"; fail=1
+elif [ "$ansz" != "$anrsz" ] || ! cmp -s /tmp/_an_a.$$ /tmp/_an_b.$$; then
+    echo "attrnosu: MISMATCH (deck is not IFOX00's zeroed MVC)"; fail=1
+else
+    echo "attrnosu: OK (== IFOX00 -- L'NOSUCH is IFO188, the MVC zeroed)"
+fi
+rm -f /tmp/_an.obj /tmp/_an.out /tmp/_an_a.$$ /tmp/_an_b.$$
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one

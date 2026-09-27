@@ -4351,24 +4351,31 @@ static int has_overlong_term(const char *s) {
  * resolve()/expr_val() and never reaches x_factor at all.
  *
  * LEXICAL, like has_overlong_term above, and it skips the same regions for the
- * same reasons -- an apostrophe toggles a skip region, matching the text parse()
- * actually built, so an absorbed trailing comment behind an unmatched attribute
- * quote is not read as a list of symbols.  Two further skips this one needs:
+ * same reasons -- a quote opens a skip region, and attr_apos() plus `q ||' keep
+ * an ATTRIBUTE apostrophe from being one (#465; has_overlong_term took the same
+ * fix in #312).  Toggling on L'G read the rest of the operand as a string, so
+ * the next literal's opening quote closed it and the literal's text -- the AB of
+ * =C'AB CD' -- was scanned as an undefined symbol: rc 8 and a zeroed MVC that
+ * IFOX00 assembles.  Two further skips this one needs:
  *
  *  - A token immediately followed by an apostrophe is a self-defining term or an
  *    attribute prefix (X'FF', C'A', B'1111', L'FIELD), not a symbol.  Without
  *    this, `MVI FLAG,X'40'` would report an undefined symbol X.  The symbol
- *    INSIDE an attribute (L'NOSUCH) is inside the skip region and is not
- *    reported -- x_factor's L' branch does not report it either, so the two
- *    agree; it is the same #35 edge has_overlong_term documents.
+ *    AFTER an attribute prefix is an ordinary term and IS reported: IFOX00
+ *    flags `MVC F+L'NOSUCH(5),F' IFO188 and zeroes it (MVSTK5-REF JOB00271,
+ *    tests/attrnosu.s).  as370 used to stay silent there only because the
+ *    symbol sat inside the mistaken string.  x_factor's L' branch, which
+ *    serves every other statement, is still silent (DC AL2(L'NOSUCH),
+ *    cc370#474).
  *  - A LITERAL operand (=A(SYM)) is skipped entire.  IFOX00 assembles the
  *    REFERENCING instruction normally -- the literal resolves to its pool
  *    address, which is defined -- and flags the undefined symbol against the
  *    pool statement instead.  emit_lit raises that one. */
 static int scan_undef_terms(const char *s, int line) {
+    const char *base = s;
     int q = 0, found = 0;
     while (*s) {
-        if (*s == '\'') { q = !q; s++; continue; }
+        if (*s == '\'') { if (q || !attr_apos(base, (int)(s - base))) q = !q; s++; continue; }
         if (q) { s++; continue; }
         if (*s == '=') {                                  /* a literal: skip to the next top-level comma */
             int d = 0; s++;
@@ -4397,9 +4404,11 @@ static int scan_undef_terms(const char *s, int line) {
 }
 /* The first symbol term of E that is not defined YET -- i.e. at this point in
  * pass 1, which is what "previously defined" means.  Returns 1 and copies the
- * name into OUT.  Same lexical skips as scan_undef_terms above, for the same
- * reasons: an apostrophe toggles a skip region, and a token followed by one is a
- * self-defining term or an attribute prefix (X'40', L'FIELD), not a symbol.
+ * name into OUT.  Lexical skips like scan_undef_terms above -- a quote opens a
+ * skip region, and a token followed by one is a self-defining term or an
+ * attribute prefix (X'40', L'FIELD), not a symbol -- EXCEPT that this one still
+ * toggles on an attribute apostrophe too, so the rest of (L'G+X) is skipped and
+ * a forward X escapes IFO231 (cc370#473).
  * S_ER is not "defined" either -- an external reference is not absolute, so it
  * cannot be a duplication factor. */
 static int undefined_term(const char *s, char *out) {
