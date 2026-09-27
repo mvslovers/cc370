@@ -446,7 +446,7 @@ Present only when `PDS2SCTR` is set. Immediately after the basic section:
 | +4 | 2 | `PDS2ESDT` | ESD-ID of CSECT owning the first text block |
 | +6 | 2 | `PDS2ESDC` | ESD-ID of CSECT containing the entry point |
 
-The alias (`PDSS02`), SSI (`PDSS03`), and APF (`PDSS04`) sections (`IHAPDS:161-213`) are not produced by a basic `ld` link and are out of scope.
+The alias section (`PDSS02`: `PDS2EPM` 3 bytes, `PDS2MNM` 8) is written by `ld370 --alias` for each alias entry, between the basic section and the APF section; the measured layout is in `docs/unload-format.md` §4.1 (IEWL, MVSCE-LAB JOB01367). The APF section (`PDSS04`) is written for every entry. The SSI section (`PDSS03`) is not produced.
 
 ---
 

@@ -70,7 +70,7 @@ def check(unload_path, expect):
 
     # --- directory: one or more count12(KL=8,DL=256)+key(8)+256B blocks, in
     #     ascending-name order, ending at the FF terminator in the last block ---
-    entries = []
+    entries, aliases = [], []
     while p + 12 <= len(u) and u[p + 9] == 8 and be16(u, p + 10) == 256:
         block = u[p + 20:p + 20 + 256]
         p += 12 + 8 + 256
@@ -78,14 +78,27 @@ def check(unload_path, expect):
         q = 2
         while q + 12 <= used and block[q] != 0xFF:
             name = ''.join(e2a(c) for c in block[q:q + 8]).rstrip()
-            entries.append((name, be16(block, q + 8), block[q + 10]))   # name, TT, R
+            if block[q + 11] & 0x80:              # an alias: its member's TTR, no data of its own
+                aliases.append((name, be16(block, q + 8), block[q + 10]))
+            else:
+                entries.append((name, be16(block, q + 8), block[q + 10]))   # name, TT, R
             q += 12 + (block[q + 11] & 0x1F) * 2
     if not entries:
         print("  FAIL: no directory entries")
         return False
+    alln = sorted([n for n, _, _ in entries] + [n for n, _, _ in aliases])
     if [n for n, _, _ in entries] != sorted(n for n, _, _ in entries):
         print("  FAIL: directory not name-sorted: %s" % [n for n, _, _ in entries])
         return False
+    if len(set(alln)) != len(alln):
+        print("  FAIL: a name appears twice in the directory: %s" % alln)
+        return False
+    # An alias is a second name for a member's data (#466): IEBCOPY reloads the
+    # member once and re-points the alias at it, so it must carry a MEMBER's TTR.
+    for name, tt, r in aliases:
+        if (tt, r) not in [(t2, r2) for _, t2, r2 in entries]:
+            print("  FAIL: alias '%s' TTR %d/%d is no member's" % (name, tt, r))
+            return False
 
     # --- end-of-directory marker record (12 zero bytes) ---
     if u[p:p + 12] != bytes(12):

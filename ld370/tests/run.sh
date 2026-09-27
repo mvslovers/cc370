@@ -934,6 +934,84 @@ else
     fails=$((fails + 1))
 fi
 
+# --alias (#466): the directory IEWL writes for ALIAS statements, byte for byte.
+# fixtures/alias.iewl.xmit is IEWL's own library (MVSCE-LAB JOB01367): altest.s
+# linked as BREXX (ALIAS RX1, RX2), ALTM (ALIAS ALT2 -- an ENTRY of the module,
+# so its alias enters at X'14', not X'10') and ACM (SETCODE AC(1), ALIAS ACA).
+# alias_check.py compares every entry masked only at the layout-dependent TTR
+# and PDS2TTRT; --layout also compares the directory blocks, which IEWL fills by
+# bytes: 6 entries in the first (248 of 256), RX2 alone in the second.  The
+# pre-change ld370 refuses --alias (rc 1), and its pack of the three members
+# alone fails on the names and on the blocks.
+printf '\n=== --alias: the directory IEWL writes for ALIAS (JOB01367) ===\n'
+# Every output is removed first and every link's rc is checked: a link that
+# fails writes nothing, and a checker reading the previous run's file passes on a
+# binary that cannot do this at all -- which is how this section first scored
+# green against the pre-change ld370.
+for f in altb altm altc altlib many manyp manyr; do
+    rm -f "$TMP/$f" "$TMP/$f.iebcopy" "$TMP/$f.xmit"
+done
+alk() { "$@" 2>/dev/null; r=$?; if [ "$r" != 0 ]; then echo "  FAIL: rc $r from: $*" | sed "s|$TMP/||g"; fails=$((fails + 1)); fi; }
+"$AS" -o "$TMP/alt.o" "$FIX/altest.s" 2>/dev/null
+alk "$LD" -o "$TMP/altb" --name BREXX --alias RX1 --alias RX2 "$TMP/alt.o" -iebcopy
+alk "$LD" -o "$TMP/altm" --name ALTM --alias ALT2 "$TMP/alt.o" -iebcopy
+alk "$LD" -o "$TMP/altc" --name ACM --ac 1 --alias ACA "$TMP/alt.o" -iebcopy
+for f in altb altm altc; do
+    python3 ld370/tests/alias_check.py "$FIX/alias.iewl.xmit" "$TMP/$f.iebcopy" --subset \
+        || fails=$((fails + 1))
+done
+alk "$LD" --pack "BREXX=$TMP/altb.iebcopy" "ALTM=$TMP/altm.iebcopy" "ACM=$TMP/altc.iebcopy" \
+    --dsn IBMUSER.ALT.LOAD -o "$TMP/altlib" -iebcopy -xmit
+python3 ld370/tests/alias_check.py "$FIX/alias.iewl.xmit" "$TMP/altlib.iebcopy" --layout \
+    || fails=$((fails + 1))
+python3 ld370/tests/alias_check.py "$FIX/alias.iewl.xmit" "$TMP/altlib.xmit" --layout \
+    || fails=$((fails + 1))
+python3 ld370/tests/unload_check.py "$TMP/altlib.iebcopy" BREXX ALTM ACM \
+    || fails=$((fails + 1))
+
+# Many aliases spill over several directory blocks, and --pack reads them all
+# back: a single-member pack of an aliased -iebcopy reproduces it byte for byte.
+# Renaming the member with NAME= re-points every alias's PDS2MNM at the new name.
+printf '\n=== --alias: 14 aliases over 3 blocks survive --pack; NAME= renames PDS2MNM ===\n'
+alk "$LD" -o "$TMP/many" --name MANY --alias A01 --alias A02 --alias A03 --alias A04 \
+    --alias A05 --alias A06 --alias A07 --alias A08 --alias A09 --alias A10 \
+    --alias A11 --alias A12 --alias A13 --alias ALT2 "$TMP/alt.o" -iebcopy
+alk "$LD" --pack "MANY=$TMP/many.iebcopy" -o "$TMP/manyp" -iebcopy
+alk "$LD" --pack "RENAMED=$TMP/many.iebcopy" -o "$TMP/manyr" -iebcopy
+if python3 - "$TMP/many.iebcopy" "$TMP/manyp.iebcopy" "$TMP/manyr.iebcopy" <<'EOF'
+import sys
+sys.path.insert(0, "ld370/tests")
+from alias_check import directory
+src, pk, rn = (open(f, "rb").read() for f in sys.argv[1:4])
+d = directory(src)
+shape = [(u, len(es)) for u, k, es in d]
+if shape != [(232, 5), (232, 5), (234, 5)]:
+    sys.exit("  FAIL: 15 entries laid out as %s, expected 5/5/5 in 232/232/234 bytes" % shape)
+if pk != src:
+    sys.exit("  FAIL: a single-member --pack of an aliased -iebcopy is not byte-identical to it")
+mn = {e[3][24:32].decode("cp037").rstrip() for b in directory(rn) for e in b[2] if e[2] & 0x80}
+if mn != {"RENAMED"}:
+    sys.exit("  FAIL: after NAME=RENAMED the aliases' PDS2MNM read %s" % sorted(mn))
+print("  OK: 3 blocks (5/5/5), pack round trip byte-identical, PDS2MNM follows NAME=")
+EOF
+then :; else fails=$((fails + 1)); fi
+
+# The refusals.  A name may appear once in a library, whichever kind of entry it
+# is; --alias belongs to a link (a pack takes its aliases from its inputs); and
+# an alias is a member name, so it obeys the member-name rule.
+printf '\n=== --alias: refused cases ===\n'
+arc() { "$@" >/dev/null 2>&1; echo $?; }
+r1=$(arc "$LD" -o "$TMP/an1" --name BREXX --alias BREXX "$TMP/alt.o" -iebcopy)
+r2=$(arc "$LD" -o "$TMP/an2" --name BREXX --alias RX1 --alias RX1 "$TMP/alt.o" -iebcopy)
+r3=$(arc "$LD" --alias RX1 --pack "$TMP/altb.iebcopy" -o "$TMP/an3")
+r4=$(arc "$LD" -o "$TMP/an4" --name BREXX --alias 9BAD "$TMP/alt.o" -iebcopy)
+r5=$(arc "$LD" --pack "RX1=$TMP/altm.iebcopy" "BREXX=$TMP/altb.iebcopy" -o "$TMP/an5" -iebcopy)
+if [ "$r1" != 0 ] && [ "$r2" != 0 ] && [ "$r3" != 0 ] && [ "$r4" != 0 ] && [ "$r5" != 0 ]; then
+    echo "  OK: alias = member, alias twice, --alias with --pack, bad name, pack collision all refused"
+else
+    echo "  FAIL: a refusal passed (rc $r1 $r2 $r3 $r4 $r5)"; fails=$((fails + 1))
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"
