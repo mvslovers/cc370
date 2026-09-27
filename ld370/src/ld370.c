@@ -20,6 +20,7 @@
  * (by basename or a symbol it defines) BEFORE autocall -- the IEWL INCLUDE
  * equivalent for pinning a specific runtime variant (e.g. --include @@CRT1).
  * --entry/-e NAME sets the load-module entry point.
+ * --alias NAME (repeatable) adds an alias directory entry, IEWL ALIAS style.
  *
  * Build:  gcc -O2 -Wall -Wextra -Werror -o ld/ld370 ld/ld370.c
  * Usage:  ld370 [--verbose] -o OUT.bin OBJ1.obj [OBJ2.obj ...]
@@ -791,6 +792,21 @@ struct umember {
     int have_src_ud;         /* 1 if src_ud holds the member's real PDS2 user-data... */
     unsigned char src_ud[24];/* ...captured from a -iebcopy input (--pack); preserves AC,
                               * RENT/REUS/REFR/... that the bare member cannot carry */
+    struct ualias *alias; int nalias;   /* alias directory entries naming this member */
+};
+
+/* An alias of a member (#466): a second directory entry with the member's TTR,
+ * the alias bit, and the IHAPDS alias section.  entry is the alias's own
+ * PDS2EPA -- IEWL gives an ALIAS that names an external symbol of the module
+ * that symbol's address, and any other ALIAS the member's entry point
+ * (MVSCE-LAB JOB01367: ALT2 -> X'14', RX1 -> X'10').  src_ud holds the entry's
+ * 34 bytes when it came from a -iebcopy input (--pack). */
+#define ALIAS_UD_LEN 34      /* basic 21 + PDSS02 11 (PDS2EPM, PDS2MNM) + APF 2 */
+struct ualias {
+    unsigned char name[8];
+    long entry;
+    int have_src_ud;
+    unsigned char src_ud[ALIAS_UD_LEN];
 };
 
 /* Split a load-module member byte stream into its physical blocks (the records
@@ -863,13 +879,61 @@ static long member_modlen(const unsigned char *m, long n)
 static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember *m)
 {
     long p = MVS_ENV_HDR_LEN, blen;                                 /* skip COPYR1 + COPYR2 */
-    const unsigned char *dir, *e, *ud; int used, nhw; unsigned char *buf;
+    const unsigned char *e, *ud, *mainent = NULL; int nhw, nent = 0, done = 0;
+    unsigned char *buf;
     if (ulen < MVS_ENV_HDR_LEN + 12 + 8 + 256 + 12) return -1;
     if (u[p + 9] != 8 || mvs_be16(u + p + 10) != 256) return -1;   /* directory record */
-    dir = u + p + 20; used = mvs_be16(dir);
-    if (used < 2 + 36 || dir[2] == 0xFF) return -1;     /* need one real entry */
-    e = dir + 2; ud = e + 12; nhw = e[11] & 0x1F;
-    if (dir[2 + 12 + nhw * 2] != 0xFF) return -2;       /* a second entry -> multi-member */
+    /* Walk every directory block.  A single-member unload holds exactly one entry
+     * WITHOUT the alias bit -- the member -- plus any number of alias entries
+     * carrying its TTR (#466); they may sort before it (ACA < ACM) and spill into
+     * further blocks.  Anything else is a library of several members. */
+    m->nalias = 0; m->alias = NULL;
+    while (!done && p + 12 + 8 + 256 <= ulen && u[p + 9] == 8 && mvs_be16(u + p + 10) == 256) {
+        const unsigned char *dir = u + p + 20; int used = mvs_be16(dir), q = 2;
+        if (used > 256) return -1;
+        while (q + 12 <= used) {
+            if (dir[q] == 0xFF) { done = 1; break; }        /* end-of-directory terminator */
+            e = dir + q; nhw = e[11] & 0x1F; nent++;
+            if (!(e[11] & 0x80)) {
+                if (mainent) return -2;                     /* a second member -> multi-member */
+                mainent = e;
+            }
+            q += 12 + nhw * 2;
+        }
+        p += 12 + 8 + 256;
+    }
+    if (!mainent || !done) return -1;                       /* need one real entry, terminated */
+    if (p + 12 > ulen) return -1;
+    p += 12;                                                /* the EOD marker */
+    if (nent > 1) {
+        m->alias = calloc((size_t)(nent - 1), sizeof *m->alias);
+        if (!m->alias) return -3;
+    }
+    {   /* second pass over the same blocks: collect the aliases */
+        long q0 = MVS_ENV_HDR_LEN; int fin = 0;
+        while (!fin) {
+            const unsigned char *dir = u + q0 + 20; int used = mvs_be16(dir), q = 2;
+            while (q + 12 <= used) {
+                if (dir[q] == 0xFF) { fin = 1; break; }
+                e = dir + q; nhw = e[11] & 0x1F;
+                if (e[11] & 0x80) {
+                    struct ualias *a = &m->alias[m->nalias];
+                    if (memcmp(e + 8, mainent + 8, 3)) {    /* an alias of some OTHER member */
+                        free(m->alias); m->alias = NULL; m->nalias = 0; return -2;
+                    }
+                    memcpy(a->name, e, 8);
+                    a->entry = mvs_be24(e + 12 + 15);       /* its own PDS2EPA */
+                    if (nhw * 2 == ALIAS_UD_LEN) {
+                        memcpy(a->src_ud, e + 12, ALIAS_UD_LEN); a->have_src_ud = 1;
+                    }
+                    m->nalias++;
+                }
+                q += 12 + nhw * 2;
+            }
+            q0 += 12 + 8 + 256;
+        }
+    }
+    e = mainent; ud = e + 12; nhw = e[11] & 0x1F;
     memcpy(m->name, e, 8);
     m->modlen = mvs_be24(ud + 10);                          /* PDS2STOR (total storage) */
     m->entry  = mvs_be24(ud + 15);                          /* PDS2EPA  (entry point)   */
@@ -879,9 +943,8 @@ static int read_iebcopy_member(const unsigned char *u, long ulen, struct umember
      * re-stamps PDS2TTRT (the one field that moves when the member is re-laid-out).
      * These attributes are NOT in the member records, only here. */
     if (nhw >= 12) { memcpy(m->src_ud, ud, 24); m->have_src_ud = 1; }
-    p += 12 + 8 + 256 + 12;                             /* past directory record + EOD marker */
     buf = malloc((size_t)(ulen > 0 ? ulen : 1));
-    if (!buf) return -3;
+    if (!buf) { free(m->alias); m->alias = NULL; m->nalias = 0; return -3; }
     blen = 0;
     while (p + 12 <= ulen) {                            /* member data records until DL=0 */
         int kl = u[p + 9]; long dl = mvs_be16(u + p + 10);
@@ -956,6 +1019,82 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
     if (set_rent) ud[8] = (unsigned char)(ud[8] | 0x80);     /* set PDS2RENT */
     if (set_reus) ud[8] = (unsigned char)(ud[8] | 0x40);     /* set PDS2REUS */
     if (set_refr) ud[9] = (unsigned char)(ud[9] | 0x01);     /* set PDS2REFR -- ATR2 */
+}
+
+/* The 34-byte user data of an alias entry, from its member's finished 24.
+ * Layout measured on IEWL's own output (MVSCE-LAB JOB01367): the member's basic
+ * section with PDS2EPA replaced by the alias's entry, then the IHAPDS alias
+ * section -- PDS2EPM (the member's entry) and PDS2MNM (the member's name) --
+ * then the APF section with NO pad byte (21 + 11 + 2 = 34; the member's 24 carry
+ * one pad byte after APF).  An alias read from a -iebcopy input keeps its own
+ * bytes, re-stamping only what the layout moves (PDS2TTRT) and the member name,
+ * which a --pack NAME= may have changed. */
+static void build_alias_userdata(unsigned char aud[ALIAS_UD_LEN],
+                                 const unsigned char mud[24],
+                                 const struct umember *m, const struct ualias *a)
+{
+    if (a->have_src_ud) {
+        memcpy(aud, a->src_ud, ALIAS_UD_LEN);
+        memcpy(aud, mud, 3);                                  /* PDS2TTRT = the member's */
+        memcpy(aud + 24, m->name, 8);                         /* PDS2MNM */
+        return;
+    }
+    memcpy(aud, mud, 21);                                     /* basic section */
+    mvs_put24(aud + 15, a->entry);                            /* PDS2EPA: the alias's entry */
+    memcpy(aud + 21, mud + 15, 3);                            /* PDS2EPM: the member's entry */
+    memcpy(aud + 24, m->name, 8);                             /* PDS2MNM */
+    memcpy(aud + 32, mud + 21, 2);                            /* APF: PDSAPFCT, PDSAPFAC */
+}
+
+/* One directory entry of the output library: a member (ai < 0) or one of its
+ * aliases.  Entries are laid out in ascending EBCDIC name order and assigned to
+ * 256-byte directory blocks by BYTES, not by count: an alias entry is 46 bytes
+ * against a member's 36, so the old "7 per block" was only right while every
+ * entry was a member.  IEWL's library (JOB01367) holds 6 entries in its first
+ * block (248 of 256 bytes) because the 7th, an alias, would not fit. */
+struct dent { const unsigned char *name; int mi, ai, blk; };
+
+static int dent_len(const struct dent *d) { return d->ai < 0 ? 12 + 24 : 12 + ALIAS_UD_LEN; }
+
+/* Build the sorted entry list for mem[] and assign each entry its directory
+ * block; *ndb gets the block count.  The FF terminator (12 bytes) goes into the
+ * last block, or into a block of its own when it does not fit -- which for
+ * uniform 36-byte entries is the old 7/7/.../n+FF layout exactly (CBT571 XFASM
+ * oracle: 7/7/2).  Shared by emit_unload and unload_size, so the size the buffer
+ * is allocated to and the bytes written cannot drift apart.  Returns the entry
+ * list (caller frees) and its length via *nd, or NULL with a message on a
+ * duplicate name or out of memory. */
+static struct dent *dir_layout(struct umember *mem, int nmem, int *nd, int *ndb)
+{
+    int n = nmem, i, j, k, blk = 0, used = 2;
+    struct dent *d;
+    for (i = 0; i < nmem; i++) n += mem[i].nalias;
+    d = malloc((size_t)(n > 0 ? n : 1) * sizeof *d);
+    if (!d) { fprintf(stderr, "ld370: out of memory for the directory\n"); return NULL; }
+    for (i = 0, k = 0; i < nmem; i++) {
+        d[k].name = mem[i].name; d[k].mi = i; d[k].ai = -1; k++;
+        for (j = 0; j < mem[i].nalias; j++) {
+            d[k].name = mem[i].alias[j].name; d[k].mi = i; d[k].ai = j; k++;
+        }
+    }
+    for (i = 1; i < n; i++) {                              /* insertion sort by name */
+        struct dent t = d[i];
+        for (j = i; j > 0 && memcmp(d[j - 1].name, t.name, 8) > 0; j--) d[j] = d[j - 1];
+        d[j] = t;
+    }
+    for (i = 1; i < n; i++)
+        if (!memcmp(d[i - 1].name, d[i].name, 8)) {
+            fprintf(stderr, "ld370: '%s' names two directory entries (a member or alias "
+                            "may appear only once in a library)\n", mvs_nm(d[i].name));
+            free(d); return NULL;
+        }
+    for (i = 0; i < n; i++) {
+        if (used + dent_len(&d[i]) > 256) { blk++; used = 2; }
+        d[i].blk = blk; used += dent_len(&d[i]);
+    }
+    if (used + 12 > 256) blk++;                            /* the FF terminator's own block */
+    *nd = n; *ndb = blk + 1;
+    return d;
 }
 
 /* COPYR1 logical-record length within the 328-byte env header (COPYR2 is the
@@ -1064,41 +1203,50 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
      * stays valid. */
     mvs_udebx_extent(o, ntracks);
 
-    /* directory: name-sorted entries split across 256-byte PDS directory blocks.
-     * 7 entries per NON-last block (2 + 7*36 = 254 <= 256); the LAST block holds
-     * the remaining entries + the FF end-of-directory terminator (so <=6 entries,
-     * or 0 when nmem is a multiple of 7).  Each block is one CKD record
-     * count(0,0,0,KL=8,DL=256) + key + 256B; key = the high member name in the
-     * block, FF*8 on the last block.  Matches a real IEBCOPY UNLOAD (verified vs
-     * the CBT571 XFASM oracle: 7/7/2-entry blocks, keys IFOX06/IFOX51/FF, all
-     * dir records at MBBCCHHR 0).  Was a single fixed dir[256] that overflowed at
-     * the 7th member (>6 entries + terminator) -> SIGABRT. */
+    /* directory: name-sorted entries -- members and their aliases -- split across
+     * 256-byte PDS directory blocks by dir_layout().  Each block is one CKD record
+     * count(0,0,0,KL=8,DL=256) + key + 256B; key = the high name in the block,
+     * FF*8 on the last block, which also carries the FF end-of-directory
+     * terminator.  Matches a real IEBCOPY UNLOAD: the CBT571 XFASM oracle (7/7/2
+     * member entries, keys IFOX06/IFOX51/FF, all dir records at MBBCCHHR 0) and
+     * IEWL's library with aliases (JOB01367: 6 + 1 entries, used 248 / 60, keys
+     * RX1 / FF).  Was a single fixed dir[256] that overflowed at the 7th member
+     * (>6 entries + terminator) -> SIGABRT. */
     {
-        int per = 7, ndb, b;
-        if (nmem == 0) ndb = 1;
-        else { ndb = (nmem + per - 1) / per; if (nmem % per == 0) ndb++; }
+        int nd, ndb, b, k = 0;
+        struct dent *d = dir_layout(mem, nmem, &nd, &ndb);
+        if (!d) return -1;
         for (b = 0; b < ndb; b++) {
-            int lo = b * per, hi = lo + per, last = (b == ndb - 1);
-            if (hi > nmem) hi = nmem;
+            int last = (b == ndb - 1);
+            const unsigned char *hiname = NULL;
             memset(dir, 0, sizeof dir);
             used = 2;
-            for (i = lo; i < hi; i++) {
-                unsigned char *e = dir + used;
-                memcpy(e, mem[i].name, 8);
-                mvs_put16(e + 8, mem[i].first_tt);
-                e[10] = (unsigned char)mem[i].first_r;       /* TTR = (first_tt, first_r) */
-                e[11] = 0x2c;                                /* alias=0, 1 TTR, 12 halfwords user data */
-                build_userdata(e + 12, &mem[i]);
-                used += 8 + 3 + 1 + 24;
+            for (; k < nd && d[k].blk == b; k++) {
+                const struct umember *m = &mem[d[k].mi];
+                unsigned char *e = dir + used, mud[24];
+                memcpy(e, d[k].name, 8);
+                mvs_put16(e + 8, m->first_tt);
+                e[10] = (unsigned char)m->first_r;           /* TTR = the member's (first_tt, first_r) */
+                build_userdata(mud, m);
+                if (d[k].ai < 0) {
+                    e[11] = 0x2c;                            /* alias=0, 1 TTR, 12 halfwords user data */
+                    memcpy(e + 12, mud, 24);
+                } else {
+                    e[11] = 0x80 | 0x20 | (ALIAS_UD_LEN / 2);   /* X'B1': alias, 1 TTR, 17 halfwords */
+                    build_alias_userdata(e + 12, mud, m, &m->alias[d[k].ai]);
+                }
+                used += dent_len(&d[k]);
+                hiname = d[k].name;
             }
             if (last) { memset(dir + used, 0xff, 8); used += 12; }   /* FF end-of-dir terminator */
             mvs_put16(dir, (int)used);
             mvs_put_count(o + p, 0, 0, 0, 8, 256); p += 12;              /* dir block record */
-            if (last) memset(o + p, 0xff, 8);                        /* key = high values */
-            else memcpy(o + p, mem[hi - 1].name, 8);                 /* key = high name in block */
+            if (last || !hiname) memset(o + p, 0xff, 8);             /* key = high values */
+            else memcpy(o + p, hiname, 8);                           /* key = high name in block */
             p += 8;
             memcpy(o + p, dir, 256); p += 256;
         }
+        free(d);
         memset(o + p, 0, 12); p += 12;                               /* end-of-directory marker */
     }
     if (bounds) bounds[2] = p;                          /* directory blocks + EOD marker */
@@ -1136,9 +1284,10 @@ static long emit_unload(unsigned char *o, struct umember *mem, int nmem, long *b
 static long unload_size(struct umember *mem, int nmem)
 {
     long sz = (long)sizeof mvs_unload_env_hdr + 12;   /* env header (328) + EOD marker */
-    int per = 7, ndb, i, j;
-    if (nmem == 0) ndb = 1;
-    else { ndb = (nmem + per - 1) / per; if (nmem % per == 0) ndb++; }
+    int nd, ndb, i, j;
+    struct dent *d = dir_layout(mem, nmem, &nd, &ndb);   /* the layout emit_unload writes */
+    if (!d) return -1;
+    free(d);
     sz += (long)ndb * (12 + 8 + 256);             /* directory blocks (count12 + key8 + 256B) */
     for (i = 0; i < nmem; i++) {
         for (j = 0; j < mem[i].nblk; j++) sz += 12 + mem[i].blk[j].len;
@@ -1160,7 +1309,9 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
         trace("=== unload: member '%s', %d block(s), %ld bytes ===",
               mvs_nm(mem[i].name), mem[i].nblk, mem[i].len);
     }
-    unl = malloc((size_t)(unload_size(mem, nmem) + 64));   /* +64 paranoia margin */
+    ulen = unload_size(mem, nmem);                          /* <0: the directory was refused */
+    if (ulen < 0) { for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
+    unl = malloc((size_t)(ulen + 64));                      /* +64 paranoia margin */
     if (!unl) { fprintf(stderr, "ld370: out of memory for unload image\n");
                 for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     ulen = emit_unload(unl, mem, nmem, NULL);
@@ -1178,12 +1329,14 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
 
 /* convenience: unload a single in-memory member */
 static int write_unload(const char *path, const char *name,
-                        const unsigned char *member, long mlen, long entry, long modlen)
+                        const unsigned char *member, long mlen, long entry, long modlen,
+                        struct ualias *al, int nal)
 {
     struct umember m;
     memset(&m, 0, sizeof m);
     member_name(m.name, name);
     m.bytes = member; m.len = mlen; m.entry = entry; m.modlen = modlen;
+    m.alias = al; m.nalias = nal;
     return write_unload_mem(path, &m, 1);
 }
 
@@ -1412,6 +1565,7 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
     /* unl sized exactly to the unload; xm bounds the XMIT = unload + NETDATA segment
      * headers (<=1%) + INMR control records + FB80 rounding -- usize/32 + 64 KB covers it. */
     usize = unload_size(mem, nmem);
+    if (usize < 0) { for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     unl = malloc((size_t)(usize + 64));
     xm  = malloc((size_t)(usize + usize / 32 + 65536));
     if (!unl || !xm) { fprintf(stderr, "ld370: out of memory for XMIT image\n");
@@ -1435,12 +1589,14 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
 
 /* convenience: XMIT a single in-memory member */
 static int write_xmit1(const char *path, const char *name, const unsigned char *member,
-                       long mlen, const char *dsn, long entry, long modlen)
+                       long mlen, const char *dsn, long entry, long modlen,
+                       struct ualias *al, int nal)
 {
     struct umember m;
     memset(&m, 0, sizeof m);
     member_name(m.name, name);
     m.bytes = member; m.len = mlen; m.entry = entry; m.modlen = modlen;
+    m.alias = al; m.nalias = nal;
     return write_xmit(path, &m, 1, dsn);
 }
 
@@ -1516,6 +1672,23 @@ static const char *with_suffix(char *buf, size_t n, const char *base, const char
     return buf;
 }
 
+/* The module address of a defined external -- a section (SD/PC) or an LD entry
+ * inside one.  Shared by --entry and --alias, so an alias resolves a name
+ * exactly the way the entry point does.  Returns 1 and sets *addr when found. */
+static int find_symbol(const char *name, long *addr)
+{
+    unsigned char en[8]; int gi;
+    member_name(en, name);
+    for (gi = 0; gi < nG; gi++) {
+        if (memcmp(G[gi].name, en, 8)) continue;
+        if (G[gi].is_sect) { *addr = G[gi].org; return 1; }
+        if (G[gi].type == 0x03 && G[gi].owner >= 0 && G[G[gi].owner].is_sect) {
+            *addr = G[G[gi].owner].org + G[gi].in_addr; return 1;
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *mname = NULL;
@@ -1526,7 +1699,8 @@ int main(int argc, char **argv)
     char **packspec      = malloc((size_t)argc * sizeof *packspec);
     char **Ldir          = malloc((size_t)argc * sizeof *Ldir);
     const char **incspec = malloc((size_t)argc * sizeof *incspec); int ninc = 0;
-    if (!objfiles || !packspec || !Ldir || !incspec) { fprintf(stderr, "ld370: out of memory\n"); return 1; }
+    const char **aliasv  = malloc((size_t)argc * sizeof *aliasv);  int naliasv = 0;
+    if (!objfiles || !packspec || !Ldir || !incspec || !aliasv) { fprintf(stderr, "ld370: out of memory\n"); return 1; }
     int nobjf = 0, npack = 0, nLdir = 0, pack_mode = 0, i, j;
     int want_xmit = 0, want_unload = 0;          /* -xmit/-iebcopy: no-arg format flags (additive) */
     char xmitbuf[2048], unlbuf[2048];            /* derived <out>.xmit / <out>.iebcopy names */
@@ -1541,6 +1715,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--dsn") && i + 1 < argc) dsn = argv[++i];
         else if (!strcmp(argv[i], "--name") && i + 1 < argc) mname = argv[++i];
         else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
+        else if (!strcmp(argv[i], "--alias") && i + 1 < argc) aliasv[naliasv++] = argv[++i];
         else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc) incspec[ninc++] = argv[++i];
         else if (!strcmp(argv[i], "--sparse-text")) sparse_text = 1;  /* elide records no TXT card covered */
         else if (!strcmp(argv[i], "--pack")) pack_mode = 1;       /* positional args after this are members to pack */
@@ -1585,6 +1760,21 @@ int main(int argc, char **argv)
         return 2;
     }
     maxtext = pick_maxtext(src_blksize);
+
+    /* --alias names a second directory entry for the member being LINKED.  A pack
+     * has no single member to attach it to -- its aliases come from the -iebcopy
+     * inputs, which carry them -- so refuse rather than guess which one. */
+    for (i = 0; i < naliasv; i++)
+        if (!valid_member_name(aliasv[i])) {
+            fprintf(stderr, "ld370: invalid alias name '%s' (1-8 chars, letter or @#$ "
+                            "first, then letters/digits/@#$)\n", aliasv[i]);
+            return 2;
+        }
+    if (naliasv && pack_mode) {
+        fprintf(stderr, "ld370: --alias applies to a link, not to --pack; build the member "
+                        "with --alias and -iebcopy, and pack that -- its aliases come along\n");
+        return 2;
+    }
 
     /* Output format is flag-driven (ld-style), not -o-extension-driven:
      * `-o OUT` always names a raw load-module member, and `-xmit` / `-iebcopy`
@@ -1686,7 +1876,7 @@ int main(int argc, char **argv)
                 "           ld370 --pack NAME=NAME.iebcopy -o OUT -xmit\n");
         if (want_unload) rc = write_unload_mem(with_suffix(unlbuf, sizeof unlbuf, outfile, ".iebcopy"), m, npack);
         if (!rc && want_xmit) rc = write_xmit(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), m, npack, dsn);
-        for (i = 0; i < npack; i++) free((void *)m[i].bytes);
+        for (i = 0; i < npack; i++) { free((void *)m[i].bytes); free(m[i].alias); }
         free(m);
         return rc;
     }
@@ -1702,7 +1892,7 @@ int main(int argc, char **argv)
     if (!nobjf && !ninc) {
         fprintf(stderr,
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
-                "             [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
+                "             [--alias NAME]... [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
                 "             [--ac N] [--rent|--norent] [--reus|--noreus] [--refr]\n"
                 "             [--sparse-text] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
@@ -1724,6 +1914,9 @@ int main(int argc, char **argv)
                 "         clear them.  REFR is PDS2ATR2, not ATR1.  They reach the DIRECTORY\n"
                 "         entry, so they are visible only in -iebcopy/-xmit output --\n"
                 "         a bare -o member is byte-identical with and without them.\n"
+                "         --alias NAME adds an alias directory entry (IEWL ALIAS): it enters\n"
+                "         at NAME if NAME is a symbol of the module, else at the entry point.\n"
+                "         --pack keeps the aliases of its -iebcopy inputs.\n"
                 "         --sparse-text omits text records no TXT card covered, so a DS\n"
                 "         reservation is left unwritten.  OFF by default: it costs\n"
                 "         byte-fidelity to IEWL (which writes those records) and relies on\n"
@@ -1869,16 +2062,7 @@ int main(int argc, char **argv)
      * object that names one. */
     long entry_addr = 0;
     if (entryname) {
-        unsigned char en[8]; int gi, found = 0;
-        member_name(en, entryname);
-        for (gi = 0; gi < nG; gi++) {
-            if (memcmp(G[gi].name, en, 8)) continue;
-            if (G[gi].is_sect) { entry_addr = G[gi].org; found = 1; break; }
-            if (G[gi].type == 0x03 && G[gi].owner >= 0 && G[G[gi].owner].is_sect) {
-                entry_addr = G[G[gi].owner].org + G[gi].in_addr; found = 1; break;
-            }
-        }
-        if (!found) { fprintf(stderr, "ld370: --entry symbol '%s' not found or unresolved\n", entryname); return 1; }
+        if (!find_symbol(entryname, &entry_addr)) { fprintf(stderr, "ld370: --entry symbol '%s' not found or unresolved\n", entryname); return 1; }
         trace("  --entry %s -> %06lX", entryname, entry_addr);
     } else {
         for (i = 0; i < nO; i++)
@@ -2105,8 +2289,30 @@ int main(int argc, char **argv)
      * These never replace the member written above. */
     {
         const char *name = mname ? mname : basename_member(outfile);
-        if (unloadfile && write_unload(unloadfile, name, out, olen, entry_addr, modlen)) return 1;
-        if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn, entry_addr, modlen)) return 1;
+        /* --alias: each is a directory entry with this member's TTR.  IEWL's rule
+         * for its entry point, measured (MVSCE-LAB JOB01367): an ALIAS that names
+         * an external symbol of the module enters there (ALT2 -> X'14'); any
+         * other ALIAS enters where the member does (RX1 -> X'10').  Resolved with
+         * the same lookup as --entry.  The member's own name among them, or one
+         * alias twice, is refused when the directory is laid out. */
+        struct ualias *al = NULL;
+        if (naliasv) {
+            al = calloc((size_t)naliasv, sizeof *al);
+            if (!al) { fprintf(stderr, "ld370: out of memory\n"); return 1; }
+            for (i = 0; i < naliasv; i++) {
+                long a;
+                member_name(al[i].name, aliasv[i]);
+                al[i].entry = find_symbol(aliasv[i], &a) ? a : entry_addr;
+                trace("  --alias %s -> entry %06lX%s", aliasv[i], al[i].entry,
+                      al[i].entry == entry_addr ? "" : " (a symbol of the module)");
+            }
+            if (!unloadfile && !xmitfile)
+                fprintf(stderr, "ld370: warning: --alias has no effect without -iebcopy or "
+                                "-xmit; a bare member carries no directory\n");
+        }
+        if (unloadfile && write_unload(unloadfile, name, out, olen, entry_addr, modlen, al, naliasv)) return 1;
+        if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn, entry_addr, modlen, al, naliasv)) return 1;
+        free(al);
     }
     return 0;
 }

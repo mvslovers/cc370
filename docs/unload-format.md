@@ -127,12 +127,44 @@ off len
 * **TTR** = (relative track of the member's first block, R=1). One block per
   track, so the directory `TT` is the global index of the member's first block.
 * **C-byte** = alias(bit0) | #TTR(bits1-2) | #halfwords-of-userdata(bits3-7).
-  Here `0x2c` = 1 TTR + 12 halfwords (24-byte user data).
+  A member is `0x2c` = 1 TTR + 12 halfwords (24-byte user data); an alias is
+  `0xB1` = alias + 1 TTR + 17 halfwords (34 bytes). See §4.1.
+* **Blocks are filled by bytes, not by count.** An entry goes into the current
+  block while `used + 12 + userdata ≤ 256`; the 12-byte FF terminator goes into
+  the last block, or into a block of its own when it does not fit. The key of a
+  block is its last name, and `X'FF'×8` on the last. For members only (36 bytes
+  each) this is 7 per block, as the CBT571 XFASM oracle shows (7/7/2, keys
+  `IFOX06`/`IFOX51`/FF). With aliases it is not: IEWL's library in §4.1 holds 6
+  entries in its first block (248 bytes), because the 7th is a 46-byte alias.
 * **USERDATA** = the PDS2 load-module attributes (`IHAPDS`): `PDS2TTRT` (TTR of
   first text block = `(text_tt, 1)`) + zero + note-list TTR + attrs + entry point
   + length… `ld370` computes `PDS2TTRT` from the block layout and **echoes** the
   remaining attribute/EP/length bytes (TODO: derive them from the member's
   CESD/control records — see `build_userdata()`).
+
+### 4.1 Alias entries (`ld370 --alias`, #466)
+
+Measured on IEWL's own output: MVSCE-LAB JOB01367, `ld370/tests/fixtures/
+alias.iewl.xmit`, which is `altest.s` linked three times (`ALIAS RX1`/`RX2`
+`NAME BREXX(R)`; `ALIAS ALT2` `NAME ALTM(R)`, where `ALT2` is an ENTRY of the
+module; `SETCODE AC(1)` `ALIAS ACA` `NAME ACM(R)`).
+
+```
+ACA   ttr=000013 C=B1  0000170000000000C3D20000200020 000010 880000 | 000010 C1C3D44040404040 | 0101
+ACM   ttr=000013 C=2C  0000170000000000C3D20000200020 000010 880000 | 0101 00
+ALT2  ttr=00000D C=B1  0000110000000000C3D20000200020 000014 880000 | 000010 C1D3E3D440404040 | 0100
+RX1   ttr=000007 C=B1  00000B0000000000C3D20000200020 000010 880000 | 000010 C2D9C5E7E7404040 | 0100
+```
+
+* The **member's** entry does not change when it has aliases.
+* An **alias** has the member's TTR and the member's basic section (21 bytes),
+  except `PDS2EPA`; then the `IHAPDS` alias section `PDSS02` — `PDS2EPM` (3,
+  the member's entry point) and `PDS2MNM` (8, the member's name) — then the APF
+  section, with **no pad byte** (21 + 11 + 2 = 34). A member's 24 bytes carry one.
+* `PDS2EPA` of an alias is the address of the symbol it names when that is an
+  external of the module (`ALT2` → `X'14'`), otherwise the member's entry point
+  (`RX1` → `X'10'`). That is IEWL's `ALIAS` rule, and `ld370 --alias` follows it.
+* An alias carries its member's attributes and AC (`ACA`: `0101`).
 
 ## 5. Member-data records
 

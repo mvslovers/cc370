@@ -5,7 +5,7 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 =head1 SYNOPSIS
 
 B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
-[B<--entry> I<name>] [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>]
+[B<--entry> I<name>] [B<--alias> I<name>]... [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>]
 [B<--ac> I<n>] [B<--rent>|B<--norent>] [B<--reus>|B<--noreus>] [B<--refr>]
 [B<--sparse-text>] I<obj>...
 
@@ -34,6 +34,20 @@ written; the transport wrappers below are B<additive> and never replace it.
 =item B<-e>, B<--entry> I<name>
 
 Set the module entry point.
+
+=item B<--alias> I<name>
+
+Give the member an alias, as the IEWL C<ALIAS> statement does; repeatable. Each
+alias is a second directory entry in the B<-iebcopy>/B<-xmit> output, pointing
+at the member's data, with the alias bit and the member's name and entry point in
+its user data. Its own entry point follows IEWL's rule: an alias that names an
+external symbol of the module enters at that symbol, any other alias where the
+member does. So an alias spelled like an entry inside the module does B<not>
+start the program at its main entry. A name may appear once in a library, member
+or alias; a clash is refused. Aliases need a directory, so a bare B<-o> member
+carries none (warned). B<--pack> keeps the aliases of a B<-iebcopy> input, and a
+C<NAME=> rename re-points them at the new name; B<--alias> itself is refused with
+B<--pack>.
 
 =item B<-l> I<name>, B<-L> I<dir>
 
