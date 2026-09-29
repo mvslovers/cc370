@@ -220,9 +220,11 @@ extern void i370_override_options (void);
        binary string data (crent's dataset-I/O flags, packed control blocks)
        intact while text control characters are still mapped.
 
-   -fexec-charset is unusable instead: it rewrites inline asm template strings,
-   corrupting the PDPPRLG/PDPEPIL macro source.  Here the STRING_CST stays in
-   the host charset and asm templates are emitted verbatim, so they are safe.  */
+   An EBCDIC -fexec-charset is unusable instead: it rewrites inline asm
+   template strings, corrupting the PDPPRLG/PDPEPIL macro source.  Here the
+   STRING_CST holds Latin-1 -- the default narrow execution set is ISO-8859-1
+   (cppcharset.c DEFAULT_NARROW_CHARSET, #511), one byte per character, of
+   which ASCII is a subset -- so asm templates are emitted verbatim and safe.  */
 #ifdef TARGET_EBCDIC
 extern const unsigned char i370_ascii_to_ebcdic[256];
 extern const unsigned char i370_ebcdic_to_ascii[256];

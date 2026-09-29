@@ -480,5 +480,47 @@ else
     echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
 fi
 
+# --- issue #511: a UTF-8 source is one byte per CHARACTER in a string -------
+# The output pass maps each string byte Latin-1 -> CP037, and a UTF-8 source
+# reached it unconverted: "a¬b" was X'62' X'5F' with sizeof 5, '¬' a two-byte
+# multi-character constant (25183), and "\u00ac" two bytes as well.  The narrow
+# execution set is now ISO-8859-1 and the input set is decided per file.
+#   pre-fix cc1: sizeof 5/3, '¬' 25183, #if false, the >U+00FF literal assembles
+#   (three junk bytes), a BOM is "stray '\357' in program".
+# Controls: the same source in Latin-1 must compile identically (the ecosystem
+# has Latin-1 files, and cc370 always read them right); a \x escape is a byte
+# value and keeps its two bytes; a character above U+00FF is an error.
+python3 - "$WORK" <<'EOF'
+import sys
+w = sys.argv[1]
+src = ('#if \'\u00ac\' == 95\nint ifok = 1;\n#else\nint ifok = 0;\n#endif\n'
+       'const char s[] = "a\u00acb";\nint n = sizeof s;\nint c = \'\u00ac\';\n'
+       'const char e[] = "\\xC2\\xAC";\nint en = sizeof e;\n')
+open(w + '/u8.c', 'w', encoding='utf-8').write(src)
+open(w + '/l1.c', 'w', encoding='latin-1').write(src)
+open(w + '/ucn.c', 'w').write('const char u[] = "\\u00ac";\nint un = sizeof u;\n')
+open(w + '/bom.c', 'w', encoding='utf-8').write('\ufeffint bom = 1;\n')
+open(w + '/wide.c', 'w', encoding='utf-8').write('const char w[] = "x\u2014y";\n')
+open(w + '/widec.c', 'w', encoding='utf-8').write('int wc = \'\u2014\';\n')
+EOF
+dcs () { grep -E "^[ \t]+DC[ \t]" "$WORK/$1.s" | tr -s ' \t' ' ' | tr '\n' ';'; }
+want=" DC F'1'; DC C'a'; DC X'5F'; DC C'b'; DC X'0'; DC F'4'; DC F'95'; DC C'B'; DC X'AC'; DC X'0'; DC F'3';"
+u8fail=0
+compile u8 "$WORK/u8.c";   [ "$(dcs u8)" = "$want" ] || { echo "utf8-src: FAIL -- UTF-8 source: $(dcs u8)"; cat "$WORK/diag"; u8fail=1; }
+compile l1 "$WORK/l1.c";   [ "$(dcs l1)" = "$want" ] || { echo "utf8-src: FAIL -- Latin-1 control changed: $(dcs l1)"; u8fail=1; }
+compile ucn "$WORK/ucn.c" "-std=c99"
+[ "$(dcs ucn)" = " DC X'5F'; DC X'0'; DC F'2';" ] || { echo "utf8-src: FAIL -- \\u00ac: $(dcs ucn)"; u8fail=1; }
+if ! compile bom "$WORK/bom.c" || grep -q stray "$WORK/diag"; then echo "utf8-src: FAIL -- a byte order mark is not dropped"; cat "$WORK/diag"; u8fail=1; fi
+for f in wide widec; do
+    if compile $f "$WORK/$f.c" || ! grep -q "U+2014 has no equivalent" "$WORK/diag"; then
+        echo "utf8-src: FAIL -- U+2014 in $f.c was not refused"; cat "$WORK/diag"; u8fail=1
+    fi
+done
+if [ $u8fail = 0 ]; then
+    echo "utf8-src: OK (UTF-8 and Latin-1 sources give one byte per character; \\x keeps its bytes; above U+00FF is an error)"
+else
+    fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
