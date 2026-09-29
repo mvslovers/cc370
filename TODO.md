@@ -1475,6 +1475,13 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-29 — #506, MERGED as `7705f64` (PR #507).** The two `vref()` toggles
+  #347 had cleared: `&SYSLIST(N'&SYSLIST,2)` lost its second subscript and
+  returned the whole operand (SETA 0, `AL1((11,22,33))`; IFOX00 22 and `AL1(33)`,
+  MVSTK5-REF JOB00280, `tests/vrefattr.s`). Tree gate: 0 decks. With it, all four
+  of #347's "cleared" sites turned out to be defects, and every quote toggle of
+  the form `x = !x` now carries the guard (18 of 18).
+
 - **2026-09-29 — #497, #494, #474, #500: `L'` of an undefined or forward symbol,
   six PRs, each gated alone.** Measured on MVSTK5-REF, JOB00276-00279, every
   capture inside a macro-snapshot bracket (the last one closed only after the
