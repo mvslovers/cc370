@@ -735,34 +735,10 @@ lex_charconst (const cpp_token *token)
   result = cpp_interpret_charconst (parse_in, token,
 				    &chars_seen, &unsignedp);
 
-#ifdef HOST_CHARCONST_TO_TARGET
-  /* On an EBCDIC target the value of a narrow character constant must be the
-     target (EBCDIC) code point, not the host (ASCII) one the front end just
-     produced -- otherwise e.g. 'A' (65) never equals a byte read from a CP037
-     data set (0xC1).  Map each byte through the target table; byte positions
-     are preserved, so multi-character constants are handled correctly too.
-
-     A wide character constant is mapped the same way, over every byte of its
-     wchar_t: that is what ASM_OUTPUT_ASCII does to each element of a wide
-     string literal, so L'x' and L"x"[0] come out equal.  A numeric escape was
-     pre-imaged byte by byte in cppcharset.c, so it maps back to its literal
-     value.  */
-  if ((token->type == CPP_CHAR && chars_seen > 0) || token->type == CPP_WCHAR)
-    {
-      cppchar_t mapped = 0;
-      unsigned int i, nbytes;
-
-      nbytes = (token->type == CPP_WCHAR
-		? TYPE_PRECISION (wchar_type_node) / BITS_PER_UNIT
-		: chars_seen);
-      for (i = 0; i < nbytes && i < sizeof (cppchar_t); i++)
-	{
-	  unsigned int byte = (result >> (i * 8)) & 0xFF;
-	  mapped |= (cppchar_t) HOST_CHARCONST_TO_TARGET (byte) << (i * 8);
-	}
-      result = mapped;
-    }
-#endif
+  /* On an EBCDIC target RESULT is already the target (EBCDIC) value:
+     cpp_interpret_charconst maps each byte (narrow_str_to_charconst,
+     wide_str_to_charconst), so the code and #if see the same value, and
+     L'x' equals L"x"[0] because ASM_OUTPUT_ASCII maps the same bytes.  */
 
   /* Cast to cppchar_signed_t to get correct sign-extension of RESULT
      before possibly widening to HOST_WIDE_INT for build_int_2.  */

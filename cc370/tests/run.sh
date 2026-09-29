@@ -386,5 +386,67 @@ else
     echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
 fi
 
+# --- issue #485 (1): a wide character above 0xFF keeps its code point ---
+# Output maps every byte of a wide element, so a character above 0xFF that
+# comes from source text or a UCN must be pre-imaged, as a numeric escape
+# is (#484): L"Ł"[0] and L'Ł' are 0x141, not 0x1C1.  Up to 0xFF
+# the byte mapping is wanted: U+00E4 is Latin-1 'a-umlaut', CP037 X'43'.
+printf '%s\n' \
+  'const int su[] = L"Ł";' \
+  'const int s8[] = L"'"$(printf '\305\201')"'";' \
+  'const int sl[] = L"'"$(printf '\303\244')"'";' \
+  "int cu = L'\\u0141';" \
+  "int c8 = L'$(printf '\305\201')';" \
+  "int cl = L'$(printf '\303\244')';" > "$WORK/wh.c"
+compile wh "$WORK/wh.c" "-std=gnu99"
+got=$(awk '/ EQU /{if (s) print s; s=$1 ":"; next}
+           /^[[:space:]]+DC[[:space:]]/{s=s " " $2}
+           END{print s}' "$WORK/wh.s" | sed "s/ X'0' X'0' X'0' X'0'\$//")
+want="SU: X'0' X'0' X'1' X'41'
+S8: X'0' X'0' X'1' X'41'
+SL: X'0' X'0' X'0' X'43'
+CU: F'321'
+C8: F'321'
+CL: F'67'"
+if [ "$got" = "$want" ]; then
+    echo "wide-high: OK (U+0141 stays 0x141 from UCN and UTF-8, U+00E4 is CP037 X'43')"
+else
+    echo "wide-high: FAIL"; echo "   got:"; echo "$got" | sed 's/^/      /'
+    echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
+fi
+
+# --- issue #485 (2): #if sees the same character value as the code ---
+# cpp evaluates a character constant in #if itself; it must get the EBCDIC
+# value lex_charconst gives the code, or '#if 'A' == 65' picks the ASCII
+# branch on an EBCDIC target.
+cat > "$WORK/pi.c" <<'EOF'
+#if 'A' == 193
+int ok_a;
+#endif
+#if 'A' == 65
+int bad_a;
+#endif
+#if '\n' == 0x15
+int ok_nl;
+#endif
+#if '\x81' == 0x81
+int ok_esc;
+#endif
+#if L'a' == 129
+int ok_wide;
+#endif
+#if 'ab' == ((129 << 8) | 130)
+int ok_multi;
+#endif
+EOF
+compile pi "$WORK/pi.c"
+got=$(grep -o '^\* X-var [a-z_]*' "$WORK/pi.s" | sed 's/^\* X-var //' | tr '\n' ' ')
+want="ok_a ok_nl ok_esc ok_wide ok_multi "
+if [ "$got" = "$want" ]; then
+    echo "if-charset: OK (#if evaluates character constants in EBCDIC)"
+else
+    echo "if-charset: FAIL"; echo "   got:  $got"; echo "   want: $want"; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
