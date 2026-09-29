@@ -1475,6 +1475,17 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-29 — #483, MERGED as `64ac787` (PR #512).** as370 read a UTF-8
+  source byte by byte: `¬` (C2 AC) became `X'62' X'5F'` and shifted the card one
+  column right, so a sequence field reached column 72 (brexx370 vtocchek.asm).
+  The encoding is now decided per file — valid UTF-8 with a high byte is decoded
+  to one byte per character, Latin-1 is read as before; above U+00FF is severity
+  4 on the card, 8 in a constant. MVSBLD gate: 5,528 decks byte-identical to the
+  HEAD binary. The only libc370 module it moved, `jesiropn.s` (en dashes in a
+  SETC, now RC 8), was fixed first as libc370#235. The #115 report below is the same
+  mechanism (not re-measured on that file). Open sibling: **#511**, cc370 reads UTF-8
+  string literals byte by byte.
+
 - **2026-09-29 — #479, MERGED as `00d50b7` (PR #509).** `file370` read an alias
   entry's AC at the member offset `ud[22]`, inside `PDS2EPM`, so an alias of an
   AC(1) member showed `AC=0`; the APF offset now follows the IHAPDS sections
