@@ -157,10 +157,12 @@ cpp_create_reader (enum c_lang lang, hash_table *table)
   CPP_OPTION (pfile, unsigned_wchar) = 1;
   CPP_OPTION (pfile, bytes_big_endian) = 1;  /* does not matter */
 
-  /* Default to locale/UTF-8.  */
-  CPP_OPTION (pfile, narrow_charset) = _cpp_default_encoding ();
+  /* Not the host locale: the target decides the narrow execution set
+     (cpp_init_iconv, DEFAULT_NARROW_CHARSET), and an unset input set means
+     "decide per file" (_cpp_convert_input).  */
+  CPP_OPTION (pfile, narrow_charset) = 0;
   CPP_OPTION (pfile, wide_charset) = 0;
-  CPP_OPTION (pfile, input_charset) = _cpp_default_encoding ();
+  CPP_OPTION (pfile, input_charset) = 0;
 
   /* A fake empty "directory" used as the starting point for files
      looked up without a search path.  Name cannot be '/' because we

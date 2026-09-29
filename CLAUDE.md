@@ -110,7 +110,7 @@ Unlike v1.x (3.2.3), v2.0 does **not** shadow `toplev.c`/`varasm.c`/`final.c` in
 
 ### Charset (EBCDIC CP037 + ecosystem NEL)
 
-- Char constants and string literals map to **CP037**. String literals stay in the **host** charset in the STRING_CST and convert to EBCDIC at **output** time (`ASM_OUTPUT_ASCII`): printables → `C'..'` (converted by the ASCII→EBCDIC file transfer on upload), control/variant/`&` → `X'<MAP_OUTCHAR>'`. This keeps inline-asm templates readable in the `.s` (no `-fexec-charset`).
+- Char constants and string literals map to **CP037**. String literals are **Latin-1** in the STRING_CST — the default narrow execution set is `ISO-8859-1` (`DEFAULT_NARROW_CHARSET`, `cppcharset.c`; #511), one byte per character — and convert to EBCDIC at **output** time (`ASM_OUTPUT_ASCII`): printables → `C'..'` (converted by the ASCII→EBCDIC file transfer on upload), control/variant/`&` → `X'<MAP_OUTCHAR>'`. ASCII is a subset of Latin-1, so inline-asm templates stay readable and unchanged in the `.s`; an *EBCDIC* `-fexec-charset` would rewrite them and stays unusable.
 - Newline `\n` → **NEL `0x15`** — the mvslovers ecosystem newline, byte-identical to httpd `cp037_atoe`/`cp037_etoa` (mvsMF upload, HTTP output, UFS, z/OS USS). NOT pure CP037 LF `0x25` (which breaks HTTP CRLF: `etoa[0x25]=0x85`, not LF).
 - `\x`/`\NNN` escapes are pre-imaged in `cppcharset.c` (via `MAP_INCHAR`) so the output pass round-trips them to the literal byte — binary string data (e.g. crent dataset-I/O flags) is preserved.
 - A char has one runtime value whether it is a constant or sits in a string (`'\n' == "\n"[0]` at runtime). Every place that reads a string byte *as a value* instead of outputting it — the `-O1` folds of `"\n"[0]` / `*"a"` / `const char t[] = "…"; t[0]` (`expr.c`), the builtin folds (`printf("c")`→`putchar`, `strcmp` of two literals, `builtins.c`), and a designator splitting a string initialiser (`c-typeck.c`) — must map it through `TARGET_STR_BYTE` (`defaults.h`, the same table as the output). Character constants get their value in one place, `narrow_str_to_charconst` / `wide_str_to_charconst` (`cppcharset.c`), so the code and `#if` agree (`#if 'A' == 193` is true). A wide character above 0xFF keeps its Unicode code point (`preimage_wide_above_byte`); up to 0xFF it is Latin-1 mapped to CP037. Until #477/#487 these took the host byte; a new such site is the same bug again.
@@ -131,13 +131,17 @@ anywhere (mvslovers/cc370#74). Do not "fix" one side to match the other; check
 which path the source travelled first.
 
 **The host side of the table is Latin-1, and the source may be either Latin-1 or
-UTF-8.** as370 decides per file: valid UTF-8 with a high byte is decoded to one
-byte per character, anything else is read byte for byte; above U+00FF is
-severity 4 on the card and 8 in a constant (`as370/README.md`, "Source
-encoding"; #483). Both encodings are in the ecosystem side by side — Latin-1 `¬`
-in libc370/brexx370 macros and 2,089 MVSBLD modules, UTF-8 in newer sources — so
-never decode everything as UTF-8. **cc370 still reads byte by byte** (#511):
-`"¬"` in a UTF-8 C source is two bytes.
+UTF-8.** Both tools decide per file: valid UTF-8 is taken as UTF-8, anything
+else as Latin-1, and the host locale plays no part. as370 decodes to one byte
+per character; above U+00FF is severity 4 on the card and 8 in a constant
+(`as370/README.md`, "Source encoding"; #483). cc370 reads UTF-8 (a Latin-1 file
+is converted on input, a leading BOM dropped — `_cpp_convert_input`) and turns a
+narrow string or character constant into Latin-1; above U+00FF there is an
+**error** naming the code point, comments may hold anything (#511). An explicit
+`-finput-charset` / `-fexec-charset` overrides either rule. Both encodings are
+in the ecosystem side by side — Latin-1 `¬` in libc370/brexx370 macros and
+2,089 MVSBLD modules, UTF-8 in newer sources — so never decode everything as
+UTF-8.
 
 ### Key preprocessor defines
 

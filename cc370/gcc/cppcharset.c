@@ -93,6 +93,17 @@ Foundation, 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
 #error "Unrecognized basic host character set"
 #endif
 
+/* The narrow execution character set when -fexec-charset is not given.  On
+   the EBCDIC target it is Latin-1: the output pass (ASM_OUTPUT_ASCII) and
+   every folded string byte (TARGET_STR_BYTE) translate Latin-1 -> CP037 one
+   byte at a time.  ASCII is a subset, so an inline asm template -- the
+   reason an EBCDIC -fexec-charset is unusable here -- is unchanged.  */
+#ifdef TARGET_EBCDIC
+#define DEFAULT_NARROW_CHARSET "ISO-8859-1"
+#else
+#define DEFAULT_NARROW_CHARSET SOURCE_CHARSET
+#endif
+
 #ifndef EILSEQ
 #define EILSEQ EINVAL
 #endif
@@ -452,6 +463,62 @@ one_utf16_to_utf8 (iconv_t bigend, const uchar **inbufp, size_t *inbytesleftp,
   return 0;
 }
 
+/* ISO-8859-1 (Latin-1) is the execution character set of the EBCDIC
+   target (DEFAULT_NARROW_CHARSET below): the output pass maps each string
+   byte through a Latin-1 -> CP037 table, so a narrow string must hold ONE
+   byte per character.  A UTF-8 source used to reach that table unconverted,
+   and "a\u00ac" came out as X'62' X'5F' -- two bytes for one character
+   (mvslovers/cc370#511).  A character above U+00FF has no byte to become;
+   it is refused, and its code point is left here for the diagnostic.  */
+static cppchar_t cset_unmappable;
+
+static inline int
+one_utf8_to_latin1 (iconv_t cd ATTRIBUTE_UNUSED, const uchar **inbufp,
+		    size_t *inbytesleftp, uchar **outbufp,
+		    size_t *outbytesleftp)
+{
+  const uchar *inbuf = *inbufp;
+  size_t inbytesleft = *inbytesleftp;
+  cppchar_t c;
+  int rval;
+
+  if (*outbytesleftp < 1)
+    return E2BIG;
+
+  rval = one_utf8_to_cppchar (&inbuf, &inbytesleft, &c);
+  if (rval)
+    return rval;
+  if (c > 0xFF)
+    {
+      cset_unmappable = c;
+      return EILSEQ;
+    }
+
+  *inbufp = inbuf;
+  *inbytesleftp = inbytesleft;
+  **outbufp = (uchar) c;
+  *outbufp += 1;
+  *outbytesleftp -= 1;
+  return 0;
+}
+
+static inline int
+one_latin1_to_utf8 (iconv_t cd ATTRIBUTE_UNUSED, const uchar **inbufp,
+		    size_t *inbytesleftp, uchar **outbufp,
+		    size_t *outbytesleftp)
+{
+  int rval;
+
+  if (*inbytesleftp < 1)
+    return EINVAL;
+  rval = one_cppchar_to_utf8 (**inbufp, outbufp, outbytesleftp);
+  if (rval)
+    return rval;
+  *inbufp += 1;
+  *inbytesleftp -= 1;
+  return 0;
+}
+
 /* Helper routine for the next few functions.  The 'const' on
    one_conversion means that we promise not to modify what function is
    pointed to, which lets the inliner see through it.  */
@@ -535,6 +602,20 @@ convert_utf32_utf8 (iconv_t cd, const uchar *from, size_t flen,
   return conversion_loop (one_utf32_to_utf8, cd, from, flen, to);
 }
 
+static bool
+convert_utf8_latin1 (iconv_t cd, const uchar *from, size_t flen,
+		     struct _cpp_strbuf *to)
+{
+  return conversion_loop (one_utf8_to_latin1, cd, from, flen, to);
+}
+
+static bool
+convert_latin1_utf8 (iconv_t cd, const uchar *from, size_t flen,
+		     struct _cpp_strbuf *to)
+{
+  return conversion_loop (one_latin1_to_utf8, cd, from, flen, to);
+}
+
 /* Identity conversion, used when we have no alternative.  */
 static bool
 convert_no_conversion (iconv_t cd ATTRIBUTE_UNUSED,
@@ -612,6 +693,8 @@ static const struct conversion conversion_tab[] = {
   { "UTF-32BE/UTF-8", convert_utf32_utf8, (iconv_t)1 },
   { "UTF-16LE/UTF-8", convert_utf16_utf8, (iconv_t)0 },
   { "UTF-16BE/UTF-8", convert_utf16_utf8, (iconv_t)1 },
+  { "UTF-8/ISO-8859-1", convert_utf8_latin1, (iconv_t)0 },
+  { "ISO-8859-1/UTF-8", convert_latin1_utf8, (iconv_t)0 },
 };
 
 /* Subroutine of cpp_init_iconv: initialize and return a
@@ -699,7 +782,7 @@ cpp_init_iconv (cpp_reader *pfile)
    default_wcset = SOURCE_CHARSET;
 
   if (!ncset)
-    ncset = SOURCE_CHARSET;
+    ncset = DEFAULT_NARROW_CHARSET;
   if (!wcset)
     wcset = default_wcset;
 
@@ -876,6 +959,23 @@ _cpp_valid_ucn (cpp_reader *pfile, const uchar **pstr,
   return result;
 }
 
+/* Report a failed conversion to the execution character set.  A character
+   the narrow set cannot hold is named by its code point; anything else is
+   the generic errno report.  */
+static void
+execset_error (cpp_reader *pfile, const char *what)
+{
+  if (cset_unmappable)
+    {
+      cpp_error (pfile, CPP_DL_ERROR,
+		 "character U+%04lX has no equivalent in the execution character set (%s, mapped to EBCDIC)",
+		 (unsigned long) cset_unmappable, DEFAULT_NARROW_CHARSET);
+      cset_unmappable = 0;
+    }
+  else
+    cpp_errno (pfile, CPP_DL_ERROR, what);
+}
+
 /* Convert an UCN, pointed to by FROM, to UTF-8 encoding, then translate
    it to the execution character set and write the result into TBUF.
    An advanced pointer is returned.  Issues all relevant diagnostics.  */
@@ -934,8 +1034,7 @@ convert_ucn (cpp_reader *pfile, const uchar *from, const uchar *limit,
 		 "converting UCN to source character set");
     }
   else if (!APPLY_CONVERSION (cvt, buf, 6 - bytesleft, tbuf))
-    cpp_errno (pfile, CPP_DL_ERROR,
-	       "converting UCN to execution character set");
+    execset_error (pfile, "converting UCN to execution character set");
   else if (wide)
     preimage_wide_above_byte (pfile, tbuf, start);
 
@@ -1229,7 +1328,7 @@ cpp_interpret_string (cpp_reader *pfile, const cpp_string *from, size_t count,
   return true;
 
  fail:
-  cpp_errno (pfile, CPP_DL_ERROR, "converting to execution character set");
+  execset_error (pfile, "converting to execution character set");
   free (tbuf.text);
   return false;
 }
@@ -1417,6 +1516,35 @@ _cpp_convert_input (cpp_reader *pfile, const char *input_charset,
   struct cset_converter input_cset;
   struct _cpp_strbuf to;
 
+  /* No -finput-charset: decide per file, as as370 does (#483, #511).  A file
+     that is valid UTF-8 is taken as UTF-8; anything else is Latin-1, which
+     the ecosystem still has plenty of and which cc370 has always read
+     correctly.  The host locale plays no part, so the result is the same on
+     every build host.  A leading UTF-8 byte order mark is dropped.  */
+  if (!input_charset)
+    {
+      const uchar *p = input, *end = input + len;
+      size_t left = len;
+      cppchar_t c;
+
+      if (len >= 3 && input[0] == 0xEF && input[1] == 0xBB && input[2] == 0xBF)
+	{
+	  memmove (input, input + 3, len - 3);
+	  len -= 3;
+	  end = input + len;
+	  left = len;
+	}
+      input_charset = SOURCE_CHARSET;
+      while (p < end)
+	if (*p < 0x80)
+	  p++, left--;
+	else if (one_utf8_to_cppchar (&p, &left, &c))
+	  {
+	    input_charset = "ISO-8859-1";
+	    break;
+	  }
+    }
+
   input_cset = init_iconv_desc (pfile, SOURCE_CHARSET, input_charset);
   if (input_cset.func == convert_no_conversion)
     {
@@ -1433,7 +1561,7 @@ _cpp_convert_input (cpp_reader *pfile, const char *input_charset,
       if (!APPLY_CONVERSION (input_cset, input, len, &to))
 	cpp_error (pfile, CPP_DL_ERROR,
 		   "failure to convert %s to %s",
-		   CPP_OPTION (pfile, input_charset), SOURCE_CHARSET);
+		   input_charset, SOURCE_CHARSET);
 
       free (input);
     }
