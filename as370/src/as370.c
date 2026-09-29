@@ -4406,15 +4406,18 @@ static int scan_undef_terms(const char *s, int line) {
  * pass 1, which is what "previously defined" means.  Returns 1 and copies the
  * name into OUT.  Lexical skips like scan_undef_terms above -- a quote opens a
  * skip region, and a token followed by one is a self-defining term or an
- * attribute prefix (X'40', L'FIELD), not a symbol -- EXCEPT that this one still
- * toggles on an attribute apostrophe too, so the rest of (L'G+X) is skipped and
- * a forward X escapes IFO231 (cc370#473).
+ * attribute prefix (X'40', L'FIELD), not a symbol -- and, like it, attr_apos()
+ * plus `q ||' keep an ATTRIBUTE apostrophe from opening a string.  Toggling on
+ * the ' of L'G skipped the rest of (L'G+X), so a forward X escaped IFO231 and
+ * the statement reserved L'G+X bytes where IFOX00 reserves none -- shifting
+ * every symbol after it (cc370#473, MVSTK5-REF JOB00272).
  * S_ER is not "defined" either -- an external reference is not absolute, so it
  * cannot be a duplication factor. */
 static int undefined_term(const char *s, char *out) {
+    const char *base = s;
     int q = 0;
     while (*s) {
-        if (*s == '\'') { q = !q; s++; continue; }
+        if (*s == '\'') { if (q || !attr_apos(base, (int)(s - base))) q = !q; s++; continue; }
         if (q) { s++; continue; }
         if (isalpha((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_') {
             char nm[64]; int n = 0;
@@ -5537,15 +5540,22 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (pass == 1) {
                         char ubad[64]; int rl = 0; long dv;
                         if (undefined_term(ex, ubad)) {
-                            /* Three messages, in the oracle's order. IFOX raises
-                             * the relocatability error as well because a term it
-                             * cannot resolve is a term it cannot prove absolute,
-                             * and IFO217 is severity 12 -- so one forward
-                             * reference here takes the whole assembly to RC 12. */
+                            /* Up to three messages, in the oracle's order.  IFO217
+                             * is NOT implied by the forward reference itself; it
+                             * follows when what is left is relocatable.
+                             * ((FWDEND-AREASTA)/8) draws it (JOB02900,
+                             * tests/listref/ifox-listing-dupfac.txt, rc 12) and
+                             * (L'G+X) does not (MVSTK5-REF JOB00272,
+                             * tests/dupattr.s, rc 8).  Both agree with taking the
+                             * undefined term as an absolute 0, which is what pass
+                             * 1's expr_val_full does -- an inference from those
+                             * two oracles, not a measured rule. */
                             char m[VALSZ];
                             snprintf(m, sizeof m, "Duplication factor uses a symbol not previously defined (IFOX00 IFO231) - %.20s", ubad);
                             note_operr(m, 8, i);
-                            note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
+                            (void)expr_val_full(ex, &rl);
+                            if (rl != 0)
+                                note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
                             note_operr("Duplication factor error - no storage reserved (IFOX00 IFO206)", 8, i);
                             note_dupbad(i, oi); cnt = 0;
                         } else if ((dv = expr_val_full(ex, &rl)), rl != 0) {   /* IFO217, severity 12 */
