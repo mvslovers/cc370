@@ -1517,6 +1517,23 @@ else
     echo "litattr deck: OK (== IFOX00 -- L' of an undefined symbol is 0, IFO188/IFO231 in DC and EQU)"
 fi
 rm -f /tmp/_lb.obj /tmp/_lb.out /tmp/_lb2.obj /tmp/_lb2.out /tmp/_lb3.obj /tmp/_lb3.out /tmp/_lb_a.$$ /tmp/_lb_b.$$
+# --- issue #494: a never-defined symbol in a duplication factor is IFO188 ---
+# IFOX00 names the two cases apart: IFO231 for a symbol defined further down
+# (dupattr, JOB00272), IFO188 for one never defined -- D1 (NOSUCH)C, D2 (L'NOSUCH)C
+# and D3 (NOSUCH+2)C all draw IFO188 + IFO206 and no IFO231 (JOB00279, dupundef).
+./as370 tests/dupundef.s -o /tmp/_du.obj >/tmp/_du.out 2>&1
+./as370 tests/dupattr.s -o /tmp/_du2.obj >/tmp/_du2.out 2>&1
+du188=0; for l in 13 15 17; do grep -q "Undefined symbol in line $l - NOSUCH" /tmp/_du.out && du188=$((du188 + 1)); done
+du231=$(grep -c 'Duplication factor uses a symbol not previously defined' /tmp/_du.out)
+du206=$(grep -c 'IFO206' /tmp/_du.out)
+if [ $du188 != 3 ] || [ $du231 != 0 ] || [ $du206 != 3 ]; then
+    echo "dupundef: MISMATCH (IFO188 on $du188/3, IFO231 x$du231 want 0, IFO206 x$du206 want 3)"; fail=1
+elif ! grep -q 'IFO231) - X' /tmp/_du2.out; then
+    echo "dupundef: the forward X of dupattr must still be IFO231"; fail=1
+else
+    echo "dupundef: OK (== IFOX00 -- IFO188 for a never-defined symbol, IFO231 for a forward one)"
+fi
+rm -f /tmp/_du.obj /tmp/_du.out /tmp/_du2.obj /tmp/_du2.out
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one
