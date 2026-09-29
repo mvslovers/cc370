@@ -138,7 +138,7 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 | 4 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
 | 5 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 6 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 7 | #184 | as370 | silent under-reporting — two scans left (#465 fixed one); `undefined_term()` is #473, measured | #473: nothing; the literal loop: **a separating construct** |
+| 7 | #184 | as370 | silent under-reporting — one scan left (#465 and #473 fixed two): the literal loop in `scan_undef_terms()` | **a separating construct** |
 | 8 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
 | 10 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 | 9 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
@@ -562,9 +562,12 @@ literal's text was scanned as symbols, rc 8, the MVC zeroed. The outer toggle of
 reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
 `tests/attrnosu.s`). What is left:
 
-- `undefined_term()` — **#473**, measured: `DS (L'G+X)C` with a forward `X` gets
-  IFO231 + IFO206 from IFOX00 (JOB00272) and nothing from as370, which also
-  reserves 10 bytes where IFOX00 reserves none.
+- `undefined_term()` — **#473, fixed** (2026-09-29): `DS (L'G+X)C` with a forward
+  `X` gets IFO231 + IFO206 from IFOX00 (JOB00272) and got nothing from as370, which
+  also reserved 10 bytes where IFOX00 reserves none (`tests/dupattr.s`). It also
+  corrected a rule: IFO217 does not follow from the forward reference itself, only
+  when what is left is relocatable — `(FWDEND-AREASTA)/8` draws it (JOB02900),
+  `(L'G+X)` does not. Tree gate: 0 of 5,528 decks moved.
 - the literal loop inside `scan_undef_terms()` — still no separating construct;
   `CLC =A(L'G),NOSUCH` reports `NOSUCH` today, which says some path reported it,
   not that the loop is sound.

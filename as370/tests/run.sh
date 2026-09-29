@@ -1412,6 +1412,24 @@ else
     echo "attrnosu: OK (== IFOX00 -- L'NOSUCH is IFO188, the MVC zeroed)"
 fi
 rm -f /tmp/_an.obj /tmp/_an.out /tmp/_an_a.$$ /tmp/_an_b.$$
+# --- issue #473: a forward symbol after L' in a duplication factor ---------
+# undefined_term() toggled its string state on the ' of L'G, so X in (L'G+X) was
+# never looked up: rc 0, and H reserved 10 bytes where IFOX00 reserves none.
+# IFOX00 (MVSTK5-REF JOB00272, listing only): IFO231 + IFO206, rc 8, no IFO217,
+# SD length 000009 with Y's one byte at 000008. rc, the absent IFO217 and the
+# section length are asserted; the pre-fix binary gives rc 0 and length 000013.
+./as370 tests/dupattr.s -o /tmp/_da.obj >/tmp/_da.out 2>&1; rcda=$?
+dalen=$(od -An -tx1 -j29 -N3 /tmp/_da.obj | tr -d ' \n')    # ESD card, first item's length
+if [ $rcda != 8 ]; then
+    echo "dupattr: expected RC 8 (IFO231 + IFO206 on X), got $rcda"; fail=1
+elif ! grep -q IFO231 /tmp/_da.out || ! grep -q IFO206 /tmp/_da.out || grep -q IFO217 /tmp/_da.out; then
+    echo "dupattr: MISMATCH (want IFO231 + IFO206 and no IFO217)"; fail=1
+elif [ "$dalen" != 000009 ]; then
+    echo "dupattr: MISMATCH (section length $dalen, IFOX00 has 000009 -- H must reserve nothing)"; fail=1
+else
+    echo "dupattr: OK (== IFOX00 -- IFO231 + IFO206 at rc 8, H reserves nothing)"
+fi
+rm -f /tmp/_da.obj /tmp/_da.out
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one
