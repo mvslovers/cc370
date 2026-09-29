@@ -1567,6 +1567,23 @@ else
     echo "dupundef deck: OK (== IFOX00 -- ORG *+L'FWD is IFO231 and moves nothing)"
 fi
 rm -f /tmp/_og.obj /tmp/_og.out /tmp/_og_a.$$ /tmp/_og_b.$$
+# --- an attribute in a macro subscript does not open a string (vref) ---------
+# vref() toggled on the ' of N'&SYSLIST, so &SYSLIST(N'&SYSLIST,2) lost its second
+# subscript: SETA 0 and AL1((11,22,33)) where IFOX00 assembles 22 and AL1(33)
+# (MVSTK5-REF JOB00280). The fixture carries its own controls -- each attribute
+# form next to its numeric twin -- and the whole deck is compared, END excepted.
+./as370 tests/vrefattr.s -o /tmp/_vr.obj >/tmp/_vr.out 2>&1; rcvr=$?
+vrsz=$(wc -c < /tmp/_vr.obj); vrrsz=$(wc -c < tests/ref/vrefattr.obj)
+vrnbe=$(( (vrrsz / 80 - 1) * 80 ))
+head -c "$vrnbe" /tmp/_vr.obj > /tmp/_vr_a.$$; head -c "$vrnbe" tests/ref/vrefattr.obj > /tmp/_vr_b.$$
+if [ $rcvr != 0 ]; then
+    echo "vrefattr: expected RC 0, got $rcvr"; fail=1
+elif [ "$vrsz" != "$vrrsz" ] || ! cmp -s /tmp/_vr_a.$$ /tmp/_vr_b.$$; then
+    echo "vrefattr: MISMATCH (not IFOX00's deck -- &SYSLIST(N'&SYSLIST,2) must be 22)"; fail=1
+else
+    echo "vrefattr: OK (== IFOX00 -- N'&SYSLIST in a subscript keeps the second subscript)"
+fi
+rm -f /tmp/_vr.obj /tmp/_vr.out /tmp/_vr_a.$$ /tmp/_vr_b.$$
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one
