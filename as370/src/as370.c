@@ -4508,6 +4508,17 @@ static int dup_rejected(int line, int opidx) {
     int i; for (i = 0; i < ndupbad; i++) if (dupbad_ln[i] == line && dupbad_op[i] == opidx) return 1;
     return 0;
 }
+/* The rejects that named a symbol not defined in pass 1, with the relocatability
+ * pass 1 found: their messages wait for pass 2 (see the caller). */
+static int dupsym_ln[256], dupsym_op[256], dupsym_rel[256]; static char dupsym_sym[256][64]; static int ndupsym;
+static void note_dupsym(int line, int opidx, const char *sym, int rel) {
+    if (ndupsym < 256) { dupsym_ln[ndupsym] = line; dupsym_op[ndupsym] = opidx; dupsym_rel[ndupsym] = rel;
+                         scopy(dupsym_sym[ndupsym], sym, 63); ndupsym++; }
+}
+static int dupsym_find(int line, int opidx) {
+    int i; for (i = 0; i < ndupsym; i++) if (dupsym_ln[i] == line && dupsym_op[i] == opidx) return i;
+    return -1;
+}
 /* The same, for a parenthesised LENGTH modifier, L(expr).  IFOX00 requires its
  * symbols previously defined too, and a statement that breaks the rule assembles
  * nothing: DS CL(L'NOSUCH) and DC CL(L'FWD)'W' reserve 0 bytes, with IFO179
@@ -5620,14 +5631,17 @@ static void do_pass(int pass, char **lines, int nlines) {
                              * tests/dupattr.s, rc 8).  Both agree with taking the
                              * undefined term as an absolute 0, which is what pass
                              * 1's expr_val_full does -- an inference from those
-                             * two oracles, not a measured rule. */
-                            char m[VALSZ];
-                            snprintf(m, sizeof m, "Duplication factor uses a symbol not previously defined (IFOX00 IFO231) - %.20s", ubad);
-                            note_operr(m, 8, i);
+                             * two oracles, not a measured rule.
+                             *
+                             * The first message depends on what happens LATER:
+                             * IFO231 for a symbol defined further down, IFO188 for
+                             * one never defined -- (NOSUCH)C, (NOSUCH+2)C and
+                             * (L'NOSUCH)C all draw IFO188 + IFO206 and no IFO231
+                             * (MVSTK5-REF JOB00279, tests/dupundef.s).  Pass 1
+                             * cannot know, so it records the reject and pass 2
+                             * writes all three, in this order. */
                             (void)expr_val_full(ex, &rl);
-                            if (rl != 0)
-                                note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
-                            note_operr("Duplication factor error - no storage reserved (IFOX00 IFO206)", 8, i);
+                            note_dupsym(i, oi, ubad, rl != 0);
                             note_dupbad(i, oi); cnt = 0;
                         } else if ((dv = expr_val_full(ex, &rl)), rl != 0) {   /* IFO217, severity 12 */
                             note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
@@ -5656,6 +5670,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                          * here and nowhere in pass 1. */
                         cnt = dup_rejected(i, oi) ? 0 : (int)expr_val_full(ex, NULL);
                         if (cnt < 0) cnt = 0;
+                        int dj = dupsym_find(i, oi);
+                        if (dj >= 0) {
+                            struct sym *ds = sym_find(dupsym_sym[dj]);
+                            if (ds && (ds->defined || ds->type == S_ER)) {
+                                char m[VALSZ];
+                                snprintf(m, sizeof m, "Duplication factor uses a symbol not previously defined (IFOX00 IFO231) - %.20s", dupsym_sym[dj]);
+                                note_operr(m, 8, i);
+                            } else note_undefsym(dupsym_sym[dj], i);             /* IFO188 */
+                            if (dupsym_rel[dj])
+                                note_operr("Relocatable duplication factor - an absolute expression is required (IFOX00 IFO217)", 12, i);
+                            note_operr("Duplication factor error - no storage reserved (IFOX00 IFO206)", 8, i);
+                        }
                     }
                 }
                 if (!hascnt) cnt = 1;
