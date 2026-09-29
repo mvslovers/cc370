@@ -6888,8 +6888,8 @@ expand_expr_real (tree exp, rtx target, enum machine_mode tmode,
 	    && GET_MODE_CLASS (mode) == MODE_INT
 	    && GET_MODE_SIZE (mode) == 1
 	    && modifier != EXPAND_WRITE)
-	  return gen_int_mode (TREE_STRING_POINTER (string)
-			       [TREE_INT_CST_LOW (index)], mode);
+	  return gen_int_mode (TARGET_STR_BYTE (TREE_STRING_POINTER (string)
+			        [TREE_INT_CST_LOW (index)]), mode);
 
 	op0 = expand_expr (exp1, NULL_RTX, VOIDmode, EXPAND_SUM);
 	op0 = memory_address (mode, op0);
@@ -6940,8 +6940,8 @@ expand_expr_real (tree exp, rtx target, enum machine_mode tmode,
 	    && compare_tree_int (index, TREE_STRING_LENGTH (array)) < 0
 	    && GET_MODE_CLASS (mode) == MODE_INT
 	    && GET_MODE_SIZE (mode) == 1)
-	  return gen_int_mode (TREE_STRING_POINTER (array)
-			       [TREE_INT_CST_LOW (index)], mode);
+	  return gen_int_mode (TARGET_STR_BYTE (TREE_STRING_POINTER (array)
+			        [TREE_INT_CST_LOW (index)]), mode);
 
 	/* If this is a constant index into a constant array,
 	   just get the value from the array.  Handle both the cases when
@@ -7006,8 +7006,8 @@ expand_expr_real (tree exp, rtx target, enum machine_mode tmode,
 
 		    if (GET_MODE_CLASS (mode) == MODE_INT
 			&& GET_MODE_SIZE (mode) == 1)
-		      return gen_int_mode (TREE_STRING_POINTER (init)
-					   [TREE_INT_CST_LOW (index)], mode);
+		      return gen_int_mode (TARGET_STR_BYTE (TREE_STRING_POINTER (init)
+					    [TREE_INT_CST_LOW (index)]), mode);
 		  }
 	      }
 	  }

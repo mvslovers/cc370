@@ -348,5 +348,43 @@ else
     echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
 fi
 
+# --- issue #487: a string byte read as a value must be the EBCDIC byte ---
+# At -O1 a read of a known string byte folds to a constant (expr.c), and a
+# designator into a string-initialised array splits the string into numbers
+# (c-typeck.c).  Both took the host byte; the program reads the mapped one.
+# char is unsigned on i370, so "a"[0] is 129.  "\x81" and "\xFF" check that
+# the escape pre-image maps back to the literal value.
+cat > "$WORK/sb.c" <<'EOF'
+static const char tbl[] = "ABC";
+const char gtbl[] = "ABC";
+int s_idx(void)  { return "a"[0]; }
+int s_ind(void)  { return *"a"; }
+int s_ind1(void) { return *("ab" + 1); }
+int s_stbl(void) { return tbl[0]; }
+int s_gtbl(void) { return gtbl[2]; }
+int s_nl(void)   { return "\n"[0]; }
+int s_esc(void)  { return "\x81"[0]; }
+int s_ff(void)   { return "\xFF"[0]; }
+struct ds { char s[6]; } dsg = { .s = "abcd", .s[1] = (char)0xF0 };
+EOF
+compile sb "$WORK/sb.c" "-std=gnu99 -O1"
+got=$(awk '/^\* X-func/{f=$3} /^[ \t]+LA +15,[0-9]+\(0,0\)/{print f ": " $2}
+           /^DSG /{d=1; s="dsg:"; next} d && /^[ \t]+DC /{s=s " " $2} d && /^[ \t]+DS /{print s; d=0}' "$WORK/sb.s")
+want="s_idx: 15,129(0,0)
+s_ind: 15,129(0,0)
+s_ind1: 15,130(0,0)
+s_stbl: 15,193(0,0)
+s_gtbl: 15,195(0,0)
+s_nl: 15,21(0,0)
+s_esc: 15,129(0,0)
+s_ff: 15,255(0,0)
+dsg: X'81' X'F0' X'83' X'84' X'00'"
+if [ "$got" = "$want" ]; then
+    echo "string-byte-fold: OK (folded string bytes and split initialisers are EBCDIC)"
+else
+    echo "string-byte-fold: FAIL"; echo "   got:"; echo "$got" | sed 's/^/      /'
+    echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail

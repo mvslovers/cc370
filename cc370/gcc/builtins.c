@@ -328,18 +328,8 @@ c_strlen (tree src, int only_value)
   return ssize_int (strlen (ptr + offset));
 }
 
-/* A string constant holds host-charset bytes until it is output; on an
-   EBCDIC target ASM_OUTPUT_ASCII translates each byte through the same
-   table as HOST_CHARCONST_TO_TARGET.  A fold that turns a string byte into
-   a value, or compares two strings, must use the byte the program will
-   actually see at run time.  */
-#ifdef HOST_CHARCONST_TO_TARGET
-#define TARGET_STR_BYTE(C) ((unsigned int) HOST_CHARCONST_TO_TARGET (C))
-#else
-#define TARGET_STR_BYTE(C) ((unsigned int) (unsigned char) (C))
-#endif
-
-/* memcmp/strncmp of two host strings in target byte order.  If STOP_AT_NUL,
+/* memcmp/strncmp of two host strings in target byte order (TARGET_STR_BYTE,
+   defaults.h: the bytes the program compares at run time).  If STOP_AT_NUL,
    stop after a NUL, as strncmp does; the table maps only NUL to NUL.  */
 
 static int
