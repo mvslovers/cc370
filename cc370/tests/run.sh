@@ -448,5 +448,37 @@ else
     echo "if-charset: FAIL"; echo "   got:  $got"; echo "   want: $want"; fail=1
 fi
 
+# --- issue #467: long long / % * by a constant must stay a libcall ---
+# The DR/D and MR/M helper insns used to read as (div:DI ...), (mod:DI ...)
+# and (mult:DI ...), so delete_trivially_dead_insns (dead_libcall_p, cse.c)
+# replaced the __divdi3/__moddi3/__muldi3 libcall with its REG_EQUAL note --
+# a single 32-bit DR or M on the 64-bit value, at -O0 as well as -O1.
+# The pre-fix cc1 emits DR, DR and M for the three DI functions.  The SI
+# functions are the control: they must keep the inline DR/MR.
+cat > "$WORK/dq.c" <<'EOF'
+long long d_div(long long a) { return a / 10; }
+long long d_mod(long long a) { return a % 10; }
+long long d_mul(long long a) { return a * 123456789; }
+int s_div(int a) { return a / 10; }
+int s_mod(int a) { return a % 10; }
+unsigned u_div(unsigned a) { return a / 10; }
+int s_mul(int a) { return a * 123456789; }
+EOF
+compile dq "$WORK/dq.c" "-O1"
+got=$(awk '/^\* X-func/{f=$3} /=V\(@@|^[ \t]+(DR|D|MR|M)[ \t]/{print f ": " $1 " " $2}' "$WORK/dq.s")
+want="d_div: L 15,=V(@@DIVDI3)
+d_mod: L 15,=V(@@MODDI3)
+d_mul: L 15,=V(@@MULDI3)
+s_div: DR 2,4
+s_mod: DR 2,4
+u_div: DR 2,4
+s_mul: MR 2,4"
+if [ "$got" = "$want" ]; then
+    echo "di-const: OK (long long / % * by a constant call the helpers, int keeps DR/MR)"
+else
+    echo "di-const: FAIL"; echo "   got:"; echo "$got" | sed 's/^/      /'
+    echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
