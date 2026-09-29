@@ -741,13 +741,21 @@ lex_charconst (const cpp_token *token)
      produced -- otherwise e.g. 'A' (65) never equals a byte read from a CP037
      data set (0xC1).  Map each byte through the target table; byte positions
      are preserved, so multi-character constants are handled correctly too.
-     Wide character constants are left untouched.  */
-  if (token->type == CPP_CHAR && chars_seen > 0)
+
+     A wide character constant is mapped the same way, over every byte of its
+     wchar_t: that is what ASM_OUTPUT_ASCII does to each element of a wide
+     string literal, so L'x' and L"x"[0] come out equal.  A numeric escape was
+     pre-imaged byte by byte in cppcharset.c, so it maps back to its literal
+     value.  */
+  if ((token->type == CPP_CHAR && chars_seen > 0) || token->type == CPP_WCHAR)
     {
       cppchar_t mapped = 0;
-      unsigned int i;
+      unsigned int i, nbytes;
 
-      for (i = 0; i < chars_seen && i < sizeof (cppchar_t); i++)
+      nbytes = (token->type == CPP_WCHAR
+		? TYPE_PRECISION (wchar_type_node) / BITS_PER_UNIT
+		: chars_seen);
+      for (i = 0; i < nbytes && i < sizeof (cppchar_t); i++)
 	{
 	  unsigned int byte = (result >> (i * 8)) & 0xFF;
 	  mapped |= (cppchar_t) HOST_CHARCONST_TO_TARGET (byte) << (i * 8);

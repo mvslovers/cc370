@@ -256,5 +256,48 @@ else
     echo "libcall-keep: FAIL"; echo "   got:  $got"; echo "   want: $want"; fail=1
 fi
 
+# --- issue #484: a wide character constant must carry the same EBCDIC value ---
+# as a narrow one and as the element of a wide string literal.  The string
+# element is emitted byte by byte through MAP_OUTCHAR, so the constant is
+# mapped the same way, and a numeric escape is pre-imaged on the wide path as
+# it is on the narrow one, so that it stays the literal value in both.
+# Printable bytes leave as C'..' and become EBCDIC in the assembler: C'a' is
+# X'81'.
+cat > "$WORK/wc.c" <<'EOF'
+int wa = L'a';
+int na = 'a';
+int wn = L'\n';
+int nn = '\n';
+int wx = L'\x81';
+int nx = '\x81';
+int wy = L'\x141';
+const int sa[] = L"a";
+const int sn[] = L"\n";
+const int sx[] = L"\x81";
+const int sy[] = L"\x141";
+EOF
+compile wc "$WORK/wc.c"
+# One line per symbol: its DC operands, up to the terminating element.
+got=$(awk '/ EQU /{if (s) print s; s=$1 ":"; next}
+           /^[[:space:]]+DC[[:space:]]/{s=s " " $2}
+           END{print s}' "$WORK/wc.s" | sed "s/ X'0' X'0' X'0' X'0'\$//")
+want="WA: F'129'
+NA: F'129'
+WN: F'21'
+NN: F'21'
+WX: F'129'
+NX: F'129'
+WY: F'321'
+SA: X'0' X'0' X'0' C'a'
+SN: X'0' X'0' X'0' X'15'
+SX: X'0' X'0' X'0' C'a'
+SY: X'0' X'0' X'1' X'41'"
+if [ "$got" = "$want" ]; then
+    echo "wide-charconst: OK (L'x' == 'x' == L\"x\"[0], escapes literal)"
+else
+    echo "wide-charconst: FAIL"; echo "   got:"; echo "$got" | sed 's/^/      /'
+    echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
