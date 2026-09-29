@@ -575,6 +575,12 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   `CLC =A(G),NOSUCH` as the control). Tree gate: 0 of 5,528 decks moved. That was
   the last open site of #184's ledger; the four toggles still unguarded are the
   four #347 cleared (`vref()` ×2, the length modifier ×2).
+- **one of the four "cleared" sites was not clean: #497, fixed.** The length
+  modifier's scan (`L(...)`, `L.(...)`) toggled on `L'` too. #347 checked it on
+  `DS CL(L'FLD)`, which reserves the same either way; a `DC` loses its nominal
+  value (`DC CL(L'FWD)'Z'` → `4040404040`, IFOX00 `E940404040`, JOB00277; bit
+  lengths JOB00278). The other two, in `vref()`, were cleared the same way and
+  have not been re-checked against a construct that has a value after the `)`.
 - not one of the three, same family: `x_factor` is silent on `DC AL2(L'NOSUCH)`
   where IFOX00 raises IFO188 — **#474**. Measured (JOB00275): IFOX00 assembles
   `0000`, as370 `0001`. The obvious fix (IFO188 and 0 in pass 2) matches that deck
