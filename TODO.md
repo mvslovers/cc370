@@ -1457,6 +1457,13 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-29 — #184, MERGED as `5bbff09` (PR #495).** The literal loop in
+  `scan_undef_terms()` no longer opens a string on the `'` of `L'`, so
+  `CLC =A(L'G),NOSUCH` is zeroed as IFOX00 does (MVSTK5-REF JOB00275,
+  `tests/litattr.s`). The last open site of the ledger; #184 is closed. Tree gate:
+  0 of 5,528 decks moved. The same capture measured #474 (`0000` in IFOX00, `0001`
+  here); its fix is blocked on #494, which the obvious version breaks.
+
 - **2026-09-29 — #473, MERGED as `20fd4f7` (PR #492).** `undefined_term()` no
   longer opens a string on the apostrophe of `L'`, so `DS (L'G+X)C` with a forward
   `X` draws IFO231 + IFO206 at rc 8 and reserves nothing, as IFOX00 does
