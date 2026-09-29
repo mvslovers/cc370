@@ -1550,6 +1550,23 @@ else
     echo "dupundef bits: OK (== IFOX00 -- a bit length with an undefined or forward symbol assembles nothing)"
 fi
 rm -f /tmp/_bl.obj /tmp/_bl.out
+# --- issue #500: ORG *+L'FWD does not move between the passes ---------------
+# as370 evaluated the ORG in both passes: L'FWD was 0 in pass 1 and 5 in pass 2,
+# so H landed 5 bytes past its own value. IFOX00 flags IFO231 and leaves the
+# counter (JOB00279): H at 000005, A(H) = 5. Now the whole dupundef deck, END
+# card excepted, and the IFO231 on the ORG.
+./as370 tests/dupundef.s -o /tmp/_og.obj >/tmp/_og.out 2>&1
+ogsz=$(wc -c < /tmp/_og.obj); ogrsz=$(wc -c < tests/ref/dupundef.obj)
+ognbe=$(( (ogrsz / 80 - 1) * 80 ))
+head -c "$ognbe" /tmp/_og.obj > /tmp/_og_a.$$; head -c "$ognbe" tests/ref/dupundef.obj > /tmp/_og_b.$$
+if [ "$ogsz" != "$ogrsz" ] || ! cmp -s /tmp/_og_a.$$ /tmp/_og_b.$$; then
+    echo "dupundef deck: MISMATCH (not IFOX00's -- ORG *+L'FWD must not move)"; fail=1
+elif ! grep -q "IFO231) - FWD in line 23" /tmp/_og.out; then
+    echo "dupundef deck: ORG *+L'FWD must be IFO231"; fail=1
+else
+    echo "dupundef deck: OK (== IFOX00 -- ORG *+L'FWD is IFO231 and moves nothing)"
+fi
+rm -f /tmp/_og.obj /tmp/_og.out /tmp/_og_a.$$ /tmp/_og_b.$$
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one

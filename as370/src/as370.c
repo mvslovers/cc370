@@ -4489,6 +4489,22 @@ static const char *equ_rejected(int line) {
     int i; for (i = 0; i < nequbad; i++) if (equbad_ln[i] == line) return equbad_sym[i];
     return NULL;
 }
+/* An ORG whose operand took L' of a symbol not defined in pass 1.  IFOX00 flags
+ * ORG *+L'FWD IFO231 and leaves the counter where it was (MVSTK5-REF JOB00279,
+ * tests/dupundef.s); as370 evaluated the operand in both passes, so pass 1 moved
+ * by 0 and pass 2 by 5 and every symbol after it stopped matching its address
+ * (cc370#500).  Pass 1 keeps the value it computed -- the term is 0 there, which
+ * gives *+0 -- and pass 2 uses that value instead of re-evaluating.  The fixture
+ * cannot tell "the term is 0" from "the ORG is ignored"; both give *+0.  A plain
+ * forward symbol without L' was not measured and is left alone. */
+static int orgbad_ln[256]; static long orgbad_val[256]; static char orgbad_sym[256][64]; static int norgbad;
+static void note_orgbad(int line, long val, const char *sym) {
+    if (norgbad < 256) { orgbad_ln[norgbad] = line; orgbad_val[norgbad] = val; scopy(orgbad_sym[norgbad], sym, 63); norgbad++; }
+}
+static int org_rejected(int line) {
+    int i; for (i = 0; i < norgbad; i++) if (orgbad_ln[i] == line) return i;
+    return -1;
+}
 /* A DC/DS operand whose parenthesised duplication factor pass 1 REJECTED.
  *
  * The reject has to be remembered rather than re-derived, and that is the whole
@@ -5525,7 +5541,20 @@ static void do_pass(int pass, char **lines, int nlines) {
             }
         } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
             if (lc > org_hwm) org_hwm = lc;
-            lc = (!opnd[0] || opnd[0] == ',') ? org_hwm : expr_val(opnd, NULL);   /* bare ORG or `ORG ,` resets to the high-water mark */
+            if (!opnd[0] || opnd[0] == ',') lc = org_hwm;       /* bare ORG or `ORG ,` resets to the high-water mark */
+            else {
+                char ob[64]; int oj;
+                if (pass == 1 && undefined_lattr(opnd, ob)) { lc = expr_val(opnd, NULL); note_orgbad(i, lc, ob); }   /* see note_orgbad */
+                else if (pass == 2 && (oj = org_rejected(i)) >= 0) {
+                    lc = orgbad_val[oj];
+                    struct sym *os = sym_find(orgbad_sym[oj]);
+                    if (os && (os->defined || os->type == S_ER)) {
+                        char m[VALSZ];
+                        snprintf(m, sizeof m, "Symbol not previously defined (IFOX00 IFO231) - %.20s", orgbad_sym[oj]);
+                        note_operr(m, 8, i);
+                    } else note_undefsym(orgbad_sym[oj], i);       /* IFO188 */
+                } else lc = expr_val(opnd, NULL);
+            }
             /* LOC keeps the counter on the way IN -- lrecs was stamped with it
              * before the statement ran -- and IFOX00 puts the NEW counter in
              * ADDR2, for all three forms: `ORG *-4', a bare ORG, and `ORG expr',

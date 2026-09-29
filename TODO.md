@@ -596,8 +596,10 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   never-defined symbol is IFO188, not IFO231 -- **fixed** (JOB00279,
   `tests/dupundef.s`). The bit length `L.(expr)` follows the length modifier
   (IFO179, nothing assembled) -- **fixed**, which closes #494.
-  Found on the way, not measured: `ORG *+L'FWD` lays out different addresses in
-  the two passes, already on `main` before any of this (**#500**).
+  Found on the way: `ORG *+L'FWD` laid out different addresses in the two passes,
+  already on `main` before any of this (**#500**) -- measured (JOB00279: IFO231,
+  the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
+  measured and is unchanged.
 
 ### 8 · #241 — twenty modules longer than IFOX00, one of them readable
 
