@@ -696,4 +696,17 @@ You Lose!  You must define PREFERRED_DEBUGGING_TYPE!
 #define EXIT_IGNORE_STACK 0
 #endif
 
+/* A string constant holds host-charset bytes until it is output; on an
+   EBCDIC target ASM_OUTPUT_ASCII translates each byte through the same
+   table as HOST_CHARCONST_TO_TARGET.  Anything that reads a string byte as
+   a value -- a fold, a compare, an initialiser split into elements -- must
+   use the byte the program will see at run time.  Evaluates C once.  */
+#ifndef TARGET_STR_BYTE
+#ifdef HOST_CHARCONST_TO_TARGET
+#define TARGET_STR_BYTE(C) ((unsigned int) HOST_CHARCONST_TO_TARGET (C))
+#else
+#define TARGET_STR_BYTE(C) ((unsigned int) (unsigned char) (C))
+#endif
+#endif
+
 #endif  /* ! GCC_DEFAULTS_H */

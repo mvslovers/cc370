@@ -5462,7 +5462,7 @@ set_nonincremental_init_from_string (tree str)
     {
       if (wchar_bytes == 1)
 	{
-	  val[1] = (unsigned char) *p++;
+	  val[1] = TARGET_STR_BYTE (*p++);
 	  val[0] = 0;
 	}
       else
@@ -5476,7 +5476,7 @@ set_nonincremental_init_from_string (tree str)
 	      else
 		bitpos = byte * charwidth;
 	      val[bitpos < HOST_BITS_PER_WIDE_INT]
-		|= ((unsigned HOST_WIDE_INT) ((unsigned char) *p++))
+		|= ((unsigned HOST_WIDE_INT) TARGET_STR_BYTE (*p++))
 		   << (bitpos % HOST_BITS_PER_WIDE_INT);
 	    }
 	}
