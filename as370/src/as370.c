@@ -5707,8 +5707,24 @@ static void do_pass(int pass, char **lines, int nlines) {
                         }
                         char ex2[256]; int en2 = (int)(q - st); if (en2 > 255) en2 = 255;
                         memcpy(ex2, st, (size_t)en2); ex2[en2] = 0;
-                        bitlen = (int)expr_val_full(ex2, NULL);
-                        p = *q ? q + 1 : q; }
+                        p = *q ? q + 1 : q;
+                        /* The same rule as the byte length below (note_lenbad):
+                         * DC BL.(L'NOSUCH)'1' is IFO188 + IFO179 and DC
+                         * BL.(L'FWD)'1' IFO231 + IFO179, and neither assembles
+                         * anything (MVSTK5-REF JOB00279, tests/dupundef.s). */
+                        char bbad[64]; const char *brej;
+                        if (pass == 1 && undefined_term(ex2, bbad)) {
+                            note_lenbad(i, oi, bbad); cnt = 0; bitlen = 1;
+                        } else if (pass == 2 && (brej = len_rejected(i, oi)) != NULL) {
+                            struct sym *bs = sym_find(brej);
+                            if (bs && (bs->defined || bs->type == S_ER)) {
+                                char m[VALSZ];
+                                snprintf(m, sizeof m, "Length modifier uses a symbol not previously defined (IFOX00 IFO231) - %.20s", brej);
+                                note_operr(m, 8, i);
+                            } else note_undefsym(brej, i);                    /* IFO188 */
+                            note_operr("Length modifier must be absolute - nothing assembled (IFOX00 IFO179)", 8, i);
+                            cnt = 0; bitlen = 1;
+                        } else bitlen = (int)expr_val_full(ex2, NULL); }
                     else while (isdigit((unsigned char)*p)) bitlen = bitlen * 10 + (*p++ - '0');
                     if (bitlen < 1) bitlen = 1;
                 }
