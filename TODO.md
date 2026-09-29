@@ -594,8 +594,8 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   symbol is 0) -- **fixed**; `litattr`, `lenundef` and `attrfwd` are now
   byte-identical to IFOX00 before the END card. A duplication factor with a
   never-defined symbol is IFO188, not IFO231 -- **fixed** (JOB00279,
-  `tests/dupundef.s`). Still open under #494: the bit length `L.(expr)`, which
-  IFOX00 treats like the length modifier (IFO179, nothing assembled).
+  `tests/dupundef.s`). The bit length `L.(expr)` follows the length modifier
+  (IFO179, nothing assembled) -- **fixed**, which closes #494.
   Found on the way, not measured: `ORG *+L'FWD` lays out different addresses in
   the two passes, already on `main` before any of this (**#500**).
 

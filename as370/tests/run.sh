@@ -1534,6 +1534,22 @@ else
     echo "dupundef: OK (== IFOX00 -- IFO188 for a never-defined symbol, IFO231 for a forward one)"
 fi
 rm -f /tmp/_du.obj /tmp/_du.out /tmp/_du2.obj /tmp/_du2.out
+# --- issue #494: a bit length needs its symbols previously defined too ------
+# DC BL.(L'NOSUCH)'1' is IFO188 + IFO179 and DC BL.(L'FWD)'1' IFO231 + IFO179, and
+# neither assembles anything (JOB00279, dupundef). as370 assembled 80 and 08.
+# M1..M5 are then the first five text bytes, F1..F5 at 000000-000004, as in the
+# IFOX00 deck; the ORG after them is #500, so the rest of the deck waits.
+./as370 tests/dupundef.s -o /tmp/_bl.obj >/tmp/_bl.out 2>&1
+bl=$(od -An -tx1 -j96 -N5 /tmp/_bl.obj | tr -d ' \n'); blref=$(od -An -tx1 -j96 -N5 tests/ref/dupundef.obj | tr -d ' \n')
+if [ "$bl" != "$blref" ]; then
+    echo "dupundef bits: MISMATCH (text $bl, IFOX00 $blref -- B1/B2 must assemble nothing)"; fail=1
+elif ! grep -q "IFO179) in line 19" /tmp/_bl.out || ! grep -q "Undefined symbol in line 19 - NOSUCH" /tmp/_bl.out \
+     || ! grep -q "IFO179) in line 21" /tmp/_bl.out || ! grep -q "IFO231) - FWD in line 21" /tmp/_bl.out; then
+    echo "dupundef bits: MISMATCH (want IFO188 + IFO179 on B1, IFO231 + IFO179 on B2)"; fail=1
+else
+    echo "dupundef bits: OK (== IFOX00 -- a bit length with an undefined or forward symbol assembles nothing)"
+fi
+rm -f /tmp/_bl.obj /tmp/_bl.out
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one
