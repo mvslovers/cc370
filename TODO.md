@@ -1475,6 +1475,30 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-29 — #497, #494, #474, #500: `L'` of an undefined or forward symbol,
+  six PRs, each gated alone.** Measured on MVSTK5-REF, JOB00276-00279, every
+  capture inside a macro-snapshot bracket (the last one closed only after the
+  oracle's HTTPD was restarted, mvslovers/mvsmf#372).
+  - `9fbedf1` (PR #498, #497): the length-modifier scan toggled on `L'` —
+    `DC CL(L'X)'Z'` lost its `Z`. One of the four sites #347 had cleared on a
+    `DS`. 0 decks.
+  - `4a34f70` (PR #499): a length modifier needs its symbols previously defined;
+    otherwise IFO179 and nothing assembled, forward symbols included, remembered
+    from pass 1. 0 decks.
+  - `b52d216` (PR #501, #474): `L'` of an undefined symbol is 0 (IFO188), `EQU
+    L'FWD` is 0 (IFO231). One deck, IECVMAP, toward IFOX00.
+  - `15fbbfe` (PR #502): a never-defined symbol in a duplication factor is
+    IFO188, not IFO231. 0 decks.
+  - `8dc684d` (PR #503, closes #494): the bit length follows the length
+    modifier. 0 decks.
+  - `b843581` (PR #504, #500): `ORG *+L'FWD` moved the counter differently in the
+    two passes (on `main` before any of this); now IFO231 and pass 1's value.
+    0 decks.
+
+  Not measured, left alone: a plain forward symbol in `EQU` or `ORG` without
+  `L'`, and the two `vref()` toggles #347 cleared on the same reasoning that
+  failed for #497.
+
 - **2026-09-29 — #184, MERGED as `5bbff09` (PR #495).** The literal loop in
   `scan_undef_terms()` no longer opens a string on the `'` of `L'`, so
   `CLC =A(L'G),NOSUCH` is zeroed as IFOX00 does (MVSTK5-REF JOB00275,
