@@ -5608,7 +5608,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     haslen = 1;
                     if (*p == '(') { const char *st = p + 1, *q = st; int d = 1, qt = 0;
                         for (; *q; q++) {
-                            if (*q == '\'') { qt = !qt; continue; }
+                            if (*q == '\'') { if (qt || !attr_apos(p, (int)(q - p))) qt = !qt; continue; }   /* see L( below */
                             if (qt) continue;
                             if (*q == '(') d++;
                             else if (*q == ')' && --d == 0) break;
@@ -5629,10 +5629,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * still gives the wrong length -- paren-only yields 0,
                      * expr_val_full-only yields twenty times too many bytes --
                      * so both, with the same balanced scan the duplication
-                     * factor uses.  A length of 0 stays legal: DS 0CL(...) is. */
+                     * factor uses.  A length of 0 stays legal: DS 0CL(...) is.
+                     *
+                     * And the attribute guard the duplication factor carries
+                     * (#184): toggling on the ' of L'FLD left the state inverted,
+                     * the ')' was never found and the scan ran on through the
+                     * nominal value, so DC CL(L'FWD)'Z' kept its length and lost
+                     * its 'Z' -- 4040404040 where IFOX00 assembles E940404040
+                     * (MVSTK5-REF JOB00277, tests/attrfwd.s).  DS reserves the
+                     * same either way, which is why #347 found this site clean. */
                     if (*p == '(') { const char *st = p + 1, *q = st; int d = 1, qt = 0;
                         for (; *q; q++) {
-                            if (*q == '\'') { qt = !qt; continue; }
+                            if (*q == '\'') { if (qt || !attr_apos(p, (int)(q - p))) qt = !qt; continue; }
                             if (qt) continue;
                             if (*q == '(') d++;
                             else if (*q == ')' && --d == 0) break;

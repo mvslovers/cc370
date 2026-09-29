@@ -1446,6 +1446,27 @@ else
     echo "litattr: OK (== IFOX00 -- CLC =A(L'G),NOSUCH is zeroed)"
 fi
 rm -f /tmp/_la.obj
+# --- issue #497: an attribute in a parenthesised length modifier -------------
+# The balanced scan for L(...) and L.(...) toggled on the ' of L'F, never found
+# the ')' and ran on through the nominal value: DC BL.(L'F)'1' assembled 00 and
+# DC CL(L'FWD)'Z' 4040404040. IFOX00: 80 / ABC0 (MVSTK5-REF JOB00278, the whole
+# deck here, END card excepted) and E940404040 (JOB00277; attrfwd's full deck
+# also needs #494, so only Z's value is asserted from it).
+./as370 tests/bitattr.s -o /tmp/_ba.obj >/dev/null 2>&1; rcba=$?
+basz=$(wc -c < /tmp/_ba.obj); barsz=$(wc -c < tests/ref/bitattr.obj)
+banbe=$(( (barsz / 80 - 1) * 80 ))
+head -c "$banbe" /tmp/_ba.obj > /tmp/_ba_a.$$; head -c "$banbe" tests/ref/bitattr.obj > /tmp/_ba_b.$$
+./as370 tests/attrfwd.s -o /tmp/_ba_l.obj >/dev/null 2>&1
+if [ $rcba != 0 ]; then
+    echo "bitattr: expected RC 0, got $rcba"; fail=1
+elif [ "$basz" != "$barsz" ] || ! cmp -s /tmp/_ba_a.$$ /tmp/_ba_b.$$; then
+    echo "bitattr: MISMATCH (not IFOX00's deck -- BL.(L'F)'1' must be 80)"; fail=1
+elif ! od -An -tx1 /tmp/_ba_l.obj | tr -d ' \n' | grep -q e940404040; then
+    echo "attrfwd: MISMATCH (DC CL(L'FWD)'Z' lost its Z; IFOX00 has E940404040)"; fail=1
+else
+    echo "bitattr: OK (== IFOX00 -- a length modifier with L' keeps its value)"
+fi
+rm -f /tmp/_ba.obj /tmp/_ba_l.obj /tmp/_ba_a.$$ /tmp/_ba_b.$$
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one
