@@ -10,14 +10,14 @@
 *                                                                               
 *  VLIST per SC28-1883-0 §14:                                                  
 *    P1  function code         (CL8 'INITENVB')                                 
-*    P2  parameter module name (CL8 blank — let IRXINIT default)              
+*    P2  parameter module name (CL8 blank - let IRXINIT default)              
 *    P3  caller PARMBLOCK addr (fullword 0)                                     
 *    P4  user field            (fullword 0)                                     
 *    P5  reserved              (addr of fullword zero)                          
 *    P6  out: ENVBLOCK addr    (fullword)                                       
 *    P7  out: reason code      (fullword, VL endmarker)                         
 *                                                                               
-*  WTO output (50-char fixed layout — keeps the source DC inside              
+*  WTO output (50-char fixed layout - keeps the source DC inside              
 *  the IFOX00 col-16-to-col-71 operand window):                                 
 *    TINITVL OK   ENV=xxxxxxxx RC=xxxxxxxx REA=xxxxxxxx                         
 *    TINITVL FAIL ENV=xxxxxxxx RC=xxxxxxxx REA=xxxxxxxx                         
@@ -27,7 +27,7 @@
 *     8  LOAD EP=IRXINIT failed (IRXINIT not on STEPLIB)                        
 *    20  IRXINIT non-zero RC or eye-catcher mismatch                            
 *                                                                               
-*  The ENVBLOCK is intentionally NOT terminated — TTERMVL covers              
+*  The ENVBLOCK is intentionally NOT terminated - TTERMVL covers              
 *  the IRXINIT + IRXTERM pairing. The address space ends with the               
 *  job step, so MVS reclaims any leaked storage at job end.                     
 *                                                                               

@@ -3836,5 +3836,68 @@ done
 [ $endfail = 0 ] || fail=$((fail + 1))
 rm -f /tmp/_end$$.obj
 
+# --- issue #483: a UTF-8 source is read one byte per CHARACTER --------------
+# brexx370 vtocchek.asm: `DC C'  = ¬=< <=> >='' with a sequence field. Read byte
+# by byte, `¬' (C2 AC) became X'62' X'5F' -- the operator table one byte long --
+# and the extra byte pushed the `G' of `014G' into column 72, so the comment card
+# under it was eaten as a continuation (IFO026).
+#   pre-fix binary: rc 4, 18 text bytes (62 5F, 62 4A), IFO026; wide: rc 0.
+# Controls, each able to fail in a direction the target cannot:
+#   latin1  the same source in Latin-1 (single X'AC') must assemble identically
+#           -- libc370/brexx370 macros and 2,089 MVSBLD modules are Latin-1, so a
+#           fix that decoded everything as UTF-8 would break them;
+#   rawsub  a Latin-1 file with a raw X'1A' in a constant stays rc 0 (two MVSBLD
+#           modules have one): only a DECODED character with no image is an error;
+#   lib     a UTF-8 COPY member is decoded as well (the second reader);
+#   wide    U+2013 on a comment card is severity 4 and eats nothing; in a
+#           constant it is 8 (the libc370 jesiropn.s shape, `SETC '––...'').
+u8=/tmp/_u8.$$; mkdir -p "$u8"
+python3 - "$u8" <<'EOF'
+import sys
+d = sys.argv[1]
+def card(s, seq=''): return (s.ljust(72) + seq.ljust(8)).rstrip()
+body = [card("U8       CSECT"),
+        "OPERS2   DC    C'  = ¬=< <=> >='".ljust(67) + "014G 10410000",
+        card("* A COMMENT CARD THAT MUST NOT BE EATEN"),
+        card("L2       DC    C'¢|'"),
+        card("         COPY  U8COPY"),
+        card("         END")]
+open(d + "/utf8.s", "w", encoding="utf-8").write("﻿" + "\n".join(body) + "\n")
+open(d + "/latin1.s", "w", encoding="latin-1").write("\n".join(body) + "\n")
+open(d + "/U8COPY.copy", "w", encoding="utf-8").write(card("L3       DC    C'¬'") + "\n")
+open(d + "/rawsub.s", "wb").write(b"R        CSECT\n         DC    C'\xac\x1a'\n         END\n")
+open(d + "/widec.s", "w", encoding="utf-8").write(
+    card("W        CSECT") + "\n" + card("* EN DASH – IN A COMMENT") + "\n" +
+    card("         DC    C'A'") + "\n" + card("         END") + "\n")
+open(d + "/wided.s", "w", encoding="utf-8").write(
+    card("W        CSECT") + "\n" + card("         DC    C'––X'") + "\n" + card("         END") + "\n")
+EOF
+u8txt() { python3 -c "
+import sys; d=open(sys.argv[1],'rb').read(); t=b''
+for i in range(0,len(d),80):
+    c=d[i:i+80]
+    if c[1:4]==bytes([0xE3,0xE7,0xE3]): t+=c[16:16+int.from_bytes(c[10:12],'big')]
+print(t.hex())" "$1"; }
+./as370 "$u8/utf8.s"   -I "$u8" -o "$u8/utf8.obj"   >"$u8/utf8.out"   2>&1; rcU=$?
+./as370 "$u8/latin1.s" -I "$u8" -o "$u8/latin1.obj" >"$u8/latin1.out" 2>&1; rcL=$?
+./as370 "$u8/rawsub.s" -o "$u8/rawsub.obj" >"$u8/rawsub.out" 2>&1; rcR=$?
+./as370 "$u8/widec.s"  -o "$u8/widec.obj"  >"$u8/widec.out"  2>&1; rcC=$?
+./as370 "$u8/wided.s"  -o "$u8/wided.obj"  >"$u8/wided.out"  2>&1; rcD=$?
+want=40407e405f7e4c404c7e6e406e7e4a4f5f
+if [ $rcU != 0 ] || [ "$(u8txt "$u8/utf8.obj")" != "$want" ]; then
+    echo "utf8src: FAIL -- rc $rcU, text $(u8txt "$u8/utf8.obj"), wanted rc 0 and $want"; cat "$u8/utf8.out"; fail=$((fail + 1))
+elif [ $rcL != 0 ] || [ "$(u8txt "$u8/latin1.obj")" != "$want" ]; then
+    echo "utf8src: FAIL -- the Latin-1 control changed: rc $rcL, text $(u8txt "$u8/latin1.obj")"; cat "$u8/latin1.out"; fail=$((fail + 1))
+elif [ $rcR != 0 ] || [ "$(u8txt "$u8/rawsub.obj")" != 5f3f ]; then
+    echo "utf8src: FAIL -- a raw X'1A' in a Latin-1 file: rc $rcR, text $(u8txt "$u8/rawsub.obj"), wanted rc 0 and 5f3f"; fail=$((fail + 1))
+elif [ $rcC != 4 ] || ! grep -q 'U+2013' "$u8/widec.out" || [ "$(u8txt "$u8/widec.obj")" != c1 ]; then
+    echo "utf8src: FAIL -- U+2013 on a comment card: rc $rcC (want 4), text $(u8txt "$u8/widec.obj") (want c1)"; cat "$u8/widec.out"; fail=$((fail + 1))
+elif [ $rcD != 8 ] || [ "$(u8txt "$u8/wided.obj")" != 3f3fe7 ]; then
+    echo "utf8src: FAIL -- U+2013 in a constant: rc $rcD (want 8), text $(u8txt "$u8/wided.obj") (want 3f3fe7)"; cat "$u8/wided.out"; fail=$((fail + 1))
+else
+    echo "utf8src: OK (UTF-8 decoded per character, columns kept; Latin-1 unchanged; no-image character 4 on a card, 8 in a constant)"
+fi
+rm -rf "$u8"
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
