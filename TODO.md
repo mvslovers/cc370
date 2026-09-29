@@ -1475,7 +1475,7 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
-- **2026-09-30 — #511, MERGED as `be1ad1a` (PR #514).** cc370 left UTF-8 string
+- **2026-09-29 — #511, MERGED as `be1ad1a` (PR #514).** cc370 left UTF-8 string
   literals unconverted, so the Latin-1 -> CP037 output pass saw two bytes per
   character (`"a¬b"` sizeof 5, `'¬'` = 25183). The narrow execution set is now
   ISO-8859-1 and the input set is decided per file like as370 (#483), with
