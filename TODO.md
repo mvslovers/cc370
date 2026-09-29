@@ -590,8 +590,12 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   symbol. **Measured since** (JOB00276, JOB00277): a length modifier needs its
   symbols previously defined and assembles nothing otherwise (IFO179), even for a
   forward symbol -- fixed, remembered from pass 1 like the duplication factor.
-  Still open under #494: `EQU L'X` is 0 with IFO188/IFO231 (then #474 itself),
-  and a duplication factor with a never-defined symbol is IFO188, not IFO231.
+  `EQU L'X` is 0 with IFO188/IFO231, and #474 itself (`L'` of an undefined
+  symbol is 0) -- **fixed**; `litattr`, `lenundef` and `attrfwd` are now
+  byte-identical to IFOX00 before the END card. Still open under #494: a
+  duplication factor with a never-defined symbol is IFO188, not IFO231.
+  Found on the way, not measured: `ORG *+L'FWD` lays out different addresses in
+  the two passes, already on `main` before any of this (**#500**).
 
 ### 8 · #241 — twenty modules longer than IFOX00, one of them readable
 

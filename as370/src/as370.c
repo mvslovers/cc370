@@ -888,7 +888,22 @@ static long x_factor(int sign) {
         xp_ += 2;
         if (*xp_ == '*') { xp_++; return 1; }
         char nm[64]; int n = 0; while (*xp_ && !strchr("+-*/(), ", *xp_) && n < 63) nm[n++] = *xp_++; nm[n] = 0;
-        struct sym *s = sym_find(nm); return s ? (s->len ? s->len : 1) : 1;
+        struct sym *s = sym_find(nm);
+        /* A symbol that is not defined (yet) has the length attribute 0, not 1:
+         * IFOX00 assembles DC AL2(L'NOSUCH) as 0000 and equates LEN EQU L'NOSUCH
+         * and LEN EQU L'FWD to 0 (MVSTK5-REF JOB00275-00277, tests/litattr.s,
+         * tests/lenundef.s, tests/attrfwd.s; cc370#474, #494).  In pass 2 a
+         * symbol still undefined is IFO188, as in the ordinary-term branch
+         * below; a forward one is defined by then and has its real length, which
+         * is what IFOX00 gives DC AL1(L'FWD).  The places where a pass-1 value
+         * would decide a length -- a length modifier, a duplication factor --
+         * reject an undefined symbol before evaluating, so pass 1 and pass 2
+         * cannot disagree there. */
+        if (!s || (!s->defined && s->type != S_ER)) {
+            if (g_pass == 2 && nm[0]) note_undefsym(nm, g_curln);
+            return 0;
+        }
+        return s->len ? s->len : 1;
     }
     if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
         char kind = *xp_; xp_ += 2; long v = 0;
@@ -4438,6 +4453,42 @@ static int undefined_term(const char *s, char *out) {
     }
     return 0;
 }
+/* The first symbol of E that follows an L' attribute and is not defined YET.
+ * The same lexical scan as undefined_term, narrowed to attribute references:
+ * that is what JOB00276/JOB00277 measured for an EQU (LEN EQU L'NOSUCH is IFO188,
+ * LEN EQU L'FWD is IFO231, both 0).  A plain forward symbol in an EQU operand
+ * was not measured and is left alone. */
+static int undefined_lattr(const char *s, char *out) {
+    const char *base = s;
+    int q = 0;
+    while (*s) {
+        if (*s == '\'') {
+            if (!q && attr_apos(base, (int)(s - base)) && s > base && toupper((unsigned char)s[-1]) == 'L') {
+                const char *t = s + 1; char nm[64]; int n = 0;
+                while (*t && (isalnum((unsigned char)*t) || *t == '@' || *t == '#' || *t == '$' || *t == '_')) { if (n < 63) nm[n++] = *t; t++; }
+                nm[n] = 0;
+                struct sym *sy = nm[0] ? sym_find(nm) : NULL;
+                if (nm[0] && (!sy || (!sy->defined && sy->type != S_ER))) { scopy(out, nm, 63); return 1; }
+                s = t; continue;
+            }
+            if (q || !attr_apos(base, (int)(s - base))) q = !q;
+            s++; continue;
+        }
+        s++;
+    }
+    return 0;
+}
+/* An EQU whose operand took L' of a symbol not defined in pass 1.  Its value is
+ * set in pass 1 and is 0 (x_factor); the diagnostic waits for pass 2, which is
+ * the first point where "defined later" (IFO231) and "never" (IFO188) differ. */
+static int equbad_ln[256]; static char equbad_sym[256][64]; static int nequbad;
+static void note_equbad(int line, const char *sym) {
+    if (nequbad < 256) { equbad_ln[nequbad] = line; scopy(equbad_sym[nequbad], sym, 63); nequbad++; }
+}
+static const char *equ_rejected(int line) {
+    int i; for (i = 0; i < nequbad; i++) if (equbad_ln[i] == line) return equbad_sym[i];
+    return NULL;
+}
 /* A DC/DS operand whose parenthesised duplication factor pass 1 REJECTED.
  *
  * The reject has to be remembered rather than re-derived, and that is the whole
@@ -6053,6 +6104,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * IFOX00's in one to three bytes, eight with this as the sole
                  * cause: IEAVESVC BNGIRMOT IEAVELCR IEAVECH0 IGG019P7 IGFINTVL
                  * IGG019KG IGG019KH. */
+                { char eb[64]; if (undefined_lattr(F[0], eb)) note_equbad(i, eb); }   /* before s is defined: LEN EQU L'LEN */
                 s->val = expr_val_full(F[0], &rc); s->defined = 1;
                 /* A relocatable EQU belongs to the section of its VALUE, not to
                  * the section the EQU card happens to sit in.  PL/S output puts
@@ -6086,6 +6138,14 @@ static void do_pass(int pass, char **lines, int nlines) {
                 { const char *q = F[0]; int ok = (isalpha((unsigned char)*q) || *q=='@' || *q=='#' || *q=='$');
                   while (ok && *q) { if (!(isalnum((unsigned char)*q) || *q=='@' || *q=='#' || *q=='$')) ok = 0; else q++; }
                   if (ok) { struct sym *t = sym_find(F[0]); if (t && t != s) s->eq_to = (int)(t - syms) + 1; } } }
+            else if (pass == 2 && lbl[0]) { const char *eb = equ_rejected(i);
+                if (eb) { struct sym *es = sym_find(eb);
+                    if (es && (es->defined || es->type == S_ER)) {
+                        char m[VALSZ];
+                        snprintf(m, sizeof m, "Symbol not previously defined (IFOX00 IFO231) - %.20s", eb);
+                        note_operr(m, 8, i);
+                    } else note_undefsym(eb, i);                              /* IFO188 */
+                } }
         } else if (!strcmp(op, "LTORG") || !strcmp(op, "END")) {
             int k;
             if (!strcmp(op, "END") && opnd[0]) {

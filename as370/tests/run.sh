@@ -1473,7 +1473,9 @@ rm -f /tmp/_ba.obj /tmp/_ba_l.obj /tmp/_ba_a.$$ /tmp/_ba_b.$$
 # as370 reserved 1 / 5 / 5 bytes; every symbol after them moved. Both decks are
 # compared, END card excepted, except the one byte of C DC AL1(LEN), which is
 # the EQU (L'X is 0 there, not yet in as370).
-for lf in lenundef:98:2 attrfwd:97:1; do
+# Since #474 the EQU is 0 as well, so the exception is gone (x = 0) and the EQU's
+# own diagnostic is asserted below.
+for lf in lenundef:0:2 attrfwd:0:1; do
     ln=${lf%%:*}; lr=${lf#*:}; lx=${lr%%:*}; lc=${lr#*:}
     ./as370 tests/$ln.s -o /tmp/_lu.obj >/tmp/_lu.out 2>&1; rclu=$?
     lusz=$(wc -c < /tmp/_lu.obj); lursz=$(wc -c < tests/ref/$ln.obj)
@@ -1491,6 +1493,30 @@ for lf in lenundef:98:2 attrfwd:97:1; do
     fi
 done
 rm -f /tmp/_lu.obj /tmp/_lu.out
+# --- issue #474: L' of a symbol not defined (yet) is 0 -----------------------
+# x_factor gave it the length 1 and said nothing. IFOX00: DC AL2(L'NOSUCH) is
+# IFO188 and 0000 (JOB00275, litattr: the whole deck now, END card excepted, and
+# IFO188 x3); LEN EQU L'NOSUCH is IFO188 and 0 (JOB00276, lenundef); LEN EQU
+# L'FWD is IFO231 and 0 (JOB00277, attrfwd). The decks are asserted above.
+./as370 tests/litattr.s -o /tmp/_lb.obj >/tmp/_lb.out 2>&1
+lbsz=$(wc -c < /tmp/_lb.obj); lbrsz=$(wc -c < tests/ref/litattr.obj)
+lbnbe=$(( (lbrsz / 80 - 1) * 80 ))
+head -c "$lbnbe" /tmp/_lb.obj > /tmp/_lb_a.$$; head -c "$lbnbe" tests/ref/litattr.obj > /tmp/_lb_b.$$
+lbn=$(grep -c 'Undefined symbol' /tmp/_lb.out)
+./as370 tests/lenundef.s -o /tmp/_lb2.obj >/tmp/_lb2.out 2>&1
+./as370 tests/attrfwd.s -o /tmp/_lb3.obj >/tmp/_lb3.out 2>&1
+if [ "$lbsz" != "$lbrsz" ] || ! cmp -s /tmp/_lb_a.$$ /tmp/_lb_b.$$; then
+    echo "litattr deck: MISMATCH (not IFOX00's -- LEN must be 0000)"; fail=1
+elif [ "$lbn" != 3 ]; then
+    echo "litattr deck: expected 3 undefined-symbol diagnostics (IFOX00 IFO188 x3), got $lbn"; fail=1
+elif ! grep -q "Undefined symbol in line 15 - NOSUCH" /tmp/_lb2.out; then
+    echo "lenundef: LEN EQU L'NOSUCH must be IFO188"; fail=1
+elif ! grep -q "IFO231) - FWD in line 14" /tmp/_lb3.out; then
+    echo "attrfwd: LEN EQU L'FWD must be IFO231"; fail=1
+else
+    echo "litattr deck: OK (== IFOX00 -- L' of an undefined symbol is 0, IFO188/IFO231 in DC and EQU)"
+fi
+rm -f /tmp/_lb.obj /tmp/_lb.out /tmp/_lb2.obj /tmp/_lb2.out /tmp/_lb3.obj /tmp/_lb3.out /tmp/_lb_a.$$ /tmp/_lb_b.$$
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one
