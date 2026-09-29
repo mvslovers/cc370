@@ -299,5 +299,54 @@ else
     echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
 fi
 
+# --- issue #477: builtin folds must use the target (EBCDIC) value ---
+# A string literal stays in the host charset until output, so a fold that
+# turns a string byte into a value (putchar/fputc of a one-character string)
+# or into an ordering (strcmp/strncmp/memcmp of two literals) must map it
+# first.  One line per function: every operand that carries the folded value.
+# The comparisons are chosen so that ASCII and EBCDIC disagree in both
+# directions: 'a' < 'B' in EBCDIC (X'81' < X'C2'), '1' > 'a' (X'F1' > X'81').
+cat > "$WORK/bf.c" <<'EOF'
+typedef struct FILE FILE;
+int printf(const char *, ...);
+int fprintf(FILE *, const char *, ...);
+int fputs(const char *, FILE *);
+int strcmp(const char *, const char *);
+int strncmp(const char *, const char *, __SIZE_TYPE__);
+int memcmp(const void *, const void *, __SIZE_TYPE__);
+void pa(void)        { printf("A"); }
+void pn(void)        { printf("\n"); }
+void px(void)        { printf("\x81"); }
+void fa(FILE *f)     { fputs("A", f); }
+void fp(FILE *f)     { fprintf(f, "A"); }
+int  c1(void)        { return strcmp("a", "B"); }
+int  c2(void)        { return strcmp("1", "a"); }
+int  c3(void)        { return strncmp("a", "B", 1); }
+int  c4(void)        { return memcmp("a", "B", 1); }
+int  c5(void)        { return strcmp("ab", "ab"); }
+int  c6(void)        { return strncmp("ab", "ac", 1); }
+EOF
+compile bf "$WORK/bf.c" "-O1"
+got=$(awk '/^\* X-func/{if (f) print s; f=$3; s=f ":"; next}
+           /=F.-?[0-9]+.|LA +15,|SLR +15,15|L +15,=V\(/{sub(/^[ \t]+/, ""); gsub(/[ \t]+/, " "); s=s " [" $0 "]"}
+           END{print s}' "$WORK/bf.s")
+want="pa: [MVC 88(4,13),=F'193'] [L 15,=V(PUTCHAR)]
+pn: [MVC 88(4,13),=F'21'] [L 15,=V(PUTCHAR)]
+px: [MVC 88(4,13),=F'129'] [L 15,=V(PUTCHAR)]
+fa: [MVC 88(4,13),=F'193'] [L 15,=V(FPUTC)]
+fp: [MVC 88(4,13),=F'193'] [L 15,=V(FPUTC)]
+c1: [L 15,=F'-1']
+c2: [LA 15,1(0,0)]
+c3: [L 15,=F'-1']
+c4: [L 15,=F'-1']
+c5: [SLR 15,15]
+c6: [SLR 15,15]"
+if [ "$got" = "$want" ]; then
+    echo "builtin-fold-ebcdic: OK (putchar/fputc get EBCDIC, literal compares in EBCDIC order)"
+else
+    echo "builtin-fold-ebcdic: FAIL"; echo "   got:"; echo "$got" | sed 's/^/      /'
+    echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
