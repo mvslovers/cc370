@@ -1467,6 +1467,30 @@ else
     echo "bitattr: OK (== IFOX00 -- a length modifier with L' keeps its value)"
 fi
 rm -f /tmp/_ba.obj /tmp/_ba_l.obj /tmp/_ba_a.$$ /tmp/_ba_b.$$
+# --- issue #494: a length modifier needs its symbols previously defined -------
+# IFOX00 rejects DS CL(L'NOSUCH), DS CL(L'FWD) and DC CL(L'FWD)'W' with IFO179 and
+# assembles nothing, although FWD is defined later (MVSTK5-REF JOB00276/JOB00277).
+# as370 reserved 1 / 5 / 5 bytes; every symbol after them moved. Both decks are
+# compared, END card excepted, except the one byte of C DC AL1(LEN), which is
+# the EQU (L'X is 0 there, not yet in as370).
+for lf in lenundef:98:2 attrfwd:97:1; do
+    ln=${lf%%:*}; lr=${lf#*:}; lx=${lr%%:*}; lc=${lr#*:}
+    ./as370 tests/$ln.s -o /tmp/_lu.obj >/tmp/_lu.out 2>&1; rclu=$?
+    lusz=$(wc -c < /tmp/_lu.obj); lursz=$(wc -c < tests/ref/$ln.obj)
+    lunbe=$(( (lursz / 80 - 1) * 80 ))
+    ludiff=$(cmp -l /tmp/_lu.obj tests/ref/$ln.obj | awk -v n=$lunbe -v x=$lx '$1 <= n && $1 != x' | wc -l | tr -d ' ')
+    lu179=$(grep -c IFO179 /tmp/_lu.out)
+    if [ $rclu != 8 ]; then
+        echo "$ln: expected RC 8, got $rclu"; fail=1
+    elif [ "$lusz" != "$lursz" ] || [ "$ludiff" != 0 ]; then
+        echo "$ln: MISMATCH ($ludiff bytes differ from IFOX00 -- a rejected length modifier must reserve nothing)"; fail=1
+    elif [ "$lu179" != "$lc" ]; then
+        echo "$ln: expected $lc x IFO179, got $lu179"; fail=1
+    else
+        echo "$ln: OK (== IFOX00 -- a length modifier with an undefined or forward symbol assembles nothing)"
+    fi
+done
+rm -f /tmp/_lu.obj /tmp/_lu.out
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one
