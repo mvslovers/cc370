@@ -1475,6 +1475,16 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-30 — #511, MERGED as `be1ad1a` (PR #514).** cc370 left UTF-8 string
+  literals unconverted, so the Latin-1 -> CP037 output pass saw two bytes per
+  character (`"a¬b"` sizeof 5, `'¬'` = 25183). The narrow execution set is now
+  ISO-8859-1 and the input set is decided per file like as370 (#483), with
+  table converters, not iconv, and no host locale. Above U+00FF in a literal is
+  an error. Differential over 1,484 ecosystem C files: every file that compiles
+  gives byte-identical `.s`; the 29 that carried such characters were fixed
+  first (ftpd#155, rexx370#259). CI does not run `test-cc370`, so
+  `cc370/tests/run.sh` `utf8-src` is local-only.
+
 - **2026-09-29 — #483, MERGED as `64ac787` (PR #512).** as370 read a UTF-8
   source byte by byte: `¬` (C2 AC) became `X'62' X'5F'` and shifted the card one
   column right, so a sequence field reached column 72 (brexx370 vtocchek.asm).
