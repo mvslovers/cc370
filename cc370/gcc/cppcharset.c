@@ -933,9 +933,13 @@ emit_numeric_escape (cpp_reader *pfile, cppchar_t n,
 	  tbuf->text = xrealloc (tbuf->text, tbuf->asize);
 	}
 
+      /* Each byte of a wide element is translated host->EBCDIC on output
+	 (ASM_OUTPUT_ASCII) and in a wide character constant (lex_charconst),
+	 so pre-image every byte through MAP_INCHAR, as for a narrow escape
+	 below: the escape then keeps its literal value in both.  */
       for (i = 0; i < nbwc; i++)
 	{
-	  c = n & cmask;
+	  c = MAP_INCHAR (n & cmask);
 	  n >>= cwidth;
 	  tbuf->text[off + (bigend ? nbwc - i - 1 : i)] = c;
 	}
