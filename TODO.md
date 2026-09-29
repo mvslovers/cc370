@@ -1496,8 +1496,9 @@ Pointers only. The reasoning lives in the issues and their PRs.
     0 decks.
 
   Not measured, left alone: a plain forward symbol in `EQU` or `ORG` without
-  `L'`, and the two `vref()` toggles #347 cleared on the same reasoning that
-  failed for #497.
+  `L'`. The two `vref()` toggles #347 cleared were not clean either:
+  `&SYSLIST(N'&SYSLIST,2)` lost its second subscript (#506, JOB00280) -- fixed.
+  Every quote toggle of the form `x = !x` now carries the guard (18 of 18).
 
 - **2026-09-29 — #184, MERGED as `5bbff09` (PR #495).** The literal loop in
   `scan_undef_terms()` no longer opens a string on the `'` of `L'`, so

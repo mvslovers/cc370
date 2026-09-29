@@ -2146,7 +2146,12 @@ static void vref(struct ctx *c, const char *ref, char *out) {
          * is then in the wrong place. */
         const char *st = p + 1, *q = st; int d = 1, qt = 0;
         for (; *q; q++) {
-            if (*q == '\'') { qt = !qt; continue; }
+            /* The attribute guard, as in every other scan of this family
+             * (#184): N'&SYSLIST in a subscript opens no string.  #347 cleared
+             * this site because &ARR(L'FLD) came out right -- the caller bounds
+             * REF at the balanced ')', so the stray ')' this scan then takes in
+             * does no harm.  The per-level split below is where it did. */
+            if (*q == '\'') { if (qt || !attr_apos(p, (int)(q - p))) qt = !qt; continue; }
             if (qt) continue;
             if (*q == '(') d++;
             else if (*q == ')' && --d == 0) break;
@@ -2182,7 +2187,12 @@ static void vref(struct ctx *c, const char *ref, char *out) {
             for (;;) {
                 const char *e2 = t; int dd = 0, qq = 0;
                 for (; *e2; e2++) {
-                    if (*e2 == '\'') { qq = !qq; continue; }
+                    /* Toggling on the ' of N'&SYSLIST hid the comma, so
+                     * &SYSLIST(N'&SYSLIST,2) lost its second subscript and
+                     * returned the whole operand: SETA 0 and AL1((11,22,33))
+                     * where IFOX00 gives 22 and AL1(33) (MVSTK5-REF JOB00280,
+                     * tests/vrefattr.s). */
+                    if (*e2 == '\'') { if (qq || !attr_apos(idxs, (int)(e2 - idxs))) qq = !qq; continue; }
                     if (qq) continue;
                     if (*e2 == '(') dd++;
                     else if (*e2 == ')') dd--;
