@@ -4457,6 +4457,21 @@ static int dup_rejected(int line, int opidx) {
     int i; for (i = 0; i < ndupbad; i++) if (dupbad_ln[i] == line && dupbad_op[i] == opidx) return 1;
     return 0;
 }
+/* The same, for a parenthesised LENGTH modifier, L(expr).  IFOX00 requires its
+ * symbols previously defined too, and a statement that breaks the rule assembles
+ * nothing: DS CL(L'NOSUCH) and DC CL(L'FWD)'W' reserve 0 bytes, with IFO179
+ * (MVSTK5-REF JOB00276, JOB00277, tests/attrfwd.s) -- even though FWD is defined
+ * by pass 2, where re-evaluating would reserve 5 (cc370#494).  Unlike the
+ * duplication factor, the messages wait for pass 2: only then is it known
+ * whether the symbol was defined later (IFO231) or never (IFO188). */
+static int lenbad_ln[256], lenbad_op[256]; static char lenbad_sym[256][64]; static int nlenbad;
+static void note_lenbad(int line, int opidx, const char *sym) {
+    if (nlenbad < 256) { lenbad_ln[nlenbad] = line; lenbad_op[nlenbad] = opidx; scopy(lenbad_sym[nlenbad], sym, 63); nlenbad++; }
+}
+static const char *len_rejected(int line, int opidx) {
+    int i; for (i = 0; i < nlenbad; i++) if (lenbad_ln[i] == line && lenbad_op[i] == opidx) return lenbad_sym[i];
+    return NULL;
+}
 /* emit one literal's bytes at its assigned location (pass 2) */
 /* IBM hex floating point: value = fraction * 16^(exp-64), 1/16 <= fraction < 1.
  * byte 0 = sign(1) | exponent(7, excess-64); remaining bytes = fraction. */
@@ -5647,8 +5662,20 @@ static void do_pass(int pass, char **lines, int nlines) {
                         }
                         char ex[256]; int en = (int)(q - st); if (en > 255) en = 255;
                         memcpy(ex, st, (size_t)en); ex[en] = 0;
-                        blen = (int)expr_val_full(ex, NULL); if (blen < 0) blen = 0;
-                        p = *q ? q + 1 : q; }
+                        p = *q ? q + 1 : q;
+                        char lbad[64]; const char *lrej;
+                        if (pass == 1 && undefined_term(ex, lbad)) {          /* see note_lenbad */
+                            note_lenbad(i, oi, lbad); cnt = 0; blen = 0;
+                        } else if (pass == 2 && (lrej = len_rejected(i, oi)) != NULL) {
+                            struct sym *ls = sym_find(lrej);
+                            if (ls && (ls->defined || ls->type == S_ER)) {
+                                char m[VALSZ];
+                                snprintf(m, sizeof m, "Length modifier uses a symbol not previously defined (IFOX00 IFO231) - %.20s", lrej);
+                                note_operr(m, 8, i);
+                            } else note_undefsym(lrej, i);                    /* IFO188 */
+                            note_operr("Length modifier must be absolute - nothing assembled (IFOX00 IFO179)", 8, i);
+                            cnt = 0; blen = 0;
+                        } else { blen = (int)expr_val_full(ex, NULL); if (blen < 0) blen = 0; } }
                     else while (isdigit((unsigned char)*p)) blen = blen * 10 + (*p++ - '0'); }
                 if (!hasscale && *p == 'S') { p++; int sneg2 = 0;
                     if (*p == '-') { sneg2 = 1; p++; } else if (*p == '+') p++;

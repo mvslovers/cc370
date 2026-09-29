@@ -587,7 +587,11 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   and IECVMAP (IFO188 6 → 7, as IFOX00), but moves `DS CL(L'NOSUCH)` from 1 byte
   to 0 in pass 2 only, so symbols stop matching their addresses. Blocked on
   **#494**: what IFOX00 does where a pass-1 length depends on `L'` of an undefined
-  symbol.
+  symbol. **Measured since** (JOB00276, JOB00277): a length modifier needs its
+  symbols previously defined and assembles nothing otherwise (IFO179), even for a
+  forward symbol -- fixed, remembered from pass 1 like the duplication factor.
+  Still open under #494: `EQU L'X` is 0 with IFO188/IFO231 (then #474 itself),
+  and a duplication factor with a never-defined symbol is IFO188, not IFO231.
 
 ### 8 · #241 — twenty modules longer than IFOX00, one of them readable
 
