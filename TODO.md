@@ -1448,6 +1448,15 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-29 — #473, MERGED as `20fd4f7` (PR #492).** `undefined_term()` no
+  longer opens a string on the apostrophe of `L'`, so `DS (L'G+X)C` with a forward
+  `X` draws IFO231 + IFO206 at rc 8 and reserves nothing, as IFOX00 does
+  (MVSTK5-REF JOB00272, `tests/dupattr.s`). IFO217 now follows only when the
+  expression is still relocatable — the old "every forward reference" rule came
+  from one oracle (JOB02900) and JOB00272 refutes it. Tree gate: 0 of 5,528 decks
+  moved. Left of the #184 family: the literal loop in `scan_undef_terms()`, and
+  #474.
+
 - **2026-09-27 — #466, MERGED as `4d8ea0a` (PR #480).** `ld370 --alias NAME`
   writes IEWL's alias directory entry, byte for byte bar the TTRs (MVSCE-LAB
   JOB01367), with IEWL's entry rule: an alias naming a symbol of the module
