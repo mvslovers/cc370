@@ -139,6 +139,7 @@ which path the source travelled first.
 - `cc370/gcc/c-parse.c` is generated from `c-parse.in`; a pre-generated parser / dummy Makefile rule avoids running yacc.
 - Symbol names in address constants must be emitted via `output_addr_const` (not `ASM_OUTPUT_LABELREF` on the raw `XSTR`) so the leading `*` of an `asm()`-named extern is stripped — taking the **address** of an asm-named extern otherwise emits invalid `=V(*NAME)` → IFOX IFO161 (fixed in v2.0).
 - Output uses EBCDIC encoding and HLASM syntax with MVS calling conventions.
+- A helper insn that emits `DR`/`D` or `MR`/`M` over an even/odd pair must be an `unspec` (`i370_divmod`, `i370_mult`), never a `(div|mod|mult):DI` set: that is exactly the `REG_EQUAL` note a `__divdi3`/`__moddi3`/`__muldi3` libcall carries, and `dead_libcall_p` (`cse.c`) swaps the call for any note that recognises — `long long / 10` became one 32-bit `DR` (S0C9) until #467, at `-O0` as well.
 
 ## as370 — Host-Native MVS Assembler
 
