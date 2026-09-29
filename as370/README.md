@@ -45,6 +45,27 @@ SYS1.MACLIB members).
 - **`-a` listing:** ASCII, column-exact to IFOX SYSPRINT for the ESD/SOURCE/RLD
   sections.
 
+## Source encoding
+
+IFOX00 reads EBCDIC, one byte per character. as370 reads a host file and keeps
+that rule by deciding the encoding **per file** (source and every library
+member):
+
+- A file that is valid **UTF-8** and holds a byte above `X'7F'` is decoded to one
+  byte per character, so columns (72 = continuation) and constant lengths count
+  characters. A leading byte order mark is dropped.
+- Anything else — ASCII, or **Latin-1** such as the `¬` = `X'AC'` in many
+  libc370 and MVSBLD macros — is read byte for byte, as before.
+- Each character is then translated Latin-1 → CP037 (`¬` → `X'5F'`, `¢` →
+  `X'4A'`).
+- A character above U+00FF has no CP037 image. It is read as `X'3F'` (SUB) and
+  its card is flagged at **severity 4**; if it reaches object code (a `C`
+  constant, a `C'…'` self-defining term, a `REPRO` card) the statement is
+  flagged at **severity 8**. The flagged statement shows it as `?`.
+
+What as370 writes back as text (`-e`, the `-a` listing) is in that one-byte
+form, i.e. Latin-1 for a decoded UTF-8 source. See mvslovers/cc370#483.
+
 ## Open points
 
 - More `-a` listing pages (CROSS-REFERENCE, LITERAL XREF, DIAGNOSTICS,

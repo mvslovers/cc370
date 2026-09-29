@@ -130,6 +130,15 @@ and that is a property of the transport, not of the translator. Measured across
 anywhere (mvslovers/cc370#74). Do not "fix" one side to match the other; check
 which path the source travelled first.
 
+**The host side of the table is Latin-1, and the source may be either Latin-1 or
+UTF-8.** as370 decides per file: valid UTF-8 with a high byte is decoded to one
+byte per character, anything else is read byte for byte; above U+00FF is
+severity 4 on the card and 8 in a constant (`as370/README.md`, "Source
+encoding"; #483). Both encodings are in the ecosystem side by side — Latin-1 `¬`
+in libc370/brexx370 macros and 2,089 MVSBLD modules, UTF-8 in newer sources — so
+never decode everything as UTF-8. **cc370 still reads byte by byte** (#511):
+`"¬"` in a UTF-8 C source is two bytes.
+
 ### Key preprocessor defines
 
 `TARGET_PDPMAC`, `TARGET_EBCDIC`, `TARGET_HLASM`, `TARGET_MVS`, `I370_IFOX_COLUMNS`, `IN_GCC`, `HAVE_CONFIG_H`.

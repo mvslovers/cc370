@@ -388,6 +388,26 @@ static int  g_genstmt;
 static int  g_curln;           /* lines[] index of the statement being assembled -- line context for diagnostics raised from helpers (e.g. sym_get) */
 static int  g_pass;            /* the pass do_pass is running, 0 outside it -- x_factor's undefined-symbol diagnostic
                                 * must stay silent in pass 1, where a forward reference is not yet defined and legal */
+/* A source character that has no EBCDIC image (#483).  src_fopen() reads a UTF-8
+ * source as one byte per character, and a code point above U+00FF -- outside
+ * Latin-1, and so outside the CP037 table -- becomes this one byte, so the card
+ * keeps its columns.  The card is reported at severity 4 when it is read; where
+ * the character reaches object code, src_a2e() flags the statement at 8.
+ * g_src_sub gates the check: a Latin-1 source is not decoded, and two MVSBLD
+ * modules carry a raw X'1A' that has always assembled as X'3F'. */
+#define SRC_SUB 0x1A
+static int  g_src_sub;
+static void note_operr(const char *msg, int sev, int line);
+static void note_nochar(int line) {
+    static int last = -1;
+    if (line < 0 || line == last) return;   /* one diagnostic per statement, however many characters */
+    last = line;
+    note_operr("Character with no EBCDIC equivalent in a constant - assembled as X'3F' (see the source-encoding warning)", 8, line);
+}
+static unsigned char src_a2e(int c) {
+    if (g_src_sub && (c & 0xff) == SRC_SUB && g_pass == 2) note_nochar(g_curln);
+    return mvs_a2e(c);
+}
 static int  is_dsect_id(int id) { return id > 0 && id < 256 && dsect_sect[id]; }
 /* A DSECT owns no address space, so its origin stays 0 and its symbols are
  * never relocated. In pass 1 every counter is relative, so the base is 0
@@ -796,7 +816,7 @@ static long selfdef_cbody(const char **pp) {
     while (*p) {
         if (*p == '\'') { if (p[1] == '\'') p++; else break; }
         else if (*p == '&' && p[1] == '&') p++;
-        v = (v << 8) | mvs_a2e((unsigned char)*p); p++;
+        v = (v << 8) | src_a2e((unsigned char)*p); p++;
     }
     *pp = p; return v;
 }
@@ -1152,7 +1172,7 @@ static int dc_split(const char *s, char f[][1024], int max) {
     return n;
 }
 static long imm_val(const char *s) {
-    if (s[0] == 'C' && s[1] == '\'') return mvs_a2e((unsigned char)s[2]);
+    if (s[0] == 'C' && s[1] == '\'') return src_a2e((unsigned char)s[2]);
     /* expr_val_full: an SI immediate has no subscript, so expr_val's leading-'('
      * guard protects nothing here and only turns MVI DEBLNGTH,(DEBSIZE+7)/8 into
      * X'00'.  IFOX hands the I field to the ordinary expression evaluator
@@ -2884,6 +2904,81 @@ static void self_exe_dir(const char *argv0, char *out, size_t outsz)
  * widens. Nest it the other way and a later -I directory starts winning over an
  * earlier one, which on a corpus with colliding member names silently picks a
  * different macro. */
+/* ---- source encoding (#483) -----------------------------------------------
+ * as370 counts columns in bytes and translates each byte through mvs_a2e, whose
+ * table is Latin-1 -> CP037.  The host repositories hold UTF-8, where `¬' is the
+ * two bytes C2 AC: read byte by byte it became X'62' X'5F', one byte too many in
+ * the constant, and it pushed the rest of the card one column right -- so a
+ * sequence field reached column 72 and the next card was eaten as a
+ * continuation.  brexx370 vtocchek.asm lost its operator table that way.
+ *
+ * Both encodings are in use, often side by side: libc370 and brexx370 carry
+ * Latin-1 macros (`¬' as a single X'AC') next to UTF-8 sources, and 2,089 of the
+ * 5,528 MVSBLD modules are Latin-1 while none is UTF-8.  So the decision is made
+ * per FILE: one that is valid UTF-8 and holds a byte above X'7F' is decoded to
+ * one byte per character; anything else is read exactly as before.  A Latin-1
+ * text that happens to be valid UTF-8 needs an accented capital followed by a
+ * symbol from X'80'-X'BF' -- no file in any corpus here does.
+ *
+ * A code point above U+00FF has no CP037 image.  It becomes SRC_SUB, the card is
+ * reported at severity 4 whatever it is (comment, remark or code), and src_a2e()
+ * raises 8 where it reaches a constant.  A leading byte order mark is dropped. */
+#define MAXSRCW 64
+static struct { char src[24]; int line; unsigned long cp; } srcw[MAXSRCW];
+static int nsrcw, nsrcw_seen;
+static char *g_srcbuf;   /* the decoded image behind the FILE src_fopen returned; one open at a time */
+static FILE *src_fopen(const char *path, const char *member) {
+    FILE *f = fopen(path, "r"); if (!f) return NULL;
+    size_t cap = 65536, n = 0; unsigned char *b = malloc(cap);
+    if (!b) { fprintf(stderr, "as370: out of memory reading %s\n", path); exit(2); }
+    for (;;) {
+        if (n == cap) { unsigned char *nb = realloc(b, cap *= 2); if (!nb) { fprintf(stderr, "as370: out of memory reading %s\n", path); exit(2); } b = nb; }
+        size_t r = fread(b + n, 1, cap - n, f); if (!r) break; n += r;
+    }
+    /* valid UTF-8 (no overlongs, no surrogates, nothing past U+10FFFF) with at least one byte above X'7F'? */
+    size_t i = 0; int high = 0, ok = 1;
+    while (i < n && ok) {
+        unsigned c = b[i]; int k; unsigned long cp;
+        if (c < 0x80) { i++; continue; }
+        high = 1;
+        if      (c >= 0xC2 && c <= 0xDF) { k = 1; cp = c & 0x1F; }
+        else if (c >= 0xE0 && c <= 0xEF) { k = 2; cp = c & 0x0F; }
+        else if (c >= 0xF0 && c <= 0xF4) { k = 3; cp = c & 0x07; }
+        else { ok = 0; break; }
+        if (i + (size_t)k >= n) { ok = 0; break; }   /* truncated at end of file */
+        { int j; for (j = 1; j <= k; j++) { if ((b[i + j] & 0xC0) != 0x80) { ok = 0; break; } cp = (cp << 6) | (b[i + j] & 0x3F); } }
+        if (!ok) break;
+        if ((k == 2 && cp < 0x800) || (k == 3 && (cp < 0x10000 || cp > 0x10FFFF)) || (cp >= 0xD800 && cp <= 0xDFFF)) { ok = 0; break; }
+        i += (size_t)k + 1;
+    }
+    if (!ok || !high) { free(b); rewind(f); return f; }   /* ASCII or Latin-1: byte for byte, as always */
+    fclose(f);
+    /* decode in place: the output is never longer than the input */
+    size_t o = 0; int line = 1;
+    for (i = 0; i < n; ) {
+        unsigned c = b[i]; unsigned long cp; int k;
+        if (c < 0x80) { if (c == '\n') line++; b[o++] = (unsigned char)c; i++; continue; }
+        k = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : 1;
+        cp = c & (k == 1 ? 0x1F : k == 2 ? 0x0F : 0x07);
+        { int j; for (j = 1; j <= k; j++) cp = (cp << 6) | (b[i + j] & 0x3F); }
+        i += (size_t)k + 1;
+        if (cp == 0xFEFF && o == 0) continue;            /* byte order mark */
+        if (cp <= 0xFF) { b[o++] = (unsigned char)cp; continue; }
+        b[o++] = SRC_SUB; g_src_sub = 1;
+        mark_cont_stmt(line, member != NULL);            /* counted as a flagged card (1-based, as join_cont numbers them) */
+        if (nsrcw && srcw[nsrcw - 1].line == line && !strcmp(srcw[nsrcw - 1].src, member ? member : "")) continue;   /* one per card */
+        if (nsrcw_seen++ < MAXSRCW) {
+            scopy(srcw[nsrcw].src, member ? member : "", sizeof srcw[0].src - 1);
+            srcw[nsrcw].line = line; srcw[nsrcw].cp = cp; nsrcw++;
+        }
+    }
+    g_srcbuf = (char *)b;
+    if (!o) { free(b); g_srcbuf = NULL; return tmpfile(); }   /* a file that was only a byte order mark */
+    FILE *m = fmemopen(b, o, "r");
+    if (!m) { perror(path); exit(16); }
+    return m;
+}
+static void src_fclose(FILE *f) { fclose(f); free(g_srcbuf); g_srcbuf = NULL; }
 static int lib_path(const char *name, char *path) {
     const char *exts[] = { ".macro", ".copy", ".mac", ".asm", "", NULL };
     char low[40]; int i; for (i = 0; name[i] && i < 39; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
@@ -3191,10 +3286,10 @@ static int macro_extent(char **in, int n) {
 }
 static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12], int as_macro) {
     char path[256]; if (!lib_path(name, path)) return -1;
-    FILE *f = fopen(path, "r"); if (!f) return -1;
+    FILE *f = src_fopen(path, name); if (!f) return -1;
     static char *tmp[16384]; char lb[256]; int n = 0;
     while (fgets(lb, sizeof lb, f) && n < 16384) tmp[n++] = strdup(lb);
-    fclose(f);
+    src_fclose(f);
     if (n >= 16384) fprintf(stderr, "as370: library member %s is longer than 16384 cards and was cut\n", name);
     if (as_macro) n = macro_extent(tmp, n);   /* a macro definition ends at MEND; what follows is not read */
     { int r; const char *sv = g_joinsrc;    /* a continuation diagnostic in here names the member, not a source line */
@@ -3980,8 +4075,10 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
                 for (j = 0; j < nrepro_raw; j++)
                     if (repro_raw_line[j] == g_curorg) { card = repro_raw[j]; rl = 80; break; }
                 if (!card) { card = (const unsigned char *)arr[pc + 1]; rl = rawlen(arr[pc + 1]); }
-                for (j = 0; j < 80; j++)
+                for (j = 0; j < 80; j++) {
+                    if (g_src_sub && j < rl && card[j] == SRC_SUB) note_nochar(*nout - 1);   /* the punched card is object code */
                     repro_img[nrepro][j] = mvs_a2e(j < rl ? card[j] : ' ');
+                }
                 repro_line[nrepro] = *nout - 1;
                 nrepro++;
             }
@@ -4725,7 +4822,7 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
         if (q) { const char *e = q + 1; while (*e && slen < 255) { if (*e == '\'') { if (e[1] == '\'') { body[slen++] = '\''; e += 2; continue; } break; }
             if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
             body[slen++] = *e++; } }
-        int j; for (j = 0; j < size; j++) put(loc + j, j < slen ? mvs_a2e((unsigned char)body[j]) : 0x40, 1);
+        int j; for (j = 0; j < size; j++) put(loc + j, j < slen ? src_a2e((unsigned char)body[j]) : 0x40, 1);
     } else put(loc, l->val, size);
 }
 static void emit_lit(struct lit *l) {
@@ -5853,7 +5950,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         if (ty == 'B')      { while (*b2 && *b2 != '\'') v2 = v2 * 2 + (*b2++ == '1' ? 1 : 0); }
                         else if (ty == 'X') { while (*b2 && *b2 != '\'') { int c2 = toupper((unsigned char)*b2++);
                                                   v2 = v2 * 16 + (unsigned long)((c2 >= '0' && c2 <= '9') ? c2 - '0' : (c2 >= 'A' && c2 <= 'F') ? c2 - 'A' + 10 : 0); } }
-                        else if (ty == 'C') { while (*b2 && *b2 != '\'') v2 = (v2 << 8) | mvs_a2e((unsigned char)*b2++); }
+                        else if (ty == 'C') { while (*b2 && *b2 != '\'') v2 = (v2 << 8) | src_a2e((unsigned char)*b2++); }
                         else                { char nb2[64]; int k2 = 0;
                                               while (*b2 && *b2 != '\'' && k2 < 63) nb2[k2++] = *b2++;
                                               nb2[k2] = 0; v2 = (unsigned long)strtol(nb2, NULL, 10); }
@@ -6075,7 +6172,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * already the length of ONE constant, which is what L' is:
                      * L' of 3C'AB' is 2, not the field's 6. */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = emit; }
-                    for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, j < slen ? mvs_a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
+                    for (k = 0; k < cnt; k++) { int j; for (j = 0; j < emit; j++) { if (emit_dc) put(lc, j < slen ? src_a2e((unsigned char)body[j]) : 0x40, 1); lc++; } }
                 } else if (ty == 'X') {                     /* hex bytes, byte-aligned */
                     const char *q = strchr(p, '\''); unsigned char by[1024]; int nb = 0;
                     if (q) { char h[2056]; int hl = 0, s0 = 0; const char *e = q + 1;
@@ -7109,7 +7206,7 @@ int main(int argc, char **argv) {
     }
     if (!src) { usage(stderr); return 16; }                /* options given but no input file */
     init_sysvars();
-    FILE *f = fopen(src, "r"); if (!f) { perror(src); return 16; }
+    FILE *f = src_fopen(src, NULL); if (!f) { perror(src); return 16; }
     static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
     while (nr < MAXLINES) {
         memset(lb, 0, sizeof lb);
@@ -7122,7 +7219,7 @@ int main(int argc, char **argv) {
         }
         raw0[nr++] = strdup(lb);
     }
-    fclose(f);
+    src_fclose(f);
     static int raw_org[MAXLINES];
     join_span = raw_span;
     int n = join_cont(raw0, nr, raw, MAXLINES, NULL, raw_org);
@@ -7174,6 +7271,15 @@ int main(int argc, char **argv) {
     do_pass(2, lines, nl);
     g_pass = 0;   /* everything below (emit_obj, emit_listing_a) is past the point where a diagnostic could still be printed */
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
+    if (nsrcw_seen) {   /* source characters with no EBCDIC image (#483): severity 4, raised to 8 per statement where one reaches a constant */
+        int j; for (j = 0; j < nsrcw; j++) {
+            fprintf(stderr, " WARNING: Character U+%04lX has no EBCDIC (CP037) equivalent - read as X'3F'", srcw[j].cp);
+            if (srcw[j].src[0]) fprintf(stderr, " in line %d of library member %s\n", srcw[j].line, srcw[j].src);
+            else                fprintf(stderr, " in line %d\n", srcw[j].line);
+        }
+        if (nsrcw_seen > nsrcw) fprintf(stderr, " ... and %d further such character%s\n", nsrcw_seen - nsrcw, nsrcw_seen - nsrcw == 1 ? "" : "s");
+        max_sev = 4;
+    }
     if (ncontd) {   /* continuation cards: IFO026 / IFO069, both severity 4 -- warnings, and the RC says 4 */
         int j; for (j = 0; j < ncontd; j++) {
             fprintf(stderr, "%s\n", contd[j].card);                         /* the flagged card */
@@ -7255,7 +7361,7 @@ int main(int argc, char **argv) {
             int ln = dg[j].ln, i2 = dg[j].idx;
             const char *s = lines[ln]; int sl = (int)strlen(s);
             while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-            fprintf(stderr, "%.*s\n", sl, s);                               /* the flagged source statement */
+            { int k; for (k = 0; k < sl; k++) fputc(g_src_sub && s[k] == SRC_SUB ? '?' : s[k], stderr); fputc('\n', stderr); }   /* the flagged source statement; a character with no EBCDIC image shows as `?' (#483) */
             /* "in line N" is the input CARD (line_org).  For a statement that
              * came out of a macro or a COPY that card is the CALL, and every
              * statement of the expansion reports it -- all 75 of IFG0190P's said
