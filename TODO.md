@@ -138,7 +138,7 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 | 4 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
 | 5 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 6 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 7 | #184 | as370 | silent under-reporting — one scan left (#465 and #473 fixed two): the literal loop in `scan_undef_terms()` | **a separating construct** |
+| 7 | #184 | as370 | **closed** — the last scan, the literal loop in `scan_undef_terms()`, fixed on an oracle (JOB00275); left of the family: #474, blocked on #494 | #494: **one oracle job** |
 | 8 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
 | 10 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 | 9 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
@@ -568,11 +568,20 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   corrected a rule: IFO217 does not follow from the forward reference itself, only
   when what is left is relocatable — `(FWDEND-AREASTA)/8` draws it (JOB02900),
   `(L'G+X)` does not. Tree gate: 0 of 5,528 decks moved.
-- the literal loop inside `scan_undef_terms()` — still no separating construct;
-  `CLC =A(L'G),NOSUCH` reports `NOSUCH` today, which says some path reported it,
-  not that the loop is sound.
+- the literal loop inside `scan_undef_terms()` — **fixed** (2026-09-29). The
+  separating construct was in the *deck*, not the rc: `CLC =A(L'G),NOSUCH` drew
+  IFO188 from `x_factor` all along, which is what the old note here read, but was
+  assembled where IFOX00 zeroes it (MVSTK5-REF JOB00275, `tests/litattr.s`, with
+  `CLC =A(G),NOSUCH` as the control). Tree gate: 0 of 5,528 decks moved. That was
+  the last open site of #184's ledger; the four toggles still unguarded are the
+  four #347 cleared (`vref()` ×2, the length modifier ×2).
 - not one of the three, same family: `x_factor` is silent on `DC AL2(L'NOSUCH)`
-  where IFOX00 raises IFO188 — **#474** (`IECVMAP`, from the recorded decks).
+  where IFOX00 raises IFO188 — **#474**. Measured (JOB00275): IFOX00 assembles
+  `0000`, as370 `0001`. The obvious fix (IFO188 and 0 in pass 2) matches that deck
+  and IECVMAP (IFO188 6 → 7, as IFOX00), but moves `DS CL(L'NOSUCH)` from 1 byte
+  to 0 in pass 2 only, so symbols stop matching their addresses. Blocked on
+  **#494**: what IFOX00 does where a pass-1 length depends on `L'` of an undefined
+  symbol.
 
 ### 8 · #241 — twenty modules longer than IFOX00, one of them readable
 

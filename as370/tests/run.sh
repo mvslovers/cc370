@@ -1430,6 +1430,22 @@ else
     echo "dupattr: OK (== IFOX00 -- IFO231 + IFO206 at rc 8, H reserves nothing)"
 fi
 rm -f /tmp/_da.obj /tmp/_da.out
+# --- issue #184: an attribute inside a literal does not open a string ---------
+# scan_undef_terms()'s literal loop toggled on the ' of L'G in =A(L'G), so the
+# rest of the operand was skipped: CLC =A(L'G),NOSUCH drew IFO188 from x_factor
+# but was assembled, where IFOX00 zeroes it (MVSTK5-REF JOB00275). Both CLCs are
+# the first 12 bytes of the text card; the reference deck has them all zero.
+./as370 tests/litattr.s -o /tmp/_la.obj >/dev/null 2>&1; rcla=$?
+la=$(od -An -tx1 -j96 -N12 /tmp/_la.obj | tr -d ' \n')
+laref=$(od -An -tx1 -j96 -N12 tests/ref/litattr.obj | tr -d ' \n')
+if [ $rcla != 8 ]; then
+    echo "litattr: expected RC 8 (IFO188 on NOSUCH), got $rcla"; fail=1
+elif [ "$la" != "$laref" ]; then
+    echo "litattr: MISMATCH (CLCs $la, IFOX00 $laref -- both must be zeroed)"; fail=1
+else
+    echo "litattr: OK (== IFOX00 -- CLC =A(L'G),NOSUCH is zeroed)"
+fi
+rm -f /tmp/_la.obj
 # --- issue #94: &SYSLIST(n,m) reaches INSIDE a sublist operand ---------------
 # &SYSLIST(n) is the n'th positional operand; &SYSLIST(n,m) is the m'th element
 # of that operand's sublist. as370 evaluated the whole subscript text as one

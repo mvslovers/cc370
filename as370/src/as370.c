@@ -4378,9 +4378,14 @@ static int scan_undef_terms(const char *s, int line) {
         if (*s == '\'') { if (q || !attr_apos(base, (int)(s - base))) q = !q; s++; continue; }
         if (q) { s++; continue; }
         if (*s == '=') {                                  /* a literal: skip to the next top-level comma */
+            /* The same guard as the outer toggle.  Without it the ' of L'G in
+             * =A(L'G) opened a string that ran to the end of the operand, so
+             * CLC =A(L'G),NOSUCH never reached NOSUCH: IFO188 still came from
+             * x_factor, but the CLC was assembled where IFOX00 zeroes it
+             * (MVSTK5-REF JOB00275, tests/litattr.s). */
             int d = 0; s++;
             while (*s) {
-                if (*s == '\'') q = !q;
+                if (*s == '\'') { if (q || !attr_apos(base, (int)(s - base))) q = !q; }
                 else if (!q && *s == '(') d++;
                 else if (!q && *s == ')') { if (d) d--; }
                 else if (!q && !d && *s == ',') break;
