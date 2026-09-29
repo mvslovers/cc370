@@ -328,6 +328,37 @@ c_strlen (tree src, int only_value)
   return ssize_int (strlen (ptr + offset));
 }
 
+/* A string constant holds host-charset bytes until it is output; on an
+   EBCDIC target ASM_OUTPUT_ASCII translates each byte through the same
+   table as HOST_CHARCONST_TO_TARGET.  A fold that turns a string byte into
+   a value, or compares two strings, must use the byte the program will
+   actually see at run time.  */
+#ifdef HOST_CHARCONST_TO_TARGET
+#define TARGET_STR_BYTE(C) ((unsigned int) HOST_CHARCONST_TO_TARGET (C))
+#else
+#define TARGET_STR_BYTE(C) ((unsigned int) (unsigned char) (C))
+#endif
+
+/* memcmp/strncmp of two host strings in target byte order.  If STOP_AT_NUL,
+   stop after a NUL, as strncmp does; the table maps only NUL to NUL.  */
+
+static int
+target_str_compare (const char *p1, const char *p2, size_t n,
+		    int stop_at_nul)
+{
+  for (; n > 0; n--, p1++, p2++)
+    {
+      unsigned int c1 = TARGET_STR_BYTE (*p1);
+      unsigned int c2 = TARGET_STR_BYTE (*p2);
+
+      if (c1 != c2)
+	return c1 < c2 ? -1 : 1;
+      if (stop_at_nul && c1 == 0)
+	return 0;
+    }
+  return 0;
+}
+
 /* Return a char pointer for a C string if it is a string constant
    or sum of string constant and integer constant.  */
 
@@ -3182,7 +3213,7 @@ expand_builtin_memcmp (tree exp ATTRIBUTE_UNUSED, tree arglist, rtx target,
       && compare_tree_int (len, strlen (p1) + 1) <= 0
       && compare_tree_int (len, strlen (p2) + 1) <= 0)
     {
-      const int r = memcmp (p1, p2, tree_low_cst (len, 1));
+      const int r = target_str_compare (p1, p2, tree_low_cst (len, 1), 0);
 
       return (r < 0 ? constm1_rtx : (r > 0 ? const1_rtx : const0_rtx));
     }
@@ -3311,7 +3342,7 @@ expand_builtin_strcmp (tree exp, rtx target, enum machine_mode mode)
 
   if (p1 && p2)
     {
-      const int i = strcmp (p1, p2);
+      const int i = target_str_compare (p1, p2, (size_t) -1, 1);
       return (i < 0 ? constm1_rtx : (i > 0 ? const1_rtx : const0_rtx));
     }
 
@@ -3473,7 +3504,7 @@ expand_builtin_strncmp (tree exp, rtx target, enum machine_mode mode)
   /* If all arguments are constant, evaluate at compile-time.  */
   if (host_integerp (arg3, 1) && p1 && p2)
     {
-      const int r = strncmp (p1, p2, tree_low_cst (arg3, 1));
+      const int r = target_str_compare (p1, p2, tree_low_cst (arg3, 1), 1);
       return (r < 0 ? constm1_rtx : (r > 0 ? const1_rtx : const0_rtx));
     }
 
@@ -4396,7 +4427,8 @@ expand_builtin_fputs (tree arglist, rtx target, bool unlocked)
 	    arglist =
 	      build_tree_list (NULL_TREE, TREE_VALUE (TREE_CHAIN (arglist)));
 	    arglist =
-	      tree_cons (NULL_TREE, build_int_2 (p[0], 0), arglist);
+	      tree_cons (NULL_TREE, build_int_2 (TARGET_STR_BYTE (p[0]), 0),
+			 arglist);
 	    fn = fn_fputc;
 	    break;
 	  }
@@ -4744,7 +4776,7 @@ expand_builtin_printf (tree arglist, rtx target, enum machine_mode mode,
 	  /* Given printf("c"), (where c is any one character,)
 	     convert "c"[0] to an int and pass that to the replacement
 	     function.  */
-	  arg = build_int_2 (fmt_str[0], 0);
+	  arg = build_int_2 (TARGET_STR_BYTE (fmt_str[0]), 0);
 	  arglist = build_tree_list (NULL_TREE, arg);
 	  fn = fn_putchar;
 	}
@@ -6475,7 +6507,7 @@ fold_builtin_strcmp (tree exp)
   if (p1 && p2)
     {
       tree temp;
-      const int i = strcmp (p1, p2);
+      const int i = target_str_compare (p1, p2, (size_t) -1, 1);
       if (i < 0)
 	temp = integer_minus_one_node;
       else if (i > 0)
@@ -6523,7 +6555,7 @@ fold_builtin_strncmp (tree exp)
   if (host_integerp (len, 1) && p1 && p2)
     {
       tree temp;
-      const int i = strncmp (p1, p2, tree_low_cst (len, 1));
+      const int i = target_str_compare (p1, p2, tree_low_cst (len, 1), 1);
       if (i < 0)
 	temp = integer_minus_one_node;
       else if (i > 0)
