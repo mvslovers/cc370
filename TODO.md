@@ -1475,6 +1475,14 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-29 — #479, MERGED as `00d50b7` (PR #509).** `file370` read an alias
+  entry's AC at the member offset `ud[22]`, inside `PDS2EPM`, so an alias of an
+  AC(1) member showed `AC=0`; the APF offset now follows the IHAPDS sections
+  before it (scatter, alias, halfword-aligned SSI), and an alias names its member
+  (`PDS2MNM`). Oracle `alias.iewl.xmit` (JOB01367): `ACA` `AC=0` → `AC=1`. Over
+  400 on-disk directory entries only alias lines moved, all 0 → 1. The scatter
+  and SSI offsets have no measured case yet.
+
 - **2026-09-29 — #506, MERGED as `7705f64` (PR #507).** The two `vref()` toggles
   #347 had cleared: `&SYSLIST(N'&SYSLIST,2)` lost its second subscript and
   returned the whole operand (SETA 0, `AL1((11,22,33))`; IFOX00 22 and `AL1(33)`,
