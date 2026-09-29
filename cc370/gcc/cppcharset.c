@@ -881,6 +881,35 @@ _cpp_valid_ucn (cpp_reader *pfile, const uchar **pstr,
    An advanced pointer is returned.  Issues all relevant diagnostics.  */
 
 
+/* Every byte of a wide element is translated host->EBCDIC on output
+   (ASM_OUTPUT_ASCII) and in a wide character constant (lex_charconst).  Up
+   to 0xFF that is wanted: the low byte is the Latin-1 code point and maps
+   to its CP037 position.  Above 0xFF there is no EBCDIC character, so the
+   element keeps its code point: pre-image each of its bytes through
+   MAP_INCHAR, as emit_numeric_escape does for an escape.  FROM is the
+   offset in TBUF where the just-converted wide elements start.  */
+static void
+preimage_wide_above_byte (cpp_reader *pfile, struct _cpp_strbuf *tbuf,
+			  size_t from)
+{
+  bool bigend = CPP_OPTION (pfile, bytes_big_endian);
+  size_t cwidth = CPP_OPTION (pfile, char_precision);
+  size_t nbwc = CPP_OPTION (pfile, wchar_precision) / cwidth;
+  size_t off, i;
+
+  for (off = from; off + nbwc <= tbuf->len; off += nbwc)
+    {
+      cppchar_t c = 0;
+
+      for (i = 0; i < nbwc; i++)
+	c = (c << cwidth)
+	    | tbuf->text[off + (bigend ? i : nbwc - i - 1)];
+      if (c > 0xFF)
+	for (i = 0; i < nbwc; i++)
+	  tbuf->text[off + i] = MAP_INCHAR (tbuf->text[off + i]);
+    }
+}
+
 static const uchar *
 convert_ucn (cpp_reader *pfile, const uchar *from, const uchar *limit,
 	     struct _cpp_strbuf *tbuf, bool wide)
@@ -892,6 +921,7 @@ convert_ucn (cpp_reader *pfile, const uchar *from, const uchar *limit,
   int rval;
   struct cset_converter cvt
     = wide ? pfile->wide_cset_desc : pfile->narrow_cset_desc;
+  size_t start = tbuf->len;
 
   from++;  /* Skip u/U.  */
   ucn = _cpp_valid_ucn (pfile, &from, limit, 0);
@@ -906,6 +936,8 @@ convert_ucn (cpp_reader *pfile, const uchar *from, const uchar *limit,
   else if (!APPLY_CONVERSION (cvt, buf, 6 - bytesleft, tbuf))
     cpp_errno (pfile, CPP_DL_ERROR,
 	       "converting UCN to execution character set");
+  else if (wide)
+    preimage_wide_above_byte (pfile, tbuf, start);
 
   return from;
 }
@@ -1175,8 +1207,12 @@ cpp_interpret_string (cpp_reader *pfile, const cpp_string *from, size_t count,
 	    {
 	      /* We have a run of normal characters; these can be fed
 		 directly to convert_cset.  */
+	      size_t start = tbuf.len;
+
 	      if (!APPLY_CONVERSION (cvt, base, p - base, &tbuf))
 		goto fail;
+	      if (wide)
+		preimage_wide_above_byte (pfile, &tbuf, start);
 	    }
 	  if (p == limit)
 	    break;
@@ -1245,7 +1281,11 @@ narrow_str_to_charconst (cpp_reader *pfile, cpp_string str,
   result = 0;
   for (i = 0; i < str.len - 1; i++)
     {
-      c = str.text[i] & mask;
+      /* The value is the byte the program sees at run time: on an EBCDIC
+	 target the string holds host bytes until output (defaults.h).  This
+	 is the one place both the code (lex_charconst) and #if (cppexp.c)
+	 get a character constant's value from.  */
+      c = TARGET_STR_BYTE (str.text[i]) & mask;
       if (width < BITS_PER_CPPCHAR_T)
 	result = (result << width) | c;
       else
@@ -1310,7 +1350,9 @@ wide_str_to_charconst (cpp_reader *pfile, cpp_string str,
   result = 0;
   for (i = 0; i < nbwc; i++)
     {
-      c = bigend ? str.text[off + i] : str.text[off + nbwc - i - 1];
+      /* Each byte as the program sees it; see narrow_str_to_charconst.  */
+      c = TARGET_STR_BYTE (bigend ? str.text[off + i]
+				  : str.text[off + nbwc - i - 1]);
       result = (result << cwidth) | (c & cmask);
     }
 
