@@ -347,12 +347,29 @@ static void show_lmod(const char *path, const unsigned char *b, long n, int v,
 /* ====================================================================== */
 /* PDS directory block decode (shared by IEBCOPY unload + the XMIT peel)   */
 /* ====================================================================== */
-/* Decode the load-module attributes in a member's PDS2 user data (IHAPDS
- * PDS2ATR1 at ud[8], PDS2ATR2 at ud[9], the APF AC at ud[22] valid when
- * PDSAPFLG ud[18] bit4 is set) into a readable flag list, e.g.
- * "RENT REUS EXEC 1BLK NRLD AC=1".  out is left empty if nothing is set. */
-static void pds2_attrs(const unsigned char *ud, int nud, char *out, size_t cap)
+/* Offset in the PDS2 user data of the APF section (PDSAPFCT, PDSAPFAC), or -1
+ * when PDSAPFLG (ud[18] bit4) is off or the entry is too short to hold it.
+ * IHAPDS puts the optional sections after the 21-byte basic section in this
+ * order: scatter (8, when PDS2SCTR), alias (11, PDS2EPM + PDS2MNM, when the
+ * entry is an alias), SSI (4, halfword-aligned, when PDS2SSI), then APF.  A
+ * member's APF therefore sits at ud[21], an alias's at ud[32] with no pad. */
+static int pds2_apf_off(const unsigned char *ud, int nud, int alias)
 {
+    int off = 21;
+    if (nud < 21 || !(ud[18] & 0x08)) return -1;        /* PDSAPFLG */
+    if (ud[8] & 0x04) off += 8;                         /* PDS2SCTR: PDSS01 */
+    if (alias) off += 11;                               /* PDSS02 */
+    if (ud[18] & 0x10) off = ((off + 1) & ~1) + 4;      /* PDS2SSI: PDSS03, 0H */
+    return (off + 2 <= nud) ? off : -1;
+}
+
+/* Decode the load-module attributes in a member's PDS2 user data (IHAPDS
+ * PDS2ATR1 at ud[8], PDS2ATR2 at ud[9], the APF AC where pds2_apf_off()
+ * finds it) into a readable flag list, e.g. "RENT REUS EXEC 1BLK NRLD AC=1".
+ * out is left empty if nothing is set. */
+static void pds2_attrs(const unsigned char *ud, int nud, int alias, char *out, size_t cap)
+{
+    int apf = pds2_apf_off(ud, nud, alias);
     static const struct { int idx; unsigned char bit; const char *name; } F[] = {
         { 8, 0x80, "RENT" }, { 8, 0x40, "REUS" }, { 8, 0x20, "OVLY" },
         { 8, 0x10, "TEST" }, { 8, 0x08, "OL"   }, { 8, 0x04, "SCTR" },
@@ -366,8 +383,8 @@ static void pds2_attrs(const unsigned char *ud, int nud, char *out, size_t cap)
         r = snprintf(out + n, cap - n, "%s%s", n ? " " : "", F[i].name);
         if (r > 0 && (size_t)r < cap - n) n += (size_t)r;
     }
-    if (nud >= 24 && (ud[18] & 0x08)) {                 /* PDSAPFLG -> the AC is meaningful */
-        r = snprintf(out + n, cap - n, "%sAC=%d", n ? " " : "", ud[22]);
+    if (apf >= 0) {
+        r = snprintf(out + n, cap - n, "%sAC=%d", n ? " " : "", ud[apf + 1]);
         if (r > 0 && (size_t)r < cap - n) n += (size_t)r;
     }
 }
@@ -392,13 +409,19 @@ static int show_dir_block(const unsigned char *blk, const char *indent, int v)
                alias ? " (alias)" : "", mvs_be24(e + 8));
         if (nud >= 18) {                            /* load-module PDS2 user data */
             long modlen = mvs_be24(ud + 10), entry = mvs_be24(ud + 15);
+            int apf = pds2_apf_off(ud, nud, alias);
+            int als = 21 + ((ud[8] & 0x04) ? 8 : 0);    /* PDSS02, after any PDSS01 */
             char attrs[96];
-            pds2_attrs(ud, nud, attrs, sizeof attrs);
+            pds2_attrs(ud, nud, alias, attrs, sizeof attrs);
             printf("  entry=%06lX  modlen=%ld", entry, modlen);
+            if (alias && als + 11 <= nud)           /* PDS2MNM: the member it names */
+                printf("  of %s", mvs_nm(ud + als + 3));
             if (attrs[0]) printf("  [%s]", attrs);
             if (v) {
                 printf("\n%s         ATR1=%02X ATR2=%02X  AC=%02X  PDS2TTRT=%06lX",
-                       indent, ud[8], ud[9], (nud >= 24) ? ud[22] : 0, mvs_be24(ud));
+                       indent, ud[8], ud[9], (apf >= 0) ? ud[apf + 1] : 0, mvs_be24(ud));
+                if (alias && als + 11 <= nud)
+                    printf("  PDS2EPM=%06lX", mvs_be24(ud + als));
             }
         }
         printf("\n");

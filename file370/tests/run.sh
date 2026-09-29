@@ -14,11 +14,28 @@ pass() { echo "PASS: $1"; pass=$((pass+1)); }
 fail() { echo "FAIL: $1"; fail=$((fail+1)); }
 [ -x "$F" ] || { echo "no binary"; exit 2; }
 
+# --- 0. an alias's AC is read after its alias section (#479) ---------------
+# IEWL oracle (MVSCE-LAB JOB01367, in-repo, so this runs without $FIX): ACA is
+# an alias of ACM, linked SETCODE AC(1).  An alias's user data is basic 21 +
+# PDS2EPM 3 + PDS2MNM 8 + APF 2, so its AC is ud[33]; read at a member's ud[22]
+# it lands inside PDS2EPM and showed AC=0.  The member is the control.
+AX=./ld370/tests/fixtures/alias.iewl.xmit
+o=$("$F" -v "$AX")
+if ! printf '%s\n' "$o" | grep -qE '^    member ACM .*AC=1\]'; then
+    fail "the member ACM no longer shows AC=1 -- the half that was right"
+elif ! printf '%s\n' "$o" | grep -qE '^    member ACA +\(alias\) .* of ACM .*AC=1\]'; then
+    fail "the alias ACA does not show 'of ACM' and AC=1: $(printf '%s\n' "$o" | grep 'member ACA')"
+elif ! printf '%s\n' "$o" | grep -qE '^    member ALT2 +\(alias\) .* of ALTM .*AC=0\]'; then
+    fail "the alias ALT2 (member AC 0) does not show 'of ALTM' and AC=0"
+else
+    pass "an alias's AC and PDS2MNM are read after the alias section"
+fi
+
 LM="$FIX/target-bytes/tk5/LPALIB/IKJEFT01.bin"
 DECK="$FIX/ifox-run/decks/IKJEES20.obj"
 if [ ! -f "$LM" ] || [ ! -f "$DECK" ]; then
     echo "SKIP: no fixtures at $FIX (set FILE370_FIXTURES)"
-    exit 0
+    [ "$fail" -eq 0 ]; exit
 fi
 
 # --- 1. a bound member's CESD is listed at all ------------------------------
