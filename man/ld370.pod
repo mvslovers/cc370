@@ -7,7 +7,7 @@ ld370 - host-native MVS linker (IEWL replacement) + host-to-MVS transport
 B<ld370> [B<-v>] B<-o> I<out> [B<-L> I<dir> B<-l> I<name>] [B<--include> I<name>]
 [B<--entry> I<name>] [B<--alias> I<name>]... [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>] [B<--name> I<n>] [B<--blocksize> I<n>]
 [B<--ac> I<n>] [B<--rent>|B<--norent>] [B<--reus>|B<--noreus>] [B<--refr>]
-[B<--sparse-text>] I<obj>...
+[B<--sparse-text>] [B<--map> I<file>] I<obj>...
 
 B<ld370> B<--pack> I<member> [I<member> ...] B<-o> I<out> [B<-xmit>] [B<-iebcopy>] [B<--dsn> I<ds>]
 
@@ -57,6 +57,18 @@ strong external references fail the link unless B<--allow-unresolved> is given.
 =item B<--include> I<name>
 
 Force-include an archive member even if nothing references it.
+
+=item B<--map> I<file>
+
+Write a text load map to I<file> (C<-> = standard output) after the member is
+written: every section in origin order with its type (SD, PC, CM), origin,
+length and the input it came from --- the object path as given, or
+I<archive>C<(>I<member>C<)> followed by C<include> or C<autocall> --- with the
+entries it defines indented beneath it, and any unresolved names at the end.
+The map carries no clock and no page headers, so the maps of two links compare
+with B<diff>. It does not change the member. Refused with B<--pack>, which
+places no sections. The cross-reference half of IEWL's MAP/XREF is not
+provided.
 
 =item B<-iebcopy>
 
