@@ -132,17 +132,25 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
-| 2 | #527 | as370 | silent — `=(2*2)F'7'` is one fullword of zeros and the pool reorders; 0 corpus uses | nothing — reference `as370/tests/ref/litdupexpr.obj` (JOB00283) |
-| 3 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
-| 4 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
-| 5 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 6 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 7 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 8 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
-| 9 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 10 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
-| 11 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+| 1 | #527 | as370 | silent — `=(2*2)F'7'` is one fullword of zeros and the pool reorders; 0 corpus uses | nothing — reference `as370/tests/ref/litdupexpr.obj` (JOB00283) |
+| 2 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
+| 3 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
+| 4 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 5 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 6 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 7 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
+| 8 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 9 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 10 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+
+**#342 left the table on 2026-09-30** (PR #545), and its title had the wrong
+cause. No macro generates a DSECT in `IEDQWIE`: PL/S emitted the fields as
+absolute EQUs off `TOTOLTCB EQU 0`, so the USING is an *absolute* one, and the
+parenthesised branch of `resolve()` never asked an absolute USING. The fix
+applies where the sole subscript is a length (`absssub`, JOB00294), and the tree
+moved exactly one deck, IEDQWIE, to identical. The RX form `S(X)` under an
+absolute USING has 0 occurrences in the tree and is with the oracle (`absrx`).
+#97, placed at 8 below, is 7 since.
 
 **#97 moves from 1 to 8 on 2026-09-30, and #184's closed row leaves.** PR #543
 landed the half that moves bytes: a statement using a SET symbol nothing
@@ -321,17 +329,7 @@ And `--entry` was the same defect one flag further along — the parser accepts 
 the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
 packed at rc 0 in silence.
 
-### 1 · #342 — a symbol from a macro-generated DSECT is recorded absolute
-
-In `IEDQWIE` a symbol defined inside a DSECT that a macro generated comes out
-absolute rather than relocatable, so an SS operand written with an explicit
-length loses its base register. Filed 2026-09-10 and unchanged at `fd287d3`.
-
-It sits this high because no measurement is owed before the work can start: the
-mechanism is one bookkeeping decision and the witness is a single named module.
-Everything below this line in the top class is waiting on something.
-
-### 4 · #362 — the relocatability rule is not applied to `USING`
+### 3 · #362 — the relocatability rule is not applied to `USING`
 
 *measured into a different issue than the one that was filed — and closed for a
 day and a half while the work had not started*
@@ -404,7 +402,7 @@ four — `IEAVTPER`, `IECIOSAM`, `IECVMAP`, `IECVXURT` — carry a byte differen
 their own, same length and already counted among the 96 still differing, and this
 fix does not touch it.
 
-### 5 · #89 — a forward reference in EQU resolves to 0
+### 4 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -415,7 +413,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 6 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 5 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
@@ -472,7 +470,7 @@ known here. Without overlap this is an untrue claim with no current victim; with
 it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
-### 7 · #86 — the diagnostic recorders drop everything past 128 entries
+### 6 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -489,7 +487,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 8 · #97 — the definition-time IFO006
+### 7 · #97 — the definition-time IFO006
 
 *the code effect landed 2026-09-30 (#543); what is left moves no byte*
 
@@ -574,7 +572,7 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
   measured and is unchanged.
 
-### 9 · #241 — twenty modules longer than IFOX00, one of them readable
+### 8 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -598,7 +596,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 10 · #23 — the corpus gate has an oracle-shaped hole
+### 9 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -1476,6 +1474,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-30 — #342, MERGED as `bc6a1a8` (PR #545).** An SS operand with a
+  sole LENGTH subscript on an absolute prefix now takes the absolute USING, as
+  the same operand without the length already did (#190). A subscript that is
+  an explicit base is untouched: the broader first attempt lost IGG019UN,
+  IKJEFLI and IEAVEAT0. `absssub` (JOB00294, six predictions held). MVSBLD gate
+  against HEAD: exactly one deck moved, IEDQWIE, 5,230 -> 5,231 identical.
 
 - **2026-09-30 — #97 (code effect), MERGED as `faff408` (PR #543).** A statement
   using a SET symbol nothing declares is IFO006 at severity 8 and is not
