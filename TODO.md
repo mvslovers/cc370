@@ -132,18 +132,25 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on #370's neighbour) |
-| 2 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
-| 3 | #527 | as370 | silent — `=(2*2)F'7'` is one fullword of zeros and the pool reorders; 0 corpus uses | nothing — reference `as370/tests/ref/litdupexpr.obj` (JOB00283) |
-| 4 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
-| 5 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
-| 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 7 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 8 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 9 | #184 | as370 | **closed** — the last scan, the literal loop in `scan_undef_terms()`, fixed on an oracle (JOB00275); left of the family: #474, blocked on #494 | #494: **one oracle job** |
-| 10 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 12 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
-| 11 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 1 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 2 | #527 | as370 | silent — `=(2*2)F'7'` is one fullword of zeros and the pool reorders; 0 corpus uses | nothing — reference `as370/tests/ref/litdupexpr.obj` (JOB00283) |
+| 3 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
+| 4 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
+| 5 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 6 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 7 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 8 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
+| 9 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 10 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 11 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+
+**#97 moves from 1 to 8 on 2026-09-30, and #184's closed row leaves.** PR #543
+landed the half that moves bytes: a statement using a SET symbol nothing
+declares is IFO006 and is not processed, and `undeclset`, `undeclset2` and
+`setc_undef` are IFOX00's decks. What is left is silent *under-reporting*, one
+class down, and it waits on something (see its section). #184 was already
+closed; the rest of its family is #474, blocked on #494. #23 and #427 swap
+numbers so the table reads in rank order again.
 
 **#525 left the table on 2026-09-30**, the day it entered it, and the reason it
 led was wrong. It ranked first *"because it is the one with reach"* — 1,110 maclib
@@ -314,73 +321,7 @@ And `--entry` was the same defect one flag further along — the parser accepts 
 the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
 packed at rc 0 in silence.
 
-### 1 · #97 — an undeclared SET symbol produces a different object module
-
-*the assignment side landed on 2026-09-13; what is left is smaller than the
-issue says and one third of it is blocked on something the issue never named*
-
-**The risk was nil and is now measured over both corpora**: 0 of the 5,528
-MVSBLD modules assign to an undeclared SET symbol, `IFO006` appears in 0 of the
-926 recorded corpus diagnostics, libc370's 28 hand-written modules are clean,
-and the issue's own count over 826 ecosystem plus 277 IBM modules was 0. So the
-tree is a pure false-positive detector for this check, and the gate said so:
-`gained 0 / LOST 0 / rc CLEAN -> FLAGGED 0 / as370 alone flags 0`, measured
-against a baseline binary built from `main` — the only comparison that measures
-one commit rather than everything since the promoted state.
-
-**The oracle answered the two questions no corpus could** (`MVSTK5-REF`
-JOB00309/JOB00310, `tests/undeclset.s`, eight predictions and all eight held):
-an undeclared assignment in **open code** is flagged, and XF checks the
-dictionary at macro **definition** time as well as in the expansion — the
-macro's two cards draw `IFO006` twice each.
-
-**What is left, and the guard in `run.sh` pins all three numbers so that closing
-any of it fails loudly rather than drifting:**
-
-- the **definition-time** check: as370 flags 2 statements where XF flags 6
-- the **code effect** — XF generates nothing for a statement carrying an
-  undeclared symbol. It is not ten bytes too many: `'/TIGHT//P///'` against our
-  `'/LOOSE//TIGHT//P//O///'`, and only **3 of the 12 bytes** land at the same
-  address, because every later symbol moves
-- the **reference site**, which the issue proposes in the same breath as the
-  assignment site and which is **not safe today**: as370 reaches `vref`'s "names
-  nothing" path 6,387 times under a real name in 771 of the 5,528 modules,
-  12,015 of those inside library-macro expansions, where IFOX00 raises nothing
-  at all. Those are as370 failing to resolve what XF resolves; a diagnostic
-  there would report our own gap as the source's error. It wants its own issue
-
-### ~~#104~~ — an unrecognised option becomes the source filename — **fixed 2026-09-13**
-
-*the decision this was waiting on came out of IFOX00's own scan, and the
-issue's demonstration had gone stale on its own*
-
-The loop ended in `else src = argv[ai];`, so anything unrecognised became the
-source filename and was overwritten by the next argument, at rc 0.
-
-**What XF does, read from the source rather than assumed:** an option not in
-`PARMTAB` sets `JINVOPT` and the scan **continues** (`ifox0d.asm:232`); at the
-end the invalid-option test prints `IFO258 INVALID ASSEMBLER OPTION ON EXEC CARD
--- OPTION IGNORED` and sets `SEVCDE` to `X'10'` (`ifnx6b.asm:338-346`, text at
-`:930`). Report, ignore, keep going, return 16 — which is what as370 already
-returned for a source file it cannot open, so the two agree instead of inventing
-a third convention. The roadmap item *derive the PARM= option set and its
-RC/severity from the IFOX sources* is settled for this case.
-
-**The issue's own demonstration is obsolete**: `--sysparm=` is implemented now,
-so its example assembles the DEBUG branch and the deck reads `DBUG`. The defect
-needed an invented option to show. And the second half of it was never written
-down: a **second positional argument** silently replaced the source, which is
-what `-a listing.txt` does — `-a` turns listings on and the path becomes the
-source. `-a=FILE` is the form that was meant, and the suite holds it as a
-control.
-
-**Acceptance in the strong form**: the same 5,528 modules through the same
-environment, binary before and after — **0 differing return codes, 0 differing
-deck SHAs**. Not one byte moved. Callers are unaffected too: the cc370 driver
-passes the assembler only `-o <out> <in>` (`-###`), and mbt's rule is
-`$(AS) $(ASFLAGS) -o $@ $<` with `ASFLAGS` empty.
-
-### 2 · #342 — a symbol from a macro-generated DSECT is recorded absolute
+### 1 · #342 — a symbol from a macro-generated DSECT is recorded absolute
 
 In `IEDQWIE` a symbol defined inside a DSECT that a macro generated comes out
 absolute rather than relocatable, so an SS operand written with an explicit
@@ -390,7 +331,7 @@ It sits this high because no measurement is owed before the work can start: the
 mechanism is one bookkeeping decision and the witness is a single named module.
 Everything below this line in the top class is waiting on something.
 
-### 5 · #362 — the relocatability rule is not applied to `USING`
+### 4 · #362 — the relocatability rule is not applied to `USING`
 
 *measured into a different issue than the one that was filed — and closed for a
 day and a half while the work had not started*
@@ -463,7 +404,7 @@ four — `IEAVTPER`, `IECIOSAM`, `IECVMAP`, `IECVXURT` — carry a byte differen
 their own, same length and already counted among the 96 still differing, and this
 fix does not touch it.
 
-### 6 · #89 — a forward reference in EQU resolves to 0
+### 5 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -474,7 +415,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 7 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 6 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
@@ -531,7 +472,7 @@ known here. Without overlap this is an untrue claim with no current victim; with
 it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
-### 8 · #86 — the diagnostic recorders drop everything past 128 entries
+### 7 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -548,7 +489,28 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 9 · #184 — the attribute apostrophe, in the scans that decide diagnostics
+### 8 · #97 — the definition-time IFO006
+
+*the code effect landed 2026-09-30 (#543); what is left moves no byte*
+
+XF checks its variable-symbol dictionary when it reads a definition, not only
+when it expands one: the definition's own cards draw IFO006 too
+(`undeclset.s`, JOB00309/00310). as370 does not list an in-stream definition at
+all, so there is no statement to attach that flag to. It flags **4 of 6**
+(`undeclset`) and **5 of 8** (`undeclset2`) statements, and a macro that carries
+an undeclared symbol and is **never called** ends rc 0 where XF gives 8. Its
+prerequisite is listing in-stream definitions, which is listing fidelity in its
+own right and moves every statement number after a definition. Where XF puts the
+flag for a *library* macro, whose definition is not listed either, is not
+measured.
+
+**Don't re-learn this:** the reference side was held back for two weeks on
+"6,387 hits in 771 modules". Those came from the 72-column listing image, which
+cuts a reference at column 71 (IGARPT01: `&IGANAME` read as `&IGA`), and not from
+any statement. Read the joined card, and the static, text-ordered rule fires on 0
+of the 5,528 modules, as IFOX00 does (`undeclset2.s`, JOB00292/00293).
+
+### ~~#184~~ — the attribute apostrophe, in the scans that decide diagnostics
 
 *the last live member of the #35/#149/#218 family, and the one PR #347 says it
 did not close*
@@ -612,7 +574,7 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
   measured and is unchanged.
 
-### 10 · #241 — twenty modules longer than IFOX00, one of them readable
+### 9 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -636,7 +598,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 11 · #23 — the corpus gate has an oracle-shaped hole
+### 10 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -1515,6 +1477,15 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-09-30 — #97 (code effect), MERGED as `faff408` (PR #543).** A statement
+  using a SET symbol nothing declares is IFO006 at severity 8 and is not
+  processed: nothing generated, no SETx, no AIF branch. The dictionary is
+  **static and in text order** (`undeclset2`, JOB00292/00293, seven predictions
+  held): an LCLC an AGO skips still declares, and a reference before its LCLC
+  is flagged. Three fixtures are now IFOX00's decks. MVSBLD gate, fix against
+  HEAD: every rc and deck unchanged, 5,230 -> 5,230. libc370: 0 of 757 moved.
+  #97 stays open for the definition-time flag.
+
 - **2026-09-30 — #525, MERGED as `bde99bf` (PR #541).** as370's open-code
   look-ahead recorded every `EQU` as `T'` = `U`; a `C'x'` type operand now sets
   the letter (`equtype`, JOB00281). Its reach is open code and COPY members only:
@@ -1693,9 +1664,10 @@ Pointers only. The reasoning lives in the issues and their PRs.
   statement; as370 substituted nothing and assembled `LA 0,0(0,0)`, so `IEAVEXS`
   was four bytes long. **The measurement came before the code** — instrumented
   over all 5,528 modules, the shape occurs in **2**, and IFOX00 flags **exactly
-  those 2**. The same site's *broad* check was already measured unsafe at 6,387
-  false positives (#97's note), and this is safe because it keys on a **positive
-  declaration of the wrong shape** rather than on absence.
+  those 2**. *(Corrected 2026-09-30: this entry said the site's* broad *check had been measured
+  unsafe at 6,387 false positives. Those came from the listing image cutting a
+  reference at column 71, not from any statement; see #97 and #543.)* It keys on
+  a **positive declaration of the wrong shape** rather than on absence.
 
 - **2026-09-17 — #395, MERGED as `2f1e821` (PR #420).** `--isa app`: the opcode
   table narrowed to the **128** mnemonics an application program can execute,
@@ -1837,9 +1809,9 @@ Pointers only. The reasoning lives in the issues and their PRs.
   that was missing is *declared*: a row is created on the first **assignment**,
   so presence answers "does this hold a value" and never answered "did anything
   declare it" — which is why `set_find` could not see this. The value is still
-  stored, so no deck moves; the oracle, the three numbers the `run.sh` guard
-  pins, and the reference side that is **not** safe to check are in the rank-1
-  section above.
+  stored, so no deck moves. *(Superseded 2026-09-30 by #543: the runtime flag
+  is the wrong key, since an LCLx that AGO skips still declares, and the check
+  now runs per card on a static, text-ordered dictionary.)*
 
 - **2026-09-12, second — #37, PR #368 merged that day; the issue closed
   2026-09-13.** `ld370 --pack` of a **bare** `.lm` wrote entry 0 and this
