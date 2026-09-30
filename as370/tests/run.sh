@@ -3344,6 +3344,44 @@ PY
 fi
 rm -f /tmp/_ef$$.obj /tmp/_ef$$.out
 
+# -------------------------------------------------------------- entryprobe --
+# cc370#559: ENTRY of a name the linkage editor cannot be given -- absolute, or
+# never defined -- is IFO189 and gets NO LD. Oracle: MVSTK5-REF JOB00298,
+# tests/listref/ifox-listing-entryprobe.txt: LDs for E1, E2, E5 only, IFO189
+# four times on the ENTRY. The binary before the fix wrote LDs for all seven.
+# The deck as a whole is not IFOX00's yet: the fixture's forward ORG (#563)
+# still moves the counter, which changes the SD length and the text, so the
+# ESD entries are compared by name, type, address and LDID, without the SD's
+# length.
+./as370 tests/entryprobe.s -o /tmp/_ep$$.obj >/tmp/_ep$$.out 2>&1
+rcp=$?
+if [ $rcp != 8 ]; then
+    echo "entryprobe: FAIL -- expected RC 8, got $rcp"; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO189' /tmp/_ep$$.out)" != 4 ] ||
+     ! grep -q 'IFO189) - E3 in line 20' /tmp/_ep$$.out || ! grep -q 'IFO189) - E4 in line 20' /tmp/_ep$$.out ||
+     ! grep -q 'IFO189) - E6 in line 20' /tmp/_ep$$.out || ! grep -q 'IFO189) - E7 in line 20' /tmp/_ep$$.out; then
+    echo "entryprobe: FAIL -- expected IFO189 on E3, E4, E6, E7 (statement 20)"
+    grep IFO189 /tmp/_ep$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_ep$$.obj tests/ref/entryprobe.obj <<'PY2'
+import sys
+def esd(p):
+    d = open(p, 'rb').read(); out = []
+    for i in range(0, len(d), 80):
+        c = d[i:i+80]
+        if c[1:4] != b"\xc5\xe2\xc4": continue
+        for j in range(16, 16 + int.from_bytes(c[10:12], 'big'), 16):
+            e = c[j:j+16]
+            out.append((e[:8], e[8], e[9:12], e[13:16] if e[8] == 1 else b''))   # SD/ER length left out
+    return out
+if esd(sys.argv[1]) != esd(sys.argv[2]):
+    print("entryprobe: FAIL -- ESD entries differ from IFOX00's"); sys.exit(1)
+print("entryprobe: OK (IFO189 on E3/E4/E6/E7, LDs for E1/E2/E5 only, ESD == IFOX00 but for the SD length, #563)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_ep$$.obj /tmp/_ep$$.out
+
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
 # IFO161 INVALID LITERAL at severity 8, zeroes the instruction and does not pool
