@@ -1389,6 +1389,10 @@ static void reloc_sym(const char *expr, char *out, int outsz) {
  * *sym=1 for a symbol/literal resolved through USING (then sub[0]=base reg).
  * Subscript->field mapping is format-specific (RX: sub0=index; RS/SI/SS: base). */
 static int r_ibase;   /* implied base reg from USING when a paren operand's prefix is relocatable, else -1 */
+/* cc370#342: for a paren operand whose prefix is ABSOLUTE, the base register and
+ * displacement an absolute USING gives it (-1 when none covers it).  Only the SS
+ * case reads it, and only where the sole subscript is a length. */
+static int r_abase; static long r_adisp;
 static int r_len;     /* length attribute L' of the symbol resolved by the last resolve() call (for SS implicit length) */
 static int r_reloc;   /* the displacement prefix of the last resolve() was relocatable (a symbol) */
 static int r_subempty;  /* bit k set when subscript k of the last resolve() was WRITTEN BUT EMPTY --
@@ -1445,7 +1449,7 @@ static int scan_reloc_terms(const char *opnd, int line) {
     return bad;
 }
 static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
-    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1; r_subempty = 0;
+    *nsub = 0; *sym = 0; *d = 0; r_ibase = -1; r_abase = -1; r_adisp = 0; r_len = 0; r_reloc = 0; r_raw = 0; r_addrok = 1; r_subempty = 0;
     if (f[0] == '=') { struct lit *l = lit_get(f); *sym = 1; r_len = l->size; sub[0] = using_for(l->loc, l->sect, d); return; }
     /* The subscript list, if there is one -- NOT merely the first '('.  A
      * displacement expression may be parenthesised for grouping:
@@ -1514,6 +1518,14 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
              * equ_len_of() is the same leftmost-term rule #194 measured, and it
              * answers 1 for a genuinely numeric prefix like `4+120(13)'. */
             r_len = equ_len_of(f);
+            /* What an ABSOLUTE USING would make of this prefix (#190), for the
+             * one caller that may use it: an SS operand whose sole subscript
+             * is a LENGTH, so its base is implied.  Nothing here changes *d or
+             * r_ibase, because for every other shape the subscript can be an
+             * explicit base or an index -- `OI JSCBPASS(@08)', `MVC
+             * 76(4,DCBPTR),72(DCBPTR)' -- and taking the USING there moved three
+             * decks away from IFOX00 on the first attempt (cc370#342). */
+            { long ad; int ab = using_for_abs(v, &ad); if (ab) { r_abase = ab; r_adisp = ad; } }
         }
         /* The MATCHING close paren, not the first one.  A subscript may itself
          * be parenthesised -- `LA 2,4((3),5)`, the form a macro produces when a
@@ -5348,7 +5360,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                     put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc, ao1 = r_addrok, se1 = r_subempty; long raw1 = r_raw;
+                    int ab1 = r_abase; long ad1 = r_adisp;
                     resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc, ao2 = r_addrok, se2 = r_subempty; long raw2 = r_raw;
+                    int ab2 = r_abase; long ad2 = r_adisp;
                     int twol = opc_ss_two_length(o->op);   /* PACK/UNPK/MVO/AP/SP/MP/DP/ZAP/CP carry two 4-bit lengths; the predicate is in opc_table.h, where the decoder reads it too */
                     /* SRP is the third shape in the X'Fx' group and neither predicate
                      * covers it: one length in the HIGH nibble, and an IMMEDIATE -- the
@@ -5397,6 +5411,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int b2 = (ns2 >= 2) ? (int)sub2[1]
                            : (twol && ns2 == 1) ? (ib2 >= 0 ? ib2 : 0)  /* two-length: the sole subscript is a LENGTH */
                            : (ib2 >= 0 ? ib2 : (int)sub2[0]);
+                    /* cc370#342: a sole LENGTH subscript on an ABSOLUTE prefix leaves
+                     * the base implied, and an absolute USING supplies it -- as it
+                     * already did for the same symbol written without a length.
+                     * IEDQWIE's `XC CDSRETFL(1),CDSRETFL' under `USING
+                     * TOTOLTCB,R2' (TOTOLTCB EQU 0): IFOX00 25FF 25FF, and as370
+                     * gave operand 1 base 0.  Where the subscript is a base --
+                     * operand 2 of a one-length SS -- it is left alone. */
+                    if (ns == 1 && ib1 < 0 && ab1 > 0) { b1 = ab1; d = ad1; }
+                    if (twol && ns2 == 1 && ib2 < 0 && ab2 > 0) { b2 = ab2; d2 = ad2; }
                     /* explicit base + relocatable displacement on either operand -> IFO228.
                      * Operand 1 D1(L1,B1) always carries a length, so its explicit base is
                      * the 2nd subscript (ns>=2). Operand 2 is D2(B2) for a one-length SS

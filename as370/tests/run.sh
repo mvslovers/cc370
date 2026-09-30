@@ -143,6 +143,13 @@ rm -f /tmp/_au.$$
 # before or after the absolute USING is dropped, so the two kinds do not mix.
 #   main 6e578f4   4110 0100   5830 0100   4140 0100
 #   IFOX00, this   4110 2100   5830 2100   4140 0100
+# absssub is the #342 oracle: the same absolute operand WITH a length subscript.
+# A sole length leaves the base implied, so the absolute USING supplies it --
+# operand 1, and operand 2 of a two-length SS. Where the subscript is a BASE
+# (operand 2 of MVC, an SI operand) it stays the base: that is what a too-broad
+# first attempt broke, in IGG019UN, IKJEFLI and IEAVEAT0.
+#   main 6fbf24a   D700 0100 2100   FA10 0100 012C   D203 0100 3008
+#   IFOX00, this   D700 2100 2100   FA10 2100 212C   D203 2100 3008
 # cmprule is the #153 oracle: a character comparison orders by LENGTH first, so a
 # shorter string is less than a longer one whatever the characters are. Six cases
 # separate that from strcmp AND from "arithmetic when both are numbers" -- the
@@ -759,7 +766,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          litdup pool contsev align blankcont litscale litpz litlist \
          adcon aliasext attrdup regexpr sconabs fpopc droplist \
          tattr_expr endpool dsectpool blank_csect usingparen usingparenpc \
-         rldorg attrundef equtype equtypegen2; do
+         rldorg attrundef equtype equtypegen2 absssub; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,

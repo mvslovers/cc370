@@ -1,0 +1,59 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 12.52 09/30/26
+T         SD  0001 000000 000022
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 12.52 09/30/26
+                                      1 * cc370#342: an SS operand written with a LENGTH subscript and no
+                                      2 * base, whose symbol is ABSOLUTE, under an ABSOLUTE USING.  The same
+                                      3 * symbol without a subscript already takes the USING (#190); with
+                                      4 * the length it came out with base 0.
+                                      5 *
+                                      6 * Predictions, written before the capture:
+                                      7 *   A1 XC  FLD(1),FLD       op1: length only        D700 2100 2100
+                                      8 *   A2 AP  FLD(2),FLD2(1)   two lengths, both       FA10 2100 212C
+                                      9 *   A3 MVC FLD(4),8(3)      op2 subscript = BASE 3  D203 2100 3008
+                                     10 *   A4 OI  8(4),X'01'       SI subscript = BASE 4   9601 4008
+                                     11 *   A5 CLC FLD(2),FLD2      op2 no subscript        D501 2100 212C
+                                     12 *   A6 XC  FLD(1),FLD       after DROP 2: base 0    D700 0100 0100
+                                     13 * A3 and A4 are the controls that failed a too-broad first attempt:
+                                     14 * there the subscript is an explicit base and must stay one.  The
+                                     15 * relocatable USING *,15 must never serve an absolute operand.
+000000                               16 T        CSECT
+                            00000    17          USING *,15
+                            00000    18 DUM      EQU   0
+                            00100    19 FLD      EQU   DUM+256
+                            0012C    20 FLD2     EQU   DUM+300
+                            00000    21          USING DUM,2
+000000 D700 2100 2100 00100 00100    22 A1       XC    FLD(1),FLD
+000006 FA10 2100 212C 00100 0012C    23 A2       AP    FLD(2),FLD2(1)
+00000C D203 2100 3008 00100 00008    24 A3       MVC   FLD(4),8(3)
+000012 9601 4008      00008          25 A4       OI    8(4),X'01'
+000016 D501 2100 212C 00100 0012C    26 A5       CLC   FLD(2),FLD2
+                                     27          DROP  2
+00001C D700 0100 0100 00100 00100    28 A6       XC    FLD(1),FLD
+                                     29          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 12.52 09/30/26
+A1       00006 00000000 00022
+A2       00006 00000006 00023
+A3       00006 0000000C 00024
+A4       00004 00000012 00025
+A5       00006 00000016 00026
+A6       00006 0000001C 00028
+DUM      00001 00000000 00018  00019 00020 00021
+FLD      00001 00000100 00019  00022 00022 00023 00024 00026 00028 00028
+FLD2     00001 0000012C 00020  00023 00026
+T        00001 00000000 00016
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 12.52 09/30/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         29
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        59
