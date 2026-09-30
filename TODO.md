@@ -132,15 +132,14 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
-| 2 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
-| 3 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 4 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 5 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 6 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
-| 7 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 8 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
-| 9 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+| 1 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
+| 2 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 3 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 4 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 5 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
+| 6 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 7 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 8 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 
 **#342 left the table on 2026-09-30** (PR #545), and its title had the wrong
 cause. No macro generates a DSECT in `IEDQWIE`: PL/S emitted the fields as
@@ -155,6 +154,9 @@ for it (`absrx`, JOB00295), and it landed the same day as #547 (PR #548).
 **#527 left the table on 2026-09-30** (PR #550): a literal's duplication
 factor may be a parenthesised expression, and the tree moved no deck. Every row
 below it moves up one, #528 to the top.
+
+**#528 followed the same day** (PR #552): a literal combined with another term
+is IFO161, and the tree moved no deck and no return code. #362 leads again.
 
 **#97 moves from 1 to 8 on 2026-09-30, and #184's closed row leaves.** PR #543
 landed the half that moves bytes: a statement using a SET symbol nothing
@@ -333,7 +335,7 @@ And `--entry` was the same defect one flag further along — the parser accepts 
 the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
 packed at rc 0 in silence.
 
-### 2 · #362 — the relocatability rule is not applied to `USING`
+### 1 · #362 — the relocatability rule is not applied to `USING`
 
 *measured into a different issue than the one that was filed — and closed for a
 day and a half while the work had not started*
@@ -406,7 +408,7 @@ four — `IEAVTPER`, `IECIOSAM`, `IECVMAP`, `IECVXURT` — carry a byte differen
 their own, same length and already counted among the 96 still differing, and this
 fix does not touch it.
 
-### 3 · #89 — a forward reference in EQU resolves to 0
+### 2 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -417,7 +419,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 4 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
@@ -474,7 +476,7 @@ known here. Without overlap this is an untrue claim with no current victim; with
 it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
-### 5 · #86 — the diagnostic recorders drop everything past 128 entries
+### 4 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -491,7 +493,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 6 · #97 — the definition-time IFO006
+### 5 · #97 — the definition-time IFO006
 
 *the code effect landed 2026-09-30 (#543); what is left moves no byte*
 
@@ -576,7 +578,7 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
   measured and is unchanged.
 
-### 7 · #241 — twenty modules longer than IFOX00, one of them readable
+### 6 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -600,7 +602,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 8 · #23 — the corpus gate has an oracle-shaped hole
+### 7 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -1241,12 +1243,13 @@ afterwards.
 `docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
 JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent:** #525,
-#527, both fixed the same day, and #528, ranked first in *The order* although
-nothing in the corpus uses it.
+#527 and #528, all three fixed the same day. Nothing in the corpus used the
+latter two.
 
 - #527 — `=(2*2)F'7'` was one fullword of zeros, rc 0, and it reordered the pool.
   **Fixed** (PR #550).
-- #528 — `=F'1'+4` is accepted with the `+4` dropped, rc 0; IFOX gives `IFO161`.
+- #528 — `=F'1'+4` was accepted with the `+4` dropped, rc 0; IFOX gives `IFO161`.
+  **Fixed** (PR #552).
 - #525 — the type operand of `EQU` was ignored, so `T'` was `U`, rc 0. **Fixed.**
   It was ranked first for its reach, 1,110 maclib statements, and has none there:
   a macro-generated symbol is `U` to IFOX00 as well (JOB00291). Open code only.
@@ -1479,6 +1482,14 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-30 — #528, MERGED as `27d11e8` (PR #552).** A literal followed by an
+  arithmetic operator is IFO161 at severity 8: the instruction is zeroed and the
+  literal is not pooled (`litplusterm`, JOB00284, rc 8 on both sides).
+  `litplusctl` holds eleven literals with an operator *inside* them at rc 0.
+  0 decks and 0 return codes moved of 5,528; libc370 0 of 757. Only the operator
+  case is measured. The issue did not close from the PR body and was closed by
+  hand.
 
 - **2026-09-30 — #527, MERGED as `e35a573` (PR #550).** A literal's duplication
   factor may be a parenthesised absolute expression: `=(2*2)F'7'` is four
