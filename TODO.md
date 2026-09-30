@@ -348,7 +348,8 @@ packed at rc 0 in silence.
 
 IFOX00 answers IFO196 and keeps the first definition (`equfwd`, JOB00297);
 as370 says nothing and keeps the second. IKJEGMNL's whole deck difference is
-this: three `LA` displacements, IFOX00 0, as370 8/4/5. Reach in the recorded
+this: three text bytes, IFOX00 0, as370 8/4/5 -- the values of SCDPCHLD,
+SCDATLD and SCDENDLD, in the order their `LA`s appear. Reach in the recorded
 diagnostics: 2 modules, 14 statements. Other kinds of duplicate (DS/DC label,
 instruction label) are not probed yet.
 
@@ -356,8 +357,11 @@ instruction label) are not probed yet.
 
 Measured 2026-09-30 (see the issue): IFO231 once per symbol defined later,
 IFO188 for one never defined, value 0 either way -- as370's value already. A
-fix changes messages and rc only; 8 sites in 3 MVSBLD modules, all rc 8 on
-both sides, 0 in libc370.
+fix changes messages and rc only. Reach: 8 sites in 3 MVSBLD modules by a
+scratch as370 count of pass-1 EQUs, 0 in libc370. The IFOX00 witness for the
+rule is the fixture plus IKJEGMNL (rc 8 on both sides); IEAVNP02/03 are rc 12
+on IFOX00 against as370's 8, and macro-broken there, so IFOX00 never reached
+their forward EQU and their two sites rest on the scratch count alone.
 
 ### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
