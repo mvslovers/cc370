@@ -5806,8 +5806,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * register number gives HIGH the 11, and EDGE at D+4092 gives 11
                  * only because the ranges ASCEND -- were they all based at D, the
                  * #138 tie-break would hand it the 12. */
+                /* A base IFO217 rejected establishes NOTHING: USI900 exits to
+                 * AOP405 before USI320 stores the entry, so the register keeps
+                 * whatever domain it had. as370 entered `USING UNDEF,R' as a
+                 * relocatable domain at 0, and IECVXURT then based an operand
+                 * on that register where IFOX00 took another; skipping the
+                 * entry makes its text identical to IFOX00's and brings
+                 * IEAVTPER a byte closer, with no other deck moving (cc370#362). */
                 { int j;
-                  for (j = 1; j < nf; j++) {
+                  for (j = 1; !uerr && j < nf; j++) {
                       int reg, slot = -1, q;
                       if (!F[j][0]) continue;          /* an omitted register leaves ITS range uncovered, and the next one still advances */
                       reg = (int)expr_val(F[j], 0);
