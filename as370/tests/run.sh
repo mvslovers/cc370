@@ -3274,6 +3274,40 @@ PY
 fi
 rm -f /tmp/_rl$$.obj /tmp/_rl$$.out
 
+# ------------------------------------------------------------- litplusterm --
+# cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
+# IFO161 INVALID LITERAL at severity 8, zeroes the instruction and does not pool
+# the literal, so the section is 12 bytes and =F'2' sits at 8. as370 pooled F'1'
+# as `=F'1'+4', dropped the +4 and assembled 5820 F008 at rc 0. RC 8 on both
+# sides, so it is not in the byte-identity loop. Oracle: MVSTK5-REF JOB00284.
+# litplusctl is the control: an operator, sign or modifier INSIDE a literal is
+# not a second term, and eleven such literals must assemble at rc 0.
+#   main e35a573   rc 0, 5820 F008, pool 1 2, section 16 bytes
+#   IFOX00, this   rc 8, 0000 0000, pool 2, section 12 bytes
+./as370 tests/litplusterm.s -o /tmp/_lp$$.obj >/tmp/_lp$$.out 2>&1
+rcl=$?
+if [ $rcl != 8 ]; then
+    echo "litplusterm: FAIL -- expected RC 8, got $rcl"; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO161' /tmp/_lp$$.out)" != 1 ] || ! grep -q "1 Statement Flagged" /tmp/_lp$$.out; then
+    echo "litplusterm: FAIL -- expected exactly one statement flagged, IFO161"
+    grep -iE 'IFO|flagged' /tmp/_lp$$.out; fail=$((fail + 1))
+elif ! ./as370 tests/litplusctl.s -o /dev/null >/dev/null 2>&1; then
+    echo "litplusterm: FAIL -- a control literal was flagged (litplusctl)"; fail=$((fail + 1))
+else
+    python3 - /tmp/_lp$$.obj tests/ref/litplusterm.obj <<'PY'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]
+a, b = body(sys.argv[1]), body(sys.argv[2])
+if a != b:
+    print("litplusterm: FAIL -- deck differs from IFOX00"); sys.exit(1)
+print("litplusterm: OK (IFO161, instruction zeroed, literal not pooled, deck == IFOX00)")
+PY
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_lp$$.obj /tmp/_lp$$.out
+
 # --------------------------------------------------------------- undeclset --
 # cc370#97: a SET symbol nothing declares. IFOX00 raises IFO006 at severity 8
 # and does not process the statement -- the reference generates no object code

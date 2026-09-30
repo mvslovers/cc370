@@ -666,6 +666,36 @@ static const char *lit_dup(const char *p, int *dup) {
     while (isdigit((unsigned char)*p)) *dup = *dup * 10 + (*p++ - '0');
     return p;
 }
+/* Where a literal ends: past the closing quote of its nominal value, or past the
+ * balanced parenthesis of an address constant's. Modifiers between the type and
+ * the value (L4, L(8), S3, S-2, E2) are skipped. NULL if no value was found. */
+static const char *lit_end(const char *f) {
+    int dup; const char *p = lit_dup(f + 1, &dup);
+    if (!*p) return NULL;
+    p++;                                               /* the type letter */
+    while (*p == 'L' || *p == 'S' || *p == 'E') {
+        const char *q = p + 1;
+        if (*q == '(') { int d = 0; for (; *q; q++) { if (*q == '(') d++; else if (*q == ')' && --d == 0) { q++; break; } } }
+        else { if (*q == '+' || *q == '-') q++; if (!isdigit((unsigned char)*q)) break; while (isdigit((unsigned char)*q)) q++; }
+        p = q;
+    }
+    if (*p == '\'') {
+        for (p++; *p; p++) if (*p == '\'') { if (p[1] == '\'') { p++; continue; } return p + 1; }
+        return NULL;
+    }
+    if (*p == '(') { int d = 0; for (; *p; p++) { if (*p == '(') d++; else if (*p == ')' && --d == 0) return p + 1; } }
+    return NULL;
+}
+/* A literal is a term on its own and cannot be combined with another one:
+ * `L 2,=F'1'+4' is IFO161 INVALID LITERAL to IFOX00 at severity 8, the
+ * instruction is zeroed and the literal is not pooled (litplusterm.s, MVSTK5-REF
+ * JOB00284). as370 pooled F'1' under the name `=F'1'+4', dropped the +4 and
+ * assembled 5820 F008 at rc 0 (cc370#528). Only an arithmetic operator after the
+ * literal is measured; anything else that follows it keeps its old reading. */
+static int lit_combined(const char *f) {
+    const char *e = lit_end(f);
+    return e && (*e == '+' || *e == '-' || *e == '*' || *e == '/');
+}
 static void lit_classify(struct lit *l) {
     const char *p = l->text + 1;                 /* past '=' */
     /* The duplication factor was SKIPPED here and never applied, so `=8X'0F''
@@ -1471,6 +1501,16 @@ static int scan_reloc_terms(const char *opnd, int line) {
             snprintf(m, sizeof m, "Complexly relocatable expression (IFOX00 IFO213; instruction zeroed) - %.24s", F[k]);
             note_operr(m, 12, line); bad = 1;
         }
+    }
+    return bad;
+}
+static int scan_bad_literals(const char *opnd, int line) {
+    char F[4][FLDW]; int nf = split_fields(opnd, F, 4), k, bad = 0;
+    for (k = 0; k < nf; k++) {
+        if (F[k][0] != '=' || !lit_combined(F[k])) continue;
+        char m[112];
+        snprintf(m, sizeof m, "Literal combined with another term (IFOX00 IFO161; instruction zeroed) - %.24s", F[k]);
+        note_operr(m, 8, line); bad = 1;
     }
     return bad;
 }
@@ -5149,7 +5189,7 @@ static void pool_reserve(void) {
 /* register every literal operand of a machine instruction (pass 1 and the pre-scan) */
 static void lit_scan_operands(const char *opnd) {
     char F[4][FLDW]; int nf = split_fields(opnd, F, 4), k;
-    for (k = 0; k < nf; k++) if (F[k][0] == '=') lit_get(F[k]);
+    for (k = 0; k < nf; k++) if (F[k][0] == '=' && !lit_combined(F[k])) lit_get(F[k]);   /* an IFO161 literal is never pooled */
 }
 /* Walk the statement list for literals alone, before pass 1 (#68).
  *
@@ -5318,6 +5358,10 @@ static void do_pass(int pass, char **lines, int nlines) {
             } else if (has_overlong_term(opnd)) {   /* operand symbol term >8 -> IFOX IFO236: zero the whole instruction (as IFO228/IFO209 do) */
                 note_ovlref(op, i); int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
                 lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
+            } else if (scan_bad_literals(opnd, i)) {   /* a literal combined with another term -> IFOX IFO161: zero the whole instruction */
+                int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
+                lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
+                if (L == 6) { lrecs[i].a2 = 0; lrecs[i].hasa2 = 1; }
             } else if (scan_reloc_terms(opnd, i)) {   /* not simply relocatable -> IFOX IFO217/IFO213: zero the whole instruction */
                 int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
                 lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
