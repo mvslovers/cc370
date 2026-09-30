@@ -132,13 +132,14 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 2 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 3 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 4 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
-| 5 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 6 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
-| 7 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+| 1 | #556 | as370 | silent — a label defined twice keeps the SECOND value; IFOX00 keeps the first (IFO196) | nothing — oracle `equfwd` (JOB00297) |
+| 2 | #89 | as370 | silent under-reporting — forward EQU draws no IFO231/IFO188; **the value is already right** | nothing — oracle `equfwd` (JOB00297) |
+| 3 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 4 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 5 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
+| 6 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 7 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 8 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 
 **#342 left the table on 2026-09-30** (PR #545), and its title had the wrong
 cause. No macro generates a DSECT in `IEDQWIE`: PL/S emitted the fields as
@@ -149,6 +150,12 @@ moved exactly one deck, IEDQWIE, to identical. The RX form `S(X)` under an
 absolute USING has 0 occurrences in the tree; the oracle answered the same way
 for it (`absrx`, JOB00295), and it landed the same day as #547 (PR #548).
 #97, placed at 8 below, is 7 since.
+
+**#89 was measured on 2026-09-30, and it split.** The oracle (`equfwd`, JOB00297,
+PR #557) says a forward EQU is IFO231 per symbol with value 0 -- which as370
+already produces -- so #89 is a diagnostic only, 8 sites in 3 modules and 0 in
+libc370. What moves bytes is the duplicate definition beside it in IKJEGMNL:
+IFOX00 keeps the first, as370 the second. That is #556, and it takes rank 1.
 
 **#362 left the table on 2026-09-30** (PR #554), and the ranking moves up one.
 A failed USING base is IFO217 and establishes no domain; see *Recently landed*.
@@ -337,18 +344,22 @@ And `--entry` was the same defect one flag further along — the parser accepts 
 the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
 packed at rc 0 in silence.
 
-### 1 · #89 — a forward reference in EQU resolves to 0
+### 1 · #556 — a second definition overwrites the first
 
-`A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
-repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
-#82 just implemented everywhere else; #82's recorder is gated on pass 2 and has to
-be, so it cannot cover this.
+IFOX00 answers IFO196 and keeps the first definition (`equfwd`, JOB00297);
+as370 says nothing and keeps the second. IKJEGMNL's whole deck difference is
+this: three `LA` displacements, IFOX00 0, as370 8/4/5. Reach in the recorded
+diagnostics: 2 modules, 14 statements. Other kinds of duplicate (DS/DC label,
+instruction label) are not probed yet.
 
-**Measure first.** Whether any ecosystem module relies on a forward EQU is not
-known — the #82 probe counted pass-2 lookups only and says nothing about it. A
-corpus that quietly depends on this would move decks.
+### 2 · #89 — a forward reference in EQU draws no diagnostic
 
-### 2 · #100 — every module is marked RENT+REUS, IEWL marks neither
+Measured 2026-09-30 (see the issue): IFO231 once per symbol defined later,
+IFO188 for one never defined, value 0 either way -- as370's value already. A
+fix changes messages and rc only; 8 sites in 3 MVSBLD modules, all rc 8 on
+both sides, 0 in libc370.
+
+### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
@@ -405,7 +416,7 @@ known here. Without overlap this is an untrue claim with no current victim; with
 it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
-### 3 · #86 — the diagnostic recorders drop everything past 128 entries
+### 4 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -422,7 +433,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 4 · #97 — the definition-time IFO006
+### 5 · #97 — the definition-time IFO006
 
 *the code effect landed 2026-09-30 (#543); what is left moves no byte*
 
@@ -507,7 +518,7 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
   measured and is unchanged.
 
-### 5 · #241 — twenty modules longer than IFOX00, one of them readable
+### 6 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -531,7 +542,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 6 · #23 — the corpus gate has an oracle-shaped hole
+### 7 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
