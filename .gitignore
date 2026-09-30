@@ -20,3 +20,6 @@
 
 # per-session handover notes, local only
 HANDOVER.md
+
+# MVS connection (mbt-style .env) -- credentials, never committed
+.env
