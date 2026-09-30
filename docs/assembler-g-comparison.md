@@ -174,7 +174,7 @@ supported*.
 | SET-symbol dimension up to 9999 | limit not read; IFOX has an illegal-dimension message (`erms.asm:45`) | EXTEN #19 (NOEXTEN: F's limit) | `LCLA &X(2000)` accepted (measured) | already supported up to at least 2000; XF limit to be measured |
 | Substring whose length runs past the end: `'ABC'(2,5)` | IFOX has messages for a first expression past the end and a negative second one (`erms.asm:129-134`), none for a second one past the end | EXTEN #5: second expression may be up to 255; PTF readme says G and H truncate while "IFOX00 doesn't like" it (secondary, and ambiguous — the MNOTE it mentions comes from G's own macro) | truncates to `'BC'` silently (measured) | XF behaviour to be measured |
 | `MNOTE 'text'` without severity | yes — 1,250 statements in MVSBLD | EXTEN #21: printed as a comment | printed as a NOTE (measured) | already supported |
-| Undefined variable symbol in a model statement | IFO006 (#97) | — | substituted as empty (measured; #97 open) | implement (#97) — not a G item |
+| Undefined variable symbol in a model statement | IFO006 (#97) | — | IFO006 at severity 8, statement not processed; static, text-ordered dictionary (`tests/undeclset2.s`, JOB00292/00293) | done at expansion and in open code (#97); the definition-time flag is still missing — not a G item |
 
 ### 4.2 Symbols and attributes
 
@@ -330,7 +330,7 @@ which carries the probe, both results and the job number.
 | 5 | 6/7/8 nested parentheses in `EQU` | 6 fine; 7 and 8 `IFO233`, sev 8, value 0 — JOB00285 | all accepted, value 1 | #529 |
 | 6 | an unnamed, then two named `TITLE`s | `IFO104` on the second named one, sev 4 — JOB00286 | no message | #530 |
 | 7 | `A EQU C'ABCDE'`, `DC A(A)` | `IFO169 INVALID SELF-DEFINING TERM`, sev 8, value 0 — JOB00287 | `C2C3C4C5`, rc 0 | #531 |
-| 8 | `&FOO` / `&SYSSTYP` in a model statement, undeclared | IFO006 (already #97) | substituted empty, rc 0 | #97 |
+| 8 | `&FOO` / `&SYSSTYP` in a model statement, undeclared | IFO006 (already #97) | IFO006, statement generates nothing (#97) | #97 |
 | 9 | `OPSYN` | accepted, `LR2 1,2` = `1812` — JOB00288 | "Undefined operation code" | #532 |
 | 10 | `AIFB` / `AGOB` | accepted, behave as `AIF`/`AGO` — JOB00288 | "Undefined operation code" | #533 |
 | 11 | `ICTL 1,71,16` | accepted — JOB00288 | "Undefined operation code" | #534 |

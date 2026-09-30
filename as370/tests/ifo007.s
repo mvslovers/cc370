@@ -13,12 +13,12 @@
 *
 *   &C(,0)   declared LCLA &C, used subscripted   -> IFO007
 *   &A(1)    declared LCLA &A(10), used subscripted -> silent
-*   &Z(1)    declared nowhere at all              -> not IFO007
+*   &Z(1)    declared nowhere at all              -> IFO006
 *
 * The middle one is a correct subscripted use and the last is the
-* UNDECLARED case, which is cc370#97's and measured unsafe to
-* diagnose here: as370 reaches the "names nothing" path 6,387 times
-* in 771 of the 5,528 modules where IFOX00 raises nothing at all.
+* UNDECLARED case, which is cc370#97's: IFO006, not IFO007, and it
+* generates nothing too (undeclset.s, undeclset2.s), so the IFO007
+* statement lands at X'08' where it used to land at X'0C'.
 * This check keys on a POSITIVE DECLARATION OF THE WRONG SHAPE and
 * fires in 2 modules of 5,528 -- IEAVEXS and IEAVRTI0 -- which are
 * exactly the two IFOX00 flags IFO007, once each.

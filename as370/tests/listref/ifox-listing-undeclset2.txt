@@ -1,0 +1,124 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.44 09/30/26
+T         SD  0001 000000 00000C
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.44 09/30/26
+                                      1 * cc370#97, second fixture: WHICH dictionary decides, and what a
+                                      2 * reference to an undeclared SET symbol does outside a model
+                                      3 * statement. undeclset.s settled that XF checks at definition time;
+                                      4 * it could not say whether that check is static (every LCLx card in
+                                      5 * the body, reached or not) or follows what an expansion executes,
+                                      6 * nor whether text order matters.
+                                      7 *
+                                      8 * Predictions, written before the capture. Every case punches its
+                                      9 * own letters, so the deck says which rule held:
+                                     10 *
+                                     11 *   A macro: LCLC &SKIP jumped over by AGO, then referenced
+                                     12 *       static dictionary   SILENT, C'AA'
+                                     13 *       runtime dictionary  IFO006, nothing generated
+                                     14 *   B macro: &LATE referenced on the card BEFORE its LCLC
+                                     15 *       order-sensitive     IFO006 def+exp, nothing
+                                     16 *       order-free          SILENT, C'BB'
+                                     17 *   C macro: undeclared &UC in the OPERAND of a SETC whose target
+                                     18 *       is declared; then DC C'C&T3.C'
+                                     19 *       IFO006 def+exp; T3 unassigned -> C'CC'
+                                     20 *       (assigned 'XX' -> C'CXXC', a third answer)
+                                     21 *   D macro: undeclared &UA in an AIF condition
+                                     22 *       IFO006 def+exp; AIF not taken -> C'D1'
+                                     23 *       (treated as null and taken -> C'D2')
+                                     24 *   E open code: the pair of A -- LCLC skipped by AGO
+                                     25 *       static SILENT C'EE' / runtime IFO006, nothing
+                                     26 *   F open code: the pair of C -> IFO006, C'FF'
+                                     27 *   G open code: the pair of D -> IFO006, C'G1'
+                                     28 *
+                                     29 * Column 72 is blank on every card.
+                                     30          MACRO
+                                     31          SKIPD
+                                     32          AGO   .OVER
+                                     33          LCLC  &SKIP
+                                     34 .OVER    ANOP
+                                     35 SKIPDC   DC    C'A&SKIP.A'
+                                     36          MEND
+                                     37          MACRO
+                                     38          LATED
+                                     39 LATEDC   DC    C'B&LATE.B'
+         *** ERROR ***
+                                     40          LCLC  &LATE
+                                     41          MEND
+                                     42          MACRO
+                                     43          OPNDD
+                                     44          LCLC  &T3
+                                     45 &T3      SETC  'X&UC.X'
+         *** ERROR ***
+                                     46 OPNDDC   DC    C'C&T3.C'
+                                     47          MEND
+                                     48          MACRO
+                                     49          AIFD
+                                     50          AIF   ('&UA' EQ '').EMPTY
+         *** ERROR ***
+                                     51 AIFDC1   DC    C'D1'
+                                     52          MEXIT
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.44 09/30/26
+                                     53 .EMPTY   ANOP
+                                     54 AIFDC2   DC    C'D2'
+                                     55          MEND
+000000                               56 T        CSECT
+                                     57          SKIPD
+000000 C1C1                          58+SKIPDC   DC    C'AA'
+                                     59          LATED
+                                     60+LATEDC   DC    C'B&LATE.B'
+         *** ERROR ***
+                                     61          OPNDD
+                                     62+&T3      SETC  'X&UC.X'
+         *** ERROR ***
+000002 C3C3                          63+OPNDDC   DC    C'CC'
+                                     64          AIFD
+                                     65+         AIF   ('&UA' EQ '').EMPTY
+         *** ERROR ***
+000004 C4F1                          66+AIFDC1   DC    C'D1'
+                                     67          AGO   .OSK
+                                     68 .OSK     ANOP
+                                     69 OSKDC    DC    C'E&OSKIP.E'
+000006 C5C5                          70+OSKDC    DC    C'EE'
+                                     71          LCLC  &OT
+                                     72 &OT      SETC  'Y&OU.Y'
+         *** ERROR ***
+                                     73 OTDC     DC    C'F&OT.F'
+000008 C6C6                          74+OTDC     DC    C'FF'
+                                     75          AIF   ('&OA' EQ '').OEMPTY
+         *** ERROR ***
+00000A C7F1                          76 OADC1    DC    C'G1'
+                                     77          AGO   .OEND
+                                     78 .OEND    ANOP
+                                     79          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.44 09/30/26
+AIFDC1   00002 00000004 00066
+OADC1    00002 0000000A 00076
+OPNDDC   00002 00000002 00063
+OSKDC    00002 00000006 00070
+OTDC     00002 00000008 00074
+SKIPDC   00002 00000000 00058
+T        00001 00000000 00056
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 10.44 09/30/26
+   39  IFO006      UNDEFINED VARIABLE SYMBOL &LATE
+   45  IFO006      UNDEFINED VARIABLE SYMBOL &UC
+   50  IFO006      UNDEFINED VARIABLE SYMBOL &UA
+   60  IFO006      UNDEFINED VARIABLE SYMBOL &LATE
+   62  IFO006      UNDEFINED VARIABLE SYMBOL &UC
+   65  IFO006      UNDEFINED VARIABLE SYMBOL &UA
+   72  IFO006      UNDEFINED VARIABLE SYMBOL &OU
+   75  IFO006      UNDEFINED VARIABLE SYMBOL &OA
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     8
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         74
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                       124

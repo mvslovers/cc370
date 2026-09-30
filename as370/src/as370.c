@@ -1841,13 +1841,13 @@ static int g_curorg;
  * `LA 0,&CODE(,0)' assembled as `LA 0,0(0,0)' and the section came out four
  * bytes long (IEAVEXS, 432 against 428).
  *
- * WHY THIS REFERENCE-SITE CHECK IS SAFE WHERE THE GENERAL ONE IS NOT, and it is
- * the same site: cc370#97's note measures as370 reaching vref's "names nothing"
- * path 6,387 times in 771 of the 5,528 modules where IFOX00 raises nothing at
- * all -- those are places as370 fails to resolve what XF resolves, and a
- * diagnostic there reports our own gap as the source's error.  This one keys on
- * a POSITIVE DECLARATION OF THE WRONG SHAPE rather than on absence, and the
- * corpus says so: it fires in 2 modules of 5,528, IEAVEXS and IEAVRTI0, and
+ * WHY THIS IS DECIDED HERE AND IFO006 IS NOT.  vref also sees cards that are
+ * not the statement -- the listing image is drawn on a 72-column card, and a
+ * reference cut at column 71 reaches it as a shorter name that names nothing --
+ * so ABSENCE is not a safe signal at this site, and cc370#97's undeclared case
+ * is decided per card from the joined source instead (vdict_card).  This one
+ * keys on a POSITIVE DECLARATION OF THE WRONG SHAPE, which a cut name cannot
+ * forge, and the corpus says so: it fires in 2 modules of 5,528, IEAVEXS and IEAVRTI0, and
  * IFOX00 raises IFO007 on exactly those two, once each, at severity 8.  Two for
  * two, no miss and no false positive.
  *
@@ -1866,6 +1866,36 @@ static int g_curorg;
 static int g_ifo007;                       /* set by vref for the line being expanded */
 static char ifo007_name[20];               /* the symbol, for the message */
 static unsigned char ifo007_line[MAXLINES];/* 1 = this statement generates nothing */
+/* cc370#97: the card about to be handed to mexp_line uses a variable symbol its
+ * dictionary does not hold (vdict_card).  Set by the caller, taken on entry. */
+static int g_ifo006;
+static char ifo006_name[20];
+/* A dictionary: names in text order and, per name, the declaring card's type
+ * -- 'A', 'B' or 'C' for LCLx/GBLx, 'P' for a parameter. */
+struct vdict { char (*n)[20]; char *ty; int nn, cap; };
+static int vdict_find(const struct vdict *d, const char *x) {
+    int i; for (i = 0; i < d->nn; i++) if (!strcmp(d->n[i], x)) return i;
+    return -1;
+}
+static int vdict_has(const struct vdict *d, const char *x) { return vdict_find(d, x) >= 0; }
+/* Take `&NAME' at P (P[0] is the ampersand) into OUT, upper-cased and without a
+ * subscript -- `&A(3)' is declared by `LCLA &A(5)' -- and return its length. */
+static int varsym_at(const char *p, char *out) {
+    int i = 0; out[i++] = '&'; p++;
+    while (*p && (isalnum((unsigned char)*p) || *p == '@' || *p == '#' || *p == '$' || *p == '_') && i < 19)
+        out[i++] = (char)toupper((unsigned char)*p++);
+    out[i] = 0;
+    return i;
+}
+/* The declared type of NAME (as written, any case) in D, or 0. */
+static int vdict_type(const struct vdict *d, const char *name) {
+    char u[20]; int i;
+    if (name[0] != '&') return 0;
+    varsym_at(name, u); i = vdict_find(d, u);
+    return i < 0 ? 0 : d->ty[i];
+}
+/* Open code's dictionary (mexp_block).  File scope because vref reads it. */
+static struct vdict g_odict;
 struct macro {
     char namep[20], name[16];
     /* A macro prototype's parameters.  SYS1.MACLIB(IDACB2) declares 127 and
@@ -1884,6 +1914,12 @@ struct macro {
      * 16 MB of static array for bodies that are typically a few dozen cards. */
     char **body; char **bodyseq; int nbody, bodycap;
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
+    /* cc370#97: per body card, the first variable symbol the definition's
+     * dictionary does not hold when the card is reached in TEXT order; "" when
+     * there is none.  NULL when no card has one, which is every macro of the
+     * 5,528 MVSBLD modules.  See macro_dict(). */
+    char (*undecl)[20];
+    struct vdict dict;             /* the whole definition's, for vref's declared default */
 };
 static struct macro macros[256];
 static int nmac;
@@ -2240,6 +2276,11 @@ static void vref(struct ctx *c, const char *ref, char *out) {
                    g_vref_res = decl; scopy(out, def, VALSZ - 1); } }   /* unset array element -> declared default, else unresolved */
     } else {
         if (!is_param) base = set_find(c, amp);
+        /* cc370#97: declared in the source but never executed -- an LCLx an AGO
+         * jumped over.  XF's dictionary is static, so the symbol exists and
+         * holds its declared initial value (undeclset2.s A and E). */
+        if (!base && !is_param) { int ty = vdict_type(c->m ? &c->m->dict : &g_odict, amp);
+            if (ty == 'C') base = ""; else if (ty == 'A' || ty == 'B') base = "0"; }
         if (!base) { base = ""; g_vref_res = 0; }
         scopy(out, base, VALSZ - 1);
     }
@@ -2278,13 +2319,12 @@ static void msub_ex(struct ctx *c, const char *src, char *dst, size_t dstsz, int
             char v[VALSZ]; vref(c, ref, v);
             if (keepunres && !g_vref_res) {
                 /* R2: a reference that names nothing is left EXACTLY as written,
-                 * concatenation dot included, so the card is byte-identical to
-                 * what it was before substitution ran. Deleting it -- which is
-                 * what an empty value does -- would trade one class of wrong
-                 * bytes for another, and IFOX00's own answer is neither: it
-                 * raises IFO006 and generates no object code at all for the
-                 * statement (tests/setc_undef.s). That is #97, and this leaves
-                 * the door open for it rather than guessing at it. */
+                 * concatenation dot included.  An undeclared symbol no longer
+                 * gets this far on a STATEMENT -- vdict_card flags the card and
+                 * it generates nothing, which is IFOX00's answer (cc370#97,
+                 * tests/setc_undef.s) -- so what still arrives is a card that
+                 * is not the statement: the 72-column listing image, where a
+                 * reference cut at column 71 reads as a shorter name. */
                 while (start < p && di < lim) dst[di++] = *start++;
                 s = p; continue;
             }
@@ -3318,6 +3358,108 @@ static void mac_body_add(struct macro *m, const char *card, const char *seq) {
     m->bodyseq[m->nbody] = seq ? strdup(seq) : NULL;
     m->body[m->nbody++] = strdup(card);
 }
+/* cc370#97: A VARIABLE SYMBOL NOTHING DECLARES.  Assembler XF keeps a dictionary
+ * of the symbols a macro definition -- or open code -- may use: its parameters,
+ * the system variables, and every name an LCLx/GBLx card declares.  A statement
+ * that uses any other name draws IFO006 UNDEFINED VARIABLE SYMBOL at severity 8
+ * and is NOT PROCESSED: a model statement generates nothing, a SETx assigns
+ * nothing, an AIF does not branch.
+ *
+ * The dictionary is STATIC and in TEXT ORDER, and both halves are measured
+ * (tests/undeclset2.s, MVSTK5-REF JOB00292/JOB00293, every prediction held):
+ *   - an LCLC that an AGO jumps over still declares its symbol, in a macro and
+ *     in open code alike -- so the question is what the SOURCE declares, never
+ *     what an expansion happened to execute, and as370's runtime `declared'
+ *     flag is the wrong key;
+ *   - a reference on a card BEFORE the LCLC that declares it is IFO006, at
+ *     definition and at expansion, and the statement generates nothing.
+ * So the answer belongs to the card, and it is worked out once, when the
+ * definition is read (macro_dict) or when an open-code block is (mexp_block).
+ *
+ * WHY THIS IS SAFE WHERE A CHECK IN vref IS NOT.  vref also sees cards that are
+ * not the statement: the listing image is drawn on a 72-column card, so a
+ * reference cut at column 71 and finished on the continuation reaches it as a
+ * shorter name that names nothing (IGARPT01, `&IGA' for `&IGANAME').  This reads
+ * the JOINED card instead, and over all 5,528 MVSBLD modules it fires on none --
+ * the definitions of every macro they call, and every open-code statement --
+ * where IFOX00 raises IFO006 in none of them either.
+ *
+ * Only the name, operation and operand fields are read: that is where a
+ * reference changes what the statement does.  The system variables are exempt
+ * in open code as well as in a macro -- IFOX00 may reject some of them there,
+ * and nothing here has measured which. */
+static void vdict_add(struct vdict *d, const char *x, int ty) {
+    char u[20]; if (x[0] != '&') return;
+    varsym_at(x, u); if (!u[1] || vdict_has(d, u)) return;
+    if (d->nn >= d->cap) {
+        int nc = d->cap ? d->cap * 2 : 64;
+        char (*nn)[20] = realloc(d->n, (size_t)nc * sizeof *nn);
+        char *nt = realloc(d->ty, (size_t)nc);
+        if (!nn || !nt) { fprintf(stderr, "as370: out of memory for a variable-symbol dictionary\n"); exit(2); }
+        d->n = nn; d->ty = nt; d->cap = nc;
+    }
+    d->ty[d->nn] = (char)ty;
+    scopy(d->n[d->nn++], u, 19);
+}
+static int vsys(const char *n) {
+    static const char *t[] = { "&SYSNDX", "&SYSECT", "&SYSLIST", "&SYSPARM", "&SYSDATE", "&SYSTIME", NULL };
+    int i; for (i = 0; t[i]; i++) if (!strcmp(n, t[i])) return 1;
+    return 0;
+}
+#define FLDMAX 1024
+static void split_card(const char *model, int mlen, int seqcol, int *fcol, char fld[4][FLDMAX]);   /* fwd */
+/* One card against dictionary D, in text order.  A declaration adds its names
+ * and is never itself a use; any other card is scanned, and the first name D
+ * does not hold is copied to NAME and 1 returned. */
+static int vdict_card(struct vdict *d, const char *card, char *name) {
+    if (card[0] == '*' || (card[0] == '.' && card[1] == '*')) return 0;
+    if (!strchr(card, '&')) return 0;
+    /* The name and operation fields are read RAW, because parse() clips them
+     * to eight characters and `IHB&SYSNDX.A' or `OPSYN&NULL' would reach this
+     * as a shorter name that names nothing.  The operand comes from parse(),
+     * which knows where the remarks begin and holds a whole joined card: a
+     * split_card() field stops at FLDMAX, and IDACB2's operand is longer, so
+     * `&MAREA' past column 1024 read as `&MARE'. */
+    static char bb[STMTSZ], bd[STMTSZ], fld[3][STMTSZ]; char bl[32], bo[16];
+    int i = 0, j = 0, f;
+    while (card[i] && card[i] != ' ' && card[i] != '\n' && card[i] != '\r' && j < STMTSZ - 1) fld[0][j++] = card[i++];
+    fld[0][j] = 0;
+    while (card[i] == ' ') i++;
+    j = 0; while (card[i] && card[i] != ' ' && card[i] != '\n' && card[i] != '\r' && j < STMTSZ - 1) fld[1][j++] = card[i++];
+    fld[1][j] = 0;
+    scopy(bb, card, STMTSZ - 1); parse(bb, bl, bo, bd); scopy(fld[2], bd, STMTSZ - 1);
+    const char *op = fld[1];
+    if ((!strncmp(op, "LCL", 3) || !strncmp(op, "GBL", 3)) && op[3] && strchr("ABC", op[3]) && !op[4]) {
+        const char *p = fld[2];
+        while ((p = strchr(p, '&'))) { char u[20]; int n = varsym_at(p, u); vdict_add(d, u, op[3]); p += n; }
+        return 0;
+    }
+    for (f = 0; f < 3; f++) {
+        const char *p = fld[f];
+        while ((p = strchr(p, '&'))) {
+            if (p[1] == '&') { p += 2; continue; }
+            char u[20]; int n = varsym_at(p, u); p += n;
+            if (!u[1] || vsys(u) || vdict_has(d, u)) continue;
+            scopy(name, u, 19); return 1;
+        }
+    }
+    return 0;
+}
+/* The definition's dictionary: the name-field parameter, the prototype's
+ * parameters, then the body in text order. */
+static void macro_dict(struct macro *m) {
+    struct vdict d = { NULL, NULL, 0, 0 }; int k;
+    if (m->namep[0]) vdict_add(&d, m->namep, 'P');
+    for (k = 0; k < m->nparm; k++) vdict_add(&d, m->pname[k], 'P');
+    for (k = 0; k < m->nbody; k++) {
+        char nm[20];
+        if (!vdict_card(&d, m->body[k], nm)) continue;
+        if (!m->undecl && !(m->undecl = calloc((size_t)m->nbody, sizeof *m->undecl))) {
+            fprintf(stderr, "as370: out of memory for a macro dictionary\n"); exit(2); }
+        scopy(m->undecl[k], nm, 19);
+    }
+    m->dict = d;
+}
 static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12]) {
     int i = *ip + 1; if (i >= nin) { *ip = i; return NULL; }
     char pb[4096], pl[32], po[16], pp[4096]; strncpy(pb, in[i], 4095); pb[4095] = 0; parse(pb, pl, po, pp);
@@ -3347,6 +3489,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
     while (++i < nin) { char bb[STMTSZ], bl[32], bo[16], bd[STMTSZ]; scopy(bb, in[i], STMTSZ - 1); parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') scopy(m->endlbl, bl, sizeof m->endlbl - 1); break; }
         mac_body_add(m, in[i], inseq ? inseq[i] : NULL); }
+    macro_dict(m);
     *ip = i; return m;
 }
 static struct macro *lib_load(const char *name) {
@@ -3445,44 +3588,13 @@ static int g_sysndx;
  * the symbol global (shared via the global store) without clobbering a value the
  * symbol already holds; LCLx (re)initialises a local. Used by both the macro
  * expander and open-code processing so &FUNC set in open code reaches the macros. */
-/* cc370#97: Assembler XF requires a variable symbol to be DECLARED -- LCLA/
- * LCLB/LCLC or the GBL forms -- and raises IFO006 UNDEFINED VARIABLE SYMBOL at
- * severity 8 on every use of one that is not (erms.asm:15, raised from the
- * dictionary lookup at ifnx1j.asm:860 under IBM's own comment FLAG UNDECLARED
- * VAR SYMB; SEV6 EQU 8, jermsgcd.asm:33). as370 took the assignment, created
- * the row and substituted the value at rc 0, so the same source produced a
- * DIFFERENT object module and said nothing about it.
- *
- * Measured over the whole corpus before it was enforced, from both sides:
- * NO module of the 5,528 in MVSBLD assigns to an undeclared SET symbol, and
- * IFOX00 raises IFO006 in 0 of the 926 recorded corpus diagnostics. The tree is
- * therefore a pure false-positive detector for this check -- a module it flags
- * is this code being wrong, not a find -- and the ecosystem measurement in the
- * issue (826 modules, plus 277 IBM ones) agrees at 0.
- *
- * This is the ASSIGNMENT site only. The reference site is the same issue's
- * other half and is NOT safe today: as370 reaches vref's "names nothing" path
- * 6,387 times under a real name in 771 of the 5,528 modules -- 12,015 of those
- * inside library-macro expansions -- where IFOX00 raises nothing at all. Those
- * are places as370 fails to resolve what XF resolves, and a diagnostic there
- * would report our own gap as the source's error.
- *
- * The value is still stored, so this changes the message and the return code
- * and not one byte of any deck. Leaving the reference unsubstituted -- XF
- * generates no object code for the statement at all -- is the issue's second
- * half and waits on the oracle. */
-static void check_declared(struct ctx *c, const char *name) {
-    /* The question is about the BASE name -- `&A(&I)' is declared by `LCLA
-     * &A(10)' -- so the subscript is never evaluated here. Taking the canonical
-     * form instead would evaluate it a second time, on a statement whose own
-     * path evaluates it once. */
-    char b[20]; base_of(name, b);
-    struct setrow *r = set_row(c, b);
-    if (r && r->declared) return;
-    int a; for (a = 0; a < c->narr; a++) if (!strcmp(c->arrb[a], b)) return;   /* LCLx &A(n) */
-    char m[96]; snprintf(m, sizeof m, "%s is an undefined variable symbol - nothing declares it (IFOX00 IFO006)", b);
-    note_operr(m, 8, g_ca_slot);
-}
+/* cc370#97: a SETx whose name nothing declares never reaches here. IFOX00
+ * raises IFO006 UNDEFINED VARIABLE SYMBOL at severity 8 (erms.asm:15, from the
+ * dictionary lookup at ifnx1j.asm:860; SEV6 EQU 8, jermsgcd.asm:33) and does
+ * not perform the statement, and whether a name is declared is decided per
+ * card, from the source, in text order -- see vdict_card.  It used to be asked
+ * here, of the runtime `declared' flag, which an LCLx skipped by AGO never sets
+ * although it declares the name all the same (undeclset2.s A and E). */
 static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *opnd) {
     if (!strncmp(op, "GBL", 3) || !strncmp(op, "LCL", 3)) {
         int isg = (op[0] == 'G'); char fl[24][FLDW]; int nf = split_fields(opnd, fl, 24), j;
@@ -3494,9 +3606,9 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
             { struct setrow *dr = set_row(c, fl[j]); if (dr) dr->declared = 1; } }   /* cc370#97 */
         return 1;
     }
-    if (!strcmp(op, "SETA")) { check_declared(c, lbl); long v = eval_seta(c, opnd); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, nb); return 1; }
-    if (!strcmp(op, "SETB")) { check_declared(c, lbl); int v = opnd[0] == '(' ? eval_cond(c, opnd + 1) : (int)eval_seta(c, opnd); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v ? "1" : "0"); return 1; }
-    if (!strcmp(op, "SETC")) { check_declared(c, lbl); char v[VALSZ]; eval_setc(c, opnd, v, sizeof v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
+    if (!strcmp(op, "SETA")) { long v = eval_seta(c, opnd); char nb[24]; sprintf(nb, "%ld", v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, nb); return 1; }
+    if (!strcmp(op, "SETB")) { int v = opnd[0] == '(' ? eval_cond(c, opnd + 1) : (int)eval_seta(c, opnd); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v ? "1" : "0"); return 1; }
+    if (!strcmp(op, "SETC")) { char v[VALSZ]; eval_setc(c, opnd, v, sizeof v); char sn[40]; set_canon(c, lbl, sn); set_put(c, sn, v); return 1; }
     if (!strcmp(op, "ANOP")) return 1;
     return 0;
 }
@@ -3512,7 +3624,6 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
  * continuation cards, hundreds of characters long, and stopping at 72 silently
  * truncates the operand -- which is how BLSCAMOD lost 8 bytes off a constant
  * whose value continues onto a second card. */
-#define FLDMAX 1024
 static void split_card(const char *model, int mlen, int seqcol, int *fcol, char fld[4][FLDMAX]) {
     int p = 0, k;
     for (k = 0; k < 4; k++) { fcol[k] = 0; fld[k][0] = 0; }
@@ -3691,6 +3802,23 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
         scopy(bb, m->body[pc], STMTSZ - 1); parse(bb, bl, bo, bod);
         if (!bo[0]) { pc++; continue; }
         if (!strcmp(bo, "MEND") || !strcmp(bo, "MEXIT")) break;
+        /* cc370#97: a card using a symbol the definition never declared is not
+         * processed, whatever it is -- a model statement generates nothing, a
+         * SETx assigns nothing, an AIF does not branch (undeclset2.s C and D).
+         * IFOX00 lists it, flagged and unsubstituted, even where NOMLOGIC hides
+         * every other conditional statement of the expansion. */
+        if (m->undecl && m->undecl[pc][0]) {
+            const char *bc = m->body[pc]; int bl = rawlen(bc);
+            int fcol[4]; static char fld[4][FLDMAX];
+            split_card(bc, bl, bl, fcol, fld);
+            int keep = (fcol[3] > 0 && fcol[3] < bl) ? fcol[3] : bl;
+            char cut[STMTSZ]; if (keep > STMTSZ - 1) keep = STMTSZ - 1;
+            memcpy(cut, bc, (size_t)keep); cut[keep] = 0;
+            char gimg[256]; render_model_ex(c, bc, m->bodyseq[pc], gimg, 0, 0); g_genimg = gimg;
+            g_ifo006 = 1; scopy(ifo006_name, m->undecl[pc], sizeof ifo006_name - 1);
+            mexp_line(cut, out, nout, depth + 1);
+            pc++; continue;
+        }
         if (!strcmp(bo, "MNOTE")) {
             /* Substitute first: the whole point of an MNOTE is to name the
              * caller's parameter, and `MNOTE 8,'BAD OPTION &OPT'' is the usual
@@ -3853,11 +3981,26 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * which is what a bare clear at the top got wrong, wiping the macro path's
      * answer the moment it arrived. */
     int ifo007_in = g_ifo007; g_ifo007 = 0;
+    int ifo006_in = g_ifo006; g_ifo006 = 0;
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
     char sysbuf[STMTSZ]; sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
     scopy(buf, sysbuf, STMTSZ - 1);
     { int sv = g_genstmt; g_genstmt = (g_genlevel > 0 && !g_copyraw); parse(buf, lbl, op, opnd); g_genstmt = sv; }
+    /* cc370#97: the card uses a variable symbol nothing declared before it.
+     * Listed as it stands, flagged, and nothing else -- no substitution, no
+     * macro call, no conditional assembly, no object code.  Done here, ahead of
+     * every branch below, so no statement kind can carry it past. */
+    if (ifo006_in) {
+        if (*nout < MAXLINES) {
+            lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); line_mcall[*nout] = mcall_cur() + 1;
+            gcard[*nout] = img ? strdup(img) : NULL; line_org[*nout] = g_curorg; out[*nout] = strdup(line);
+            char m[96]; snprintf(m, sizeof m, "%s is an undefined variable symbol - nothing declares it (IFOX00 IFO006)", ifo006_name);
+            note_operr(m, 8, *nout);
+            (*nout)++;
+        }
+        return;
+    }
     /* open-code (and COPY'd) conditional assembly: GBLx/LCLx/SETx/ANOP are
      * interpreted here (never reach the core, which would ignore them) so that
      * e.g. open-code `&FUNC SETC '...'` reaches a macro's `GBLC &FUNC`.
@@ -4054,11 +4197,25 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
     char (*seqn)[20] = malloc((size_t)(n + 1) * 20); int *seqi = malloc((size_t)(n + 1) * sizeof(int));
     int nseq = 0, k, mdef = 0;
     if (!seqn || !seqi) { free(seqn); free(seqi); return; }
+    /* cc370#97: open code's dictionary, in text order -- the same static rule
+     * as a definition's (macro_dict), so an LCLx an AGO skips still declares
+     * (undeclset2.s E).  One dictionary for the whole assembly, and it is filled
+     * UP TO THE CARD BEING PROCESSED rather than over the block in advance: a
+     * COPY member's declarations belong at the COPY card, so libc370's `COPY
+     * PDPTOP' has to have declared &FUNC before the `&FUNC SETC' after it is
+     * judged.  Filled in advance, 241 of the 757 libc370 modules drew a false
+     * IFO006.  A forward AGO still sweeps in every card it jumps over, so what
+     * the dictionary sees is the text, not the path.  A block read INSIDE a
+     * macro expansion is that macro's model text and is not checked against
+     * open code's names. */
+    char (*oun)[20] = NULL;
+    int ocheck = (g_genlevel == 0), ohw = 0, odepth = 0;
     for (k = 0; k < n; k++) {                          /* prescan sequence-symbol labels (skip MACRO..MEND bodies) */
         char sb[STMTSZ], sl[32], so[16], sd[STMTSZ]; scopy(sb, arr[k], STMTSZ - 1); parse(sb, sl, so, sd);
         if (!strcmp(so, "MACRO")) { mdef++; continue; }
         if (!strcmp(so, "MEND")) { if (mdef) mdef--; continue; }
         if (mdef) continue;
+
         if (arr[k][0] == '.' && arr[k][1] != '*') {
             int j = 0; const char *q = arr[k]; while (*q && !isspace((unsigned char)*q) && j < 15) sl[j++] = *q++; sl[j] = 0;
             if (nseq <= n) { strcpy(seqn[nseq], sl); seqi[nseq] = k; nseq++; }
@@ -4067,7 +4224,20 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
     int pc = 0, guard = 0;
     while (pc < n && guard++ < 4000000) {
         if (org) g_curorg = org[pc];   /* track the input-file line of the statement being expanded (inherited by macro/COPY output) */
+        for (; ocheck && ohw <= pc; ohw++) {          /* cc370#97: the text up to and including this card */
+            if (card_op_is(arr[ohw], "MACRO")) { odepth++; continue; }
+            if (card_op_is(arr[ohw], "MEND")) { if (odepth) odepth--; continue; }
+            char nm[20];
+            if (odepth || !vdict_card(&g_odict, arr[ohw], nm)) continue;
+            if (!oun && !(oun = calloc((size_t)n, sizeof *oun))) { fprintf(stderr, "as370: out of memory for a variable-symbol dictionary\n"); exit(2); }
+            scopy(oun[ohw], nm, 19);
+        }
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ]; scopy(buf, arr[pc], STMTSZ - 1); parse(buf, lbl, op, opnd);
+        if (oun && oun[pc][0]) {                       /* cc370#97: listed, flagged, not processed -- an AIF does not branch */
+            g_ifo006 = 1; scopy(ifo006_name, oun[pc], sizeof ifo006_name - 1);
+            mexp_line(arr[pc], out, nout, depth);
+            pc++; continue;
+        }
         if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
         if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, sizeof cond, seq, sizeof seq);
             if (eval_cond(cur_ctx(), cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
@@ -4099,7 +4269,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
         mexp_line(arr[pc], out, nout, depth);
         pc++;
     }
-    free(seqn); free(seqi);
+    free(seqn); free(seqi); free(oun);
 }
 /* Length attributes read from the RAW source, before expansion.
  *
