@@ -1250,9 +1250,32 @@ afterwards.
   last and IEWL takes the first / the maximum. **#102 is reproduced** in the
   autocall variant (2026-09-30, JOB01408, test TC2 of
   `ld370/tests/run_iewl_autocall_oracle.py`): IEWL keeps the first `QQ`, silently,
-  total 0x18; ld370 keeps the last, total 0x30. #103 is still derived only, and
-  its deliverable is a fixture. #103 is not reachable through as370 at all — it needs
-  IFOX00-assembled input.
+  total 0x18; ld370 keeps the last, total 0x30. **The explicit variant is
+  measured too** (JOB01409, `ld370/tests/run_iewl_dupcsect_oracle.py`). IEWL drops
+  the later CSECT's text, space and inner RLDs and compacts the rest of its
+  object. Its ENTRYs vanish, and an adcon relative to it is relocated against the
+  kept one, silently. The plan is decided in the #102 thread, including a warning
+  for that adcon. The one module in the ecosystem it touches is brexx370
+  `IRXVTOC`: `PCLMAIN` ×5, about 12.5 KB too large today. **On hold** since
+  2026-09-30; its prerequisite #522 (the address of an ENTRY in a later CSECT) is
+  fixed in #524. #103 is still derived only, and its deliverable is a fixture.
+  #103 is not reachable through as370 at all — it needs IFOX00-assembled input.
+
+## as370 against XF — found by #521, not yet ranked
+
+`docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
+turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
+JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent and belong
+in the ranking above:**
+
+- #527 — `=(2*2)F'7'` is one fullword of zeros, rc 0, and it reorders the pool.
+- #528 — `=F'1'+4` is accepted with the `+4` dropped, rc 0; IFOX gives `IFO161`.
+- #525 — the type operand of `EQU` is ignored, so `T'` is `U`, rc 0. It is the one
+  with reach: the #521 draft counts 1,110 maclib statements.
+
+The rest are loud or diagnostic-only: #526 (labelled `ORG`, rc 8 where IFOX is
+clean), #529 / #530 / #531 (missing `IFO233` / `IFO104` / `IFO169`), and #532–#535
+(`OPSYN`, `AIFB`/`AGOB`, `ICTL`, `PUNCH` missing). Their corpus count is 0.
 
 ## Observability
 

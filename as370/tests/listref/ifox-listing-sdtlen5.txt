@@ -1,0 +1,31 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 08.40 09/30/26
+P7SDT     SD  0001 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.40 09/30/26
+000000                                1 P7SDT    CSECT
+                            00000     2 A        EQU   C'ABCDE'
+         *** ERROR ***
+                         C1C2C3C4     3 B        EQU   C'ABCD'
+000000 00000000                       4          DC    A(A)
+000004 C1C2C3C4                       5          DC    A(B)
+                                      6          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.40 09/30/26
+A        00001 00000000 00002  00004
+B        00001 C1C2C3C4 00003  00005
+P7SDT    00001 00000000 00001
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 08.40 09/30/26
+    2  IFO169      INVALID SELF-DEFINING TERM NEAR OPERAND COLUMN 1
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT          6
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        31

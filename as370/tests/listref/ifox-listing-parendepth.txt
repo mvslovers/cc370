@@ -1,0 +1,34 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 08.40 09/30/26
+P5PAREN   SD  0001 000000 00000C
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.40 09/30/26
+000000                                1 P5PAREN  CSECT
+                            00001     2 A6       EQU   ((((((1))))))
+                            00000     3 A7       EQU   (((((((1)))))))
+         *** ERROR ***
+                            00000     4 A8       EQU   ((((((((1))))))))
+         *** ERROR ***
+000000 0000000100000000               5          DC    A(A6,A7,A8)
+                                      6          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.40 09/30/26
+A6       00001 00000001 00002  00005
+A7       00001 00000000 00003  00005
+A8       00001 00000000 00004  00005
+P5PAREN  00001 00000000 00001
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 08.40 09/30/26
+    3  IFO233      MORE THAN 6 LEVELS OF PARENTHESES NEAR OPERAND COLUMN 7
+    4  IFO233      MORE THAN 6 LEVELS OF PARENTHESES NEAR OPERAND COLUMN 7
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     2
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT          6
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        34
