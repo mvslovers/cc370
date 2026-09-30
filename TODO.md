@@ -149,7 +149,8 @@ absolute EQUs off `TOTOLTCB EQU 0`, so the USING is an *absolute* one, and the
 parenthesised branch of `resolve()` never asked an absolute USING. The fix
 applies where the sole subscript is a length (`absssub`, JOB00294), and the tree
 moved exactly one deck, IEDQWIE, to identical. The RX form `S(X)` under an
-absolute USING has 0 occurrences in the tree and is with the oracle (`absrx`).
+absolute USING has 0 occurrences in the tree; the oracle answered the same way
+for it (`absrx`, JOB00295), and it landed the same day as #547 (PR #548).
 #97, placed at 8 below, is 7 since.
 
 **#97 moves from 1 to 8 on 2026-09-30, and #184's closed row leaves.** PR #543
@@ -1474,6 +1475,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-30 — #547, MERGED as `ee176ea` (PR #548).** The RX half of #342:
+  `S(X)` with an absolute displacement takes the absolute USING as its base,
+  for a symbol and a plain number alike (`absrx`, JOB00295: `LA 1,FLD(3)` 4113
+  2100, `L 4,8(5)` 5845 2008). 0 occurrences in MVSBLD, so the gate moved no
+  deck; filed and fixed on the oracle's answer alone.
 
 - **2026-09-30 — #342, MERGED as `bc6a1a8` (PR #545).** An SS operand with a
   sole LENGTH subscript on an absolute prefix now takes the absolute USING, as
