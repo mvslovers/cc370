@@ -5723,8 +5723,34 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * one LPALIB module that carries it (cc370#364).
                  * expr_val_full is the same evaluator without that guard, as
                  * at the DC duplication factor and in eval_reg. */
+                int undef0 = nundef_seen;
                 long base = (F[0][0] == '*' && !F[0][1]) ? lc : expr_val_full(F[0], &brel);
                 int isabs = 0, bsect = cur_sect_id;
+                /* The base operand must be absolute or simply relocatable, and
+                 * on a USING anything else is IFO217 -- never IFO213, which is
+                 * what the same two-section sum draws in a machine operand
+                 * (tests/relocerr.s). IFOX00's USING processor (IFNX5A USI050)
+                 * sends every EVAL failure to one exit, USI900: a complexly
+                 * relocatable result, and any error EVAL itself logged -- an
+                 * undefined symbol (IFO188) or a relocatable operand of a
+                 * multiply or divide. The last is raised INSIDE EVAL as well
+                 * (XEVAL MULTDIV), so it is IFO217 twice on one statement.
+                 * MVSTK5-REF JOB00036, tests/usingreloc.s:
+                 *   USING UNDEF,2       IFO188 + IFO217
+                 *   USING DEFINED*2,4   IFO217 twice
+                 *   USING FLDA+FLDB,5   IFO217
+                 * 193 corpus sites in 75 MVSBLD modules, every one beside an
+                 * IFO188, so until now the rc was right only because as370
+                 * raises that one (cc370#362). */
+                int uerr = 0;
+                if (!(F[0][0] == '*' && !F[0][1])) {
+                    if (xmulrel_) uerr = 2;
+                    else if (xrl_class() == 2 || nundef_seen != undef0) uerr = 1;
+                }
+                { int k; for (k = 0; k < uerr; k++) {
+                      char m[112];
+                      snprintf(m, sizeof m, "USING base not absolute or simply relocatable (IFOX00 IFO217) - %.24s", F[0]);
+                      note_operr(m, 12, i); } }
                 /* The SECTION the domain belongs to is the base expression's
                  * leading symbol, and finding it has to survive the same
                  * parenthesis.  A leading `(' is a delimiter, so the scan
@@ -5795,7 +5821,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                       uev_add(i + 1, UEV_USING, cur_sect_id, lc, reg, usings[slot].base,
                               bsect, is_dsect_id(bsect), isabs, UEB_STMT);
                   } }
-                lrecs[i].a2 = base; lrecs[i].hasa2 = 1;   /* IFOX shows the USING's first-operand value in the ADDR2 column */
+                if (!uerr) { lrecs[i].a2 = base; lrecs[i].hasa2 = 1; }   /* IFOX shows the USING's first-operand value in the ADDR2 column -- unless USI900 left before storing it */
             }
         } else if (!strcmp(op, "DROP")) {
             /* Sixteen, not four: a DROP names as many registers as it likes and
