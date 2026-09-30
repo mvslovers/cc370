@@ -641,6 +641,31 @@ static int lit_body(const char *p, char *out, size_t outsz) {
     out[n] = 0; return (int)n;
 }
 static int emit_decimal(const char *txt, int packed, long at, int want, int emit, int diag, int line);   /* fwd: P/Z, the DC path's own */
+/* A literal's duplication factor, and the text past it. It may be an absolute
+ * expression in parentheses as well as a decimal number, the same two forms a DC
+ * operand takes. Only the digits were read, so `=(2*2)F'7'' took `(' for its
+ * type: the default arm below sized it at one fullword and emitted zeros, and
+ * because the pool is segmented by lenalgn(size) the wrong length also moved it
+ * behind =2F'9'. IFOX00 makes it four fullwords of 7 (cc370#527, JOB00283).
+ * Balanced scan for the same reason as the DC path's: ((A-B)/8) has an inner
+ * pair. The literal is classified when the pre-scan first registers it, before
+ * pass 1 has defined anything, so this is right for self-defining terms; a
+ * symbol in the factor is unmeasured against IFOX00. */
+static long expr_val_full(const char *e, int *reloc);   /* fwd: the evaluator a DC duplication factor uses */
+static const char *lit_dup(const char *p, int *dup) {
+    *dup = 0;
+    if (*p == '(') {
+        const char *st = p + 1, *q = st; int d = 1;
+        for (; *q; q++) { if (*q == '(') d++; else if (*q == ')' && --d == 0) break; }
+        char ex[256]; int exl = (int)(q - st); if (exl > 255) exl = 255;
+        memcpy(ex, st, (size_t)exl); ex[exl] = 0;
+        long v = expr_val_full(ex, NULL);
+        *dup = (v > 0 && v < 65536) ? (int)v : 0;
+        return *q ? q + 1 : q;
+    }
+    while (isdigit((unsigned char)*p)) *dup = *dup * 10 + (*p++ - '0');
+    return p;
+}
 static void lit_classify(struct lit *l) {
     const char *p = l->text + 1;                 /* past '=' */
     /* The duplication factor was SKIPPED here and never applied, so `=8X'0F''
@@ -649,7 +674,7 @@ static void lit_classify(struct lit *l) {
      * lands in the wrong segment, and every literal behind it moves. Sixteen
      * modules came out N bytes short with every later displacement N lower, and
      * seven more had the right length with the wrong order (cc370#317). */
-    int dup = 0; while (isdigit((unsigned char)*p)) dup = dup * 10 + (*p++ - '0');
+    int dup = 0; p = lit_dup(p, &dup);
     l->dup = dup > 0 ? dup : 1;
     char ty = toupper((unsigned char)*p++);
     int len = 0, haslen = 0;
@@ -4969,8 +4994,7 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
      * entry for it, so the diagnostic goes to the statement that WROTE the
      * literal, which is the line a reader needs anyway.  Same choice defln
      * already makes for IFO158 below. */
-    const char *p = l->text + 1;
-    while (isdigit((unsigned char)*p)) p++;
+    int dup0; const char *p = lit_dup(l->text + 1, &dup0);
     char ty = toupper((unsigned char)*p++);
     if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
     if (ty == 'V' || ty == 'A' || ty == 'Y') {            /* address constant, possibly a value list =AL1(a,b,c) */

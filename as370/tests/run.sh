@@ -700,6 +700,13 @@ rm -f /tmp/_au.$$
 # sort into the 8-byte segment ahead of the =F' that was written before it.
 #   main 2f90d47   deck differs, same total size
 #   IFOX00, this   byte-identical
+# litdupexpr is the #527 oracle: the same factor written as an EXPRESSION in
+# parentheses, `=(2*2)F'7''. Only digits were read, so `(' became the type and
+# the literal fell into the default arm: one fullword of zeros, which also sorted
+# behind =2F'9' and moved that literal's displacement. The second literal is the
+# control that makes the order visible, not only the size.
+#   main 452bf49   5810F010 5820F008, pool 9 9 0
+#   IFOX00, this   5810F008 5820F018, pool 7x4 9x2 (JOB00283)
 # repro is the #314 oracle. REPRO punches the card AFTER it into the object deck
 # exactly as it stands, and does not assemble it; as370 had no such operation at
 # all, so ICAPRTBL's three cards of IPL text drew `undefined operation code' and
@@ -771,7 +778,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          litdup pool contsev align blankcont litscale litpz litlist \
          adcon aliasext attrdup regexpr sconabs fpopc droplist \
          tattr_expr endpool dsectpool blank_csect usingparen usingparenpc \
-         rldorg attrundef equtype equtypegen2 absssub absrx; do
+         rldorg attrundef equtype equtypegen2 absssub absrx litdupexpr; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
