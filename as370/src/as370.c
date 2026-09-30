@@ -4882,14 +4882,40 @@ static void equ_undef_terms(const char *s, int line) {
         } else s++;
     }
 }
-/* An ORG whose operand took L' of a symbol not defined in pass 1.  IFOX00 flags
- * ORG *+L'FWD IFO231 and leaves the counter where it was (MVSTK5-REF JOB00279,
- * tests/dupundef.s); as370 evaluated the operand in both passes, so pass 1 moved
- * by 0 and pass 2 by 5 and every symbol after it stopped matching its address
- * (cc370#500).  Pass 1 keeps the value it computed -- the term is 0 there, which
- * gives *+0 -- and pass 2 uses that value instead of re-evaluating.  The fixture
- * cannot tell "the term is 0" from "the ORG is ignored"; both give *+0.  A plain
- * forward symbol without L' was not measured and is left alone. */
+/* Any symbol term of an ORG operand not defined YET, under L' or plain; an
+ * external reference counts as defined, as for L'. */
+static int org_undefined(const char *s, char *out) {
+    if (undefined_lattr(s, out)) return 1;
+    const char *base = s;
+    int q = 0;
+    while (*s) {
+        if (*s == '\'') { if (q || !attr_apos(base, (int)(s - base))) q = !q; s++; continue; }
+        if (q) { s++; continue; }
+        if (isalpha((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_') {
+            char nm[64]; int n = 0;
+            while (*s && (isalnum((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_')) {
+                if (n < 63) nm[n] = *s;
+                n++; s++;
+            }
+            nm[n < 63 ? n : 63] = 0;
+            if (*s == '\'') continue;                  /* X'..'/C'..'/B'..'/L'..' prefix */
+            struct sym *sy = sym_find(nm);
+            if (!sy || (!sy->defined && sy->type != S_ER)) { scopy(out, nm, 63); return 1; }
+        } else s++;
+    }
+    return 0;
+}
+/* An ORG whose operand names a symbol not defined in pass 1 is IGNORED:
+ * IFOX00 leaves the counter where it was and flags IFO231 if the symbol is
+ * defined further down, IFO188 if never.  Measured on MVSTK5-REF, four ways
+ * that tell "ignored" from "the term is 0": ORG NEVERC, ORG NEVERX+4, ORG FWDL
+ * (a label further down) in a CSECT and ORG NEVERD in a DSECT all leave the
+ * counter unmoved (JOB00300, tests/orgnever.s); ORG *+FWDO (JOB00298,
+ * tests/entryprobe.s) and ORG *+L'FWD (JOB00279, tests/dupundef.s) agree.
+ * as370 evaluated the operand in both passes: *+FWDO moved by 0 in pass 1 and
+ * by 8 in pass 2 (cc370#500 for L', cc370#563 without), and a never-defined
+ * name set the counter to 0, overlaying what the section already held.
+ * Pass 1 records the counter; pass 2 restores it instead of re-evaluating. */
 static int orgbad_ln[256]; static long orgbad_val[256]; static char orgbad_sym[256][64]; static int norgbad;
 static void note_orgbad(int line, long val, const char *sym) {
     if (norgbad < 256) { orgbad_ln[norgbad] = line; orgbad_val[norgbad] = val; scopy(orgbad_sym[norgbad], sym, 63); norgbad++; }
@@ -6034,7 +6060,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (!opnd[0] || opnd[0] == ',') lc = org_hwm;       /* bare ORG or `ORG ,` resets to the high-water mark */
             else {
                 char ob[64]; int oj;
-                if (pass == 1 && undefined_lattr(opnd, ob)) { lc = expr_val(opnd, NULL); note_orgbad(i, lc, ob); }   /* see note_orgbad */
+                if (pass == 1 && org_undefined(opnd, ob)) note_orgbad(i, lc, ob);   /* the counter stays -- see note_orgbad */
                 else if (pass == 2 && (oj = org_rejected(i)) >= 0) {
                     lc = orgbad_val[oj];
                     struct sym *os = sym_find(orgbad_sym[oj]);
