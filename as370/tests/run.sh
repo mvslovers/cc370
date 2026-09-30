@@ -3010,26 +3010,24 @@ else
 fi
 rm -f /tmp/_rs$$.lst
 
-# R2, and it is deliberately NOT IFOX00 parity. tests/setc_undef.s is #97's
-# oracle: IFOX00 raises IFO006 and generates NO object code for the statement,
-# and takes no cross-reference entry for its name. as370 leaves an unresolvable
-# reference EXACTLY as written instead -- concatenation dot included -- so the
-# card is byte-identical to what it was before substitution existed -- the X'4B'
-# in the expected bytes IS that dot, kept. That keeps
-# #141 from trading one class of wrong bytes for another while #97 is open.
-./as370 tests/setc_undef.s -o /tmp/_su$$.obj >/dev/null 2>&1
-got=$(python3 -c "
-d=open('/tmp/_su$$.obj','rb').read(); t=b''
-for o in range(0,len(d)-79,80):
-    c=d[o:o+80]
-    if c[:4]==bytes((0x02,0xE3,0xE7,0xE3)): t+=c[16:16+((c[10]<<8)|c[11])]
-print(t.hex())
-")
-if [ "$got" != "c1e9c2c150e44bc2c5d5c4" ]; then
-    echo "setc_undef: FAIL (expected AZB + A&U.B verbatim + END, got $got)"; sofail=1
+# tests/setc_undef.s is #97's first oracle: an open-code reference to &U, which
+# nothing declares. IFOX00 raises IFO006 at severity 8, generates NO object code
+# for the statement and takes no cross-reference entry for its name -- so the
+# deck is AZB + END. as370 used to leave the reference verbatim (`A&U.B', rule
+# R2 of #141) to avoid trading one class of wrong bytes for another while #97 was
+# open; the whole deck is compared now.
+./as370 tests/setc_undef.s -o /tmp/_su$$.obj >/tmp/_su$$.err 2>&1
+rcsu=$?
+if [ $rcsu != 8 ]; then
+    echo "setc_undef: FAIL (expected RC 8 for IFO006, got $rcsu)"; sofail=1
+elif ! grep -q '&U is an undefined variable symbol' /tmp/_su$$.err; then
+    echo "setc_undef: FAIL (no IFO006 naming &U)"; cat /tmp/_su$$.err; sofail=1
+elif ! deck_eq /tmp/_su$$.obj tests/ref/setc_undef.obj; then
+    echo "setc_undef: FAIL (deck differs from IFOX00 -- the &U statement must generate nothing)"; sofail=1
 else
-    echo "setc_undef: OK (&X substituted, undefined &U left verbatim -- #97, not #141)"
+    echo "setc_undef: OK (&X substituted; the &U statement flagged IFO006 and generates nothing -- IFOX00's deck)"
 fi
+rm -f /tmp/_su$$.err
 rm -f /tmp/_su$$.obj
 fail=$((fail + sofail))
 
@@ -3259,42 +3257,59 @@ rm -f /tmp/_rl$$.obj /tmp/_rl$$.out
 
 # --------------------------------------------------------------- undeclset --
 # cc370#97: a SET symbol nothing declares. IFOX00 raises IFO006 at severity 8
-# on every use and generates no object code for the statement; as370 took the
-# assignment silently at rc 0 and substituted it, so the same source produced a
-# different object module.
+# and does not process the statement -- the reference generates no object code
+# -- and it checks the dictionary at DEFINITION time as well as in the
+# expansion (tests/ref/undeclset.obj, tests/listref/ifox-listing-undeclset.txt).
 #
-# This guards the ASSIGNMENT side, which is what is implemented. The oracle
-# (tests/ref/undeclset.obj, tests/listref/ifox-listing-undeclset.txt) flags SIX
-# statements and punches TWELVE bytes; as370 flags TWO -- the assignment in
-# each scope -- and punches 22, because the reference is still substituted.
-# The difference is the issue's second half plus the definition-time check, and
-# the numbers below are asserted so that closing either one fails here and has
-# to be re-read rather than drifting past unnoticed.
+# The deck is IFOX00's. The flagged count is not, and the difference is exactly
+# the definition-time pair: IFOX00 flags SIX statements, as370 FOUR -- the two
+# statements of the expansion and the two in open code. as370 does not list an
+# in-stream macro definition at all, so there is no statement to attach the
+# other two to. Listing only; no byte depends on it.
 ./as370 tests/undeclset.s -o /tmp/_us$$.obj >/tmp/_us$$.out 2>&1
 rcu=$?
-# the SD item's length: ESD data starts at col 17, the item is name(8) type(1)
-# address(3) blank(1) length(3), so the length is at offset 29 of the card.
-ifox_len=$(python3 -c "d=open('tests/ref/undeclset.obj','rb').read();print(int.from_bytes(d[29:32],'big'))")
-ours_len=$(python3 -c "d=open('/tmp/_us$$.obj','rb').read();print(int.from_bytes(d[29:32],'big'))")
 if [ $rcu != 8 ]; then
     echo "undeclset: FAIL -- expected RC 8, got $rcu"; fail=$((fail + 1))
-elif ! grep -q "2 Statements Flagged" /tmp/_us$$.out; then
-    echo "undeclset: FAIL -- the two undeclared assignments are flagged, the six controls are not"
+elif ! grep -q "4 Statements Flagged" /tmp/_us$$.out; then
+    echo "undeclset: FAIL -- expected 4 flagged (IFOX00's 6 less the definition-time pair)"
     grep -i flagged /tmp/_us$$.out; fail=$((fail + 1))
-elif [ "$(grep -c 'IFO006' /tmp/_us$$.out)" != 2 ] \
-     || ! grep -q '&LOOSE is an undefined variable symbol' /tmp/_us$$.out \
-     || ! grep -q '&OSET is an undefined variable symbol' /tmp/_us$$.out; then
-    echo "undeclset: FAIL -- expected IFO006 on &LOOSE (in a macro) and &OSET (open code)"
+elif [ "$(grep -c '&LOOSE is an undefined variable symbol' /tmp/_us$$.out)" != 2 ] \
+     || [ "$(grep -c '&OSET is an undefined variable symbol' /tmp/_us$$.out)" != 2 ]; then
+    echo "undeclset: FAIL -- expected IFO006 twice on &LOOSE (macro) and twice on &OSET (open code)"
     grep 'IFO006' /tmp/_us$$.out; fail=$((fail + 1))
-elif [ "$ifox_len" != 12 ]; then
-    echo "undeclset: FAIL -- the committed IFOX00 deck should be 12 bytes, it is $ifox_len"; fail=$((fail + 1))
-elif [ "$ours_len" != 22 ]; then
-    # 22 -> 12 is the second half landing, not a regression. Re-read the case.
-    echo "undeclset: FAIL -- our section is $ours_len bytes, expected 22 (IFOX00: $ifox_len)"; fail=$((fail + 1))
+elif ! deck_eq /tmp/_us$$.obj tests/ref/undeclset.obj; then
+    echo "undeclset: FAIL -- deck differs from IFOX00 (12 bytes: /TIGHT/ /P/ //)"; fail=$((fail + 1))
 else
-    echo "undeclset: OK (RC 8, IFO006 on both assignments; 22 bytes against IFOX00's 12 -- #97 half two open)"
+    echo "undeclset: OK (RC 8, IFO006 on every use; IFOX00's 12-byte deck)"
 fi
 rm -f /tmp/_us$$.obj /tmp/_us$$.out
+
+# -------------------------------------------------------------- undeclset2 --
+# cc370#97: WHICH dictionary decides. tests/ref/undeclset2.obj (MVSTK5-REF
+# JOB00293) settles it, and every case punches its own letters:
+#   A/E an LCLC an AGO jumps over still DECLARES -- static, macro and open code
+#       alike -- and the symbol holds its null value: C'AA', C'EE', silent
+#   B   a reference on the card BEFORE its LCLC is IFO006 -- text order
+#   C/F a SETC using an undeclared symbol assigns nothing: C'CC', C'FF'
+#   D/G an AIF using one does not branch: C'D1', C'G1'
+# IFOX00 flags EIGHT statements; as370 flags the FIVE outside the definitions,
+# for the reason given at undeclset above.
+./as370 tests/undeclset2.s -o /tmp/_u2$$.obj >/tmp/_u2$$.out 2>&1
+rcu2=$?
+if [ $rcu2 != 8 ]; then
+    echo "undeclset2: FAIL -- expected RC 8, got $rcu2"; fail=$((fail + 1))
+elif ! grep -q "5 Statements Flagged" /tmp/_u2$$.out; then
+    echo "undeclset2: FAIL -- expected 5 flagged (IFOX00's 8 less three at definition time)"
+    grep -i flagged /tmp/_u2$$.out; fail=$((fail + 1))
+elif grep -qE '&SKIP|&OSKIP|&T3 is|&OT is' /tmp/_u2$$.out; then
+    echo "undeclset2: FAIL -- a symbol declared by a skipped LCLC was flagged (the dictionary is static)"
+    cat /tmp/_u2$$.out; fail=$((fail + 1))
+elif ! deck_eq /tmp/_u2$$.obj tests/ref/undeclset2.obj; then
+    echo "undeclset2: FAIL -- deck differs from IFOX00 (AA CC D1 EE FF G1)"; fail=$((fail + 1))
+else
+    echo "undeclset2: OK (static, text-ordered dictionary; IFOX00's 12-byte deck)"
+fi
+rm -f /tmp/_u2$$.obj /tmp/_u2$$.out
 
 # ------------------------------------------------------------------ badopt --
 # cc370#104: an argument the parser does not recognise fell through to
@@ -3515,12 +3530,12 @@ rm -rf "$ccdir" /tmp/_cc425$$.obj /tmp/_cc425$$.out /tmp/_cc425$$.err
 # statement; as370 substituted nothing and assembled the result, so IEAVEXS's
 # `LA 0,&CODE(,0)' became `LA 0,0(0,0)' and the section was 432 against 428.
 #
-# THE TWO SILENT CASES ARE THE CHECK. &A(1) against `LCLA &A(10)' is a correct
-# subscripted use, and &Z(1) is the UNDECLARED case -- cc370#97's, measured
-# unsafe to diagnose here, because as370 reaches the "names nothing" path 6,387
-# times in 771 of the 5,528 modules where IFOX00 raises nothing. This check keys
-# on a POSITIVE DECLARATION OF THE WRONG SHAPE and fires in 2 modules of 5,528,
-# which are exactly the two IFOX00 flags IFO007.
+# THE TWO CASES THAT MUST NOT DRAW IFO007 ARE THE CHECK. &A(1) against `LCLA
+# &A(10)' is a correct subscripted use and stays silent; &Z(1) is the UNDECLARED
+# case, cc370#97's, which is IFO006 and generates nothing as well -- so the
+# IFO007 statement lands at X'08'. This check keys on a POSITIVE DECLARATION OF
+# THE WRONG SHAPE and fires in 2 modules of 5,528, which are exactly the two
+# IFOX00 flags IFO007.
 ./as370 tests/ifo007.s -a -o /tmp/_i7$$.obj > /tmp/_i7$$.lst 2>/tmp/_i7$$.err
 rci7=$?
 i7n=$(grep -c 'IFO007' /tmp/_i7$$.err)
@@ -3532,24 +3547,25 @@ elif [ $rci7 != 8 ]; then
 elif ! grep -q 'Usage of &C is inconsistent' /tmp/_i7$$.err; then
     echo "ifo007: FAIL -- the message must name the symbol, and in full"; cat /tmp/_i7$$.err
     fail=$((fail + 1))
-elif grep -qE '&A|&Z' /tmp/_i7$$.err; then
-    echo "ifo007: FAIL -- &A(1) is a correct subscripted use and &Z(1) is the"
-    echo "        UNDECLARED case; neither may draw IFO007"; cat /tmp/_i7$$.err
+elif grep 'IFO007' /tmp/_i7$$.err | grep -qE '&A|&Z' || grep -q '&A is an undefined' /tmp/_i7$$.err \
+     || [ "$(grep -c '&Z is an undefined variable symbol' /tmp/_i7$$.err)" != 1 ]; then
+    echo "ifo007: FAIL -- &A(1) is a correct subscripted use and stays silent;"
+    echo "        &Z(1) is the UNDECLARED case and draws IFO006, never IFO007"; cat /tmp/_i7$$.err
     fail=$((fail + 1))
 # THE HALF THAT MOVES BYTES: the flagged statement generates nothing, so the
 # location counter does not advance. Without it the diagnostic is cosmetic and
 # IEAVEXS stays four bytes long.
 elif ! awk '/LA    2,&A|LA +2,5/ {seen=1} /LA    0,/ && seen {print; exit}' /tmp/_i7$$.lst \
-        | grep -qE '^00000C +[0-9]+\+ +LA    0,$'; then
+        | grep -qE '^000008 +[0-9]+\+ +LA    0,$'; then
     echo "ifo007: FAIL -- the flagged statement must emit nothing and leave the"
     echo "        counter where it was"; grep -E '^0000' /tmp/_i7$$.lst; fail=$((fail + 1))
-elif ! grep -qE '^00000C 07FE' /tmp/_i7$$.lst; then
-    echo "ifo007: FAIL -- the statement after it must sit at 00000C, not 000010"
+elif ! grep -qE '^000008 07FE' /tmp/_i7$$.lst; then
+    echo "ifo007: FAIL -- the statement after it must sit at 000008 (both flagged statements emit nothing)"
     grep -E '^0000' /tmp/_i7$$.lst; fail=$((fail + 1))
 else
     echo "ifo007: OK (one IFO007 at severity 8, naming the symbol; a dimensioned"
-    echo "        subscript and an undeclared one both silent; the flagged"
-    echo "        statement emits nothing and the counter does not advance)"
+    echo "        subscript silent, an undeclared one IFO006 and not IFO007; both"
+    echo "        flagged statements emit nothing and the counter does not advance)"
 fi
 rm -f /tmp/_i7$$.obj /tmp/_i7$$.lst /tmp/_i7$$.err
 
