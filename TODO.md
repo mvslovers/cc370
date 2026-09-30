@@ -696,7 +696,7 @@ the decision.
 | step | where | what |
 |---|---|---|
 | — | #99 | **done, 2026-09-04** — have weak externals right first; the whole direction rests on them |
-| 1 | #8 | warn when autocall resolves a symbol several members define — the cheap half, and it catches the exact httpd failure at link time |
+| 1 | #8 | warn when autocall resolves a symbol several members define — the cheap half, and it catches the exact httpd failure at link time. **IEWL measured and design settled 2026-09-30** (issue comment, PR #517): same-archive definers warn by default, cross-archive stays silent (IEWL parity), a pulled member re-defining an entry warns at RC 4 like `IEW0241`. RC 4 needs ld370's hard errors moved to ≥ 8 **and** mbt tolerating `rc < 8` on the link — land together |
 | 2 | `libc370#159` | collapse `@@crt0`/`@@crt1` with a weak `CTHREAD` reference — the pattern the same file already uses for `@@STKLEN` |
 | 3 | #107 | `--entry` seeds autocall, so the CRT moves inside `libc.a` and mbt's four near-identical link recipes collapse |
 | 4 | #10 | the weak `__premain()` hook in libc370; then this issue closes |
@@ -1247,10 +1247,11 @@ afterwards.
   the pattern that has produced four production failures in that one file. One
   guard, or grow it like `out[]`.
 - **#102 / #103** — duplicate CSECT and duplicate COMMON, where ld370 takes the
-  last and IEWL takes the first / the maximum. Derived from the linkage editor,
-  **not reproduced**, and the deliverable for each is a fixture: once it exists,
-  the `ld370/tests` IEWL oracle settles the semantics by diff without any further
-  reading of the reference. #103 is not reachable through as370 at all — it needs
+  last and IEWL takes the first / the maximum. **#102 is reproduced** in the
+  autocall variant (2026-09-30, JOB01408, test TC2 of
+  `ld370/tests/run_iewl_autocall_oracle.py`): IEWL keeps the first `QQ`, silently,
+  total 0x18; ld370 keeps the last, total 0x30. #103 is still derived only, and
+  its deliverable is a fixture. #103 is not reachable through as370 at all — it needs
   IFOX00-assembled input.
 
 ## Observability
