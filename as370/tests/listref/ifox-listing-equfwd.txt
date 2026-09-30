@@ -1,0 +1,78 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.37 09/30/26
+T         SD  0001 000000 000030
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.37 09/30/26
+                                      1 * cc370#89: an EQU operand naming a symbol not defined YET. IFOX00
+                                      2 * resolves EQU in pass 1. The corpus has 8 sites in 3 modules;
+                                      3 * IKJEGMNL's six say IFO231 and its deck carries 0, but a second
+                                      4 * expansion redefines the names there (IFO196), so the corpus
+                                      5 * cannot say which rule set the value.
+                                      6 *
+                                      7 * Predictions, written before the oracle was asked:
+                                      8 *   FA  EQU FB         IFO231 FB, FA = 0 (not 4)
+                                      9 *   FC  EQU NEVER      IFO188 NEVER, FC = 0
+                                     10 *   FD  EQU LAB2-LAB1  IFO231 twice (LAB2, LAB1), FD = 0 (not 4)
+                                     11 *   FE  EQU LAB1       IFO231 LAB1, FE = 0; absolute or
+                                     12 *                      relocatable is the open question (RLD)
+                                     13 *   BK  EQU FB         silent, BK = 4 -- control
+                                     14 *   DUP EQU 1/DUP EQU 2  IFO196 on the second, DUP stays 1
+                                     15 * The DCs carry the values: A(FA) 0, A(FD) 0, A(FE) 0 or 0+RLD,
+                                     16 * A(BK) 4, A(DUP) 1 (keep-first) or 2 (keep-last), A(FC) 0.
+000000                               17 T        CSECT
+000000                               18          DS    XL16
+                            00000    19 FA       EQU   FB
+         *** ERROR ***
+                            00004    20 FB       EQU   4
+                            00000    21 FC       EQU   NEVER
+         *** ERROR ***
+                            00000    22 FD       EQU   LAB2-LAB1
+         *** ERROR ***
+                            00000    23 FE       EQU   LAB1
+         *** ERROR ***
+                            00004    24 BK       EQU   FB
+                            00001    25 DUP      EQU   1
+                            00002    26 DUP      EQU   2
+         *** ERROR ***
+000010                               27 LAB1     DS    F
+000014                               28 LAB2     DS    F
+000018 00000000                      29          DC    A(FA)
+00001C 00000000                      30          DC    A(FD)
+000020 00000000                      31          DC    A(FE)
+000024 00000004                      32          DC    A(BK)
+000028 00000001                      33          DC    A(DUP)
+00002C 00000000                      34          DC    A(FC)
+                                     35          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.37 09/30/26
+BK       00001 00000004 00024  00032
+DUP      00001 00000001 00025  00033
+DUP      00001 00000002 00026  ****DUPLICATE****
+FA       00001 00000000 00019  00029
+FB       00001 00000004 00020  00019 00024
+FC       00001 00000000 00021  00034
+FD       00001 00000000 00022  00030
+FE       00001 00000000 00023  00031
+LAB1     00004 00000010 00027  00022 00023
+LAB2     00004 00000014 00028  00022
+NEVER    ****UNDEFINED****     00021
+T        00001 00000000 00017
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 15.37 09/30/26
+   19  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - FB
+   21  IFO188      NEVER IS AN UNDEFINED SYMBOL
+   22  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - LAB2
+   22  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - LAB1
+   23  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - LAB1
+   26  IFO196      DUP HAS BEEN PREVIOUSLY DEFINED
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     5
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         35
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        78
