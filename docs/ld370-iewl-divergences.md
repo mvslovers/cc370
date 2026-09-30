@@ -123,7 +123,7 @@ the defaults are set in `HEWLFINT`, which is how #100 was established.
 
 **ld370 supports:** `-o`, `-e/--entry`, `-i/--include`, `-l`/`-L`,
 `--allow-unresolved`, `--ac`, `--norent`, `--noreus`, `--blocksize`, `--dsn`,
-`--name`, `--pack`, `--verbose`, `-xmit`, `-iebcopy`, `-v`.
+`--name`, `--pack`, `--verbose`, `--warn-shadow`, `-xmit`, `-iebcopy`, `-v`.
 
 Most absences are not defects — ld370 is a declared subset. Two are worth acting
 on:
@@ -180,6 +180,25 @@ header comments. The same caution applies to IFOX00 — see
 `as370/docs/ifox-option-parity.md`.
 
 ---
+
+## Automatic library call finds entries, not only members
+
+IEWL's automatic library call looks a name up in the `SYSLIB` directory, by
+member name or alias. A name that is only an `ENTRY` inside some member stays
+unresolved (`IEW0132`). ld370 resolves through the archive's ESD index, which
+lists every entry of every member. cc370 depends on that: a C translation unit
+exports its functions as `LD` entries of one unnamed section. Measured on
+MVSCE-LAB, JOB01408 (`ld370/tests/run_iewl_autocall_oracle.py`, test TB).
+
+The price is a choice IEWL never has to make. A directory holds each name once,
+and IEWL refuses a duplicate when the library is built (`IEW0543`, RC 12, test
+BD). An archive's index can hold one name for several members, and then the
+member order decides. So ld370 warns when another member of the same archive
+defines the name it resolved (cc370#8). Across archives it follows IEWL: the
+first one searched wins, silently (test TA), and `--warn-shadow` names the
+others. An autocalled member that defines an entry again is reported like
+`IEW0241` (test TC). A duplicate CSECT is not reported; IEWL does not report it
+either (test TC2), and ld370 keeps the wrong one of the two — cc370#102.
 
 ## Reference sources
 

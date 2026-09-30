@@ -19,6 +19,8 @@
  * duplicate startup into the link.  --include/-i NAME force-includes a member
  * (by basename or a symbol it defines) BEFORE autocall -- the IEWL INCLUDE
  * equivalent for pinning a specific runtime variant (e.g. --include @@CRT1).
+ * Another member of the pick's own archive defining the same name is reported;
+ * a definer in a later archive only with --warn-shadow (cc370#8).
  * --entry/-e NAME sets the load-module entry point.
  * --alias NAME (repeatable) adds an alias directory entry, IEWL ALIAS style.
  *
@@ -44,6 +46,19 @@ static int verbose = 0;
  * clean but S0C4s on the first indirect call.  Fail the link by default; only an
  * explicit --allow-unresolved leaves them for the loader. */
 static int allow_unresolved = 0;
+/* Automatic library call diagnostics (cc370#8).  Two members of ONE archive
+ * defining the symbol autocall resolves are always reported: IEWL cannot meet
+ * that case at all -- it finds a member by directory name, and a directory
+ * holds each name once (MVSCE-LAB JOB01408, tests TB/BD) -- so the member
+ * order in the archive decides it by accident.  A definer in a LATER archive is
+ * reported only with --warn-shadow: IEWL is silent there (test TA), and mbt
+ * relies on it (a dependency's @@START ahead of libc's). */
+static int warn_shadow = 0;
+static int nwarn = 0;                 /* warnings issued by this link */
+/* the exit value of a link that succeeded with warnings.  IEWL's is 4; ld370's
+ * warnings have always left 0, and the cc370 driver and mbt fail on anything
+ * else -- moving to the IEWL scale is cc370#518. */
+#define LD_WARN_RC 0
 /* APF authorization code (SETCODE AC(n)); goes into the PDS2 directory entry's
  * APF section (PDSAPFAC).  Default 0; httpd's HTTPD module needs AC(1). */
 static int apfcode = 0;
@@ -221,6 +236,7 @@ struct obj {
     int nld;
     long object_base;                 /* assigned base address of this object's section(s) */
     int has_entry, entry_id; long entry_off;   /* END-card entry: section local ESDID + offset */
+    int autocalled; int ac_ar; long ac_off;    /* pulled by autocall: archive + member offset */
 };
 
 /* grow a malloc'd array to hold at least `need` elements of `elsz` bytes (NULL/0
@@ -379,6 +395,7 @@ static int local_to_g(struct obj *o, int localid)
  * from the index, so autocall would miss them with no diagnostic). */
 struct arsym { char name[64]; long off; };
 struct archive {
+    char *path;
     unsigned char *data; long size;
     struct arsym *sym; long symcap; int nsym;
     struct arsym *mem; long memcap; int nmem;        /* member basenames, for --include */
@@ -398,6 +415,8 @@ static int load_archive(const char *path)
     if (!a) return 1;
     if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ld370: %s: not an archive\n", path); free(a); return 1; }
     ar = &AR[nAR]; ar->data = a; ar->size = n;
+    ar->path = strdup(path);
+    if (!ar->path) { fprintf(stderr, "ld370: out of memory\n"); free(a); return 1; }
     ar->sym = NULL; ar->symcap = 0; ar->nsym = 0;
     ar->mem = NULL; ar->memcap = 0; ar->nmem = 0;
     /* first member must be the "/" symbol table */
@@ -511,6 +530,64 @@ static int member_conflicts(int ai, long off)
     return 0;
 }
 
+/* the member at header offset `off` of archive `ai`: its name and its bytes */
+static const char *member_label(int ai, long off)
+{
+    int m;
+    for (m = 0; m < AR[ai].nmem; m++)
+        if (AR[ai].mem[m].off == off) return AR[ai].mem[m].name;
+    return "?";
+}
+static const unsigned char *member_bytes(int ai, long off, long *size)
+{
+    char szs[11];
+    memcpy(szs, AR[ai].data + off + 48, 10); szs[10] = 0; *size = atol(szs);
+    return AR[ai].data + off + 60;
+}
+/* the same object deck?  mbt names libc twice on a test link, so one member
+ * reaches the candidate list once per copy of the archive -- that is one
+ * definition, not two. */
+static int same_member(int a1, long o1, int a2, long o2)
+{
+    long n1, n2;
+    const unsigned char *b1 = member_bytes(a1, o1, &n1), *b2 = member_bytes(a2, o2, &n2);
+    return n1 == n2 && memcmp(b1, b2, (size_t)n1) == 0;
+}
+
+struct acand { int ar; long off; };
+static struct acand *cand; static long candcap;
+
+/* report the definers of `want` that autocall passed over for the pick: those
+ * in the pick's own archive always, those in other archives with --warn-shadow.
+ * Each distinct deck is named once. */
+static void report_definers(const char *want, int pick_ai, long pick_off, int nc)
+{
+    int pass, k, j;
+    for (pass = 0; pass < 2; pass++) {             /* 0: same archive, 1: others */
+        int nnamed = 0;
+        if (pass == 1 && !warn_shadow) break;
+        for (k = 0; k < nc; k++) {
+            int dup = 0;
+            if ((cand[k].ar == pick_ai) != (pass == 0)) continue;
+            if (same_member(cand[k].ar, cand[k].off, pick_ai, pick_off)) continue;
+            for (j = 0; j < k && !dup; j++)
+                if (((cand[j].ar == pick_ai) == (pass == 0))
+                    && same_member(cand[j].ar, cand[j].off, cand[k].ar, cand[k].off)) dup = 1;
+            if (dup) continue;
+            if (nnamed++ == 0)
+                fprintf(stderr, "ld370: warning: '%s' resolved from %s in %s; also defined by",
+                        want, member_label(pick_ai, pick_off), AR[pick_ai].path);
+            fprintf(stderr, "%s %s", nnamed > 1 ? "," : "", member_label(cand[k].ar, cand[k].off));
+            if (pass == 1) fprintf(stderr, " in %s", AR[cand[k].ar].path);
+        }
+        if (nnamed) {
+            fprintf(stderr, pass == 0 ? " in the same archive (ignored)\n"
+                                      : " (ignored, searched in archive order)\n");
+            nwarn++;
+        }
+    }
+}
+
 /* resolve unresolved ERs from the archives, to a fixpoint */
 static int autocall(void)
 {
@@ -526,24 +603,35 @@ static int autocall(void)
                 want = mvs_nm(O[i].loc[j].name);
                 /* among ALL definers of `want`, prefer one that does not also
                  * re-define an already-resolved strong symbol; fall back to the
-                 * first definer only if every candidate conflicts. */
+                 * first definer only if every candidate conflicts.  All of them
+                 * are gathered first, so the ones passed over can be named. */
                 {
-                    int pick_ai = -1, conflicting = 0, fb_ai = -1; long pick_off = -1, fb_off = -1;
-                    for (a = 0; a < nAR && pick_off < 0; a++)
+                    int pick_ai = -1, conflicting = 0, fb_ai = -1, nc = 0, k;
+                    long pick_off = -1, fb_off = -1;
+                    for (a = 0; a < nAR; a++)
                         for (s = 0; s < AR[a].nsym; s++)
                             if (!strcmp(AR[a].sym[s].name, want)) {
                                 long off = AR[a].sym[s].off; int pk, dup = 0;
                                 for (pk = 0; pk < npulled; pk++)
                                     if (pulled[pk].ar == a && pulled[pk].off == off) { dup = 1; break; }
                                 if (dup) continue;                 /* this definer already pulled; try others */
-                                if (fb_off < 0) { fb_ai = a; fb_off = off; }
-                                if (!member_conflicts(a, off)) { pick_ai = a; pick_off = off; break; }
+                                cand = grow_arr(cand, &candcap, nc + 1, sizeof *cand);
+                                cand[nc].ar = a; cand[nc].off = off; nc++;
                             }
+                    for (k = 0; k < nc; k++) {
+                        if (fb_off < 0) { fb_ai = cand[k].ar; fb_off = cand[k].off; }
+                        if (!member_conflicts(cand[k].ar, cand[k].off)) {
+                            pick_ai = cand[k].ar; pick_off = cand[k].off; break;
+                        }
+                    }
                     if (pick_off < 0 && fb_off >= 0) { pick_ai = fb_ai; pick_off = fb_off; conflicting = 1; }
                     if (pick_off >= 0) {
                         trace("  autocall: '%s' -> archive %d member @%ld%s", want, pick_ai, pick_off,
                               conflicting ? " [no clean definer; took first]" : "");
+                        report_definers(want, pick_ai, pick_off, nc);
                         if (pull_member(pick_ai, pick_off)) return 1;
+                        O[nO - 1].autocalled = 1;
+                        O[nO - 1].ac_ar = pick_ai; O[nO - 1].ac_off = pick_off;
                         changed = 1;
                     }
                 }
@@ -1721,6 +1809,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--pack")) pack_mode = 1;       /* positional args after this are members to pack */
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
+        else if (!strcmp(argv[i], "--warn-shadow")) warn_shadow = 1;
         else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--norent")) no_rent = 1;       /* clear PDS2RENT */
         else if (!strcmp(argv[i], "--noreus")) no_reus = 1;       /* clear PDS2REUS */
@@ -1894,7 +1983,7 @@ int main(int argc, char **argv)
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
                 "             [--alias NAME]... [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
                 "             [--ac N] [--rent|--norent] [--reus|--noreus] [--refr]\n"
-                "             [--sparse-text] OBJ...\n"
+                "             [--sparse-text] [--warn-shadow] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
                 "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
@@ -1979,6 +2068,15 @@ int main(int argc, char **argv)
              * before autocall, the app's entry is seen first and kept. */
             if (G[gi].type == 0x03 && G[gi].owner >= 0) {
                 trace("  duplicate entry '%s' ignored (first definition kept)", mvs_nm(o->ld[j].name));
+                /* IEWL reports this for an autocalled member (IEW0241 DOUBLY
+                 * DEFINED, RC 4 -- MVSCE-LAB JOB01408, test TC).  Two explicit
+                 * or --include'd objects are cc370#478's case. */
+                if (o->autocalled) {
+                    fprintf(stderr, "ld370: warning: '%s' doubly defined: autocalled member %s in %s "
+                                    "defines it again (first definition kept)\n",
+                            mvs_nm(o->ld[j].name), member_label(o->ac_ar, o->ac_off), AR[o->ac_ar].path);
+                    nwarn++;
+                }
                 continue;
             }
             G[gi].type = 0x03; G[gi].in_addr = o->ld[j].addr;
@@ -2314,5 +2412,5 @@ int main(int argc, char **argv)
         if (xmitfile && write_xmit1(xmitfile, name, out, olen, dsn, entry_addr, modlen, al, naliasv)) return 1;
         free(al);
     }
-    return 0;
+    return nwarn ? LD_WARN_RC : 0;
 }
