@@ -696,7 +696,7 @@ the decision.
 | step | where | what |
 |---|---|---|
 | — | #99 | **done, 2026-09-04** — have weak externals right first; the whole direction rests on them |
-| 1 | #8 | warn when autocall resolves a symbol several members define — the cheap half, and it catches the exact httpd failure at link time. **IEWL measured and design settled 2026-09-30** (issue comment, PR #517): same-archive definers warn by default, cross-archive stays silent (IEWL parity, `--warn-shadow` names them), a pulled member re-defining an entry warns like `IEW0241`. **Implemented in PR #520, warnings at rc 0.** IEWL's RC 4 is #518 — ld370's errors to ≥ 8, the driver (`MIN_FATAL_STATUS` covers cc1) and mbt's link tolerance, landing together. Side finding: #519, a missing input object fails silently |
+| 1 | #8 | warn when autocall resolves a symbol several members define — the cheap half, and it catches the exact httpd failure at link time. **IEWL measured and design settled 2026-09-30** (issue comment, PR #517): same-archive definers warn by default, cross-archive stays silent (IEWL parity, `--warn-shadow` names them), a pulled member re-defining an entry warns like `IEW0241`. **Merged 2026-09-30 (#520, `823be66`), warnings at rc 0.** IEWL's RC 4 is #518 — ld370's errors to ≥ 8, the driver (`MIN_FATAL_STATUS` covers cc1) and mbt's link tolerance, landing together. Side finding: #519, a missing input object fails silently |
 | 2 | `libc370#159` | collapse `@@crt0`/`@@crt1` with a weak `CTHREAD` reference — the pattern the same file already uses for `@@STKLEN` |
 | 3 | #107 | `--entry` seeds autocall, so the CRT moves inside `libc.a` and mbt's four near-identical link recipes collapse |
 | 4 | #10 | the weak `__premain()` hook in libc370; then this issue closes |
