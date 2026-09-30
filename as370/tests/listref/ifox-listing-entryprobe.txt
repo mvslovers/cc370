@@ -1,0 +1,99 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 17.24 09/30/26
+T         SD  0001 000000 000028
+E1        LD       000004        0001
+E2        LD       000000        0001
+E5        LD       000004        0001
+XE        ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 17.24 09/30/26
+                                      1 * cc370#559 and three questions left open by #89/#556. Every case
+                                      2 * has its own names so no answer leaks into another.
+                                      3 *
+                                      4 * Predictions, written before the oracle was asked:
+                                      5 *  ENTRY (#559) -- IFOX00 writes an LD only for a relocatable name
+                                      6 *   E1 label, defined after the ENTRY      LD, silent    control
+                                      7 *   E2 label, defined before the ENTRY     LD, silent    control
+                                      8 *   E3 absolute EQU, defined after         IFO189, no LD
+                                      9 *   E4 absolute EQU, defined before        IFO189, no LD
+                                     10 *   E5 EQU of a label (relocatable)        LD, silent
+                                     11 *   E6 never defined                       IFO188 or IFO189, no LD
+                                     12 *   E7 forward EQU of a label (IKJEGMNL)   IFO231 + IFO189, no LD
+                                     13 *  X2 EQU FWD2-FWD2, FWD2 defined later    IFO231 TWICE, X2 = 0
+                                     14 *  EXTRN XE, then XE DS F                  IFO196 on the DS; XE
+                                     15 *                                          stays an ER: A(XE) = 0
+                                     16 *                                          with an RLD against it
+                                     17 *  ORG *+FWDO, FWDO EQU 8 later            IFO231, counter does not
+                                     18 *                                          move: AFTER = BEFORE
+000000                               19 T        CSECT
+                                     20          ENTRY E1,E2,E3,E4,E5,E6,E7
+         *** ERROR ***
+                                     21          EXTRN XE
+000000                               22 E2       DS    F
+                            00005    23 E4       EQU   5
+000004                               24 E1       DS    F
+                            00006    25 E3       EQU   6
+                            00004    26 E5       EQU   E1
+                            00000    27 E7       EQU   LATER
+         *** ERROR ***
+                            00000    28 X2       EQU   FWD2-FWD2
+         *** ERROR ***
+000008                               29 XE       DS    F
+         *** ERROR ***
+00000C                               30 LATER    DS    F
+000010                               31 FWD2     DS    F
+000014 00000006                      32          DC    A(E3)
+000018 00000000                      33          DC    A(E7)
+00001C 00000000                      34          DC    A(X2)
+000020 00000000                      35          DC    A(XE)
+000024                               36 BEFORE   DS    0F
+000024                      00024    37          ORG   *+FWDO
+         *** ERROR ***
+000024                               38 AFTER    DS    0F
+                            00008    39 FWDO     EQU   8
+000024 00000000                      40          DC    A(AFTER-BEFORE)
+                                     41          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 17.24 09/30/26
+ 0001     0002      0C     000020
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 17.24 09/30/26
+AFTER    00004 00000024 00038  00040
+BEFORE   00004 00000024 00036  00040
+E1       00004 00000004 00024  00020 00026
+E2       00004 00000000 00022  00020
+E3       00001 00000006 00025  00020 00032
+E4       00001 00000005 00023  00020
+E5       00004 00000004 00026  00020
+E6       ****UNDEFINED****     00020
+E7       00001 00000000 00027  00020 00033
+FWDO     00001 00000008 00039  00037
+FWD2     00004 00000010 00031  00028 00028
+LATER    00004 0000000C 00030  00027
+T        00001 00000000 00019
+XE       00001 00000000 00021  00035
+XE       00004 00000008 00029  ****DUPLICATE****
+X2       00001 00000000 00028  00034
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 17.24 09/30/26
+   20  IFO189      INVALID ENTRY OPERAND, LINKAGE CANNOT BE PERFORMED
+   20  IFO189      INVALID ENTRY OPERAND, LINKAGE CANNOT BE PERFORMED
+   20  IFO189      INVALID ENTRY OPERAND, LINKAGE CANNOT BE PERFORMED
+   20  IFO189      INVALID ENTRY OPERAND, LINKAGE CANNOT BE PERFORMED
+   27  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - LATER
+   28  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - FWD2
+   28  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - FWD2
+   29  IFO196      XE HAS BEEN PREVIOUSLY DEFINED
+   37  IFO231      SYMBOL NOT PREVIOUSLY DEFINED - FWDO
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     5
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         41
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        99
