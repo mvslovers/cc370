@@ -3349,10 +3349,11 @@ rm -f /tmp/_ef$$.obj /tmp/_ef$$.out
 # never defined -- is IFO189 and gets NO LD. Oracle: MVSTK5-REF JOB00298,
 # tests/listref/ifox-listing-entryprobe.txt: LDs for E1, E2, E5 only, IFO189
 # four times on the ENTRY. The binary before the fix wrote LDs for all seven.
-# The deck as a whole is not IFOX00's yet: the fixture's forward ORG (#563)
-# still moves the counter, which changes the SD length and the text, so the
-# ESD entries are compared by name, type, address and LDID, without the SD's
-# length.
+# cc370#563, same capture: `ORG *+FWDO' with FWDO defined further down is
+# IFO231 and the counter does not move, so the section is x'28' and
+# A(AFTER-BEFORE) = 0 sits at x'24'. The binary before that fix was silent,
+# moved by 8 in pass 2 only, and put the constant at x'2C' in a section of
+# x'30'. With both fixes (and #564's) the deck is IFOX00's but for the END card.
 ./as370 tests/entryprobe.s -o /tmp/_ep$$.obj >/tmp/_ep$$.out 2>&1
 rcp=$?
 if [ $rcp != 8 ]; then
@@ -3362,25 +3363,53 @@ elif [ "$(grep -c 'IFO189' /tmp/_ep$$.out)" != 4 ] ||
      ! grep -q 'IFO189) - E6 in line 20' /tmp/_ep$$.out || ! grep -q 'IFO189) - E7 in line 20' /tmp/_ep$$.out; then
     echo "entryprobe: FAIL -- expected IFO189 on E3, E4, E6, E7 (statement 20)"
     grep IFO189 /tmp/_ep$$.out; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO231) - FWDO' /tmp/_ep$$.out)" != 1 ] || ! grep -q 'IFO231) - FWDO in line 37' /tmp/_ep$$.out; then
+    echo "entryprobe: FAIL -- expected one IFO231 on FWDO (statement 37, the forward ORG)"
+    grep IFO231 /tmp/_ep$$.out; fail=$((fail + 1))
 else
     python3 - /tmp/_ep$$.obj tests/ref/entryprobe.obj <<'PY2'
 import sys
-def esd(p):
-    d = open(p, 'rb').read(); out = []
-    for i in range(0, len(d), 80):
-        c = d[i:i+80]
-        if c[1:4] != b"\xc5\xe2\xc4": continue
-        for j in range(16, 16 + int.from_bytes(c[10:12], 'big'), 16):
-            e = c[j:j+16]
-            out.append((e[:8], e[8], e[9:12], e[13:16] if e[8] == 1 else b''))   # SD/ER length left out
-    return out
-if esd(sys.argv[1]) != esd(sys.argv[2]):
-    print("entryprobe: FAIL -- ESD entries differ from IFOX00's"); sys.exit(1)
-print("entryprobe: OK (IFO189 on E3/E4/E6/E7, LDs for E1/E2/E5 only, ESD == IFOX00 but for the SD length, #563)")
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]   # END card left out (IDR)
+if body(sys.argv[1]) != body(sys.argv[2]):
+    print("entryprobe: FAIL -- deck differs from IFOX00's"); sys.exit(1)
+print("entryprobe: OK (IFO189 on E3/E4/E6/E7, LDs for E1/E2/E5 only, IFO231 on the forward ORG, deck == IFOX00)")
 PY2
     [ $? = 0 ] || fail=$((fail + 1))
 fi
 rm -f /tmp/_ep$$.obj /tmp/_ep$$.out
+
+# --------------------------------------------------------------- orgnever --
+# cc370#563: an ORG whose operand names a symbol not defined yet is IGNORED --
+# the counter stays. Oracle: MVSTK5-REF JOB00300,
+# tests/listref/ifox-listing-orgnever.txt. Four cases that tell "ignored" from
+# "the term is 0": ORG NEVERC, ORG NEVERX+4 and ORG FWDL (a label further down)
+# in a CSECT, ORG NEVERD in a DSECT. IFO188 on the three never-defined names,
+# IFO231 on FWDL, section x'1B'. The binary before the fix set the counter to 0
+# for the never-defined names (overlaying F'1') and to FWDL's pass-2 value, x'16'.
+./as370 tests/orgnever.s -o /tmp/_on$$.obj >/tmp/_on$$.out 2>&1
+rcp=$?
+if [ $rcp != 8 ]; then
+    echo "orgnever: FAIL -- expected RC 8, got $rcp"; fail=$((fail + 1))
+elif [ "$(grep -c 'ERROR' /tmp/_on$$.out)" != 4 ] ||
+     ! grep -q 'Undefined symbol in line 19 - NEVERC' /tmp/_on$$.out || ! grep -q 'Undefined symbol in line 23 - NEVERX' /tmp/_on$$.out ||
+     ! grep -q 'IFO231) - FWDL in line 26' /tmp/_on$$.out || ! grep -q 'Undefined symbol in line 38 - NEVERD' /tmp/_on$$.out; then
+    echo "orgnever: FAIL -- expected IFO188 on NEVERC/NEVERX/NEVERD and IFO231 on FWDL"
+    grep ERROR /tmp/_on$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_on$$.obj tests/ref/orgnever.obj <<'PY2'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]   # END card left out (IDR)
+if body(sys.argv[1]) != body(sys.argv[2]):
+    print("orgnever: FAIL -- deck differs from IFOX00's"); sys.exit(1)
+print("orgnever: OK (ORG to a symbol not defined yet leaves the counter; deck == IFOX00)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_on$$.obj /tmp/_on$$.out
 
 # ------------------------------------------------------------- extrnredef --
 # cc370#564: `EXTRN XE' then `XE DS F'. IFOX00 raises IFO196 on the DS and the
@@ -3389,7 +3418,7 @@ rm -f /tmp/_ep$$.obj /tmp/_ep$$.out
 # MVSTK5-REF JOB00298, tests/listref/ifox-listing-entryprobe.txt. The binary
 # before the fix was silent and wrote 8 -- the label's offset -- under the same
 # RLD, so the linked address came out XE+8. Only statement 29 and the word at
-# x'20' are compared; the rest of the deck still carries #563's forward ORG.
+# x'20' are compared here; the whole deck is entryprobe's.
 ./as370 tests/entryprobe.s -o /tmp/_xr$$.obj >/tmp/_xr$$.out 2>&1
 if [ "$(grep -c 'IFO196' /tmp/_xr$$.out)" != 1 ] || ! grep -q 'IFO196) - XE in line 29' /tmp/_xr$$.out; then
     echo "extrnredef: FAIL -- expected one IFO196 on XE (statement 29)"
