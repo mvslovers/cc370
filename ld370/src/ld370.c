@@ -163,7 +163,8 @@ static void *grow_arr(void *arr, long *cap, long need, size_t elsz);   /* define
 
 /* composite (global) symbol = one CESD entry */
 struct gsym { unsigned char name[8]; int type; int is_sect; int gid; long org, len;
-              int def_obj; long in_addr;   /* section: defining object + origin within it */
+              int def_obj; long in_addr;   /* section: defining object + origin within it;
+                                           * LR: offset within its owning section */
               int owner; };                /* LR (label/entry): gsym index of the owning section */
 static struct gsym *G; static long Gcap;   /* grow on demand (was G[MAXG]) */
 static int nG = 0;
@@ -2079,8 +2080,13 @@ int main(int argc, char **argv)
                 }
                 continue;
             }
-            G[gi].type = 0x03; G[gi].in_addr = o->ld[j].addr;
+            /* An LD's address in the deck is object-relative; every consumer
+             * adds it to the OWNER's final origin, so keep it owner-relative.
+             * The two differ only when the owner is not the object's first
+             * section -- never in cc370's one-section C objects (cc370#522). */
+            G[gi].type = 0x03;
             G[gi].owner = (ol >= 1 && ol < MAXESD && o->loc[ol].used) ? o->loc_g[ol] : -1;
+            G[gi].in_addr = o->ld[j].addr - (G[gi].owner >= 0 ? o->loc[ol].addr : 0);
         }
     }
     {

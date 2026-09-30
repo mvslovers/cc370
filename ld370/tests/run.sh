@@ -512,6 +512,33 @@ run_multidef() {
 
 run_multidef
 
+# An ENTRY in a CSECT that is not first in its object (cc370#522).  QE sits at
+# x10 of object DCOB, inside QQ (object offset x08).  IEWL puts it at x10 when
+# DCOB is linked first (MVSCE-LAB JOB01409, test TE2: CESD, and OD's V(QE)).
+# ld370 added the object-relative address to QQ's origin: x18.
+run_entry_offset() {
+    local eo_fails=0 v c
+    for m in dcob dcod; do
+        "$AS" -o "$TMP/$m.o" "$FIX/$m.s" || { echo "as370 failed: $m"; fails=$((fails + 1)); return; }
+    done
+    printf '\n=== an ENTRY in a later CSECT of its object (cc370#522) ===\n'
+    v=$("$LD" --verbose -e OD -o "$TMP/eo.lm" "$TMP/dcob.o" "$TMP/dcod.o" 2>&1)
+    c=$("$FI" -v "$TMP/eo.lm" | /usr/bin/grep -c 'QE  *LR  *addr=000010')
+    if printf '%s\n' "$v" | /usr/bin/grep -q 'adcon@000030 -> QE: .*(final 000010)' && [ "$c" -eq 1 ]; then
+        echo "  OK: CESD QE at x10 and OD's V(QE) = x10, as IEWL"
+    else
+        echo "  FAIL: QE is not at x10 (CESD match: $c)"; printf '%s\n' "$v" | /usr/bin/grep -E 'QE' | sed 's/^/      /'; eo_fails=1
+    fi
+    if "$LD" --verbose -e QE -o "$TMP/eo2.lm" "$TMP/dcob.o" "$TMP/dcod.o" 2>&1 | /usr/bin/grep -q -- '--entry QE -> 000010'; then
+        echo "  OK: --entry QE resolves to x10"
+    else
+        echo "  FAIL: --entry QE does not resolve to x10"; eo_fails=1
+    fi
+    [ "$eo_fails" -eq 0 ] || fails=$((fails + 1))
+}
+
+run_entry_offset
+
 # --blocksize: the target library BLKSIZE is runtime (default 15040, the de-facto
 # LINKLIB blocksize, so a member fits ANY LINKLIB with BLKSIZE >= 15040 -- where the
 # old fixed 19069 fit only a fresh >=19069 lib).  A module built at --blocksize B must
