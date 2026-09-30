@@ -3309,9 +3309,11 @@ rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
 # cc370#556: a name defined twice is IFO196 and the FIRST definition stands --
 # `DUP EQU 1' / `DUP EQU 2' leaves A(DUP) = 1. Oracle: MVSTK5-REF JOB00297,
 # tests/listref/ifox-listing-equfwd.txt. The binary before the fix gave rc 0,
-# no message and A(DUP) = 2, the one byte its deck differed in. The same
-# fixture carries #89's forward EQUs (IFO231/IFO188, not yet raised); only the
-# deck and the duplicate are asserted here until those land.
+# no message and A(DUP) = 2, the one byte its deck differed in.
+# cc370#89 on the same fixture: a forward symbol in an EQU is IFO231 once per
+# SYMBOL (FD EQU LAB2-LAB1 draws two), a symbol never defined is IFO188, and
+# the value is 0 either way. Five statements flagged, as in IFOX00's listing;
+# before #89 as370 raised none of the five forward messages.
 ./as370 tests/equfwd.s -o /tmp/_ef$$.obj >/tmp/_ef$$.out 2>&1
 rce=$?
 if [ $rce != 8 ]; then
@@ -3319,6 +3321,15 @@ if [ $rce != 8 ]; then
 elif [ "$(grep -c 'IFO196' /tmp/_ef$$.out)" != 1 ] || ! grep -q 'IFO196) - DUP in line 26' /tmp/_ef$$.out; then
     echo "equfwd: FAIL -- expected one IFO196, on DUP, statement 26"
     grep IFO196 /tmp/_ef$$.out; fail=$((fail + 1))
+elif ! grep -q "5 Statements Flagged" /tmp/_ef$$.out ||
+     [ "$(grep -c 'IFO231' /tmp/_ef$$.out)" != 4 ] ||
+     ! grep -q 'IFO231) - FB in line 19'   /tmp/_ef$$.out ||
+     ! grep -q 'IFO231) - LAB2 in line 22' /tmp/_ef$$.out ||
+     ! grep -q 'IFO231) - LAB1 in line 22' /tmp/_ef$$.out ||
+     ! grep -q 'IFO231) - LAB1 in line 23' /tmp/_ef$$.out ||
+     ! grep -q 'Undefined symbol in line 21 - NEVER' /tmp/_ef$$.out; then
+    echo "equfwd: FAIL -- expected IFO231 on FB/LAB2/LAB1/LAB1 (stmts 19, 22 twice, 23), IFO188 on NEVER (21), 5 flagged"
+    grep -E 'IFO|Undefined|Flagged' /tmp/_ef$$.out; fail=$((fail + 1))
 else
     python3 - /tmp/_ef$$.obj tests/ref/equfwd.obj <<'PY'
 import sys
@@ -3327,7 +3338,7 @@ def body(p):
     return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]
 if body(sys.argv[1]) != body(sys.argv[2]):
     print("equfwd: FAIL -- deck differs from IFOX00 (A(DUP) must be 1)"); sys.exit(1)
-print("equfwd: OK (IFO196 on the second DUP, the first definition kept, deck == IFOX00)")
+print("equfwd: OK (4x IFO231, IFO188 on NEVER, IFO196 on the second DUP, deck == IFOX00)")
 PY
     [ $? = 0 ] || fail=$((fail + 1))
 fi
