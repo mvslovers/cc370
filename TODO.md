@@ -390,7 +390,7 @@ It sits this high because no measurement is owed before the work can start: the
 mechanism is one bookkeeping decision and the witness is a single named module.
 Everything below this line in the top class is waiting on something.
 
-### 3 · #362 — the relocatability rule is not applied to `USING`
+### 5 · #362 — the relocatability rule is not applied to `USING`
 
 *measured into a different issue than the one that was filed — and closed for a
 day and a half while the work had not started*
@@ -463,7 +463,7 @@ four — `IEAVTPER`, `IECIOSAM`, `IECVMAP`, `IECVXURT` — carry a byte differen
 their own, same length and already counted among the 96 still differing, and this
 fix does not touch it.
 
-### 4 · #89 — a forward reference in EQU resolves to 0
+### 6 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -474,7 +474,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 5 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 7 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
@@ -531,7 +531,7 @@ known here. Without overlap this is an untrue claim with no current victim; with
 it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
-### 6 · #86 — the diagnostic recorders drop everything past 128 entries
+### 8 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -548,7 +548,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 7 · #184 — the attribute apostrophe, in the scans that decide diagnostics
+### 9 · #184 — the attribute apostrophe, in the scans that decide diagnostics
 
 *the last live member of the #35/#149/#218 family, and the one PR #347 says it
 did not close*
@@ -612,7 +612,7 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
   measured and is unchanged.
 
-### 8 · #241 — twenty modules longer than IFOX00, one of them readable
+### 10 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -636,7 +636,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 9 · #23 — the corpus gate has an oracle-shaped hole
+### 11 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -1285,6 +1285,9 @@ nothing in the corpus uses them.
 - #525 — the type operand of `EQU` was ignored, so `T'` was `U`, rc 0. **Fixed.**
   It was ranked first for its reach, 1,110 maclib statements, and has none there:
   a macro-generated symbol is `U` to IFOX00 as well (JOB00291). Open code only.
+- #540 — new, found by the #525 probe: a label on a macro *call* is `T'` = `M` to
+  IFOX00 and `U` to as370, rc 0 (JOB00290, fixture `as370/tests/equtypegen.s`).
+  Silent, and not ranked until its corpus count exists.
 
 The rest are loud or diagnostic-only: #526 (labelled `ORG`, rc 8 where IFOX is
 clean), #529 / #530 / #531 (missing `IFO233` / `IFO104` / `IFO169`), and #532–#535
@@ -1511,6 +1514,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-30 — #525, MERGED as `bde99bf` (PR #541).** as370's open-code
+  look-ahead recorded every `EQU` as `T'` = `U`; a `C'x'` type operand now sets
+  the letter (`equtype`, JOB00281). Its reach is open code and COPY members only:
+  a macro-generated symbol is `U` to IFOX00 too (`equtypegen2`, JOB00291), so the
+  1,110 maclib statements it was ranked on were never affected. MVSBLD gate:
+  5,072 -> 5,072 identical, no deck moved. Sibling found on the way: **#540**.
 
 - **2026-09-29 — #511, MERGED as `be1ad1a` (PR #514).** cc370 left UTF-8 string
   literals unconverted, so the Latin-1 -> CP037 output pass saw two bytes per
