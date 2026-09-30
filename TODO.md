@@ -132,14 +132,13 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #362 | as370 | silent under-reporting — 155 `USING` operands | **review of PR #554** — the fix is written and gated, see below |
-| 2 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 3 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 4 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 5 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
-| 6 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 7 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
-| 8 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+| 1 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 2 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 3 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 4 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
+| 5 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 6 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 7 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 
 **#342 left the table on 2026-09-30** (PR #545), and its title had the wrong
 cause. No macro generates a DSECT in `IEDQWIE`: PL/S emitted the fields as
@@ -151,13 +150,8 @@ absolute USING has 0 occurrences in the tree; the oracle answered the same way
 for it (`absrx`, JOB00295), and it landed the same day as #547 (PR #548).
 #97, placed at 8 below, is 7 since.
 
-**#362 has a PR on 2026-09-30** (#554, two commits, gated each on its own).
-IFOX00 sends every failed USING base to one exit (IFNX5A USI900): IFO217, never
-IFO213, twice for a relocatable multiply because EVAL logs it too, and no table
-entry. Tree: identical 5231 -> 5231, 0 lost; nine modules rc 8 -> 12, all among
-the 75, IFO217 counts equal to IFOX00's; IECVXURT's text becomes identical. The
-other 66 of the 75 are rc 0 on both binaries under today's macro path, which
-resolves their symbols. The row leaves when the PR lands.
+**#362 left the table on 2026-09-30** (PR #554), and the ranking moves up one.
+A failed USING base is IFO217 and establishes no domain; see *Recently landed*.
 
 **#527 left the table on 2026-09-30** (PR #550): a literal's duplication
 factor may be a parenthesised expression, and the tree moved no deck. Every row
@@ -343,80 +337,7 @@ And `--entry` was the same defect one flag further along — the parser accepts 
 the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
 packed at rc 0 in silence.
 
-### 1 · #362 — the relocatability rule is not applied to `USING`
-
-*measured into a different issue than the one that was filed — and closed for a
-day and a half while the work had not started*
-
-**⚠️ CLOSED TWICE WHILE THE WORK HAD NOT STARTED, AND BOTH TIMES BY THE SENTENCE
-WRITTEN TO PREVENT IT.** Reopened again on 2026-09-17. GitHub's issue linker
-matches a closing keyword followed by `#<n>` **inside a negation** — the word
-"not" is invisible to it, and a line wrap between the keyword and the number does
-not stop it either:
-
-| closed | by | the text that did it |
-|---|---|---|
-| 2026-09-11 08:13 | `994d24b`, PR #363's squash | `It does NOT close` ⏎ `#362's 193 corpus sites…` |
-| 2026-09-13 10:19 | `aba2ac8`, docs, direct to main | quoting #363's body: `"Closes #26. Does not close #362"` |
-
-The second is the one to learn from: it is the commit that **documented** the
-first closure and reproduced it by quoting the disclaimer, four lines above its
-own sentence *"#362 is open again"*. **So never write the disclaimer** — say what
-the change covers, or write the number without the `#`. Recorded on the issue.
-
-**Re-verified at `7ee6c67` on 2026-09-13.** The 09-11 closure came
-**one second after #26** and by the same gesture, on the day PR #363 landed — and #363's own body opens *"Closes #26. **Does not close
-#362**"*. No successor issue was filed. What the binary says: `tests/usingreloc.s`
-gives **1 statement flagged, severity 8, rc 8** against the recorded IFOX00 run's
-**3 flagged, severity 12, 4 × `IFO217`**, and the deck body is already identical,
-so the diagnostics are the whole of the difference. The fixture is still not
-wired into `run.sh`, for the reason its own commit gives: as370 raises none of
-them yet.
-
-**The population re-derives exactly, and its split does not.** From the 926
-recorded diagnostic files: **193 `IFO217` sites in 75 modules**, and **`IFO213` in
-0 of the 926** — both figures reproduced here rather than carried. All **75 are
-rc 8 against IFOX00's 12**, measured through `tools/gate-worker.sh`; measure it
-any other way at your peril, because an unquoted `$MACFLAGS` in zsh reaches as370
-as ONE argument, the macro path is then empty, and the run manufactures a wrong
-rc *and* diagnostics no macro-fed assembly would raise. The **155 `USING` against
-roughly ten machine instructions is NOT re-derived** — no IFOX00 listing for
-these 75 is kept on this host, only their diagnostics — so it keeps the
-crude-extractor caveat it was filed with.
-
-IFOX00 raises `IFO217` on **155 `USING` operands** in the corpus and as370 raises
-nothing. It was filed as a diagnostic that never fires, and both things measuring
-it established are larger than that.
-
-**It is a `USING` defect, not an instruction-operand one.** Classifying every
-`IFO217` statement by kind gives 155 `USING` against roughly ten machine
-instructions. #363 supplies the classifier and the zeroing and hooks the
-instruction path, so it cannot reach any of the 155 — which is why #363 closed
-#26 and left this untouched. *(Crude extractor: the 155 dominates, the tail is
-misalignment and should not be quoted.)*
-
-**One check covers both statements, and that was the open question.** Every
-corpus site has an undefined *and* a potentially complex operand at once, so the
-corpus cannot say which draws the message. `tests/usingreloc.s` can: a `USING`
-whose operand is **defined** but relocatable across a multiply flags anyway
-(`MVSTK5-REF JOB00036`). The rule genuinely applies on the `USING` path, so the
-work is to reach it rather than to invent a second rule.
-
-**And the message is chosen by the statement, not by the expression.** On a
-`USING`, IFOX00 answers `IFO217` for everything — including the two-section sum
-that gives `IFO213` in a machine operand. A fix reusing #363's classifier
-unchanged would put `IFO213` there: right severity, right behaviour, wrong
-message, and **nothing could catch it** — `IFO213` appears in 0 of the 926
-recorded corpus diagnostics.
-
-The 75 modules stay at rc 8 against IFOX00's 12 until this lands, and **71 of
-the 75** already have a byte-identical deck, so for those the return code is the
-only thing that will move. *(Corrected 2026-09-13: this read "all 75".)* The other
-four — `IEAVTPER`, `IECIOSAM`, `IECVMAP`, `IECVXURT` — carry a byte difference of
-their own, same length and already counted among the 96 still differing, and this
-fix does not touch it.
-
-### 2 · #89 — a forward reference in EQU resolves to 0
+### 1 · #89 — a forward reference in EQU resolves to 0
 
 `A EQU B` before `B EQU 4` gives `A = 0`, RC 0, no diagnostic, and pass 2 does not
 repair it — the wrong value reaches the deck. IFOX00 flags IFO188, the message
@@ -427,7 +348,7 @@ be, so it cannot cover this.
 known — the #82 probe counted pass-2 lookups only and says nothing about it. A
 corpus that quietly depends on this would move decks.
 
-### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 2 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
@@ -484,7 +405,7 @@ known here. Without overlap this is an untrue claim with no current victim; with
 it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
-### 4 · #86 — the diagnostic recorders drop everything past 128 entries
+### 3 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -501,7 +422,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 5 · #97 — the definition-time IFO006
+### 4 · #97 — the definition-time IFO006
 
 *the code effect landed 2026-09-30 (#543); what is left moves no byte*
 
@@ -586,7 +507,7 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
   measured and is unchanged.
 
-### 6 · #241 — twenty modules longer than IFOX00, one of them readable
+### 5 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -610,7 +531,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 7 · #23 — the corpus gate has an oracle-shaped hole
+### 6 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -1490,6 +1411,16 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-30 — #362, MERGED as `ddd0da3` (PR #554).** A USING whose base
+  fails evaluation is IFO217 at severity 12, never IFO213, and is not entered
+  into the table (IFNX5A USI900 exits before USI320). A relocatable multiply
+  flags twice because EVAL logs it too. `usingreloc` (JOB00036) is wired into
+  `run.sh`. MVSBLD gate, each commit against the one before: 5,231 -> 5,231
+  identical, 0 lost; nine modules rc 8 -> 12, all among the 75, IFO217 counts
+  equal to IFOX00's; IECVXURT's text becomes identical, IEAVTPER one byte
+  closer. The other 66 of the 75 are rc 0 on both binaries on today's macro
+  path. mvs38src `src/`: 0 of 544 moved. The issue was closed by hand.
 
 - **2026-09-30 — #528, MERGED as `27d11e8` (PR #552).** A literal followed by an
   arithmetic operator is IFO161 at severity 8: the instruction is zeroed and the
