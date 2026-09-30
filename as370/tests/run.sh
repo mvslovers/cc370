@@ -3382,6 +3382,44 @@ PY2
 fi
 rm -f /tmp/_ep$$.obj /tmp/_ep$$.out
 
+# ------------------------------------------------------------- extrnredef --
+# cc370#564: `EXTRN XE' then `XE DS F'. IFOX00 raises IFO196 on the DS and the
+# declaration stands: XE stays the ER, the DS still reserves its four bytes, and
+# DC A(XE) is 00000000 at x'20' under an RLD against the ER (ESDID 2). Oracle:
+# MVSTK5-REF JOB00298, tests/listref/ifox-listing-entryprobe.txt. The binary
+# before the fix was silent and wrote 8 -- the label's offset -- under the same
+# RLD, so the linked address came out XE+8. Only statement 29 and the word at
+# x'20' are compared; the rest of the deck still carries #563's forward ORG.
+./as370 tests/entryprobe.s -o /tmp/_xr$$.obj >/tmp/_xr$$.out 2>&1
+if [ "$(grep -c 'IFO196' /tmp/_xr$$.out)" != 1 ] || ! grep -q 'IFO196) - XE in line 29' /tmp/_xr$$.out; then
+    echo "extrnredef: FAIL -- expected one IFO196 on XE (statement 29)"
+    grep IFO196 /tmp/_xr$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_xr$$.obj <<'PY2'
+import sys
+d = open(sys.argv[1], 'rb').read(); img = {}; rld = []; er = None
+for i in range(0, len(d), 80):
+    c = d[i:i+80]; n = int.from_bytes(c[10:12], 'big')
+    if c[1:4] == b"\xe3\xe7\xe3":                                   # TXT
+        a = int.from_bytes(c[5:8], 'big')
+        for k in range(n): img[a + k] = c[16 + k]
+    elif c[1:4] == b"\xd9\xd3\xc4":                                 # RLD
+        rld.append(c[16:16 + n])
+    elif c[1:4] == b"\xc5\xe2\xc4":                                 # ESD
+        esdid = int.from_bytes(c[14:16], 'big')
+        for j in range(16, 16 + n, 16):
+            if c[j:j+8] == "XE      ".encode('cp037') and c[j+8] == 2: er = esdid
+            if c[j+8] != 1: esdid += 1                             # an LD takes no ESDID
+word = bytes(img.get(0x20 + k, 0xFF) for k in range(4))
+if er != 2 or word != b"\0\0\0\0" or b"".join(rld) != bytes.fromhex("000200010c000020"):
+    print("extrnredef: FAIL -- XE ESDID %s, A(XE) = %s, RLD %s (IFOX00: 2, 00000000, 000200010c000020)"
+          % (er, word.hex(), b"".join(rld).hex())); sys.exit(1)
+print("extrnredef: OK (IFO196 on the DS, XE stays the ER, A(XE) = 0 under its RLD)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_xr$$.obj /tmp/_xr$$.out
+
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
 # IFO161 INVALID LITERAL at severity 8, zeroes the instruction and does not pool

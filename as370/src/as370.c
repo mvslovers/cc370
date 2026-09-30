@@ -5365,7 +5365,13 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (lbl[0] && (o || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "EQU") || !strcmp(op, "ORG")
                        || !strcmp(op, "CNOP") || !strcmp(op, "LTORG") || !strcmp(op, "DXD")
                        || !strcmp(op, "CCW") || !strcmp(op, "CCW0") || !strcmp(op, "CCW1"))) {
-            if (pass == 1) { struct sym *ds = sym_find(lbl); if (ds && ds->defined) lflags[i] |= LF_DUPDEF; }
+            /* A name DECLARED EXTRN counts as defined here too (#564): IFOX00
+             * answers `EXTRN XE' / `XE DS F' with IFO196 on the DS and keeps XE
+             * the ER, so A(XE) is 0 under an RLD against it (MVSTK5-REF
+             * JOB00298, tests/entryprobe.s). An ER never sets `defined', so the
+             * label's offset went into the ER's value and A(XE) linked as XE+8.
+             * The declaration, not the ER role, as for a CSECT (#290/#281). */
+            if (pass == 1) { struct sym *ds = sym_find(lbl); if (ds && (ds->defined || ds->declared_extrn)) lflags[i] |= LF_DUPDEF; }
             if (lflags[i] & LF_DUPDEF) {
                 if (pass == 2) { char m[112]; snprintf(m, sizeof m, "Symbol previously defined (IFOX00 IFO196) - %.8s", lbl); note_operr(m, 8, i); }
                 lbl[0] = 0;
