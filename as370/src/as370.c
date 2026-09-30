@@ -1390,8 +1390,9 @@ static void reloc_sym(const char *expr, char *out, int outsz) {
  * Subscript->field mapping is format-specific (RX: sub0=index; RS/SI/SS: base). */
 static int r_ibase;   /* implied base reg from USING when a paren operand's prefix is relocatable, else -1 */
 /* cc370#342: for a paren operand whose prefix is ABSOLUTE, the base register and
- * displacement an absolute USING gives it (-1 when none covers it).  Only the SS
- * case reads it, and only where the sole subscript is a length. */
+ * displacement an absolute USING gives it (-1 when none covers it).  Read only
+ * where the sole subscript leaves the base implied: an SS length (#342) and an
+ * RX index (#547).  Where the subscript IS the base it is never read. */
 static int r_abase; static long r_adisp;
 static int r_len;     /* length attribute L' of the symbol resolved by the last resolve() call (for SS implicit length) */
 static int r_reloc;   /* the displacement prefix of the last resolve() was relocatable (a symbol) */
@@ -1519,10 +1520,11 @@ static void resolve(const char *f, long *d, long sub[4], int *nsub, int *sym) {
              * answers 1 for a genuinely numeric prefix like `4+120(13)'. */
             r_len = equ_len_of(f);
             /* What an ABSOLUTE USING would make of this prefix (#190), for the
-             * one caller that may use it: an SS operand whose sole subscript
-             * is a LENGTH, so its base is implied.  Nothing here changes *d or
-             * r_ibase, because for every other shape the subscript can be an
-             * explicit base or an index -- `OI JSCBPASS(@08)', `MVC
+             * callers that may use it: an SS operand whose sole subscript is a
+             * LENGTH, and an RX operand whose sole subscript is the INDEX
+             * (#547) -- in both the base is implied.  Nothing here changes *d or
+             * r_ibase, because for every other shape the subscript is an
+             * explicit base -- `OI JSCBPASS(@08)', `MVC
              * 76(4,DCBPTR),72(DCBPTR)' -- and taking the USING there moved three
              * decks away from IFOX00 on the first attempt (cc370#342). */
             { long ad; int ab = using_for_abs(v, &ad); if (ab) { r_abase = ab; r_adisp = ad; } }
@@ -5316,6 +5318,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                     int r1 = (o->fmt == F_BC) ? o->m1 : (int)eval_reg(F[0]);
                     resolve((o->fmt == F_BC) ? F[0] : F[1], &d, sub, &ns, &sy);
                     int x = sy ? 0 : (int)sub[0], b = sy ? (int)sub[0] : (ns >= 2 ? (int)sub[1] : (r_ibase >= 0 ? r_ibase : 0));
+                    /* cc370#547: S(X) with an ABSOLUTE displacement -- the sole
+                     * subscript is the INDEX, so the base is implied, and an
+                     * absolute USING supplies it exactly as it does with no index
+                     * (#190).  IFOX00 answers so for a symbol and for a plain
+                     * number alike: `LA 1,FLD(3)' 4113 2100 and `L 4,8(5)' 5845
+                     * 2008 under `USING DUM,2' (tests/absrx.s, JOB00295). */
+                    if (!sy && ns == 1 && r_ibase < 0 && r_abase > 0) { b = r_abase; d = r_adisp; }
                     if (!sy && ns >= 2 && r_reloc) {   /* explicit base D(X,B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }

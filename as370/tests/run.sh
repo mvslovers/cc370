@@ -150,6 +150,11 @@ rm -f /tmp/_au.$$
 # first attempt broke, in IGG019UN, IKJEFLI and IEAVEAT0.
 #   main 6fbf24a   D700 0100 2100   FA10 0100 012C   D203 0100 3008
 #   IFOX00, this   D700 2100 2100   FA10 2100 212C   D203 2100 3008
+# absrx is the #547 oracle: an RX S(X) with an absolute displacement. The sole
+# subscript is the INDEX, so the base is implied and the absolute USING gives
+# it -- for a symbol and for a plain number alike (JOB00295).
+#   main 5448afb   4113 0100   5845 0008   4160 2100   4173 0100
+#   IFOX00, this   4113 2100   5845 2008   4160 2100   4173 0100
 # cmprule is the #153 oracle: a character comparison orders by LENGTH first, so a
 # shorter string is less than a longer one whatever the characters are. Six cases
 # separate that from strcmp AND from "arithmetic when both are numbers" -- the
@@ -766,7 +771,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          litdup pool contsev align blankcont litscale litpz litlist \
          adcon aliasext attrdup regexpr sconabs fpopc droplist \
          tattr_expr endpool dsectpool blank_csect usingparen usingparenpc \
-         rldorg attrundef equtype equtypegen2 absssub; do
+         rldorg attrundef equtype equtypegen2 absssub absrx; do
     ./as370 "tests/$s.s" $MACLIB -o "/tmp/$s.obj" >/dev/null 2>&1
     # "Assembled" is RC < 8, the way JCL's COND=(8,LT) let a warned assembly go
     # on to the linkage editor. It matters since #72: sample8/9 expand GETMAIN,
