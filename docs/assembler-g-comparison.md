@@ -30,9 +30,11 @@ from. Where no primary source was found, the row says so.
 - The investigation turned up **as370-versus-XF divergences that have
   nothing to do with G** ([§6](#6-findings-independent-of-g)), all confirmed
   against IFOX00 and filed as #525–#535. Among them are a literal that
-  assembles to the wrong bytes with rc 0, and an `EQU` type operand that 1,110
-  statements of the IBM maclib use and as370 ignores. They are the most
-  actionable result of this reading.
+  assembles to the wrong bytes with rc 0, and an `EQU` type operand that as370
+  ignored in open code (#525, fixed). The 1,110 statements of the IBM maclib that
+  use that operand turned out not to be affected: they sit in macro bodies, and
+  IFOX00 answers `U` for a macro-generated symbol too (JOB00291). They are the
+  most actionable result of this reading.
 
 ---
 
@@ -286,7 +288,7 @@ confirmed non-zero on a positive-control file containing each shape once.
 | `LCLC`/`GBLC` with `*n` length | 0 | 0 | G-only |
 | `=(expr)` literal duplication | 0 | 0 | G extension, unused |
 | `OPSYN`, `AIFB`, `AGOB`, `ICTL`, `COM`, `DXD`, `CXD`, `PUNCH` | 0 each | 0 each | XF features as370 lacks, and IBM's MVS source does not use them |
-| 3-operand `EQU` | 6 stmts / 4 modules (`BLSDVECT BLSRVECT BLSUVECT IGE0003C`) | **1,110 stmts / 27 members** (`CVT`, `IHAPSA`, `IKJTCB`, `IEZDEB`, …) | XF feature, heavily used in mapping macros — the `T'` gap matters |
+| 3-operand `EQU` | 6 stmts / 4 modules (`BLSDVECT BLSRVECT BLSUVECT IGE0003C`) | **1,110 stmts / 27 members** (`CVT`, `IHAPSA`, `IKJTCB`, `IEZDEB`, …) | XF feature, heavily used in mapping macros. The `T'` gap reaches none of the 1,110: those symbols are macro-generated, and IFOX00 answers `U` for them as well (#525, JOB00291) |
 | 2+-operand `EQU` | 342 / 74 | 1,111 / 28 | |
 | Labelled `ORG` | 1 (`IKJEGWHR`) | 7 (`IHALRB`) | XF accepts; as370 drops the label |
 | Labelled `CNOP` | 1 (`IECVEXCP`) | 1 (`EVENTS`) | |
@@ -321,7 +323,7 @@ which carries the probe, both results and the job number.
 
 | # | Probe | IFOX00 (measured) | as370 (measured) | Issue |
 |---|---|---|---|---|
-| 1 | `A EQU X'40',,C'X'`, `T'A` in a macro | `X` (and `F` for `,4,C'F'`), rc 0 — JOB00281 | `U` for both, rc 0 | #525 |
+| 1 | `A EQU X'40',,C'X'`, `T'A` in a macro | `X` (and `F` for `,4,C'F'`), rc 0 — JOB00281 | `U` for both, rc 0 | #525, fixed; reaches open code and COPY members only (JOB00291) |
 | 2 | `L1 ORG P+16` after 8 bytes, `DC A(L1)` | `L1` = **8**, the counter before the ORG, rc 0 — JOB00282 | "Undefined symbol", rc 8 | #526 |
 | 3 | `L 1,=(2*2)F'7'` | 16 bytes, four fullwords of 7, rc 0 — JOB00283 | **one fullword of zeros**, pool reordered, rc 0 | #527 |
 | 4 | `L 2,=F'1'+4` | `IFO161 INVALID LITERAL`, sev 8, instruction zeroed — JOB00284 | accepted, `+4` dropped, rc 0 | #528 |

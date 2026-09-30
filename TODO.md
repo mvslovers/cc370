@@ -132,19 +132,27 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #525 | as370 | silent — the `EQU` type operand is ignored, so `T'` is `U`; macros branch wrong. The only one of the three #521 finds with reach (1,110 maclib statements per the #521 draft, not re-counted) | nothing — IFOX00 reference in `as370/tests/ref/equtype.obj` (JOB00281) |
-| 2 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on #370's neighbour) |
-| 3 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
-| 4 | #527 | as370 | silent — `=(2*2)F'7'` is one fullword of zeros and the pool reorders; 0 corpus uses | nothing — reference `as370/tests/ref/litdupexpr.obj` (JOB00283) |
-| 5 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
-| 6 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
-| 7 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 8 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 9 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 10 | #184 | as370 | **closed** — the last scan, the literal loop in `scan_undef_terms()`, fixed on an oracle (JOB00275); left of the family: #474, blocked on #494 | #494: **one oracle job** |
-| 11 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 13 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
-| 12 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 1 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on #370's neighbour) |
+| 2 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 3 | #527 | as370 | silent — `=(2*2)F'7'` is one fullword of zeros and the pool reorders; 0 corpus uses | nothing — reference `as370/tests/ref/litdupexpr.obj` (JOB00283) |
+| 4 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
+| 5 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
+| 6 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 7 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 8 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 9 | #184 | as370 | **closed** — the last scan, the literal loop in `scan_undef_terms()`, fixed on an oracle (JOB00275); left of the family: #474, blocked on #494 | #494: **one oracle job** |
+| 10 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 12 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+| 11 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+
+**#525 left the table on 2026-09-30**, the day it entered it, and the reason it
+led was wrong. It ranked first *"because it is the one with reach"* — 1,110 maclib
+statements. Measured, it has none there: those equates sit in macro bodies, and
+IFOX00 answers `T'` = `U` for a macro-generated symbol whatever its type operand
+(`as370/tests/equtypegen2.s`, JOB00291), which is what as370 already did. The fix
+reaches open code and COPY members only, and no MVSBLD module asks `T'` of such a
+symbol — the tree-wide gate moved no deck. The probe also found that a label on a
+macro *call* is `M` to IFOX00 and `U` to as370 (JOB00290), filed as #540.
 
 **#37 left the table on 2026-09-12** (PR #368, merged that day; the issue
 closed 2026-09-13). Its own header here —
@@ -1268,14 +1276,15 @@ afterwards.
 
 `docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
-JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent, and they
-are ranked in *The order* since 2026-09-30:** #525 first, because it is the one
-with reach, and #527/#528 at 4 and 5, because nothing in the corpus uses them.
+JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent:** #525,
+fixed the same day, and #527/#528, ranked in *The order* at 3 and 4 because
+nothing in the corpus uses them.
 
 - #527 — `=(2*2)F'7'` is one fullword of zeros, rc 0, and it reorders the pool.
 - #528 — `=F'1'+4` is accepted with the `+4` dropped, rc 0; IFOX gives `IFO161`.
-- #525 — the type operand of `EQU` is ignored, so `T'` is `U`, rc 0. It is the one
-  with reach: the #521 draft counts 1,110 maclib statements.
+- #525 — the type operand of `EQU` was ignored, so `T'` was `U`, rc 0. **Fixed.**
+  It was ranked first for its reach, 1,110 maclib statements, and has none there:
+  a macro-generated symbol is `U` to IFOX00 as well (JOB00291). Open code only.
 
 The rest are loud or diagnostic-only: #526 (labelled `ORG`, rc 8 where IFOX is
 clean), #529 / #530 / #531 (missing `IFO233` / `IFO104` / `IFO169`), and #532–#535
