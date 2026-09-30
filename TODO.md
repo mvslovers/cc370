@@ -132,8 +132,8 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #556 | as370 | silent — a label defined twice keeps the SECOND value; IFOX00 keeps the first (IFO196) | nothing — oracle `equfwd` (JOB00297) |
-| 2 | #89 | as370 | silent under-reporting — forward EQU draws no IFO231/IFO188; **the value is already right** | nothing — oracle `equfwd` (JOB00297) |
+| 1 | #89 | as370 | silent under-reporting — forward EQU draws no IFO231/IFO188; **the value is already right** | nothing — oracle `equfwd` (JOB00297) |
+| 2 | #559 | as370 | silent — `ENTRY` of a symbol IFOX00 cannot link writes an LD; IFOX00 says IFO189 and writes none | **an oracle case** — why IFOX00 rejects is not measured |
 | 3 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 4 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
 | 5 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
@@ -150,6 +150,10 @@ moved exactly one deck, IEDQWIE, to identical. The RX form `S(X)` under an
 absolute USING has 0 occurrences in the tree; the oracle answered the same way
 for it (`absrx`, JOB00295), and it landed the same day as #547 (PR #548).
 #97, placed at 8 below, is 7 since.
+
+**#556 left the table on 2026-09-30** (PR #558), the day it entered it. IKJEGMNL's
+text is identical to IFOX00's now; its ESD is not, and that is #559, which
+takes rank 2 behind #89.
 
 **#89 was measured on 2026-09-30, and it split.** The oracle (`equfwd`, JOB00297,
 PR #557) says a forward EQU is IFO231 per symbol with value 0 -- which as370
@@ -344,16 +348,7 @@ And `--entry` was the same defect one flag further along — the parser accepts 
 the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
 packed at rc 0 in silence.
 
-### 1 · #556 — a second definition overwrites the first
-
-IFOX00 answers IFO196 and keeps the first definition (`equfwd`, JOB00297);
-as370 says nothing and keeps the second. IKJEGMNL's whole deck difference is
-this: three text bytes, IFOX00 0, as370 8/4/5 -- the values of SCDPCHLD,
-SCDATLD and SCDENDLD, in the order their `LA`s appear. Reach in the recorded
-diagnostics: 2 modules, 14 statements. Other kinds of duplicate (DS/DC label,
-instruction label) are not probed yet.
-
-### 2 · #89 — a forward reference in EQU draws no diagnostic
+### 1 · #89 — a forward reference in EQU draws no diagnostic
 
 Measured 2026-09-30 (see the issue): IFO231 once per symbol defined later,
 IFO188 for one never defined, value 0 either way -- as370's value already. A
@@ -362,6 +357,13 @@ scratch as370 count of pass-1 EQUs, 0 in libc370. The IFOX00 witness for the
 rule is the fixture plus IKJEGMNL (rc 8 on both sides); IEAVNP02/03 are rc 12
 on IFOX00 against as370's 8, and macro-broken there, so IFOX00 never reached
 their forward EQU and their two sites rest on the scratch count alone.
+
+### 2 · #559 — `ENTRY` of a symbol IFOX00 cannot link
+
+IKJEGMNL's last difference: three LD entries (`IKJEGAID/EID/PID`) where IFOX00
+raises IFO189 and writes none. The names are absolute forward EQUs, which is
+the likely reason and is not measured -- the issue names the oracle case.
+One module in the corpus.
 
 ### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
@@ -1426,6 +1428,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-30 — #556, MERGED as `ac3da47` (PR #558).** A name defined a second
+  time is IFO196 and the first definition stands; the statement is assembled
+  unnamed. `equfwd` (JOB00297) is in `run.sh` for this half. MVSBLD gate: 5,231
+  -> 5,231 identical, 0 lost, no rc moved; IKJEGMNL's text becomes identical
+  to IFOX00's, and IFO196 matches IFOX00's by name (IKJEGMNL 13, IECVHDET 1).
+  libc370: 0 of 747 moved. Reviewed and re-derived by mvs38src. Closed by hand.
 
 - **2026-09-30 — #362, MERGED as `ddd0da3` (PR #554).** A USING whose base
   fails evaluation is IFO217 at severity 12, never IFO213, and is not entered
