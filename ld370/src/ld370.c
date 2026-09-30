@@ -238,7 +238,12 @@ struct obj {
     long object_base;                 /* assigned base address of this object's section(s) */
     int has_entry, entry_id; long entry_off;   /* END-card entry: section local ESDID + offset */
     int autocalled; int ac_ar; long ac_off;    /* pulled by autocall: archive + member offset */
+    /* Where the object came from, for --map: a path given on the command line,
+     * or an archive member pulled by --include or by autocall.  Set after
+     * parse_object(), which clears the struct. */
+    const char *src_path; int src_kind; int src_ar; long src_off;
 };
+enum { SRC_EXPLICIT, SRC_INCLUDE, SRC_AUTOCALL };
 
 /* grow a malloc'd array to hold at least `need` elements of `elsz` bytes (NULL/0
  * cap start ok); persists for the program's life like `text` (no explicit free). */
@@ -492,6 +497,7 @@ static int pull_member(int ai, long off)
     memcpy(szs, a + off + 48, 10); szs[10] = 0; size = atol(szs);
     O = grow_arr(O, &Ocap, nO + 1, sizeof *O);
     parse_object(a + off + 60, size, &O[nO]);
+    O[nO].src_kind = SRC_INCLUDE; O[nO].src_ar = ai; O[nO].src_off = off;   /* autocall() re-marks its own */
     pulled = grow_arr(pulled, &pulledcap, npulled + 1, sizeof *pulled);
     pulled[npulled].ar = ai; pulled[npulled].off = off; npulled++;
     nO++;
@@ -633,6 +639,7 @@ static int autocall(void)
                         if (pull_member(pick_ai, pick_off)) return 1;
                         O[nO - 1].autocalled = 1;
                         O[nO - 1].ac_ar = pick_ai; O[nO - 1].ac_off = pick_off;
+                        O[nO - 1].src_kind = SRC_AUTOCALL;
                         changed = 1;
                     }
                 }
@@ -1778,10 +1785,76 @@ static int find_symbol(const char *name, long *addr)
     return 0;
 }
 
+/* --map: a text load map, one line per section in origin order with the input
+ * it came from, the entries it defines indented beneath it.  IEWL's MAP answers
+ * the same question, but page-formatted; this one is meant to be diffed, so it
+ * carries no clock and no page headers, and the same link on the same host
+ * gives the same text (cc370#9).  Paths are printed as ld370 was given them. */
+static int map_ld_cmp(const void *a, const void *b)
+{
+    const struct gsym *x = &G[*(const int *)a], *y = &G[*(const int *)b];
+    const struct gsym *ox = &G[x->owner], *oy = &G[y->owner];
+    if (ox->org != oy->org) return ox->org < oy->org ? -1 : 1;
+    if (ox->gid != oy->gid) return ox->gid < oy->gid ? -1 : 1;
+    if (x->in_addr != y->in_addr) return x->in_addr < y->in_addr ? -1 : 1;
+    return memcmp(x->name, y->name, 8);
+}
+static const char *map_type(int t)
+{
+    return t == T_SD ? "SD" : t == T_PC ? "PC" : t == T_CM ? "CM" : t == T_WX ? "WX" : "ER";
+}
+static int write_map(const char *path, const char *mname, const char *entryname, int entry_obj,
+                     long entry_addr, long modlen, const int *gidx, int nsect)
+{
+    FILE *f = strcmp(path, "-") ? fopen(path, "w") : stdout;
+    int *ld, nld = 0, i, k, nunres = 0, nloose = 0;
+    unsigned char mn[8];
+    if (!f) { perror(path); return 1; }
+    ld = malloc((size_t)(nG ? nG : 1) * sizeof *ld);
+    if (!ld) { fprintf(stderr, "ld370: out of memory\n"); if (f != stdout) fclose(f); return 1; }
+    for (i = 0; i < nG; i++)
+        if (!G[i].is_sect && G[i].type == 0x03) {
+            if (G[i].owner >= 0 && G[G[i].owner].is_sect) ld[nld++] = i; else nloose++;
+        } else if (!G[i].is_sect) nunres++;
+    qsort(ld, (size_t)nld, sizeof *ld, map_ld_cmp);
+
+    member_name(mn, mname);
+    fprintf(f, "LD370 MAP  %s  ENTRY ", mvs_nm(mn));
+    if (entryname) fprintf(f, "%s %06lX", entryname, entry_addr);
+    else if (entry_obj >= 0) fprintf(f, "%06lX (END card)", entry_addr);
+    else fprintf(f, "%06lX (none given)", entry_addr);
+    fprintf(f, "  LENGTH %06lX\n\nSECTION   TYPE  ORIGIN  LENGTH  SOURCE\n", modlen);
+    for (i = 1, k = 0; i <= nsect; i++) {
+        const struct gsym *g = &G[gidx[i]];
+        const struct obj *o = g->def_obj >= 0 ? &O[g->def_obj] : NULL;
+        fprintf(f, "%-8s  %-4s  %06lX  %06lX  ", mvs_nm(g->name), map_type(g->type), g->org, g->len);
+        if (!o) fprintf(f, "?\n");
+        else if (o->src_kind == SRC_EXPLICIT) fprintf(f, "%s\n", o->src_path);
+        else fprintf(f, "%s(%s) %s\n", AR[o->src_ar].path, member_label(o->src_ar, o->src_off),
+                     o->src_kind == SRC_AUTOCALL ? "autocall" : "include");
+        for (; k < nld && G[ld[k]].owner == gidx[i]; k++)
+            fprintf(f, "  %-8s      %06lX\n", mvs_nm(G[ld[k]].name), g->org + G[ld[k]].in_addr);
+    }
+    if (nunres) {                               /* only reachable with --allow-unresolved, or weak */
+        fprintf(f, "\nUNRESOLVED\n");
+        for (i = 0; i < nG; i++)
+            if (!G[i].is_sect && G[i].type != 0x03) fprintf(f, "%-8s  %s\n", mvs_nm(G[i].name), map_type(G[i].type));
+    }
+    if (nloose) {                               /* an entry whose owning section is unknown: listed, not dropped */
+        fprintf(f, "\nENTRIES WITHOUT A SECTION\n");
+        for (i = 0; i < nG; i++)
+            if (!G[i].is_sect && G[i].type == 0x03 && !(G[i].owner >= 0 && G[G[i].owner].is_sect))
+                fprintf(f, "%-8s  %06lX\n", mvs_nm(G[i].name), G[i].in_addr);
+    }
+    free(ld);
+    if (f != stdout && fclose(f)) { perror(path); return 1; }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *mname = NULL;
-    const char *xmitfile = NULL, *dsn = NULL, *entryname = NULL;
+    const char *xmitfile = NULL, *dsn = NULL, *entryname = NULL, *mapfile = NULL;
     /* command-line lists, sized to argc (their exact upper bound -- each entry is
      * a distinct argv slot); no fixed cap to silently drop past. */
     const char **objfiles = malloc((size_t)argc * sizeof *objfiles);
@@ -1806,6 +1879,7 @@ int main(int argc, char **argv)
         else if ((!strcmp(argv[i], "--entry") || !strcmp(argv[i], "-e")) && i + 1 < argc) entryname = argv[++i];
         else if (!strcmp(argv[i], "--alias") && i + 1 < argc) aliasv[naliasv++] = argv[++i];
         else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc) incspec[ninc++] = argv[++i];
+        else if (!strcmp(argv[i], "--map") && i + 1 < argc) mapfile = argv[++i];   /* text load map, "-" = stdout */
         else if (!strcmp(argv[i], "--sparse-text")) sparse_text = 1;  /* elide records no TXT card covered */
         else if (!strcmp(argv[i], "--pack")) pack_mode = 1;       /* positional args after this are members to pack */
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
@@ -1860,6 +1934,13 @@ int main(int argc, char **argv)
                             "first, then letters/digits/@#$)\n", aliasv[i]);
             return 2;
         }
+    /* A pack links nothing, so there is no map to write -- refused, not dropped:
+     * a flag the parser accepts and the pack path ignores is cc370#37's shape. */
+    if (mapfile && pack_mode) {
+        fprintf(stderr, "ld370: --map applies to a link, not to --pack; a pack places "
+                        "no sections\n");
+        return 2;
+    }
     if (naliasv && pack_mode) {
         fprintf(stderr, "ld370: --alias applies to a link, not to --pack; build the member "
                         "with --alias and -iebcopy, and pack that -- its aliases come along\n");
@@ -1984,7 +2065,7 @@ int main(int argc, char **argv)
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
                 "             [--alias NAME]... [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
                 "             [--ac N] [--rent|--norent] [--reus|--noreus] [--refr]\n"
-                "             [--sparse-text] [--warn-shadow] OBJ...\n"
+                "             [--sparse-text] [--warn-shadow] [--map FILE] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
                 "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
@@ -2007,6 +2088,10 @@ int main(int argc, char **argv)
                 "         --alias NAME adds an alias directory entry (IEWL ALIAS): it enters\n"
                 "         at NAME if NAME is a symbol of the module, else at the entry point.\n"
                 "         --pack keeps the aliases of its -iebcopy inputs.\n"
+                "         --map FILE writes a text load map (\"-\" = stdout): each section in\n"
+                "         origin order with its input -- object path, or archive(member)\n"
+                "         and whether --include or autocall pulled it -- its entries\n"
+                "         beneath it, and any unresolved names.  No clock, so maps diff.\n"
                 "         --sparse-text omits text records no TXT card covered, so a DS\n"
                 "         reservation is left unwritten.  OFF by default: it costs\n"
                 "         byte-fidelity to IEWL (which writes those records) and relies on\n"
@@ -2027,6 +2112,7 @@ int main(int argc, char **argv)
         if (!b) return 1;
         O = grow_arr(O, &Ocap, nO + 1, sizeof *O);
         parse_object(b, n, &O[nO]);
+        O[nO].src_kind = SRC_EXPLICIT; O[nO].src_path = objfiles[i];
         free(b);
         nO++;
     }
@@ -2164,7 +2250,7 @@ int main(int argc, char **argv)
      * skips @@CRT0's setup -> the runtime can't find its anchor -> S0C4). Without
      * --entry, fall back to the END-card section origin + offset of the first
      * object that names one. */
-    long entry_addr = 0;
+    long entry_addr = 0; int entry_obj = -1;
     if (entryname) {
         if (!find_symbol(entryname, &entry_addr)) { fprintf(stderr, "ld370: --entry symbol '%s' not found or unresolved\n", entryname); return 1; }
         trace("  --entry %s -> %06lX", entryname, entry_addr);
@@ -2172,6 +2258,7 @@ int main(int argc, char **argv)
         for (i = 0; i < nO; i++)
             if (O[i].has_entry && O[i].entry_id >= 1 && O[i].entry_id < MAXESD && O[i].loc[O[i].entry_id].used) {
                 entry_addr = G[O[i].loc_g[O[i].entry_id]].org + O[i].entry_off;
+                entry_obj = i;
                 break;
             }
     }
@@ -2387,6 +2474,10 @@ int main(int argc, char **argv)
         fclose(f);
         trace("=== done: wrote %ld-byte load module to %s ===", olen, outfile);
     }
+    /* After the member, not before: a map for a module that was never written
+     * would describe nothing on disk. */
+    if (mapfile && write_map(mapfile, mname ? mname : basename_member(outfile), entryname,
+                             entry_obj, entry_addr, modlen, gidx, nsect)) return 1;
 
     /* additionally emit the host->MVS transport wrappers when requested: -xmit
      * -> OUT.xmit (TSO TRANSMIT/NETDATA), -iebcopy -> OUT.iebcopy (IEBCOPY unload).

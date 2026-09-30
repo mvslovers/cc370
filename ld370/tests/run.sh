@@ -1088,6 +1088,63 @@ else
     echo "  FAIL: a refusal passed (rc $r1 $r2 $r3 $r4 $r5)"; fails=$((fails + 1))
 fi
 
+# --map (cc370#9): a text load map, one line per section in origin order with
+# the input it came from, entries beneath. The fixtures cover every kind of row:
+# an explicit object with an entry, an unnamed private-code section, a member
+# pulled by --include and one by autocall (with its own entry), an unresolved
+# weak external, and the END-card entry. Four checks: the text itself; the
+# member is byte-identical with and without --map; ORIGIN/LENGTH/entry
+# addresses equal the produced member's CESD, read by file370 -- a second
+# instrument, so the map is not checking itself; --map with --pack is refused.
+printf '\n=== --map ===\n'
+mapok=1
+for m in mapmain mappc maplib mapinc; do
+    "$AS" -o "$TMP/$m.o" "$FIX/$m.s" || { echo "  as370 failed: $m"; mapok=0; }
+done
+"$AR" rc "$TMP/libmap.a" "$TMP/maplib.o" "$TMP/mapinc.o" || { echo "  ar370 failed: map"; mapok=0; }
+"$LD" -o "$TMP/mapm" --map "$TMP/mapm.map" -L"$TMP" -lmap --include mapinc "$TMP/mapmain.o" "$TMP/mappc.o" \
+    || { echo "  ld370 --map failed"; mapok=0; }
+"$LD" -o "$TMP/mapn" -L"$TMP" -lmap --include mapinc "$TMP/mapmain.o" "$TMP/mappc.o" \
+    || { echo "  ld370 without --map failed"; mapok=0; }
+cat > "$TMP/mapm.want" <<'MAPW'
+LD370 MAP  MAPM  ENTRY 000000 (END card)  LENGTH 000030
+
+SECTION   TYPE  ORIGIN  LENGTH  SOURCE
+MAPMAIN   SD    000000  00000C  @T@/mapmain.o
+  MAPE1         000004
+          PC    000010  000004  @T@/mappc.o
+MAPINC    SD    000018  00000C  @T@/libmap.a(mapinc.o) include
+MAPLIB    SD    000028  000008  @T@/libmap.a(maplib.o) autocall
+  MAPLIBE       00002C
+
+UNRESOLVED
+MAPWEAK   WX
+MAPW
+if [ $mapok = 1 ]; then
+    sed "s#$TMP#@T@#g" "$TMP/mapm.map" | diff -u "$TMP/mapm.want" - || { echo "  FAIL: map text"; mapok=0; }
+    cmp -s "$TMP/mapm" "$TMP/mapn" || { echo "  FAIL: --map changed the member"; mapok=0; }
+    # every SECTION row and every entry row, against the CESD of the member itself
+    "$FI" -v "$TMP/mapm" | python3 -c '
+import re, sys
+cesd = {}
+for l in sys.stdin:
+    m = re.match(r"\s+CESD\s+\d+\s+(\S+)\s+(SD|PC|LR)\s+addr=(\w+)(?:\s+len=(\w+))?", l)
+    if m: cesd.setdefault((m.group(1), m.group(2)), []).append((m.group(3), m.group(4)))
+rows = 0
+for l in open(sys.argv[1]).read().split("\n\n")[1].splitlines()[1:]:
+    if l.startswith("  ") and l[2] != " ":          # an entry row; a PC row is blank-named, not indented
+        n, a = l.split(); key, want = (n, "LR"), (a, None)
+    else:
+        n = l[:8].strip() or "(blank)"; t, o, ln = l[10:].split()[:3]; key, want = (n, t), (o, ln)
+    if want not in cesd.get(key, []): print("  FAIL: map row not in the CESD:", l); sys.exit(1)
+    rows += 1
+print("  map rows == CESD: %d" % rows)
+' "$TMP/mapm.map" || mapok=0
+    r=$(arc "$LD" --pack "A=$TMP/mapm" -o "$TMP/mapp" --map "$TMP/mapp.map")
+    [ "$r" = 2 ] && [ ! -e "$TMP/mapp.map" ] || { echo "  FAIL: --map with --pack not refused (rc $r)"; mapok=0; }
+fi
+if [ $mapok = 1 ]; then echo "  OK: map text, member unchanged, rows == CESD, --pack refused"; else fails=$((fails + 1)); fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"

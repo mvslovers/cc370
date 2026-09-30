@@ -123,18 +123,19 @@ the defaults are set in `HEWLFINT`, which is how #100 was established.
 
 **ld370 supports:** `-o`, `-e/--entry`, `-i/--include`, `-l`/`-L`,
 `--allow-unresolved`, `--ac`, `--norent`, `--noreus`, `--blocksize`, `--dsn`,
-`--name`, `--pack`, `--verbose`, `--warn-shadow`, `-xmit`, `-iebcopy`, `-v`.
+`--name`, `--pack`, `--verbose`, `--warn-shadow`, `--map`, `-xmit`, `-iebcopy`, `-v`.
 
 Most absences are not defects — ld370 is a declared subset. Two are worth acting
 on:
 
-- **No module MAP or XREF.** IEWL has `MAP` (module structure) and `XREF`
-  (cross-reference including the map). `--verbose` narrates the link to stderr
-  but produces no IEWL-format map. When a link goes wrong, the map — which
-  section landed where, who references whom — is the single most useful
-  diagnostic there is, and it is what you reach for *after* the link succeeded
-  but the module misbehaves. Filed as
-  [#9](https://github.com/mvslovers/cc370/issues/9).
+- **MAP: `--map FILE`, not in IEWL's format. XREF: still absent.** IEWL has
+  `MAP` (module structure) and `XREF` (cross-reference including the map).
+  `--map` (#9) writes the structure half: every section in origin order with the
+  input it came from — object path, or `archive(member)` and whether `--include`
+  or autocall pulled it — its entries beneath, and any unresolved names. It is
+  deliberately not IEWL's page layout: it carries no clock and no page headers,
+  so two maps of two links `diff` line by line, which is the use the issue was
+  filed for. Who references whom — the XREF half — is not implemented.
 - **`ld370 --help` does not exist.** It is parsed as a filename:
   `--help: No such file or directory`. There is only a usage string on the error
   path. `as370` has a proper `--help`. Trivial, unfiled, and awkward for a tool
