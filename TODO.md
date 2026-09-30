@@ -1219,11 +1219,15 @@ clean), #529 / #530 / #531 (missing `IFO233` / `IFO104` / `IFO169`), and #532–
 
 ## Observability
 
-- **#9** — no link map. IEWL had MAP/XREF for exactly this, and the absence cost
-  real time during the httpd migration: "which 17 sections are missing, and where
-  did they come from" turned into guesswork against a CESD full of string
-  literals. It is the thing you reach for *after* the link succeeded but the
-  module misbehaves.
+- **#9** — **the MAP half landed 2026-09-30** (PR #573): `ld370 --map FILE`,
+  one line per section in origin order with its input (object path, or
+  `archive(member)` and whether `--include` or autocall pulled it), entries
+  beneath, no clock, so two maps `diff`. That is the httpd-migration question
+  ("which 17 sections are missing, and where did they come from") answered by
+  one diff. On a real HTTPD link nearly every section is an unnamed PC, so the
+  SOURCE column is what carries it. **Open: XREF** (who references whom), and
+  mbt writing a map per module, **mvslovers/mbt#131** (filed the same
+  day).
 - **#345** — `-am`, the macro and copy code source summary, is accepted on the
   command line and produces nothing. It is the only instrument that says which
   library a macro came from — which is exactly the question `IGC018` turned into
