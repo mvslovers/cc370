@@ -4848,16 +4848,39 @@ static int undefined_lattr(const char *s, char *out) {
     }
     return 0;
 }
-/* An EQU whose operand took L' of a symbol not defined in pass 1.  Its value is
- * set in pass 1 and is 0 (x_factor); the diagnostic waits for pass 2, which is
- * the first point where "defined later" (IFO231) and "never" (IFO188) differ. */
-static int equbad_ln[256]; static char equbad_sym[256][64]; static int nequbad;
+/* An EQU whose operand names a symbol not defined in pass 1 -- a plain term or
+ * one under L'.  IFOX00 resolves EQU in pass 1, so the equate's value is 0
+ * (x_factor supplies 0 for the term, as it did), and the diagnostic waits for
+ * pass 2, the first point where "defined later" (IFO231) and "never" (IFO188)
+ * differ.  One message per SYMBOL: `FD EQU LAB2-LAB1' is IFO231 twice
+ * (MVSTK5-REF JOB00297, tests/equfwd.s; IKJEGMNL's recorded diagnostics say the
+ * same).  Only L' was handled until cc370#89, and one symbol per statement. */
+static int equbad_ln[1024]; static char equbad_sym[1024][64]; static int nequbad;
 static void note_equbad(int line, const char *sym) {
-    if (nequbad < 256) { equbad_ln[nequbad] = line; scopy(equbad_sym[nequbad], sym, 63); nequbad++; }
+    if (nequbad < 1024) { equbad_ln[nequbad] = line; scopy(equbad_sym[nequbad], sym, 63); nequbad++; }
 }
-static const char *equ_rejected(int line) {
-    int i; for (i = 0; i < nequbad; i++) if (equbad_ln[i] == line) return equbad_sym[i];
-    return NULL;
+/* Every symbol term of E not defined YET, in operand order.  The lexical skips
+ * are undefined_term's, and an L' term is reached because the attribute
+ * apostrophe does not open a string.  An external (S_ER) counts as defined: an
+ * alias of an EXTRN is legal and common -- JEXTRN generates one. */
+static void equ_undef_terms(const char *s, int line) {
+    const char *base = s;
+    int q = 0;
+    while (*s) {
+        if (*s == '\'') { if (q || !attr_apos(base, (int)(s - base))) q = !q; s++; continue; }
+        if (q) { s++; continue; }
+        if (isalpha((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_') {
+            char nm[64]; int n = 0;
+            while (*s && (isalnum((unsigned char)*s) || *s == '@' || *s == '#' || *s == '$' || *s == '_')) {
+                if (n < 63) nm[n] = *s;
+                n++; s++;
+            }
+            nm[n < 63 ? n : 63] = 0;
+            if (*s == '\'') continue;                  /* X'..'/C'..'/B'..'/L'..' prefix */
+            struct sym *sy = sym_find(nm);
+            if (!sy || (!sy->defined && sy->type != S_ER)) note_equbad(line, nm);
+        } else s++;
+    }
 }
 /* An ORG whose operand took L' of a symbol not defined in pass 1.  IFOX00 flags
  * ORG *+L'FWD IFO231 and leaves the counter where it was (MVSTK5-REF JOB00279,
@@ -6618,7 +6641,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * IFOX00's in one to three bytes, eight with this as the sole
                  * cause: IEAVESVC BNGIRMOT IEAVELCR IEAVECH0 IGG019P7 IGFINTVL
                  * IGG019KG IGG019KH. */
-                { char eb[64]; if (undefined_lattr(F[0], eb)) note_equbad(i, eb); }   /* before s is defined: LEN EQU L'LEN */
+                equ_undef_terms(F[0], i);   /* before s is defined: LEN EQU L'LEN, A EQU A */
                 s->val = expr_val_full(F[0], &rc); s->defined = 1;
                 /* A relocatable EQU belongs to the section of its VALUE, not to
                  * the section the EQU card happens to sit in.  PL/S output puts
@@ -6652,8 +6675,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                 { const char *q = F[0]; int ok = (isalpha((unsigned char)*q) || *q=='@' || *q=='#' || *q=='$');
                   while (ok && *q) { if (!(isalnum((unsigned char)*q) || *q=='@' || *q=='#' || *q=='$')) ok = 0; else q++; }
                   if (ok) { struct sym *t = sym_find(F[0]); if (t && t != s) s->eq_to = (int)(t - syms) + 1; } } }
-            else if (pass == 2 && lbl[0]) { const char *eb = equ_rejected(i);
-                if (eb) { struct sym *es = sym_find(eb);
+            else if (pass == 2 && lbl[0]) { int k;
+                for (k = 0; k < nequbad; k++) { if (equbad_ln[k] != i) continue;
+                    const char *eb = equbad_sym[k]; struct sym *es = sym_find(eb);
                     if (es && (es->defined || es->type == S_ER)) {
                         char m[VALSZ];
                         snprintf(m, sizeof m, "Symbol not previously defined (IFOX00 IFO231) - %.20s", eb);
