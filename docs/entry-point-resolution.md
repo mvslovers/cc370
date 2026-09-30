@@ -84,8 +84,19 @@ Two rules govern everything below:
 > left-to-right; the first member that defines a needed symbol is pulled, and
 > any later definition is **never even looked at**.
 
-This is standard OS/360 linkage-editor (IEWL) autocall behaviour; `ld370`
-reproduces it.
+R2 holds **across** libraries exactly as IEWL does it: the first data set in
+the `SYSLIB` concatenation wins, with no message (measured, MVSCE-LAB
+JOB01408, `ld370/tests/run_iewl_autocall_oracle.py`, test TA).
+
+**Within** one library it does not transfer, because the two linkers look for
+different things. IEWL's automatic library call finds a member by its
+directory name or alias, never by an entry inside it: a symbol that is only an
+`ENTRY` of some member stays unresolved (`IEW0132`, test TB). A PDS directory
+holds each name once, and IEWL refuses a second one when the library is built
+(`IEW0543 IDENTICAL NAME IN DIRECTORY`, RC 12, test BD). So IEWL can never
+choose between two members of one library. `ld370` resolves through the
+archive's ESD index, where any number of members may define the same name, and
+there "first" is merely the member order in the archive — the case of §4.
 
 Consequence: a program **overrides** the libc default `@@START` simply by
 providing its own `@@START` as an explicit object. By R1 it resolves the
@@ -112,7 +123,8 @@ Now the trap. Both `httpstrt.o` and `cgistart.o` define a symbol with the
 **same name** `@@START`. When both sit in the project's autocall archive and
 a module is seeded with an object that does *not* itself pin `@@START` (e.g.
 `httpd.o`), R2 resolves `@@START` from whichever member is indexed first —
-`cgistart` (alphabetical: `c` < `h`). The result:
+`cgistart` (alphabetical: `c` < `h`). (IEWL could not produce this: see §3.)
+The result:
 
 - `@@START` *is* resolved (RC=0, no unresolved references), **but it is the
   CGI-launcher entry, not the server entry**.
