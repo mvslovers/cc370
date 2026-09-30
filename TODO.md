@@ -124,7 +124,7 @@ front of you, the second is nineteen-twentieths unattributable.
 ## The order
 
 **⚠️ THIS TABLE RANKS `as370`, `ld370` AND `tests` — NOT THE WHOLE PROJECT.** It
-holds seven `as370` rows, one `ld370` and one `tests`, and **no `dasm370` at
+holds ten `as370` rows, one `ld370` and one `tests`, and **no `dasm370` at
 all**: that work and the format-library tools are ordered by DEPENDENCY under
 *The format library and the tools on it*, further down. Read as a project
 ranking it says "take the oldest `as370` issue", which is how a live `dasm370`
@@ -132,16 +132,19 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on #370's neighbour) |
-| 2 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
-| 3 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
-| 4 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
-| 5 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 6 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 7 | #184 | as370 | **closed** — the last scan, the literal loop in `scan_undef_terms()`, fixed on an oracle (JOB00275); left of the family: #474, blocked on #494 | #494: **one oracle job** |
-| 8 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 10 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
-| 9 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 1 | #525 | as370 | silent — the `EQU` type operand is ignored, so `T'` is `U`; macros branch wrong. The only one of the three #521 finds with reach (1,110 maclib statements per the #521 draft, not re-counted) | nothing — IFOX00 reference in `as370/tests/ref/equtype.obj` (JOB00281) |
+| 2 | #97 | as370 | silent — a different object module, **assignment side fixed** | nothing (the reference side waits on #370's neighbour) |
+| 3 | #342 | as370 | silent — a DSECT symbol recorded absolute | nothing |
+| 4 | #527 | as370 | silent — `=(2*2)F'7'` is one fullword of zeros and the pool reorders; 0 corpus uses | nothing — reference `as370/tests/ref/litdupexpr.obj` (JOB00283) |
+| 5 | #528 | as370 | silent — `=F'1'+4` accepted, `+4` dropped (IFOX: `IFO161`); 0 corpus uses | nothing — reference `as370/tests/ref/litplusterm.obj` (JOB00284) |
+| 6 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
+| 7 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
+| 8 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 9 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 10 | #184 | as370 | **closed** — the last scan, the literal loop in `scan_undef_terms()`, fixed on an oracle (JOB00275); left of the family: #474, blocked on #494 | #494: **one oracle job** |
+| 11 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 13 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+| 12 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 
 **#37 left the table on 2026-09-12** (PR #368, merged that day; the issue
 closed 2026-09-13). Its own header here —
@@ -1261,12 +1264,13 @@ afterwards.
   fixed in #524. #103 is still derived only, and its deliverable is a fixture.
   #103 is not reachable through as370 at all — it needs IFOX00-assembled input.
 
-## as370 against XF — found by #521, not yet ranked
+## as370 against XF — found by #521
 
 `docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
-JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent and belong
-in the ranking above:**
+JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent, and they
+are ranked in *The order* since 2026-09-30:** #525 first, because it is the one
+with reach, and #527/#528 at 4 and 5, because nothing in the corpus uses them.
 
 - #527 — `=(2*2)F'7'` is one fullword of zeros, rc 0, and it reorders the pool.
 - #528 — `=F'1'+4` is accepted with the `+4` dropped, rc 0; IFOX gives `IFO161`.
