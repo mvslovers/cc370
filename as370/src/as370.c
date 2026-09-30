@@ -5301,6 +5301,16 @@ static void assign_origins(void) {
             lits[k].loc += sect_org[lits[k].psect];   /* the pool's section, not the reference's */
 }
 
+/* An ENTRY operand the linkage editor cannot be given: an ABSOLUTE symbol, or
+ * one never defined.  IFOX00 answers IFO189 INVALID ENTRY OPERAND, LINKAGE
+ * CANNOT BE PERFORMED and writes no LD for it (MVSTK5-REF JOB00298,
+ * tests/entryprobe.s: of `ENTRY E1,...,E7' only the relocatable E1, E2 and E5
+ * get an LD).  A forward EQU is absolute 0 (#89), so IKJEGSUB's
+ * `ENTRY IKJEGAID' / `IKJEGAID EQU SCDAT00' is this case (cc370#559).  An ER
+ * and a DSECT label are left as they were: neither is measured. */
+static int entry_unlinkable(const struct sym *s) {
+    return s->type != S_ER && (!s->defined || s->type == S_ABS);
+}
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0; g_pass = pass;
     if (pass == 2) { npunch = 0; g_sect_seen = 0; }
@@ -5737,6 +5747,14 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (pass == 1 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
                 for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;   /* degenerate empty field (ENTRY A,,B): never sym_get("") -- that name is the unnamed private-code section */
                     struct sym *s = sym_get(extsym[j]); s->is_entry = 1; esd_add(s, ESD_LD); } }
+            /* By pass 2 every name is final, so this is where "absolute" and
+             * "never defined" can be told -- the LD itself is dropped at ESD time. */
+            if (pass == 2 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
+                for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;
+                    struct sym *s = sym_find(extsym[j]);
+                    if (s && entry_unlinkable(s)) { char m[112];
+                        snprintf(m, sizeof m, "Invalid ENTRY operand, linkage cannot be performed (IFOX00 IFO189) - %.8s", extsym[j]);
+                        note_operr(m, 8, i); } } }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
             int weak = (op[0] == 'W');
             if (pass == 1 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
@@ -6836,7 +6854,7 @@ static void emit_obj(FILE *f) {
              * (cc370#199). An ENTRY on an ordinary label still gets its LD. */
             if (role == ESD_LD) { int q, issect = 0;
                 for (q = 0; q < nesdord; q++) if (esdord[q].s == s && esdord[q].role == ESD_SECT) { issect = 1; break; }
-                if (issect) continue; }
+                if (issect || entry_unlinkable(s)) continue; }   /* IFO189: no LD (cc370#559) */
             if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, sect_length(ei), 0); if (!cardfirst) cardfirst = esdord[ei].esdid; }
             else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = esdord[ei].esdid; }
             /* LD: the last field is the ESDID of the section the symbol is DEFINED
@@ -6975,6 +6993,7 @@ static void a_esd_section(void) {
     a_newpage("EXTERNAL SYMBOL DICTIONARY", "SYMBOL   TYPE  ID   ADDR  LENGTH LDID");
     for (k = 0; k < nesdord; k++) {
         struct sym *s = esdord[k].s; int role = esdord[k].role, nl = (int)strlen(s->name);
+        if (role == ESD_LD && entry_unlinkable(s)) continue;   /* IFO189: the deck has no LD, so neither does the listing (cc370#559) */
         memset(ln, ' ', 120); ln[120] = 0;
         if (nl > 8) { nl = 8; } memcpy(ln, s->name, (size_t)nl);                 /* SYMBOL col 1 */
         if (role == ESD_SECT) {
