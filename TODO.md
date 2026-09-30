@@ -132,13 +132,14 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #559 | as370 | silent — `ENTRY` of a symbol IFOX00 cannot link writes an LD; IFOX00 says IFO189 and writes none | **an oracle case** — why IFOX00 rejects is not measured |
-| 2 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 3 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 4 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
-| 5 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
-| 6 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
-| 7 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
+| 1 | #564 | as370 | silent — EXTRN then defined: `A(XE)` holds the label's offset under the ER's RLD, links as XE+8 (IFOX00: IFO196, 0) | nothing — oracle `entryprobe` (JOB00298) |
+| 2 | #563 | as370 | silent — `ORG` with a forward term (no `L'`) moves the counter in pass 2 only; 0 corpus sites, 5 never-defined `ORG <sym>` as an unmeasured lead | nothing for the measured case — oracle `entryprobe` |
+| 3 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
+| 4 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
+| 5 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
+| 6 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
+| 7 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
+| 8 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 
 **#342 left the table on 2026-09-30** (PR #545), and its title had the wrong
 cause. No macro generates a DSECT in `IEDQWIE`: PL/S emitted the fields as
@@ -149,6 +150,13 @@ moved exactly one deck, IEDQWIE, to identical. The RX form `S(X)` under an
 absolute USING has 0 occurrences in the tree; the oracle answered the same way
 for it (`absrx`, JOB00295), and it landed the same day as #547 (PR #548).
 #97, placed at 8 below, is 7 since.
+
+**#559 left the table on 2026-09-30** (PR #566): IKJEGMNL is byte-identical to
+IFOX00 now, 5231 -> 5232. The same capture (`entryprobe`, JOB00298) found two
+more, both wrong bytes in the fixture and both unwitnessed in MVSBLD: #564
+(an EXTRN redefined by a label keeps the label's offset) and #563 (a forward
+ORG moves the counter in pass 2 only). They enter at 1 and 2, #564 first
+because nothing about it is open but the fix.
 
 **#89 left the table on 2026-09-30** (PR #561): a forward symbol in an EQU is
 IFO231 per symbol, IFO188 if never defined, value 0. No deck and no rc moved;
@@ -351,14 +359,21 @@ And `--entry` was the same defect one flag further along — the parser accepts 
 the `--pack` block returns before entry resolution, so `--pack --entry NOSUCHSY`
 packed at rc 0 in silence.
 
-### 1 · #559 — `ENTRY` of a symbol IFOX00 cannot link
+### 1 · #564 — an EXTRN redefined by a label
 
-IKJEGMNL's last difference: three LD entries (`IKJEGAID/EID/PID`) where IFOX00
-raises IFO189 and writes none. The names are absolute forward EQUs, which is
-the likely reason and is not measured -- the issue names the oracle case.
-One module in the corpus.
+IFOX00 keeps the ER and raises IFO196; as370 keeps the ER in the ESD but
+puts the label's offset into the symbol's value, so `A(XE)` is 8 under an RLD
+against the ER -- XE+8 once linked. Oracle `entryprobe` (JOB00298). #556's
+check asks `defined`, which an ER never sets. 0 MVSBLD sites flagged by IFOX00.
 
-### 2 · #100 — every module is marked RENT+REUS, IEWL marks neither
+### 2 · #563 — a forward ORG without `L'`
+
+IFOX00: IFO231, the counter stays. as370: pass 1 uses 0, pass 2 the real
+value, so later statements sit where no symbol says (#500's defect without
+the `L'`). 0 corpus sites for the measured case. The issue carries an
+unmeasured lead: 5 byte-differing modules with `ORG` to a never-defined symbol.
+
+### 3 · #100 — every module is marked RENT+REUS, IEWL marks neither
 
 *the set-flags landed 2026-09-23 (#463); what is left is the decision*
 
@@ -415,7 +430,7 @@ known here. Without overlap this is an untrue claim with no current victim; with
 it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
-### 3 · #86 — the diagnostic recorders drop everything past 128 entries
+### 4 · #86 — the diagnostic recorders drop everything past 128 entries
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -432,7 +447,7 @@ defect that remains is the shared-buffer cap itself and the silence about what i
 dropped; the sentence that demonstrates it needs replacing before the issue is
 quoted. In one recorder (`note_operr`) the cap can also mis-state the severity.
 
-### 4 · #97 — the definition-time IFO006
+### 5 · #97 — the definition-time IFO006
 
 *the code effect landed 2026-09-30 (#543); what is left moves no byte*
 
@@ -517,7 +532,7 @@ reported: IFOX00 flags `MVC F+L'NOSUCH(5),F` IFO188 and zeroes it (JOB00271,
   the counter stays) and **fixed**. A plain `ORG FWD` without `L'` was not
   measured and is unchanged.
 
-### 5 · #241 — twenty modules longer than IFOX00, one of them readable
+### 6 · #241 — twenty modules longer than IFOX00, one of them readable
 
 *the largest remaining population, and the number depends on which length you
 count*
@@ -541,7 +556,7 @@ not a reference. The one that did finish is `BLSR3270`: `+8` on section
 `BLSR327A`, IFOX00 rc 4, as370 rc 0, first divergence at `0x00513`. That is the
 whole workable surface of this issue today, and it is one module.
 
-### 6 · #23 — the corpus gate has an oracle-shaped hole
+### 7 · #23 — the corpus gate has an oracle-shaped hole
 
 *#48 delivered half of it; the other half needs a decision*
 
@@ -1421,6 +1436,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-09-30 — #559, MERGED as `4811004` (PR #566).** ENTRY of an absolute or
+  never-defined name is IFO189 and gets no LD (`entryprobe`, JOB00298). MVSBLD:
+  5,231 -> 5,232 identical, gained IKJEGMNL; IFO189 equals IFOX00's (IKJEGMNL
+  6). Oracle PR #565 before it; re-derived by mvs38src.
 
 - **2026-09-30 — #89, MERGED as `9e83daa` (PR #561).** Every forward symbol in an
   EQU operand is IFO231 (IFO188 if never defined), one per symbol; the value
