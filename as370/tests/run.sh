@@ -3274,6 +3274,37 @@ PY
 fi
 rm -f /tmp/_rl$$.obj /tmp/_rl$$.out
 
+# --------------------------------------------------------------- usingreloc --
+# cc370#362: the same rule on a USING base, where IFOX00 answers IFO217 for
+# every failure -- including the two-section sum that is IFO213 in a machine
+# operand above. Oracle: MVSTK5-REF JOB00036, tests/listref/ifox-listing-
+# usingreloc.txt: 3 statements flagged, severity 12, four IFO217 (the multiply
+# twice, once from EVAL and once from the USING processor). The binary before
+# the fix gave rc 8, 1 flagged, no IFO217 at all.
+./as370 tests/usingreloc.s -o /tmp/_ur$$.obj >/tmp/_ur$$.out 2>&1
+rcu=$?
+if [ $rcu != 12 ]; then
+    echo "usingreloc: FAIL -- expected RC 12, got $rcu"; fail=$((fail + 1))
+elif ! grep -q "3 Statements Flagged" /tmp/_ur$$.out; then
+    echo "usingreloc: FAIL -- three statements are flagged, three controls are not"
+    grep -i flagged /tmp/_ur$$.out; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO217' /tmp/_ur$$.out)" != 4 ] || [ "$(grep -c 'IFO213' /tmp/_ur$$.out)" != 0 ]; then
+    echo "usingreloc: FAIL -- expected 4x IFO217 and no IFO213"
+    grep -E 'IFO217|IFO213' /tmp/_ur$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_ur$$.obj tests/ref/usingreloc.obj <<'PY'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]
+if body(sys.argv[1]) != body(sys.argv[2]):
+    print("usingreloc: FAIL -- deck differs from IFOX00"); sys.exit(1)
+print("usingreloc: OK (4x IFO217 on three USINGs, no IFO213, deck == IFOX00)")
+PY
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
+
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
 # IFO161 INVALID LITERAL at severity 8, zeroes the instruction and does not pool

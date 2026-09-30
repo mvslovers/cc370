@@ -132,7 +132,7 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
-| 1 | #362 | as370 | silent under-reporting — 155 `USING` operands | nothing — **reopened a SECOND time 2026-09-17**, see below |
+| 1 | #362 | as370 | silent under-reporting — 155 `USING` operands | **review of PR #554** — the fix is written and gated, see below |
 | 2 | #89 | as370 | silent — a wrong value in the deck | **one corpus measurement** |
 | 3 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 4 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
@@ -150,6 +150,14 @@ moved exactly one deck, IEDQWIE, to identical. The RX form `S(X)` under an
 absolute USING has 0 occurrences in the tree; the oracle answered the same way
 for it (`absrx`, JOB00295), and it landed the same day as #547 (PR #548).
 #97, placed at 8 below, is 7 since.
+
+**#362 has a PR on 2026-09-30** (#554, two commits, gated each on its own).
+IFOX00 sends every failed USING base to one exit (IFNX5A USI900): IFO217, never
+IFO213, twice for a relocatable multiply because EVAL logs it too, and no table
+entry. Tree: identical 5231 -> 5231, 0 lost; nine modules rc 8 -> 12, all among
+the 75, IFO217 counts equal to IFOX00's; IECVXURT's text becomes identical. The
+other 66 of the 75 are rc 0 on both binaries under today's macro path, which
+resolves their symbols. The row leaves when the PR lands.
 
 **#527 left the table on 2026-09-30** (PR #550): a literal's duplication
 factor may be a parenthesised expression, and the tree moved no deck. Every row
