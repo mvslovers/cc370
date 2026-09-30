@@ -3305,6 +3305,34 @@ PY
 fi
 rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
 
+# ------------------------------------------------------------------ equfwd --
+# cc370#556: a name defined twice is IFO196 and the FIRST definition stands --
+# `DUP EQU 1' / `DUP EQU 2' leaves A(DUP) = 1. Oracle: MVSTK5-REF JOB00297,
+# tests/listref/ifox-listing-equfwd.txt. The binary before the fix gave rc 0,
+# no message and A(DUP) = 2, the one byte its deck differed in. The same
+# fixture carries #89's forward EQUs (IFO231/IFO188, not yet raised); only the
+# deck and the duplicate are asserted here until those land.
+./as370 tests/equfwd.s -o /tmp/_ef$$.obj >/tmp/_ef$$.out 2>&1
+rce=$?
+if [ $rce != 8 ]; then
+    echo "equfwd: FAIL -- expected RC 8 (IFO196 is severity 8), got $rce"; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO196' /tmp/_ef$$.out)" != 1 ] || ! grep -q 'IFO196) - DUP in line 26' /tmp/_ef$$.out; then
+    echo "equfwd: FAIL -- expected one IFO196, on DUP, statement 26"
+    grep IFO196 /tmp/_ef$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_ef$$.obj tests/ref/equfwd.obj <<'PY'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]
+if body(sys.argv[1]) != body(sys.argv[2]):
+    print("equfwd: FAIL -- deck differs from IFOX00 (A(DUP) must be 1)"); sys.exit(1)
+print("equfwd: OK (IFO196 on the second DUP, the first definition kept, deck == IFOX00)")
+PY
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_ef$$.obj /tmp/_ef$$.out
+
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
 # IFO161 INVALID LITERAL at severity 8, zeroes the instruction and does not pool

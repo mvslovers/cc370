@@ -1857,6 +1857,8 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
  * expansion is generated -- it is listed with the '+' -- but nothing was
  * substituted into it, so its blank ends the operand like any other card's. */
 #define LF_SUBST 4
+/* The name field redefines a symbol pass 1 had already defined (cc370#556). */
+#define LF_DUPDEF 8
 static unsigned char lflags[MAXLINES];
 static int g_genlevel;  /* >0 while inside a macro expansion (distinguishes generated lines from COPY'd source) */
 static int g_copyraw;   /* >0 while expanding a COPY'd member: nothing has been substituted into its cards yet */
@@ -5317,6 +5319,25 @@ static void do_pass(int pass, char **lines, int nlines) {
         }
 
         const struct opc *o = op_find(op);
+        /* A name defined a second time is IFO196 PREVIOUSLY DEFINED (severity
+         * 8), and the FIRST definition stands: `DUP EQU 1' / `DUP EQU 2' leaves
+         * DUP = 1 (MVSTK5-REF JOB00297, tests/equfwd.s). as370 let the second
+         * overwrite the first in silence -- IKJEGMNL expands IKJEGSUB twice and
+         * three LA displacements took the second expansion's values where IFOX00
+         * has 0. The statement is still assembled, unnamed, as for IFO016 above:
+         * a DS keeps its storage and the counter moves the same in both passes.
+         * Decided in pass 1, where "already defined" means an earlier statement;
+         * by pass 2 every name is defined. A section statement is exempt --
+         * naming a CSECT again resumes it. */
+        if (lbl[0] && (o || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "EQU") || !strcmp(op, "ORG")
+                       || !strcmp(op, "CNOP") || !strcmp(op, "LTORG") || !strcmp(op, "DXD")
+                       || !strcmp(op, "CCW") || !strcmp(op, "CCW0") || !strcmp(op, "CCW1"))) {
+            if (pass == 1) { struct sym *ds = sym_find(lbl); if (ds && ds->defined) lflags[i] |= LF_DUPDEF; }
+            if (lflags[i] & LF_DUPDEF) {
+                if (pass == 2) { char m[112]; snprintf(m, sizeof m, "Symbol previously defined (IFOX00 IFO196) - %.8s", lbl); note_operr(m, 8, i); }
+                lbl[0] = 0;
+            }
+        }
         if (o && o->fmt == F_S0) opnd[0] = 0;   /* a zero-operand instruction's operand field is a remark: not a literal, not a symbol reference, not a length-attribute term */
         if (cur_sect_id == 0 && (o || !strcmp(op, "EQU") || !strcmp(op, "DS") || !strcmp(op, "DC") || !strcmp(op, "LTORG")))
             pre_csect = 1;   /* statement before the first CSECT opens the implicit unnamed PC */
