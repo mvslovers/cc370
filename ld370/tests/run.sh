@@ -463,6 +463,55 @@ run_conflict() {
 
 run_conflict
 
+# Autocall diagnostics (cc370#8), on the sources of the IEWL oracle
+# (run_iewl_autocall_oracle.py, MVSCE-LAB JOB01408).  Two members of ONE
+# archive defining the resolved name warn by default -- IEWL cannot meet that
+# case, its directory holds each name once.  A definer in a later archive is
+# silent, as IEWL is (test TA), and named only under --warn-shadow.  An
+# autocalled member re-defining an entry warns like IEW0241 (test TC); a
+# duplicate CSECT does not, IEWL is silent there (test TC2, cc370#102).  None of
+# it may move a byte of the module.
+run_multidef() {
+    local md_fails=0 m e r
+    for m in mdxa mdxb mdma mdww mdmc mdmc2 mdrr mdmd; do
+        "$AS" -o "$TMP/$m.o" "$FIX/$m.s" || { echo "as370 failed: $m"; fails=$((fails + 1)); return; }
+    done
+    "$AR" rc "$TMP/libmdab.a" "$TMP/mdxa.o" "$TMP/mdxb.o" &&
+    "$AR" rc "$TMP/libmda.a" "$TMP/mdxa.o" "$TMP/mdww.o" "$TMP/mdrr.o" &&
+    "$AR" rc "$TMP/libmdb.a" "$TMP/mdxb.o" || { echo "ar370 failed: md"; fails=$((fails + 1)); return; }
+    printf '\n=== autocall diagnostics: several definers of one name (cc370#8) ===\n'
+    # md NAME PATTERN COUNT ARGS... : link, expect rc 0 and COUNT stderr lines matching PATTERN
+    md() {
+        local name=$1 pat=$2 want=$3; shift 3
+        e=$("$LD" -o "$TMP/md.$name" "$@" 2>&1 >/dev/null); r=$?
+        n=$(printf '%s\n' "$e" | /usr/bin/grep -c -- "$pat")
+        if [ "$r" -eq 0 ] && [ "$n" -eq "$want" ]; then echo "  OK: $name ($n warning(s), rc $r)"
+        else echo "  FAIL: $name: rc $r, $n line(s) matching '$pat', want $want"; printf '%s\n' "$e" | sed 's/^/      /'; md_fails=1; fi
+    }
+    md same-archive   "'XX' resolved from mdxa.o in .*libmdab.a; also defined by mdxb.o in the same archive" 1 \
+        "$TMP/mdma.o" "$TMP/libmdab.a"
+    md xx-explicit    "warning" 0 "$TMP/mdma.o" "$TMP/mdxa.o" "$TMP/libmdab.a"
+    md cross-archive  "warning" 0 "$TMP/mdma.o" "$TMP/libmda.a" "$TMP/libmdb.a"
+    md warn-shadow    "'XX' resolved from mdxa.o in .*libmda.a; also defined by mdxb.o in .*libmdb.a" 1 \
+        --warn-shadow "$TMP/mdma.o" "$TMP/libmda.a" "$TMP/libmdb.a"
+    md same-lib-twice "warning" 0 --warn-shadow "$TMP/mdma.o" "$TMP/libmda.a" "$TMP/libmda.a"
+    md iew0241        "'DUPL' doubly defined: autocalled member mdww.o in .*libmda.a" 1 \
+        "$TMP/mdmc.o" "$TMP/mdmc2.o" "$TMP/libmda.a"
+    md dup-csect      "warning" 0 "$TMP/mdmd.o" "$TMP/libmda.a"
+    # the diagnostics are output only: each module == the explicit link of its pick
+    "$LD" -o "$TMP/md.exp-xa" "$TMP/mdma.o" "$TMP/mdxa.o" 2>/dev/null
+    "$LD" -o "$TMP/md.exp-ww" "$TMP/mdmc.o" "$TMP/mdmc2.o" "$TMP/mdww.o" 2>/dev/null
+    if cmp -s "$TMP/md.same-archive" "$TMP/md.exp-xa" && cmp -s "$TMP/md.warn-shadow" "$TMP/md.exp-xa" \
+       && cmp -s "$TMP/md.iew0241" "$TMP/md.exp-ww"; then
+        echo "  OK: a warned link writes the module the explicit link writes"
+    else
+        echo "  FAIL: a warned link differs from the explicit link"; md_fails=1
+    fi
+    [ "$md_fails" -eq 0 ] || fails=$((fails + 1))
+}
+
+run_multidef
+
 # --blocksize: the target library BLKSIZE is runtime (default 15040, the de-facto
 # LINKLIB blocksize, so a member fits ANY LINKLIB with BLKSIZE >= 15040 -- where the
 # old fixed 19069 fit only a fresh >=19069 lib).  A module built at --blocksize B must
