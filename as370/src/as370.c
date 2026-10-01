@@ -1754,6 +1754,16 @@ static int attr_apos(const char *card, int i) {
         if (isalnum((unsigned char)b) || b=='@' || b=='#' || b=='$' || b=='_' || b=='&') return 0; }
     return 1;
 }
+/* OPSYN (#532): `LR2 OPSYN LR' makes LR2 an operation code meaning LR
+ * (MVSTK5-REF JOB00288, tests/xfdirect.s: `LR2 1,2' assembles to 1812).
+ * XF accepts OPSYN only at the head of the source -- before anything but
+ * ICTL, ISEQ, OPSYN, COPY, PRINT, SPACE, EJECT and TITLE (ifnx1a SSEQ20-24)
+ * -- so the table is built once, by opsyn_prescan, before anything else reads
+ * an operation field, and applied here. opsyn_st[] keeps each OPSYN card's
+ * verdict by input line for the message pass 2 gives it. */
+static struct { char name[9], target[9]; } opsyn_tab[64];
+static int nopsyn_tab, g_opsyn_off;
+static signed char *opsyn_st; static int nopsyn_st;   /* per input line: 0 none/ok, else the IFO number or 99 */
 static int parse(const char *line, char *lbl, char *op, char *opnd) {
     const char *p = line; int i;
     lbl[0] = op[0] = opnd[0] = 0;
@@ -1830,6 +1840,8 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
      * the listing prints the card as written. */
     if (!strcmp(op, "AIFB")) op[3] = 0;
     else if (!strcmp(op, "AGOB")) op[3] = 0;
+    if (nopsyn_tab && !g_opsyn_off) { int k;
+        for (k = nopsyn_tab - 1; k >= 0; k--) if (!strcmp(op, opsyn_tab[k].name)) { strcpy(op, opsyn_tab[k].target); break; } }
     return 1;
 }
 static const struct opc *op_find(const char *n) {
@@ -4517,8 +4529,37 @@ static void prescan_lengths(char **in, int nin) {
     }
 }
 /* macro pass: capture MACRO/MEND defs, expand calls -> flat open code */
+static int known_op(const char *o);   /* fwd */
+static void opsyn_prescan(char **in, int nin, const int *org) {
+    int k, allowed = 1, span = nin;
+    if (org) for (k = 0; k < nin; k++) if (org[k] + 1 > span) span = org[k] + 1;   /* keyed by input-file line, as line_org is */
+    free(opsyn_st); opsyn_st = calloc((size_t)(span > 0 ? span : 1), 1); nopsyn_st = span; nopsyn_tab = 0;
+    if (!opsyn_st) { fprintf(stderr, "as370: out of memory for the OPSYN table\n"); exit(2); }
+    g_opsyn_off = 1;                     /* the OPSYN cards themselves are read raw */
+    for (k = 0; k < nin; k++) {
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
+        scopy(buf, in[k], STMTSZ - 1);
+        if (!parse(buf, lbl, op, opnd) || !op[0]) continue;   /* comment or blank */
+        if (strcmp(op, "OPSYN")) {
+            if (strcmp(op, "ICTL") && strcmp(op, "ISEQ") && strcmp(op, "COPY") && strcmp(op, "PRINT")
+                && strcmp(op, "SPACE") && strcmp(op, "EJECT") && strcmp(op, "TITLE")) allowed = 0;
+            continue;
+        }
+        int ordl = lbl[0] && (isalpha((unsigned char)lbl[0]) || lbl[0] == '@' || lbl[0] == '#' || lbl[0] == '$');
+        int at = org ? org[k] : k;
+        if (!allowed) { opsyn_st[at] = 12; continue; }                    /* IFO012: too late */
+        if (!ordl || strlen(lbl) > 8) { opsyn_st[at] = 13; continue; }     /* IFO013: name not an ordinary symbol */
+        if (!opnd[0]) { opsyn_st[at] = 99; continue; }                     /* deletion: not implemented */
+        { char tgt[16]; int j; scopy(tgt, opnd, 15);
+          for (j = nopsyn_tab - 1; j >= 0; j--) if (!strcmp(tgt, opsyn_tab[j].name)) { scopy(tgt, opsyn_tab[j].target, 8); break; }
+          if (!known_op(tgt)) { opsyn_st[at] = 14; continue; }               /* IFO014: not an operation code */
+          if (nopsyn_tab < 64) { scopy(opsyn_tab[nopsyn_tab].name, lbl, 8); scopy(opsyn_tab[nopsyn_tab].target, tgt, 8); nopsyn_tab++; } }
+    }
+    g_opsyn_off = 0;
+}
 static int macro_pass(char **in, int nin, char **out, int *raw_org) {
     int nout = 0;
+    opsyn_prescan(in, nin, raw_org);     /* before anything reads an operation field (#532) */
     prescan_lengths(in, nin);   /* L' in conditional assembly has no symbol table otherwise (#244) */
     mexp_block(in, nin, out, &nout, 0, raw_org);
     return nout;
@@ -5895,6 +5936,14 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (s && entry_unlinkable(s)) { char m[112];
                         snprintf(m, sizeof m, "Invalid ENTRY operand, linkage cannot be performed (IFOX00 IFO189) - %.8s", extsym[j]);
                         note_operr(m, 8, i); } } }
+        } else if (!strcmp(op, "OPSYN")) {
+            /* The table was built before macro expansion (opsyn_prescan); here
+             * the statement only reports its verdict, by its input line. */
+            if (pass == 2) { int o = line_org[i], v = (o >= 0 && o < nopsyn_st && opsyn_st) ? opsyn_st[o] : 0;
+                if (v == 12) note_operr("ICTL or OPSYN statement appears too late in the program (IFOX00 IFO012)", 8, i);
+                else if (v == 13) note_operr("OPSYN name field not an ordinary symbol (IFOX00 IFO013)", 8, i);
+                else if (v == 14) note_operr("Invalid opcode in OPSYN operand (IFOX00 IFO014)", 8, i);
+                else if (v == 99) note_operr("OPSYN with a blank operand (deleting an operation code) is valid Assembler XF but not implemented by as370", 12, i); }
         } else if (!strcmp(op, "ICTL")) {
             /* ICTL sets the begin, end and continue columns, and only as the
              * first card of the source. `ICTL 1,71,16' -- the standard columns --

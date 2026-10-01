@@ -3640,6 +3640,61 @@ else
 fi
 rm -f /tmp/_pu$$.s /tmp/_pu$$.n.s /tmp/_pu$$.obj /tmp/_pu$$.n.obj /tmp/_pu$$.out /tmp/_pu$$.n.out
 
+# ------------------------------------------------------------------ opsyn --
+# cc370#532: `LR2 OPSYN LR' makes LR2 mean LR -- `LR2 1,2' is 1812 -- and with
+# it tests/xfdirect.s (ICTL, OPSYN, AIFB/AGOB, PUNCH; MVSTK5-REF JOB00288)
+# assembles at rc 0 to IFOX00's deck but for the END card. The second probe
+# holds what follows from the source rather than the oracle: a chain (L3 -> L2
+# -> LR) and a redefinition (the later AR2 wins: SR, 1B34); the third the
+# rejections -- an unknown target is IFO014, a blank operand (deletion) is
+# refused at 12, an OPSYN after the first CSECT is IFO012. The binary before
+# the change answered OPSYN and every synonym with "Undefined operation code".
+./as370 tests/xfdirect.s -o /tmp/_os$$.obj >/tmp/_os$$.out 2>&1; rcos=$?
+cat > /tmp/_os$$.1.s <<'EOF'
+         TITLE 'OPSYN PROBE'
+L2       OPSYN LR
+L3       OPSYN L2
+AR2      OPSYN AR
+AR2      OPSYN SR
+T        CSECT
+         L3    1,2
+         AR2   3,4
+         END
+EOF
+cat > /tmp/_os$$.2.s <<'EOF'
+BADOP    OPSYN NOSUCH
+DEL      OPSYN
+T        CSECT
+LATE     OPSYN LR
+         END
+EOF
+./as370 /tmp/_os$$.1.s -o /tmp/_os$$.1.obj >/tmp/_os$$.1.out 2>&1; rco1=$?
+./as370 /tmp/_os$$.2.s -o /tmp/_os$$.2.obj >/tmp/_os$$.2.out 2>&1; rco2=$?
+txt() { python3 -c "
+import sys; d=open(sys.argv[1],'rb').read(); t=b''
+for i in range(0,len(d),80):
+    c=d[i:i+80]
+    if c[1:4]==bytes([0xE3,0xE7,0xE3]): t+=c[16:16+int.from_bytes(c[10:12],'big')]
+print(t.hex())" "$1"; }
+if [ $rcos != 0 ] || ! python3 - /tmp/_os$$.obj tests/ref/xfdirect.obj <<'PY2'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]   # END card left out (IDR)
+sys.exit(body(sys.argv[1]) != body(sys.argv[2]))
+PY2
+then
+    echo "opsyn: FAIL -- xfdirect: rc $rcos, or the deck differs from IFOX00's"; grep -E 'ERROR|Done' /tmp/_os$$.out; fail=$((fail + 1))
+elif [ $rco1 != 0 ] || [ "$(txt /tmp/_os$$.1.obj)" != 18121b34 ]; then
+    echo "opsyn: FAIL -- chain/redefinition: rc $rco1, text $(txt /tmp/_os$$.1.obj), expected 18121b34"; grep ERROR /tmp/_os$$.1.out; fail=$((fail + 1))
+elif [ $rco2 != 12 ] || ! grep -q 'IFO014) in line 1$' /tmp/_os$$.2.out || ! grep -q 'blank operand.*in line 2$' /tmp/_os$$.2.out ||
+     ! grep -q 'IFO012) in line 4$' /tmp/_os$$.2.out; then
+    echo "opsyn: FAIL -- expected IFO014 (1), deletion refused (2), IFO012 (4), rc 12; got rc $rco2"; grep ERROR /tmp/_os$$.2.out; fail=$((fail + 1))
+else
+    echo "opsyn: OK (xfdirect == IFOX00; chains and redefinition resolve; IFO014, IFO012, deletion refused)"
+fi
+rm -f /tmp/_os$$.obj /tmp/_os$$.out /tmp/_os$$.1.s /tmp/_os$$.2.s /tmp/_os$$.1.obj /tmp/_os$$.2.obj /tmp/_os$$.1.out /tmp/_os$$.2.out
+
 # ----------------------------------------------------------------- lblorg --
 # cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
 # `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0
