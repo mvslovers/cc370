@@ -1957,7 +1957,7 @@ static int g_copyraw;   /* >0 while expanding a COPY'd member: nothing has been 
 struct ctx;
 static struct ctx *g_copyctx;   /* the enclosing expansion's variables, for a COPY'd card's substitution (see #307) */
 /* per-statement listing data captured in pass 2 (LOC + emitted bytes + effective operand addresses) */
-struct lrec { long loc; int len; long a1, a2; unsigned char hasa1, hasa2; };
+struct lrec { long loc; int len; long a1, a2; unsigned char hasa1, hasa2, pre; };   /* pre: CNOP's odd-counter zero byte, ahead of loc (#640) */
 static struct lrec lrecs[MAXLINES];
 
 /* cc370#411: which macro CALL owns a generated line.  LF_GEN says a line came
@@ -5684,7 +5684,7 @@ static void do_pass(int pass, char **lines, int nlines) {
         if (pass == 2) expr_err_stmt(i);
         g_genstmt = (lflags[i] & LF_SUBST) != 0;   /* see g_genstmt: a blank SUBSTITUTED into an operand is not a field end */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
-        if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; line_sect[i] = cur_sect_id; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
+        if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; line_sect[i] = cur_sect_id; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = lrecs[i].pre = 0; prev_li = i; }
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         if (listing && pass == 2) { prev_lc = lc; prev_src = lines[i]; have_prev = 1; }
@@ -6455,9 +6455,10 @@ static void do_pass(int pass, char **lines, int nlines) {
              * lost the symbol the caller had written in the name field, which
              * is 84 modules of "undefined symbol" that IFOX00 assembles without
              * a word (cc370#231, part of #153). */
-            if (lc & 1) { if (pass == 2) put(lc, 0, 1); lc++; }
+            int odd = (int)(lc & 1);
+            if (odd) { if (pass == 2) put(lc, 0, 1); lc++; }
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 1; }
-            if (pass == 2) { lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }
+            if (pass == 2) { lrecs[i].loc = lc; lrecs[i].pre = (unsigned char)odd; line_sect[i] = cur_sect_id; }
             if (nn > 1 && !(b & 1) && b < nn) {
                 long need = ((long)b - lc) % nn; if (need < 0) need += nn;
                 while (need > 0) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; need -= 2; }
@@ -7666,12 +7667,13 @@ static int a_has_print(const char *opnd) {
     return 0;
 }
 /* The boundary a DC, DS or CCW aligns its FIRST operand to, or 1 for none.
- * The statement is listed at that aligned address and its pad bytes are listed
- * nowhere -- not at the end of the statement before, not at the start of this
- * one (#627). Measured across the IFOX00 listings in tests/listref: DS 0F
- * (align, orgnever), DS 16F (usingparen, usingparenpc), DC A (cnop, printerr)
- * and CCW (sectlen, xrefcov) -- fourteen statements, every one at its aligned
- * address. Pads BETWEEN a statement's operands stay inside it. The boundaries
+ * The statement is listed at that aligned address, and its pad bytes are not
+ * part of its line (#627). Measured across the IFOX00 listings in
+ * tests/listref: DS 0F (align, orgnever), DS 16F (usingparen, usingparenpc),
+ * DC A (cnop, printerr) and CCW (sectlen, xrefcov) -- fourteen statements,
+ * every one at its aligned address. The pad of a DC or CCW is listed on a row
+ * of its own ahead of it (#640, below); a DS writes no pad and lists none.
+ * Pads BETWEEN a statement's operands stay inside it. The boundaries
  * are DCTBL's (F A V E 4, H Y S 2, D L 8); a length modifier, before or after a
  * scale, removes the alignment. */
 static int a_first_align(const char *op, const char *opnd) {
@@ -7689,6 +7691,16 @@ static int a_first_align(const char *op, const char *opnd) {
     if (*p == 'L') return 1;
     return b;
 }
+/* A pad row: LOC and the pad's zero bytes. Written as zeros, not read back from
+ * the text -- an ORG may later lay other bytes over the pad, and IFOX00 lists
+ * what the statement wrote: BLSR3270's `00055C 00000000' where its text ends
+ * up holding A(4) (mvs38src ifox-run, #640). */
+static void a_padrow(char *ln, long loc, int pad) {
+    char hex[40]; int k;
+    for (k = 0; k < 2 * pad && k < 38; k++) hex[k] = '0';
+    hex[k] = 0;
+    a_locobj(ln, loc, hex); a_src_emit(ln);
+}
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j;
     a_srcopen = 0; a_srclines = 0;   /* the header goes out with the first row */
@@ -7704,7 +7716,8 @@ static void a_src_section(char **lines, int nl) {
         if (!noasm && !strcmp(op, "PRINT")) a_print_opnd(opnd);
         else if (!noasm && !strcmp(op, "PUSH") && a_has_print(opnd)) { if (a_psp < 16) { a_pstack[a_psp][0] = (unsigned char)a_pon; a_pstack[a_psp][1] = (unsigned char)a_pgen; a_psp++; } }
         else if (!noasm && !strcmp(op, "POP") && a_has_print(opnd)) { if (a_psp > 0) { a_psp--; a_pon = a_pstack[a_psp][0]; a_pgen = a_pstack[a_psp][1]; } }
-        int shown = (on0 || a_pon) && (!gen || gen0 || a_pgen || stmt_flagged[i]);
+        int listed = (on0 || a_pon) && (!gen || gen0 || a_pgen);
+        int shown = listed || ((on0 || a_pon) && stmt_flagged[i]);
         if (!shown) {
             if (!noasm && !strcmp(op, "TITLE")) title_text(opnd, a_title);   /* the title is set, the page is not started (titlegen) */
             if (a_pon) a_src_pool(i + 1);
@@ -7759,9 +7772,26 @@ static void a_src_section(char **lines, int nl) {
             else if (!strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }   /* ORG's ADDR2 is set at the statement, above */
         }
         long loc = lrecs[i].loc; int len = lrecs[i].len;
-        if (show_loc && !noasm) {   /* the alignment pad belongs to no statement's line (#627) */
+        /* An alignment pad is listed as a row of its own -- LOC and the pad
+         * bytes, nothing else -- ahead of the statement it aligns: a DC or CCW
+         * (#627 moved the statement off its pad; #640: len_attr, scale,
+         * fltoracl, dcvlist, setctype, tattr_symbol, undefsym, equtypegen2,
+         * sectlen, xrefcov), a CNOP from an odd counter (cnop) and a machine
+         * instruction (align, ssb1, tstlist). A DS reserves without writing and
+         * lists no pad. The row follows PRINT GEN/NOGEN but not the override
+         * that lists a flagged statement: printerr's DC A(UNDEF1), generated
+         * under NOGEN and listed for its error, shows no pad row (MVSTK5-REF
+         * JOB00309). For an instruction that last part is taken by symmetry,
+         * not measured. */
+        if (!noasm && !strcmp(op, "CNOP") && lrecs[i].pre && listed) {
+            a_padrow(ln, loc - 1, 1);
+        }
+        if (show_loc && !noasm) {
             int b = a_first_align(op, opnd), pad = b > 1 ? (int)((b - (loc % b)) % b) : 0;
-            if (pad && pad <= len) { loc += pad; len -= pad; }
+            if (pad && pad <= len) {
+                if (strcmp(op, "DS") && listed) a_padrow(ln, loc, pad);
+                loc += pad; len -= pad;
+            }
         }
         /* END naming an entry point lists the entry symbol's VALUE in LOC, not
          * the location counter: `END T' is 000000 where T opens the section,
@@ -7770,7 +7800,7 @@ static void a_src_section(char **lines, int nl) {
         if (!noasm && !strcmp(op, "END") && end_known) { show_loc = 1; loc = end_addr; }
         if (is_instr) {                                /* a halfword-alignment pad prints as its own object line */
             int pad = (int)(loc & 1);
-            if (pad) { char hex[40]; a_objcode(loc, pad, 0, hex); a_locobj(ln, loc, hex); a_src_emit(ln); loc += pad; len -= pad; }
+            if (pad) { if (listed) a_padrow(ln, loc, pad); loc += pad; len -= pad; }
         }
         for (j = 0; j < 255; j++) { ln[j] = ' '; } ln[255] = 0;
         if (show_loc && !strcmp(op, "LTORG")) loc = align8(loc);   /* LOC is where the pool starts: the counter after the doubleword alignment (tests/listref, litdup and pool) */
