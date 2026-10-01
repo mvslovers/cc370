@@ -290,7 +290,7 @@ not closed**; #111, #112, #113, #117, #118 open — the only band with an outsid
 consumer), **loud gaps** (#56, #76, #78, #101, #102, #103, #128, #211, #229, #297 —
 **#108 closed on 2026-09-06 and should have left this band then**), **populations**
 (#160, #193, #199, #241), **observability** (#9, #106, #345), **listing
-fidelity** (#91, #370), **conditional assembly** (#258, #272, #333),
+fidelity** (#91), **conditional assembly** (#258, #272, #333),
 **deferred** (#36). `&&` folding moved from the substituter to the DC scanner
 en route to #141 (`6d235db`): the two paths had contradicted each other at `rc=0`
 since as370 existed, and the two defects cancelled, so 950 modules of deck
@@ -1306,7 +1306,7 @@ was found while building a `listref` case, and each is excluded from that case
   line. **Fixed** (PR #618, `0745cd2`): card by card, a continuation row carrying
   the next eight bytes of object code. `listref` case 9 compares aifcond line
   for line; aligned SOURCE lines over the 135 references 3,221 -> 3,279, none
-  fewer. #370 is the same gap for generated statements, still open.
+  fewer. #370, the same gap for generated statements, is fixed too (PR #638).
 
 - ~~**#619**~~ — found with #609: `END` with an operand was listed with LOC
   blank where IFOX00 prints the entry symbol's value. **Fixed** (PR #621,
@@ -1506,6 +1506,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #370, MERGED as `91fa640` (PR #638).** A generated statement
+  whose model is continued is listed card by card: substituted into the
+  logical text and cut again at 71/56 columns, one card when it fits, each card
+  with its own 73-80. MVSTK5-REF JOB00313 (`gencont`, six cases). tests/listref:
+  110 of 136 SOURCE pages identical to IFOX00, case 12 holds 109. MVSBLD gate 0
+  moved. Not covered: a definition read from a COPY member.
 
 - **2026-10-01 — #626, #627 and #24, MERGED as `f949805`, `0439425`,
   `d0419bb` (PRs #634, #635, #636).** NOMCALL; an aligned statement listed at
