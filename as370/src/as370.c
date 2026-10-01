@@ -7427,6 +7427,30 @@ static void a_src_pool(int pline) {
  * Columns: LOC@1 OBJECT@8 ADDR1@23 ADDR2@29 STMT(right-justified to 39)
  * '+'@40 SOURCE@41 -- the SOURCE image keeps the model card's column layout
  * (see gcard / render_model). */
+/* The input cards, kept for the listing (#609). IFOX00 lists a continued
+ * statement of open code card by card -- the first card under the statement
+ * number, each continuation card below it with LOC and STMT blank, remarks and
+ * the column-72 character included -- where lines[] holds the joined statement.
+ * a_raw0 is the deck as read, a_raw the joined statements, a_raw_org the 1-based
+ * first card of each; raw_span says how many cards each took. */
+static char **a_raw0, **a_raw; static int *a_raw_org, a_nraw;
+/* The joined statement whose first card is input line `org', when lines[i] is
+ * that statement as written -- open code, not a COPY member's line or anything
+ * a macro generated under the same line_org. -1 otherwise. */
+static int a_rawno(int org, const char *line) {
+    static int *by_org; static int nby;
+    int k;
+    if (!a_raw || org <= 0) return -1;
+    if (!by_org) {
+        for (k = 0; k < a_nraw; k++) if (a_raw_org[k] > nby) nby = a_raw_org[k];
+        by_org = calloc((size_t)nby + 1, sizeof *by_org);
+        if (!by_org) return -1;
+        for (k = 0; k < a_nraw; k++) by_org[a_raw_org[k]] = k + 1;
+    }
+    if (org > nby || !(k = by_org[org])) return -1;
+    k--;
+    return strcmp(a_raw[k], line) ? -1 : k;
+}
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j;
     a_srcrows = A_SRC_LINECOUNT;   /* force the header before the first row */
@@ -7472,10 +7496,23 @@ static void a_src_section(char **lines, int nl) {
             struct sym *s = sym_find((lflags[i] & LF_DUPDEF) ? sh : lbl);
             if (s && s->defined) { char b[16]; sprintf(b, "%05lX", s->val & 0xfffffL); memcpy(ln + 28, b, 5); } }
         { char sn[12]; int dl = sprintf(sn, "%d", a_lstmt[i]); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
-        { const char *s = gcard[i] ? gcard[i] : lines[i]; int sl = (int)strlen(s);
-          while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
-          for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j]; }
-        a_src_emit(ln);
+        int rn = (gen || gcard[i]) ? -1 : a_rawno(line_org[i], lines[i]);
+        int span = rn >= 0 && raw_span[rn] > 1 ? raw_span[rn] : 1, c;
+        for (c = 0; c < span; c++) {
+            /* A continuation row carries the next eight bytes of object code, as
+             * the first carries the first eight: contrem's 18-byte DC lists 8+8
+             * and the last two are not shown (tests/listref, statement 45). */
+            if (c) {
+                char hex[40] = "";
+                if (show_obj && len > 8 * c) a_objcode(loc + 8 * c, len - 8 * c, is_instr, hex);
+                if (hex[0]) a_locobj(ln, loc + 8 * c, hex); else { for (j = 0; j < 255; j++) ln[j] = ' '; ln[255] = 0; }
+            }
+            const char *s = span > 1 ? a_raw0[a_raw_org[rn] - 1 + c] : gcard[i] ? gcard[i] : lines[i];
+            int sl = (int)strlen(s);
+            while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j];
+            a_src_emit(ln);
+        }
         a_src_pool(i + 1);
     }
     a_src_pool(0);   /* a literal no LTORG or END placed (none should be left) */
@@ -8260,6 +8297,7 @@ int main(int argc, char **argv) {
     join_span = raw_span;
     int n = join_cont(raw0, nr, raw, MAXLINES, NULL, raw_org);
     join_span = NULL;   /* fold column-72 continuations; raw_org = input line per statement */
+    a_raw0 = raw0; a_raw = raw; a_raw_org = raw_org; a_nraw = n;   /* the listing lists a continued statement card by card (#609) */
 
     static char *lines[MAXLINES];
     prescan_symtypes(raw, n);   /* T' of a symbol is answered from open code, before any expansion (#144) */

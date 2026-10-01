@@ -381,10 +381,10 @@ rm -f "$OUT7"
 # card whose name field is a sequence symbol as written -- `.A       DC    C'Y1''.
 # as370 dropped the first and re-rendered the second as `DC C'Y1'', so collate
 # ended at statement 35 where IFOX00 says 42. Case 8 could not see it: it maps
-# statement numbers across. collate's SOURCE page is compared line for line --
-# page headings and IFOX's *** ERROR *** markers aside. aifcond is compared on
-# its statement numbers only: its AIFs are continued, and as370 lists any
-# continued open-code statement as one joined line, which is a separate gap.
+# statement numbers across. Both SOURCE pages are compared line for line --
+# page headings and IFOX's *** ERROR *** markers aside. aifcond's AIFs are
+# continued, and until #609 as370 listed a continued open-code statement as one
+# joined line, so aifcond was compared on its statement numbers only.
 # Both have no macro definition; the other three fixtures with open-code AIF do,
 # and their definitions are not listed (#150).
 for T9 in collate aifcond; do
@@ -403,9 +403,6 @@ def src(path):
         out.append(l)
     return out
 R, M = src(sys.argv[1]), src(sys.argv[2])
-if sys.argv[3] != "collate":                     # statement numbers and the first field only
-    num = lambda L: [re.match(r"^.{34} *(\d+)", l).group(1) for l in L if re.match(r"^.{34} *\d+[ +]", l)]
-    R, M = num(R), num(M)
 bad = [(i, R[i] if i < len(R) else "<none>", M[i] if i < len(M) else "<none>")
        for i in range(max(len(R), len(M))) if (R[i] if i < len(R) else None) != (M[i] if i < len(M) else None)]
 for i, r, m in bad[:6]: print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
