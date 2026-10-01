@@ -376,6 +376,46 @@ PYO
            || { echo "listref orglist: MISMATCH"; fail=1; }
 rm -f "$OUT7"
 
+# --- case 9: AIF/AGO of open code, and a sequence symbol in the name field -- #607
+# IFOX00 lists an AIF or AGO of open code and numbers it (ALOGIC), and prints a
+# card whose name field is a sequence symbol as written -- `.A       DC    C'Y1''.
+# as370 dropped the first and re-rendered the second as `DC C'Y1'', so collate
+# ended at statement 35 where IFOX00 says 42. Case 8 could not see it: it maps
+# statement numbers across. collate's SOURCE page is compared line for line --
+# page headings and IFOX's *** ERROR *** markers aside. aifcond is compared on
+# its statement numbers only: its AIFs are continued, and as370 lists any
+# continued open-code statement as one joined line, which is a separate gap.
+# Both have no macro definition; the other three fixtures with open-code AIF do,
+# and their definitions are not listed (#150).
+for T9 in collate aifcond; do
+OUT9=/tmp/as370-listref-aif.$$
+./as370 tests/$T9.s -a="$OUT9" >/dev/null 2>&1
+python3 - tests/listref/ifox-listing-$T9.txt "$OUT9" "$T9" <<'PYX'
+import sys, re
+def src(path):
+    out, on = [], False
+    for l in open(path, encoding="latin-1").read().split("\n"):
+        l = l.replace("\f", "").rstrip()
+        if "SOURCE STATEMENT" in l: on = True; continue
+        if not on: continue
+        if re.search(r"(CROSS-REFERENCE|RELOCATION DICTIONARY|DIAGNOSTICS AND)", l): break
+        if l == "" or l.strip() == "*** ERROR ***" or re.search(r"PAGE +\d+$", l): continue
+        out.append(l)
+    return out
+R, M = src(sys.argv[1]), src(sys.argv[2])
+if sys.argv[3] != "collate":                     # statement numbers and the first field only
+    num = lambda L: [re.match(r"^.{34} *(\d+)", l).group(1) for l in L if re.match(r"^.{34} *\d+[ +]", l)]
+    R, M = num(R), num(M)
+bad = [(i, R[i] if i < len(R) else "<none>", M[i] if i < len(M) else "<none>")
+       for i in range(max(len(R), len(M))) if (R[i] if i < len(R) else None) != (M[i] if i < len(M) else None)]
+for i, r, m in bad[:6]: print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
+sys.exit(1 if bad or not R else 0)
+PYX
+[ $? = 0 ] && echo "listref $T9: SOURCE page matches IFOX00 (open-code AIF/AGO listed and numbered, sequence symbols kept)" \
+           || { echo "listref $T9: MISMATCH"; fail=1; }
+rm -f "$OUT9"
+done
+
 # --- case 8: the cross-reference pages of every reference here -- #538 ------
 # Every listing in this directory was captured with XREF(FULL), so each carries
 # a CROSS-REFERENCE page and most a LITERAL CROSS-REFERENCE: xref.py compares

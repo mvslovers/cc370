@@ -4343,7 +4343,12 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         ifo007_line[*nout] = 1;
         g_ifo007 = 0;
     }
-    if (lbl[0] == '.') { char r[STMTSZ + 32]; snprintf(r, sizeof r, "         %s %s", op, opnd); out[(*nout)++] = strdup(r); }
+    if (lbl[0] == '.') { char r[STMTSZ + 32]; snprintf(r, sizeof r, "         %s %s", op, opnd);
+        /* The sequence symbol goes from the statement the core assembles, not
+         * from the listing: IFOX00 prints `.A       DC    C'Y1'' as written
+         * (tests/listref/ifox-listing-collate.txt; #607). */
+        if (!gcard[*nout] && g_genlevel == 0) gcard[*nout] = strdup(sysbuf);
+        out[(*nout)++] = strdup(r); }
     else out[(*nout)++] = strdup(sysbuf);
 }
 /* expand a line array as open code, honoring AIF/AGO/sequence-symbol branching.
@@ -4396,6 +4401,15 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
             pc++; continue;
         }
         if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
+        /* An AIF or AGO of open code is listed and numbered, the way IFOX00
+         * lists it under ALOGIC (its default) and the way SETx already is in
+         * mexp_line; one inside a macro is not (NOMLOGIC). The statements it
+         * skips are not listed by either assembler. tests/collate.s and four
+         * more oracle listings; #607. */
+        if ((!strcmp(op, "AIF") || !strcmp(op, "AGO")) && g_genlevel == 0 && *nout < MAXLINES) {
+            lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL;
+            line_org[*nout] = g_curorg; out[*nout] = strdup(arr[pc]); (*nout)++;
+        }
         if (!strcmp(op, "AIF")) { char cond[512], seq[20]; aif_split(opnd, cond, sizeof cond, seq, sizeof seq);
             if (eval_cond(cur_ctx(), cond)) { int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
