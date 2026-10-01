@@ -1,0 +1,218 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 08.14 10/01/26
+XREFCOV   SD  0001 000000 0000BC
+VONLY     ER  0002
+F1        LD       000074        0001
+XREFB     SD  0003 0000C0 000104
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.14 10/01/26
+                                      1 * cc370#538 -- the cross-reference cases tests/listref does not reach.
+                                      2 * Captured with XREF(FULL) and again with XREF(SHORT).
+                                      3 *
+                                      4 * 1  sixteen references to F1 in two statements: the 16th goes on a
+                                      5 *    continuation line, column 32
+                                      6 * 2  L'F1 in a machine operand is a reference
+                                      7 * 3  CNOP, CCW, USING and DROP operands; SPACE and MNOTE with a symbol
+                                      8 * 4  S and Y constants, a symbolic duplication factor and length
+                                      9 * 5  DUPE defined twice; XDEF declared EXTRN after it is defined
+                                     10 * 6  VONLY seen only in V(), then used in A()
+                                     11 * 7  an undefined name, and ENTRY of a defined one
+                                     12 * 8  literals of 130 and 122 characters: the text alone on a line,
+                                     13 *    then the rest from column 6 -- a rest of 2 stays on the LEN line
+                                     14 * 9  sixty more symbols, so the FULL listing runs past one page
+                                     15 * 10 an LTORG pool in a second section, and an END pool that goes
+                                     16 *    back into the first: listed in that order, cross-referenced
+                                     17 *    by address
+000000                               18 XREFCOV  CSECT
+                            00000    19          USING XREFCOV,15
+                            00001    20 R1       EQU   1
+                            00000    21 ZERO     EQU   0
+                            00001    22 ONE      EQU   1
+                            00002    23 TWO      EQU   2
+                            00004    24 FOUR     EQU   4
+                            00002    25 CMD      EQU   X'02'
+000000 0000007400000074              26          DC    A(F1,F1,F1,F1,F1,F1,F1,F1) case 1
+000020 0000007400000074              27          DC    A(F1,F1,F1,F1,F1,F1,F1,F1)
+000040 4110 0004      00004          28          LA    R1,L'F1 case 2
+000044 0700                          29          CNOP  TWO,FOUR case 3
+000046 0000
+000048 0200007400000001              30          CCW   CMD,F1,ZERO,ONE
+                                     31          SPACE ONE
+         *** ERROR ***
+                                     32          MNOTE ZERO,'XREFCOV'
+         *** ERROR ***
+                            00074    33          USING F1,R1
+                                     34          DROP  R1
+000050 F074                          35          DC    S(F1) case 4
+000052 0074                          36          DC    Y(F1)
+         *** ERROR ***
+000054                               37          DS    (TWO)FL(FOUR)
+                            00005    38 DUPE     EQU   5 case 5
+                            00006    39 DUPE     EQU   6
+         *** ERROR ***
+00005C                               40 XDEF     DS    F
+                                     41          EXTRN XDEF
+         *** ERROR ***
+000060 00000000                      42          DC    V(VONLY) case 6
+000064 00000000                      43          DC    A(VONLY)
+         *** ERROR ***
+000068 00000000                      44          DC    A(NOWHERE) case 7
+         *** ERROR ***
+                                     45          ENTRY F1
+00006C 0000 0000      00000          46          LA    R1,=C'ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJX
+                                                       ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFX
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.14 10/01/26
+                                                       GHIJABCDEFGHIJABCDEF'
+         *** ERROR ***
+000070 0000 0000      00000          47          LA    R1,=C'01234567890123456789012345678901234567890123456789X
+                                                       01234567890123456789012345678901234567890123456789012345X
+                                                       678901234567'
+         *** ERROR ***
+000074                               48 F1       DS    F
+000078                               49 S01      DS    X
+000079                               50 S02      DS    X
+00007A                               51 S03      DS    X
+00007B                               52 S04      DS    X
+00007C                               53 S05      DS    X
+00007D                               54 S06      DS    X
+00007E                               55 S07      DS    X
+00007F                               56 S08      DS    X
+000080                               57 S09      DS    X
+000081                               58 S10      DS    X
+000082                               59 S11      DS    X
+000083                               60 S12      DS    X
+000084                               61 S13      DS    X
+000085                               62 S14      DS    X
+000086                               63 S15      DS    X
+000087                               64 S16      DS    X
+000088                               65 S17      DS    X
+000089                               66 S18      DS    X
+00008A                               67 S19      DS    X
+00008B                               68 S20      DS    X
+00008C                               69 S21      DS    X
+00008D                               70 S22      DS    X
+00008E                               71 S23      DS    X
+00008F                               72 S24      DS    X
+000090                               73 S25      DS    X
+000091                               74 S26      DS    X
+000092                               75 S27      DS    X
+000093                               76 S28      DS    X
+000094                               77 S29      DS    X
+000095                               78 S30      DS    X
+000096                               79 S31      DS    X
+000097                               80 S32      DS    X
+000098                               81 S33      DS    X
+000099                               82 S34      DS    X
+00009A                               83 S35      DS    X
+00009B                               84 S36      DS    X
+00009C                               85 S37      DS    X
+00009D                               86 S38      DS    X
+00009E                               87 S39      DS    X
+00009F                               88 S40      DS    X
+0000A0                               89 S41      DS    X
+0000A1                               90 S42      DS    X
+0000A2                               91 S43      DS    X
+0000A3                               92 S44      DS    X
+0000A4                               93 S45      DS    X
+0000A5                               94 S46      DS    X
+0000A6                               95 S47      DS    X
+0000A7                               96 S48      DS    X
+                                                                                                               PAGE    4
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 08.14 10/01/26
+0000A8                               97 S49      DS    X
+0000A9                               98 S50      DS    X
+0000AA                               99 S51      DS    X
+0000AB                              100 S52      DS    X
+0000AC                              101 S53      DS    X
+0000AD                              102 S54      DS    X
+0000AE                              103 S55      DS    X
+0000AF                              104 S56      DS    X
+0000B0                              105 S57      DS    X
+0000B1                              106 S58      DS    X
+0000B2                              107 S59      DS    X
+0000B3                              108 S60      DS    X
+0000C0                              109 XREFB    CSECT  case 10
+                            000C0   110          USING XREFB,15
+0000C0 4110 F008      000C8         111          LA    R1,=F'2'
+0000C8                              112          LTORG
+0000C8 00000002                     113                =F'2'
+0000CC C1C2C3C4C5C6C7C8             114                =C'ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCX
+0000D4 C9D1C1C2C3C4C5C6                                DEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIX
+0000DC C7C8C9D1C1C2C3C4                                JABCDEFGHIJABCDEF'
+00014A F0F1F2F3F4F5F6F7             115                =C'01234567890123456789012345678901234567890123456789012X
+000152 F8F9F0F1F2F3F4F5                                34567890123456789012345678901234567890123456789012345678X
+00015A F6F7F8F9F0F1F2F3                                901234567'
+                            00000   116          USING XREFCOV,14
+0001C0 4110 E0B8      000B8         117          LA    R1,=F'3'
+000000                              118          END   XREFCOV
+0000B8 00000003                     119                =F'3'
+                                                  RELOCATION DICTIONARY                                        PAGE    5
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 08.14 10/01/26
+ 0001     0001      0C     000000
+ 0001     0001      0C     000004
+ 0001     0001      0C     000008
+ 0001     0001      0C     00000C
+ 0001     0001      0C     000010
+ 0001     0001      0C     000014
+ 0001     0001      0C     000018
+ 0001     0001      0C     00001C
+ 0001     0001      0C     000020
+ 0001     0001      0C     000024
+ 0001     0001      0C     000028
+ 0001     0001      0C     00002C
+ 0001     0001      0C     000030
+ 0001     0001      0C     000034
+ 0001     0001      0C     000038
+ 0001     0001      0C     00003C
+ 0001     0001      08     000049
+ 0001     0001      04     000052
+ 0001     0002      1C     000060
+ 
+                                                  CROSS-REFERENCE                                              PAGE    6
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.14 10/01/26
+CMD      00001 00000002 00025  00030
+DUPE     00001 00000006 00039  ****DUPLICATE****
+FOUR     00001 00000004 00024  00029 00037
+F1       00004 00000074 00048  00026 00026 00026 00026 00026 00026 00026 00026 00027 00027 00027 00027 00027 00027 00027
+                               00027 00028 00030 00033 00035 00036 00045
+NOWHERE  ****UNDEFINED****     00044
+ONE      00001 00000001 00022  00030
+R1       00001 00000001 00020  00028 00033 00034 00046 00047 00111 00117
+TWO      00001 00000002 00023  00029 00037
+VONLY    ****UNDEFINED****     00043
+XDEF     00001 00000000 00041  ****DUPLICATE****
+XREFB    00001 000000C0 00109  00110
+XREFCOV  00001 00000000 00018  00019 00116 00118
+ZERO     00001 00000000 00021  00030
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    7
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 08.14 10/01/26
+=F'3'    00004 000000B8 00119  00117
+=F'2'    00004 000000C8 00113  00111
+=C'ABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFGHIJABCDEFG
+     HIJABCDEF'
+         00126 000000CC 00114  00046
+=C'012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456
+     7'  00118 0000014A 00115  00047
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    8
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 08.14 10/01/26
+   31  IFO242      SPACE OPERAND NOT A SINGLE POSITIVE DECIMAL SELFDEFINING TERM
+   32  IFO178      SYNTAX ERROR NEAR OPERAND COLUMN 1
+   36  IFO205      RELOCATABLE Y-TYPE CONSTANT, VALUE TRUNCATED TO RIGHTMOST 2 BYTES
+   39  IFO196      DUPE HAS BEEN PREVIOUSLY DEFINED
+   41  IFO196      XDEF HAS BEEN PREVIOUSLY DEFINED
+   43  IFO188      VONLY IS AN UNDEFINED SYMBOL
+   44  IFO188      NOWHERE IS AN UNDEFINED SYMBOL
+   46  IFO209      ADDRESSABILITY ERROR- BASE AND DISPLACEMENT CANNOT BE RESOLVED AND ARE SET TO 0
+   47  IFO209      ADDRESSABILITY ERROR- BASE AND DISPLACEMENT CANNOT BE RESOLVED AND ARE SET TO 0
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     9
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), NODECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF(SHORT)
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT        119
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         0
+TOTAL RECORDS PRINTED                       218

@@ -43,7 +43,10 @@ SYS1.MACLIB members).
   ESD/TXT/RLD model — PC/LD symbols, multi-card gap-aware TXT, RLD bit-7
   continuation packing — matching IFOX exactly.
 - **`-a` listing:** ASCII, column-exact to IFOX SYSPRINT for the ESD/SOURCE/RLD
-  sections.
+  sections and the CROSS-REFERENCE / LITERAL CROSS-REFERENCE pages (`-as`, and
+  part of a bare `-a`). `--xref=short` gives XF's `XREF(SHORT)`, which leaves
+  out the symbols nothing references. The pages are compared against every
+  IFOX00 listing in `tests/listref` by `tests/listref/xref.py`.
 
 ## Source encoding
 
@@ -68,8 +71,7 @@ form, i.e. Latin-1 for a decoded UTF-8 source. See mvslovers/cc370#483.
 
 ## Open points
 
-- More `-a` listing pages (CROSS-REFERENCE, LITERAL XREF, DIAGNOSTICS,
-  STATISTICS) — currently provisional / no-ops.
+- More `-a` listing pages (DIAGNOSTICS, STATISTICS) — currently not produced.
 - A cleaner driver integration: replace the stopgap `as` shell wrapper that
   cc370 invokes (which hardcodes the crent370 macro path and the ephemeral
   `/tmp/sys1mac`) with a proper split + a permanent, configurable macro home.

@@ -1,13 +1,14 @@
 #!/bin/sh
-# Verify the as370 -a assembler listing (ESD + SOURCE + RLD sections) is
-# column-exact to the IFOX00 reference.
+# Verify the as370 -a assembler listing (ESD + SOURCE + RLD sections, and the
+# CROSS-REFERENCE pages) is column-exact to the IFOX00 reference.
 #
 # Two documented exceptions are tolerated on every case:
 #   1. The page-header identity block (cols 90+ on the column-header lines) is
 #      as370's own translator id, not IFOX's -- by design (see README.md).
 #   2. IFOX's inline `*** ERROR ***` diagnostic marker is not implemented.
-# The XREF / LITERAL XREF / DIAGNOSTICS pages are likewise not produced yet and
-# are excluded from the comparison.
+# The DIAGNOSTICS AND STATISTICS page is not produced yet and is excluded. The
+# cross-reference pages are compared in case 1 and, across every reference in
+# this directory, by xref.py (case 8).
 cd "$(dirname "$0")/../.." || exit 2
 # Macro-library root (maclib + sysmac). These live in libc370 now; the default
 # used to point at crent370, the frozen v1.x libc, which no longer needs to be
@@ -24,7 +25,7 @@ fail=0
 have_libc=1
 [ -d "$LIBC370/maclib" ] && [ -d "$LIBC370/sysmac" ] || have_libc=0
 
-# --- case 1: tstlist -- general listing (ESD + SOURCE + RLD) ----------------
+# --- case 1: tstlist -- general listing (ESD + SOURCE + RLD + XREF) ---------
 if [ $have_libc = 0 ]; then
     echo "listref tstlist: SKIPPED (needs the libc370 checkout; set LIBC370=<path>)"
 else
@@ -37,10 +38,10 @@ python3 - "$REF" "$OUT" <<'PY'
 import sys
 ref  = open(sys.argv[1]).read().split("\n")
 mine = open(sys.argv[2]).read().split("\n")
-# keep only the sections as370 produces (ESD, source, RLD); stop at CROSS-REFERENCE
-cut = next((i for i, l in enumerate(ref) if "CROSS-REFERENCE" in l), len(ref))
+# keep only the sections as370 produces (ESD, source, RLD, XREF); stop at DIAGNOSTICS
+cut = next((i for i, l in enumerate(ref) if "DIAGNOSTICS AND STATISTICS" in l), len(ref))
 ref = ref[:cut]
-HDR = ("SYMBOL   TYPE", "  LOC  OBJECT", "POS.ID")   # column-header lines carry the identity block
+HDR = ("SYMBOL   TYPE", "  LOC  OBJECT", "POS.ID", "SYMBOL    LEN")   # column-header lines carry the identity block
 def norm(lines):
     out = []
     for l in lines:
@@ -61,7 +62,7 @@ for i in range(max(len(R), len(M))):
         print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
 sys.exit(0 if ok else 1)
 PY
-[ $? = 0 ] && echo "listref tstlist: ESD + SOURCE + RLD column-exact to IFOX00" \
+[ $? = 0 ] && echo "listref tstlist: ESD + SOURCE + RLD + XREF column-exact to IFOX00" \
            || { echo "listref tstlist: MISMATCH"; fail=1; }
 rm -f "$OUT"
 fi
@@ -374,5 +375,12 @@ PYO
 [ $? = 0 ] && echo "listref orglist: ORG/CSECT/DSECT counters column-exact to IFOX00 (COM diverges, #229)" \
            || { echo "listref orglist: MISMATCH"; fail=1; }
 rm -f "$OUT7"
+
+# --- case 8: the cross-reference pages of every reference here -- #538 ------
+# Every listing in this directory was captured with XREF(FULL), so each carries
+# a CROSS-REFERENCE page and most a LITERAL CROSS-REFERENCE: xref.py compares
+# them all, maps statement numbers through the SOURCE page where that page
+# numbers differently, and names the issue behind each case it lets differ.
+python3 tests/listref/xref.py || fail=1
 
 exit $fail

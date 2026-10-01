@@ -1250,8 +1250,33 @@ was found while building a `listref` case, and each is excluded from that case
   `fd287d3`. What survives is the object code — a `DS` in a DSECT body still
   prints bytes from the enclosing section. Two rows of `listref/README.md` are
   stale for the same reason.
-- **#28** — LTORG renders at the pre-alignment LOC, and literal-pool entries are
-  numbered out of source order.
+- ~~**#28**~~ — LTORG rendered at the pre-alignment LOC, and a mid-stream pool's
+  literals were numbered behind END. **Fixed on `feat/538-xref`** as a
+  prerequisite of #538: the cross-reference prints those numbers. `listref`
+  case 3 now runs through the pool, and the SOURCE pages of 44 of the 122
+  references are identical where 36 were (11 improved, none worse).
+- **#538** — the CROSS-REFERENCE and LITERAL CROSS-REFERENCE pages, on
+  `feat/538-xref`. `-as`, part of a bare `-a`, and `--xref=short` for
+  `XREF(SHORT)`. Of the 122 references in `tests/listref`, 81 are identical and
+  35 more once the SOURCE page's own numbering is mapped across
+  (`listref/xref.py`, `check.sh` case 8). Of the other 6, five are assembly
+  divergences the page reports faithfully (#526, #529, #531, #532–#535, and
+  `equparen`'s IFO234 gap, where the XREF shows F7 = 4 against IFOX00's 0 — a
+  value gap, not only the message gap the fixture records), and one is a listing
+  gap of its own: the TITLE name is not printed in columns 1–8 of any page
+  heading (`titlenamed`). Three
+  IBM modules with an IFOX00 `XREF(SHORT)` listing in `mvs38src` match entry for
+  entry including page breaks. **`tests/xrefcov.s`** covers what neither had —
+  a literal past 120 characters, `EXTRN` after a definition, `CNOP`/`CCW`/`DROP`,
+  a name only seen in `V()`, pools in two sections (address order) — and both
+  its `XREF(FULL)` and `XREF(SHORT)` pages are exact (MVSTK5-REF JOB00302,
+  JOB00303). Two rules read in the IFOX00 source were refuted there: a symbol as
+  `SPACE`'s operand or `MNOTE`'s severity is no reference (IFO242, IFO178).
+  **The same fixture's deck differs, and that is not #538:** as370 is silent
+  where IFOX00 flags `EXTRN` after a definition (IFO196, and as370 still
+  writes the ER), `A(VONLY)` for a name only seen in `V()` (IFO188), a literal
+  pooled in another section than the `USING` base (IFO209, zeroed), plus
+  IFO242 / IFO178 / IFO205 — new, not yet filed.
 - **#91** — a library-member continuation diagnostic cannot be reconciled with the
   statement it belongs to, so the flagged count can be one too high. The printed
   count only; RC, bytes and listing are unaffected, and **0 of 835 ecosystem
