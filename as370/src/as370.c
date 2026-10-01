@@ -2086,6 +2086,7 @@ struct macro {
      * (cc370#287). Growing also SAVES memory: 256 slots x 8,192 pointers was
      * 16 MB of static array for bodies that are typically a few dozen cards. */
     char **body; char **bodyseq; int nbody, bodycap;
+    char **bodylog;                /* per body statement: the continued model's logical text, or NULL (#370) */
     char endlbl[20];               /* sequence symbol on the MEND line, if any */
     /* cc370#97: per body card, the first variable symbol the definition's
      * dictionary does not hold when the card is reached in TEXT order; "" when
@@ -3402,6 +3403,35 @@ static int op_is_cond_expr(const char *s, int n) {
  * where to stop.  Counted here because this is the only place that knows: it is
  * the loop that consumes the continuations. */
 static int *join_span;
+/* The LOGICAL text of a continued statement (#370): card 1's columns 1-71 and
+ * each continuation card's 16-71, every one at full width, with the first
+ * card's column-72 character in front. The joined statement cannot stand in
+ * for it -- a continuation card that only carries remark text is dropped from
+ * the join (contrem) -- and a generated statement is listed by substituting
+ * into this text and cutting it into cards again. NULL for a one-card
+ * statement. Filled only while a caller sets it, like join_span. */
+static char **join_logical;
+/* After the text, a '\1' and then columns 73-80 of every continuation card,
+ * eight characters each: IFOX00 prints each card's own sequence field on the
+ * card that carries it (tests/gencont.s, CSEQ; JOB00313). */
+static char *logical_text(char **in, int first, int end) {
+    int k, n = 1 + 71 + (end - first - 1) * (56 + 8) + 1, a = 0;
+    char *t = malloc((size_t)n + 1);
+    if (!t) return NULL;
+    t[a++] = (rawlen(in[first]) > 71) ? in[first][71] : 'X';
+    for (k = first; k < end; k++) {
+        int from = (k == first) ? 0 : 15, to = 71, cl = rawlen(in[k]), j;
+        for (j = from; j < to; j++) t[a++] = (j < cl) ? in[k][j] : ' ';
+    }
+    while (a > 1 && t[a - 1] == ' ') a--;
+    t[a++] = '\1';
+    for (k = first + 1; k < end; k++) {
+        int cl = rawlen(in[k]), j;
+        for (j = 72; j < 80; j++) t[a++] = (j < cl) ? in[k][j] : ' ';
+    }
+    t[a] = 0;
+    return t;
+}
 static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12], int *org) {
     int i = 0, no = 0;
     while (i < n && no < maxout) {
@@ -3426,6 +3456,7 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
              * with three continuation cards is not flagged. The joiner cannot
              * tell a macro call from a machine op, so that half is #78. */
             int len = rawlen(l), cont = (len > 71 && l[71] != ' '), ncont = 0, stmt = i + 1;
+            if (join_logical) join_logical[no] = NULL;
             out[no++] = strdup(l); i++;
             while (cont && i < n) {
                 const char *c = in[i]; int cl = rawlen(c), nxt;
@@ -3522,6 +3553,7 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
         /* `i' has consumed every continuation card of this statement by
          * now, and org[no] is its first: the span is the difference. */
         if (join_span && org) join_span[no] = i - (org[no] - 1);
+        if (join_logical) join_logical[no] = (i - stmt_card >= 1) ? logical_text(in, stmt_card - 1, i) : NULL;
         out[no++] = strdup(acc);
     }
     return no;
@@ -3564,6 +3596,10 @@ static int macro_extent(char **in, int n) {
     }
     return n;
 }
+static char **g_lib_logical;   /* lib_load's join_logical, aligned with its buffer (#370) */
+static char **g_main_raw, **g_main_logical;   /* the source's joined statements and their logical texts */
+static char (*g_main_seq)[12];                  /* ... and their first cards' columns 73-80 */
+static char **g_cap_logical;   /* the logical texts aligned with capture_macro's `in', or NULL */
 static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12], int as_macro) {
     char path[256]; if (!lib_path(name, path)) return -1;
     FILE *f = src_fopen(path, name); if (!f) return -1;
@@ -3573,16 +3609,19 @@ static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[
     if (n >= 16384) fprintf(stderr, "as370: library member %s is longer than 16384 cards and was cut\n", name);
     if (as_macro) n = macro_extent(tmp, n);   /* a macro definition ends at MEND; what follows is not read */
     { int r; const char *sv = g_joinsrc;    /* a continuation diagnostic in here names the member, not a source line */
-      g_joinsrc = name; r = join_cont(tmp, n, buf, max, seqbuf, NULL); g_joinsrc = sv; return r; }
+      char **svl = join_logical; if (as_macro) join_logical = g_lib_logical;
+      g_joinsrc = name; r = join_cont(tmp, n, buf, max, seqbuf, NULL); g_joinsrc = sv; join_logical = svl; return r; }
 }
-static void mac_body_add(struct macro *m, const char *card, const char *seq) {
+static void mac_body_add(struct macro *m, const char *card, const char *seq, const char *log) {
     if (m->nbody >= m->bodycap) {
         int nc = m->bodycap ? m->bodycap * 2 : 64;
         char **nb = realloc(m->body, (size_t)nc * sizeof *nb);
         char **ns = realloc(m->bodyseq, (size_t)nc * sizeof *ns);
-        if (!nb || !ns) { free(nb); free(ns); fprintf(stderr, "as370: out of memory for a macro body\n"); exit(2); }
-        m->body = nb; m->bodyseq = ns; m->bodycap = nc;
+        char **nl = realloc(m->bodylog, (size_t)nc * sizeof *nl);
+        if (!nb || !ns || !nl) { fprintf(stderr, "as370: out of memory for a macro body\n"); exit(2); }
+        m->body = nb; m->bodyseq = ns; m->bodylog = nl; m->bodycap = nc;
     }
+    m->bodylog[m->nbody] = log ? strdup(log) : NULL;
     m->bodyseq[m->nbody] = seq ? strdup(seq) : NULL;
     m->body[m->nbody++] = strdup(card);
 }
@@ -3716,7 +3755,7 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
             m->nparm++; } }
     while (++i < nin) { char bb[STMTSZ], bl[32], bo[16], bd[STMTSZ]; scopy(bb, in[i], STMTSZ - 1); parse(bb, bl, bo, bd);
         if (!strcmp(bo, "MEND")) { if (bl[0] == '.') scopy(m->endlbl, bl, sizeof m->endlbl - 1); break; }
-        mac_body_add(m, in[i], inseq ? inseq[i] : NULL); }
+        mac_body_add(m, in[i], inseq ? inseq[i] : NULL, g_cap_logical ? g_cap_logical[i] : NULL); }
     macro_dict(m);
     *ip = i; return m;
 }
@@ -3730,6 +3769,8 @@ static struct macro *lib_load(const char *name) {
     static char **buf; static char (*seqbuf)[12];
     if (!buf) { buf = malloc(LIBMAX * sizeof *buf); seqbuf = malloc((size_t)LIBMAX * 12);
         if (!buf || !seqbuf) { fprintf(stderr, "as370: out of memory for the macro library buffer\n"); exit(2); } }
+    if (!g_lib_logical && !(g_lib_logical = calloc(LIBMAX, sizeof *g_lib_logical))) {
+        fprintf(stderr, "as370: out of memory for the macro library buffer\n"); exit(2); }
     int n = lib_readlines(name, buf, LIBMAX, seqbuf, 1); if (n < 0) return NULL;   /* a macro: stops at MEND */
     if (n >= LIBMAX) fprintf(stderr, "as370: macro %s is longer than %d statements and was cut\n", name, LIBMAX);
     int i = 0; for (; i < n; i++) { char b[STMTSZ], l[32], o[16], od[STMTSZ]; scopy(b, buf[i], STMTSZ - 1);
@@ -3737,7 +3778,11 @@ static struct macro *lib_load(const char *name) {
         if (strcmp(o, "MACRO")) return NULL;
         break; }
     if (i >= n) return NULL;
-    return capture_macro(buf, n, &i, seqbuf);
+    char **svc = g_cap_logical; g_cap_logical = g_lib_logical;
+    struct macro *mm = capture_macro(buf, n, &i, seqbuf);
+    g_cap_logical = svc;
+    { int k; for (k = 0; k < n; k++) { free(g_lib_logical[k]); g_lib_logical[k] = NULL; } }
+    return mm;
 }
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
@@ -3919,6 +3964,56 @@ static void render_model_ex(struct ctx *c, const char *model, const char *seq, c
 }
 static void render_model(struct ctx *c, const char *model, const char *seq, char *out) {
     render_model_ex(c, model, seq, out, 0xF, 0);
+}
+/* A CONTINUED model statement, listed as IFOX00 lists it (#370): substitute
+ * into the logical text -- every card's columns, remarks included -- and cut
+ * the result into cards again, 71 columns on the first with the model's own
+ * column-72 character after them, then 56 from column 16 on each following
+ * one. What fits in 71 columns after substitution is one card: XF prints CORD
+ * and CSPL of #370's fixture on one line because substitution SHORTENED them,
+ * CPLN (nothing substituted) on two, and contrem's 45+ on two because it grew.
+ * The cards are separated by '\n'; a_src_section prints each after the first
+ * as an unnumbered `+' row. `out' must hold OUTSZ_LOG bytes. */
+#define OUTSZ_LOG 512
+static void render_model_log(struct ctx *c, const char *log, const char *seq, char *out) {
+    char ln[OUTSZ_LOG]; int i, cur = 0, n;
+    const char *text = log + 1; char cc = log[0];
+    const char *cseq = strchr(text, '\1');           /* the continuation cards' sequence fields */
+    int mlen = cseq ? (int)(cseq - text) : (int)strlen(text), ncard = 0;
+    if (cseq) cseq++;
+    int fcol[4]; char fld[4][FLDMAX];
+    for (i = 0; i < OUTSZ_LOG - 1; i++) ln[i] = ' ';
+    ln[OUTSZ_LOG - 1] = 0;
+    { char tx[OUTSZ_LOG]; int tl = mlen < OUTSZ_LOG - 1 ? mlen : OUTSZ_LOG - 1;
+      memcpy(tx, text, (size_t)tl); tx[tl] = 0;
+      split_card(tx, tl, tl + 1, fcol, fld); }
+    for (i = 0; i < 4; i++) {
+        if (!fld[i][0]) continue;
+        char sub[FLDMAX * 2];
+        msub_ex(c, fld[i], sub, sizeof sub, 0);
+        int col = fcol[i]; if (col < cur) col = cur;
+        int sl = (int)strlen(sub), j; for (j = 0; j < sl && col + j < OUTSZ_LOG - 1; j++) ln[col + j] = sub[j];
+        cur = col + sl + 1;
+    }
+    n = OUTSZ_LOG - 1; while (n > 0 && ln[n - 1] == ' ') n--;
+    int o = 0, at = 0, k, col;
+    for (k = 0; k < 71; k++) out[o++] = (at < n) ? ln[at++] : ' ';
+    if (at < n) out[o++] = cc;                         /* more follows: the model's column 72 */
+    if (seq) { while (o < 72) out[o++] = ' '; for (k = 0; k < 8 && seq[k]; k++) out[o++] = seq[k]; }
+    while (at < n && o < OUTSZ_LOG - 80) {             /* each following card: columns 16-71 */
+        out[o++] = '\n';
+        for (col = 0; col < 15; col++) out[o++] = ' ';
+        while (at < n && col < 71) { out[o++] = ln[at++]; col++; }
+        if (at < n) { while (col < 71) { out[o++] = ' '; col++; } out[o++] = cc; col++; }
+        if (cseq && (int)strlen(cseq) >= 8 * (ncard + 1)) {   /* the card's own columns 73-80, when it had one */
+            const char *q = cseq + 8 * ncard; int blank = 1;
+            for (k = 0; k < 8; k++) if (q[k] != ' ') blank = 0;
+            if (!blank) { while (col < 72) { out[o++] = ' '; col++; } for (k = 0; k < 8; k++) out[o++] = q[k]; }
+        }
+        ncard++;
+    }
+    while (o > 0 && out[o - 1] == ' ') o--;
+    out[o] = 0;
 }
 /* expand a macro invocation, interpreting conditional assembly */
 /* Pushed at the call and popped at its end, so every line emitted between them
@@ -4114,7 +4209,10 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
           memcpy(cut, bc, (size_t)keep); cut[keep] = 0;
           g_ifo007 = 0;                          /* cc370#421: arm for THIS model card */
           msub(c, cut, ex, sizeof ex); }
-        char gimg[256]; render_model(c, m->body[pc], m->bodyseq[pc], gimg); g_genimg = gimg;   /* column-preserved image for the SOURCE column */
+        char gimg[OUTSZ_LOG];   /* column-preserved image for the SOURCE column; a continued model's carries its cards (#370) */
+        if (m->bodylog && m->bodylog[pc]) render_model_log(c, m->bodylog[pc], m->bodyseq[pc], gimg);
+        else render_model(c, m->body[pc], m->bodyseq[pc], gimg);
+        g_genimg = gimg;
         mexp_line(ex, out, nout, depth + 1);
         pc++;
     }
@@ -4478,7 +4576,9 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
         }
         if (!strcmp(op, "MACRO")) {   /* COPY'd / inline macro definition */
             int from = pc, k;
-            capture_macro(arr, n, &pc, NULL);
+            char **svc = g_cap_logical; g_cap_logical = (arr == g_main_raw) ? g_main_logical : NULL;
+            capture_macro(arr, n, &pc, arr == g_main_raw ? g_main_seq : NULL);   /* an in-stream model card keeps its 73-80 too */
+            g_cap_logical = svc;
             /* IFOX00 lists an in-stream definition where it is written, every
              * card from MACRO to MEND numbered as a statement, `.*' comments
              * included, and never again at a call (tests/listref: contrem,
@@ -7688,6 +7788,8 @@ static void a_src_section(char **lines, int nl) {
         { char sn[12]; int dl = sprintf(sn, "%d", a_lstmt[i]); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
         int rn = (gen || gcard[i]) ? -1 : a_rawno(line_org[i], lines[i]);
         int span = rn >= 0 && raw_span[rn] > 1 ? raw_span[rn] : 1, c;
+        const char *gseg = gcard[i];   /* a generated image of several cards, '\n'-separated (#370) */
+        if (rn < 0 && gseg) { const char *q; for (q = gseg; *q; q++) if (*q == '\n' && q[1] && q[1] != '\r' && q[1] != '\n') span++; }   /* not a card's own trailing newline */
         for (c = 0; c < span; c++) {
             /* A continuation row carries the next eight bytes of object code, as
              * the first carries the first eight: contrem's 18-byte DC lists 8+8
@@ -7697,8 +7799,14 @@ static void a_src_section(char **lines, int nl) {
                 if (show_obj && len > 8 * c) a_objcode(loc + 8 * c, len - 8 * c, is_instr, hex);
                 if (hex[0]) a_locobj(ln, loc + 8 * c, hex); else { for (j = 0; j < 255; j++) ln[j] = ' '; ln[255] = 0; }
             }
-            const char *s = span > 1 ? a_raw0[a_raw_org[rn] - 1 + c] : gcard[i] ? gcard[i] : lines[i];
-            int sl = (int)strlen(s);
+            const char *s; int sl;
+            if (rn >= 0 && span > 1) { s = a_raw0[a_raw_org[rn] - 1 + c]; sl = (int)strlen(s); }
+            else if (gseg) {                                /* this card of the image, up to its '\n' */
+                const char *e = strchr(gseg, '\n');
+                s = gseg; sl = e ? (int)(e - gseg) : (int)strlen(gseg);
+                gseg = e ? e + 1 : gseg + sl;
+                if (c && gen) ln[39] = '+';                  /* a generated statement's continuation row keeps the `+' */
+            } else { s = lines[i]; sl = (int)strlen(s); }
             while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
             for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j];
             a_src_emit(ln);
@@ -8484,9 +8592,11 @@ int main(int argc, char **argv) {
     }
     src_fclose(f);
     static int raw_org[MAXLINES];
-    join_span = raw_span;
-    int n = join_cont(raw0, nr, raw, MAXLINES, NULL, raw_org);
-    join_span = NULL;   /* fold column-72 continuations; raw_org = input line per statement */
+    static char *raw_logical[MAXLINES]; static char raw_seq[MAXLINES][12];
+    join_span = raw_span; join_logical = raw_logical;
+    int n = join_cont(raw0, nr, raw, MAXLINES, raw_seq, raw_org);
+    join_span = NULL; join_logical = NULL;
+    g_main_raw = raw; g_main_logical = raw_logical; g_main_seq = raw_seq;   /* fold column-72 continuations; raw_org = input line per statement */
     a_raw0 = raw0; a_raw = raw; a_raw_org = raw_org; a_nraw = n;   /* the listing lists a continued statement card by card (#609) */
 
     static char *lines[MAXLINES];
