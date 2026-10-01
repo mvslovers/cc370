@@ -6108,6 +6108,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                 while (need > 0) { if (pass == 2) put(lc, 0x0700, 2); lc += 2; need -= 2; }
             }
         } else if (!strcmp(op, "ORG")) {                       /* set the location counter (ORG expr) or reset to the high-water mark (bare ORG) */
+            /* A name on an ORG is the counter BEFORE it moves, length 1:
+             * `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8, and A(L1) is
+             * 00000008 (MVSTK5-REF JOB00282, tests/lblorg.s; #526). as370 left
+             * it undefined -- IFO188 on every use and A(L1) = 0. */
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 1; }
             if (lc > org_hwm) org_hwm = lc;
             if (!opnd[0] || opnd[0] == ',') lc = org_hwm;       /* bare ORG or `ORG ,` resets to the high-water mark */
             else {
