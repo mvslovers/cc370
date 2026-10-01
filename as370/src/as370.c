@@ -115,7 +115,10 @@ static struct esdent esdord[MAXSYM]; static int nesdord;
  * following by position, the clobbered value shifted the whole first card
  * (cc370#199). */
 
-struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; };
+struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; int pline; int stmt; };
+/* `pline` is 1 + the lines[] index of the LTORG or END that placed the literal,
+ * and `stmt` its statement number in the -a listing: a pool is listed behind the
+ * statement that flushed it, and numbered from there. */
 /* `sect` is where the literal was first REFERENCED -- it drives USING
  * resolution, and an END pool that moves sections re-stamps it so the
  * reference resolves through a USING covering the section it landed in.
@@ -6797,7 +6800,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
                 if (pass == 1) { l->loc = lc; l->psect = cur_sect_id;   /* =V external refs are registered at first use in lit_get */
                     if (defer) l->sect = cur_sect_id; }   /* the pool moved sections: references resolve through the USING covering THIS one */
-                else emit_lit(l);
+                else { l->pline = i + 1; emit_lit(l); }
                 l->placed = 1;
                 lc += l->size;
             } }
@@ -7095,17 +7098,62 @@ static void a_locobj(char *ln, long loc, const char *hex) {
     char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6);
     if (hex && hex[0]) memcpy(ln + 7, hex, strlen(hex));
 }
+/* Statement numbers of the SOURCE page.
+ *
+ * Every expanded line is a statement, and a literal pool is numbered where it
+ * is listed: behind the LTORG or END that placed it, in address order. The
+ * listing used to print every literal after the last line, which is right only
+ * for a single END pool -- a mid-stream LTORG's literals came out behind END,
+ * and every statement after that LTORG was numbered too low by the size of its
+ * pool (IFOX00 lists the pool right below the LTORG; tests/listref,
+ * aliasext). */
+static int *a_lstmt;            /* statement number of lines[i] */
+static int *a_lorder, a_nlord;  /* placed literals, by (pline, loc); pline 0 sorts first */
+static int a_lcur;              /* a_src_pool's cursor into a_lorder */
+static int a_bypool(const void *pa, const void *pb) {
+    const struct lit *a = &lits[*(const int *)pa], *b = &lits[*(const int *)pb];
+    if (a->pline != b->pline) return a->pline - b->pline;
+    return a->loc < b->loc ? -1 : a->loc > b->loc;
+}
+static void a_number(int nl) {
+    int i, k, st = 0;
+    free(a_lstmt); free(a_lorder);
+    a_lstmt = calloc((size_t)nl + 1, sizeof *a_lstmt);
+    a_lorder = calloc((size_t)nlit + 1, sizeof *a_lorder);
+    if (!a_lstmt || !a_lorder) { fprintf(stderr, "as370: out of memory\n"); exit(2); }
+    for (a_nlord = 0, k = 0; k < nlit; k++) if (lits[k].placed) a_lorder[a_nlord++] = k;
+    if (a_nlord > 1) qsort(a_lorder, (size_t)a_nlord, sizeof *a_lorder, a_bypool);
+    for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) ;   /* never placed in pass 2: numbered last */
+    a_lcur = k;
+    for (i = 0; i < nl; i++) {
+        a_lstmt[i] = ++st;
+        for (; k < a_nlord && lits[a_lorder[k]].pline == i + 1; k++) lits[a_lorder[k]].stmt = ++st;
+    }
+    for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) lits[a_lorder[k]].stmt = ++st;
+}
+static void a_src_lit(const struct lit *l) {
+    char ln[256], hex[40];
+    a_objcode(l->loc, l->size, 0, hex);
+    a_locobj(ln, l->loc, hex);
+    { char sn[12]; int dl = sprintf(sn, "%d", l->stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
+    { int sl = (int)strlen(l->text), x; for (x = 0; x < sl && 55 + x < 255; x++) ln[55 + x] = l->text[x]; }   /* literal text at the operand column (listing col 56) */
+    a_src_emit(ln);
+}
+/* the literals listed behind statement `pline' (0: the stragglers, last) */
+static void a_src_pool(int pline) {
+    int k;
+    if (!pline) { for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) a_src_lit(&lits[a_lorder[k]]); return; }
+    for (; a_lcur < a_nlord && lits[a_lorder[a_lcur]].pline == pline; a_lcur++) a_src_lit(&lits[a_lorder[a_lcur]]);
+}
 /* the SOURCE STATEMENT listing: one row per expanded line (macro-generated rows
- * carry a '+'), then the literal pool numbered after the last source statement.
+ * carry a '+'), each literal pool behind the LTORG or END that placed it.
  * Columns: LOC@1 OBJECT@8 ADDR1@23 ADDR2@29 STMT(right-justified to 39)
  * '+'@40 SOURCE@41 -- the SOURCE image keeps the model card's column layout
  * (see gcard / render_model). */
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j;
     a_srcrows = A_SRC_LINECOUNT;   /* force the header before the first row */
-    int stmt = 0;
     for (i = 0; i < nl; i++) {
-        stmt++;
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         parse(buf, lbl, op, opnd);
@@ -7134,40 +7182,28 @@ static void a_src_section(char **lines, int nl) {
             if (pad) { char hex[40]; a_objcode(loc, pad, 0, hex); a_locobj(ln, loc, hex); a_src_emit(ln); loc += pad; len -= pad; }
         }
         for (j = 0; j < 255; j++) { ln[j] = ' '; } ln[255] = 0;
+        if (show_loc && !strcmp(op, "LTORG")) loc = align8(loc);   /* LOC is where the pool starts: the counter after the doubleword alignment (tests/listref, litdup and pool) */
         if (show_loc) { char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6); }
         if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex); if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
         if (!noasm && lrecs[i].hasa1) { char b[16]; sprintf(b, "%05lX", lrecs[i].a1 & 0xfffffL); memcpy(ln + 22, b, 5); }
         if (!noasm && lrecs[i].hasa2) { char b[16]; sprintf(b, "%05lX", lrecs[i].a2 & 0xfffffL); memcpy(ln + 28, b, 5); }
         if (show_equ && lbl[0]) { struct sym *s = sym_find(lbl);
             if (s && s->defined) { char b[16]; sprintf(b, "%05lX", s->val & 0xfffffL); memcpy(ln + 28, b, 5); } }
-        { char sn[12]; int dl = sprintf(sn, "%d", stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
+        { char sn[12]; int dl = sprintf(sn, "%d", a_lstmt[i]); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
         { const char *s = gcard[i] ? gcard[i] : lines[i]; int sl = (int)strlen(s);
           while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
           for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j]; }
         a_src_emit(ln);
+        a_src_pool(i + 1);
     }
-    /* literal pool: continue the statement numbers, in placement (address) order.
-     * NB: this dumps ALL literals after the last source line -- correct for a
-     * single trailing END pool, but a mid-stream LTORG would print its literals
-     * here instead of at the LTORG, with out-of-sequence statement numbers. */
-    { int order[4096], no = 0, k;
-      for (k = 0; k < nlit && no < 4096; k++) if (lits[k].placed) order[no++] = k;
-      for (k = 1; k < no; k++) { int t = order[k], m = k - 1;     /* insertion sort by location */
-          while (m >= 0 && lits[order[m]].loc > lits[t].loc) { order[m + 1] = order[m]; m--; }
-          order[m + 1] = t; }
-      for (k = 0; k < no; k++) { struct lit *l = &lits[order[k]];
-          char hex[40]; a_objcode(l->loc, l->size, 0, hex);
-          a_locobj(ln, l->loc, hex);
-          stmt++;
-          { char sn[12]; int dl = sprintf(sn, "%d", stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
-          { int sl = (int)strlen(l->text), x; for (x = 0; x < sl && 55 + x < 255; x++) ln[55 + x] = l->text[x]; }   /* literal text at the operand column (listing col 56) */
-          a_src_emit(ln); } }
+    a_src_pool(0);   /* a literal no LTORG or END placed (none should be left) */
 }
 static void emit_listing_a(char **lines, int nl) {
     if (!a_on) return;
     alst = alst_fn ? fopen(alst_fn, "w") : stdout;
     if (!alst) { perror(alst_fn); alst = stdout; }
     a_page = 0;
+    a_number(nl);
     if (a_esd) a_esd_section();
     if (a_src) a_src_section(lines, nl);
     if (a_rld) a_rld_section();
@@ -7472,6 +7508,7 @@ static void usage(FILE *o) {
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
 "  --sym=FILE         write the symbol table to FILE as tab-separated data (- = stdout)\n"
+
 "  --stmts=FILE       write one record per generated statement to FILE as\n"
 "                     tab-separated data (- = stdout): where it lands, how many\n"
 "                     bytes it emits, whether it RESERVES them or only ALIGNS,\n"

@@ -113,10 +113,11 @@ rm -f "$OUT2"
 # A relocatable implicit-base operand with no covering USING is IFO209 (severity
 # 8): IFOX zeroes the instruction AND sets ADDR to 0 (unlike IFO228, which keeps
 # the symbol value). This pins the zeroed object + ADDR-0 column against real
-# IFOX00 (JOB00233). The comparison covers the eight L instructions and LABX;
-# it stops at LTORG -- as370's -a mis-renders the LTORG LOC and literal-pool
-# statement numbers (#28), and the DSECT tail hits #24. Both are listing-only
-# (the object deck's pool alignment and literal offsets are byte-identical).
+# IFOX00 (JOB00233). The comparison covers the eight L instructions, LABX, and
+# the LTORG with its pool -- the LTORG at its doubleword-aligned LOC and the
+# literals numbered right behind it, both wrong in as370 before #28. It
+# stops at the DSECT tail, which hits #24 (listing-only: the object deck is
+# byte-identical).
 REF3=tests/listref/ifox-listing-reloc-addr.txt
 OUT3=/tmp/as370-listref-addr.$$
 ASMDATE=07/18/26 ASMTIME=03.11 ./as370 tests/reloc_addr.s -a="$OUT3" >/dev/null 2>&1
@@ -129,7 +130,7 @@ def norm(lines):
     out = []
     for l in lines:
         l = l.replace("\f", "").rstrip()
-        if "LTORG" in l:                   break      # #28 (LTORG/literal) + #24 (DSECT tail) below
+        if "MYDS     DSECT" in l:          break      # #24 (DSECT tail) below
         if l == "":                        continue
         if l.strip() == "*** ERROR ***":   continue   # IFOX-only diagnostic
         out.append(l)
@@ -146,7 +147,7 @@ for i in range(max(len(R), len(M))):
         print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
 sys.exit(0 if ok else 1)
 PY
-[ $? = 0 ] && echo "listref reloc_addr: IFO209 lines column-exact to IFOX00 (object zeroed, ADDR 0)" \
+[ $? = 0 ] && echo "listref reloc_addr: IFO209 lines + LTORG pool column-exact to IFOX00 (object zeroed, ADDR 0)" \
            || { echo "listref reloc_addr: MISMATCH"; fail=1; }
 rm -f "$OUT3"
 
