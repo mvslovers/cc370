@@ -1276,7 +1276,8 @@ was found while building a `listref` case, and each is excluded from that case
   where IFOX00 flags `EXTRN` after a definition (IFO196, and as370 still
   writes the ER), `A(VONLY)` for a name only seen in `V()` (IFO188), a literal
   pooled in another section than the `USING` base (IFO209, zeroed), plus
-  IFO242 / IFO178 / IFO205 — new, not yet filed.
+  IFO242 / IFO178 / IFO205 — filed as #579, #580, #581 (silent) and #582
+  (diagnostics), under #539.
 - **#91** — a library-member continuation diagnostic cannot be reconciled with the
   statement it belongs to, so the flagged count can be one too high. The printed
   count only; RC, bytes and listing are unaffected, and **0 of 835 ecosystem
