@@ -1204,6 +1204,17 @@ mvs_free_label_list (void)
    CODE is the length, in bytes, of the instruction to be emitted.
    LIT is the length of the literal to be emitted.  */
 
+/* True if CODE bytes of instruction and LIT of literal would not fit on the
+   current page -- the condition under which mvs_check_page starts a new one.
+   A branch that chooses its short form must ask this BEFORE choosing: the
+   page break lands in front of the branch, so its target is then judged
+   against a page the branch is no longer on (cc370#575).  */
+int
+mvs_page_would_break (int code, int lit)
+{
+  return mvs_page_code + code + mvs_page_lit + lit > MAX_MVS_PAGE_LENGTH;
+}
+
 #ifdef TARGET_HLASM
 int
 mvs_check_page (FILE *file, int code, int lit)
