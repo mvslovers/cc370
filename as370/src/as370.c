@@ -966,23 +966,36 @@ static long x_add(void);   /* fwd: additive expression (term +/- term ...) */
  * tests/parendepth.s; #529). Only the evaluator's own groups count -- the
  * parentheses of A(...) or of a subscript are not an expression's. */
 static int xdepth_, xdeep_;
-/* An EQU is valued in pass 1 only, so the statement is remembered there and
- * the message raised when pass 2 reaches it (paren_depth_stmt); a statement
- * evaluated in pass 2 reports directly. Once per statement either way. */
-static int pdeep_ln[256], npdeep, npdeep_seen;
-static void note_paren_depth(void) {
-    static int last = -1;
+/* A self-defining term past its maximum -- C more than 4 characters, X more
+ * than 8 digits, B more than 32 -- or with nothing between the quotes is
+ * IFO169 INVALID SELF-DEFINING TERM, severity 8, and the expression is 0:
+ * `A EQU C'ABCDE'' gives DC A(A) = 00000000, where as370 dropped the first
+ * character and wrote C2C3C4C5 (MVSTK5-REF JOB00287, tests/sdtlen5.s; #531).
+ * The X, B and empty cases are xeval's same test (DELIMCHK/DIGITCHK against
+ * MAXCHAR/MAXHEX/MAXBIT, EMPTYSDV), not separately measured. */
+static int xbadsdt_;
+/* The two evaluator errors, IFO233 and IFO169. An EQU is valued in pass 1
+ * only, so the statement is remembered there and the message raised when pass
+ * 2 reaches it (expr_err_stmt); a statement evaluated in pass 2 reports
+ * directly. Once per statement and error either way. */
+enum { XE_DEPTH, XE_SDT, XE_N };
+static const char *const xe_msg[XE_N] = {
+    "More than 6 levels of parentheses (IFOX00 IFO233)",
+    "Invalid self-defining term (IFOX00 IFO169)" };
+static int xe_ln[256], xe_code[256], nxe;
+static void note_expr_err(int code) {
+    static int last[XE_N] = { -1, -1 };
     if (g_pass == 1) {
-        if (npdeep && pdeep_ln[npdeep - 1] == g_curln) return;
-        npdeep_seen++; if (npdeep < 256) pdeep_ln[npdeep++] = g_curln;
+        int k; for (k = nxe - 1; k >= 0 && xe_ln[k] == g_curln; k--) if (xe_code[k] == code) return;
+        if (nxe < 256) { xe_ln[nxe] = g_curln; xe_code[nxe] = code; nxe++; }
         return;
     }
-    if (g_pass != 2 || g_curln == last) return;   /* one message per statement, however often it is evaluated */
-    last = g_curln;
-    note_operr("More than 6 levels of parentheses (IFOX00 IFO233)", 8, g_curln);
+    if (g_pass != 2 || g_curln == last[code]) return;   /* one message per statement, however often it is evaluated */
+    last[code] = g_curln;
+    note_operr(xe_msg[code], 8, g_curln);
 }
-static void paren_depth_stmt(int line) {   /* pass 2, at the top of each statement */
-    int k; for (k = 0; k < npdeep; k++) if (pdeep_ln[k] == line) { note_paren_depth(); return; }
+static void expr_err_stmt(int line) {   /* pass 2, at the top of each statement */
+    int k; for (k = 0; k < nxe; k++) if (xe_ln[k] == line) note_expr_err(xe_code[k]);
 }
 static long x_factor(int sign) {
     while (*xp_ == ' ') xp_++;
@@ -1023,6 +1036,11 @@ static long x_factor(int sign) {
     }
     if ((*xp_ == 'X' || *xp_ == 'B' || *xp_ == 'C') && xp_[1] == '\'') {   /* self-defining term */
         char kind = *xp_; xp_ += 2; long v = 0;
+        { const char *q = xp_; int nd = 0, max = kind == 'C' ? 4 : kind == 'X' ? 8 : 32;   /* xeval MAXCHAR/MAXHEX/MAXBIT */
+          while (*q) { if (*q == '\'') { if (kind == 'C' && q[1] == '\'') q++; else break; }
+                       else if (kind == 'C' && *q == '&' && q[1] == '&') q++;
+                       nd++; q++; }
+          if (*q == '\'' && (nd == 0 || nd > max)) xbadsdt_ = 1; }
         if (kind == 'C') v = selfdef_cbody(&xp_);
         else { int base = (kind == 'X') ? 16 : 2; while (*xp_ && *xp_ != '\'') {
                    int c = toupper((unsigned char)*xp_), dv = (c >= '0' && c <= '9') ? c - '0' : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : 0;
@@ -1095,11 +1113,13 @@ static long x_add(void) {
 }
 static long expr_val(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
     while (*xp_ == ' ') xp_++;
     if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; }   /* leading '(' = subscript with no displacement prefix */
     else { v = x_add(); if (reloc) *reloc = xrl_; }
-    if (xdeep_) { v = 0; if (reloc) *reloc = 0; note_paren_depth(); }
+    if (xdeep_ || xbadsdt_) { v = 0; if (reloc) *reloc = 0;
+        if (xdeep_) note_expr_err(XE_DEPTH);
+        if (xbadsdt_) note_expr_err(XE_SDT); }
     /* Drop the cursor before returning.  Callers hand us stack buffers, so
      * leaving this file-static pointing at one that has just gone out of scope
      * is a dangling store -- harmless today because nothing outside this
@@ -1115,11 +1135,13 @@ static long expr_val(const char *e, int *reloc) {
  * which it would silently value at 0.  Same evaluator, without that guard. */
 static long expr_val_full(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
     while (*xp_ == ' ') xp_++;
     if (*xp_) { v = x_add(); if (reloc) *reloc = xrl_; }
     else if (reloc) *reloc = 0;
-    if (xdeep_) { v = 0; if (reloc) *reloc = 0; note_paren_depth(); }
+    if (xdeep_ || xbadsdt_) { v = 0; if (reloc) *reloc = 0;
+        if (xdeep_) note_expr_err(XE_DEPTH);
+        if (xbadsdt_) note_expr_err(XE_SDT); }
     xp_ = NULL;   /* see expr_val: never leave this pointing at a caller's stack buffer */
     return v;
 }
@@ -5393,7 +5415,7 @@ static int entry_unlinkable(const struct sym *s) {
 }
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0; g_pass = pass;
-    if (pass == 1) npdeep = npdeep_seen = 0;
+    if (pass == 1) nxe = 0;
     if (pass == 2) { npunch = 0; g_sect_seen = 0; }
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
@@ -5413,7 +5435,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
         g_curln = i;                          /* line context for diagnostics raised inside sym_get/lit_get */
-        if (pass == 2) paren_depth_stmt(i);
+        if (pass == 2) expr_err_stmt(i);
         g_genstmt = (lflags[i] & LF_SUBST) != 0;   /* see g_genstmt: a blank SUBSTITUTED into an operand is not a field end */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; line_sect[i] = cur_sect_id; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }
