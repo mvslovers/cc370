@@ -1,0 +1,59 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.58 10/01/26
+TERR      SD  0001 000000 000018
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.58 10/01/26
+                                      1 * PRINT NOGEN / OFF und Anweisungen mit Fehler oder MNOTE (#623).
+                                      2 *   E1  NOGEN: eine erzeugte Anweisung mit Fehler -- gelistet?
+                                      3 *   E2  NOGEN: ein MNOTE aus der Expansion -- gelistet?
+                                      4 *   E3  OFF: eine Anweisung mit Fehler im offenen Code -- gelistet?
+                                      5 *   E4  OFF: ein MNOTE im offenen Code -- gelistet?
+                                      6          MACRO
+                                      7 &L       BAD   &T
+                                      8 &L       DC    C'X&T'
+                                      9          DC    A(UNDEF&T)
+                                     10          DC    C'Y&T'
+                                     11          MEND
+                                     12          MACRO
+                                     13 &L       NOTE  &T
+                                     14 &L       DC    C'X&T'
+                                     15          MNOTE 4,'NOTE &T'
+                                     16          DC    C'Y&T'
+                                     17          MEND
+000000                               18 TERR     CSECT
+                                     19          PRINT NOGEN
+                                     20 E1       BAD   1
+000004 00000000                      22+         DC    A(UNDEF1)
+         *** ERROR ***
+                                     24 E2       NOTE  2
+                                     26+    4,NOTE 2
+                                     28          PRINT GEN
+00000E C7F1                          29          DC    C'G1'
+                                     30          PRINT OFF
+                                     34          PRINT ON
+000016 C7F2                          35          DC    C'G2'
+                                     36          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.58 10/01/26
+E1       00002 00000000 00021
+E2       00002 0000000A 00025
+TERR     00001 00000000 00018
+UNDEF1   ****UNDEFINED****     00022
+UNDEF3   ****UNDEFINED****     00031
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 14.58 10/01/26
+   22  IFO188      UNDEF1 IS AN UNDEFINED SYMBOL
+   26  IFO197      *** MNOTE ***
+   31  IFO188      UNDEF3 IS AN UNDEFINED SYMBOL
+   32  IFO197      *** MNOTE ***
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     4
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         30
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        59
