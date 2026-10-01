@@ -1,25 +1,3 @@
-* T' eines SYMBOLS -- Referenz, die as370 heute NICHT besteht.
-*
-* Gemessen gegen IFOX00 (Listing in tests/listref/): alle 18 Faelle
-* antworten OK.  as370 besteht drei.
-*
-*   DS/DC Typ F H C X D P ...   dieser Buchstabe, DS 0H bleibt 'H'
-*   Label auf einem Befehl      'I'
-*   CSECT- oder DSECT-Name      'J'
-*   EXTRN                       'T'
-*   EQU, absolut ODER reloz.    'U'
-*   undefiniert                 'U'
-*
-* NICHT in run.sh verdrahtet: as370 faellt durch, und die Ursache ist
-* nicht ein fehlendes Feld, sondern die Reihenfolge der Phasen --
-* macro_pass() expandiert ALLE Makros, bevor prescan_literals und
-* do_pass(1) laufen, also bevor ein einziges Symbol existiert.  Ein
-* AIF ueber T'SYMBOL wird entschieden, wenn die Symboltabelle noch
-* leer ist.  Siehe Issue #144.
-*
-* Der Unterschied zu #142: dort haengt die Antwort nur am TEXT des
-* Arguments (X'C0D' ist ohne Symboltabelle als selbstdefinierter Term
-* erkennbar), deshalb war sie in macro_pass beantwortbar.
          MACRO
          CKT   &CC,&EXP
          AIF   (T'&CC EQ '&EXP').OK
