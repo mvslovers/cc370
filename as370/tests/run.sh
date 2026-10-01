@@ -4168,7 +4168,9 @@ elif grep 'IFO007' /tmp/_i7$$.err | grep -qE '&A|&Z' || grep -q '&A is an undefi
 # THE HALF THAT MOVES BYTES: the flagged statement generates nothing, so the
 # location counter does not advance. Without it the diagnostic is cosmetic and
 # IEAVEXS stays four bytes long.
-elif ! awk '/LA    2,&A|LA +2,5/ {seen=1} /LA    0,/ && seen {print; exit}' /tmp/_i7$$.lst \
+# Only GENERATED lines (a `+' after the number) count: the macro definition is
+# listed too since #150, and its model cards carry the same text.
+elif ! awk '/[0-9]\+ +LA +(2,&A|2,5)/ {seen=1} /[0-9]\+ +LA    0,/ && seen {print; exit}' /tmp/_i7$$.lst \
         | grep -qE '^000008 +[0-9]+\+ +LA    0,$'; then
     echo "ifo007: FAIL -- the flagged statement must emit nothing and leave the"
     echo "        counter where it was"; grep -E '^0000' /tmp/_i7$$.lst; fail=$((fail + 1))
