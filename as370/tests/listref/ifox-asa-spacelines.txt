@@ -1,0 +1,108 @@
+1                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+-SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.25 10/01/26
+0TSPL      SD  0001 000000 000084
+1                                                                                                               PAGE    2
+-  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.25 10/01/26
+0                                      1 * SPACE: Zeilen oder Datensaetze? (#623, capture.py --asa)
+                                       2 * 40 DC, dann fuenfmal SPACE 3, dann 20 DC. Zaehlt IFOX00 die Zeilen
+                                       3 * eines SPACE, ist die Seite nach den SPACE voll (40+15=55); zaehlt
+                                       4 * es Datensaetze, passen noch zehn DC darauf (40+5+10=55).
+                                       5 * Danach SPACE 4, 5 und 7: wie schreibt IFOX00 mehr als drei Zeilen.
+ 000000                                6 TSPL     CSECT
+ 000000 F0F0                           7          DC    C'00'
+ 000002 F0F1                           8          DC    C'01'
+ 000004 F0F2                           9          DC    C'02'
+ 000006 F0F3                          10          DC    C'03'
+ 000008 F0F4                          11          DC    C'04'
+ 00000A F0F5                          12          DC    C'05'
+ 00000C F0F6                          13          DC    C'06'
+ 00000E F0F7                          14          DC    C'07'
+ 000010 F0F8                          15          DC    C'08'
+ 000012 F0F9                          16          DC    C'09'
+ 000014 F1F0                          17          DC    C'10'
+ 000016 F1F1                          18          DC    C'11'
+ 000018 F1F2                          19          DC    C'12'
+ 00001A F1F3                          20          DC    C'13'
+ 00001C F1F4                          21          DC    C'14'
+ 00001E F1F5                          22          DC    C'15'
+ 000020 F1F6                          23          DC    C'16'
+ 000022 F1F7                          24          DC    C'17'
+ 000024 F1F8                          25          DC    C'18'
+ 000026 F1F9                          26          DC    C'19'
+ 000028 F2F0                          27          DC    C'20'
+ 00002A F2F1                          28          DC    C'21'
+ 00002C F2F2                          29          DC    C'22'
+ 00002E F2F3                          30          DC    C'23'
+ 000030 F2F4                          31          DC    C'24'
+ 000032 F2F5                          32          DC    C'25'
+ 000034 F2F6                          33          DC    C'26'
+ 000036 F2F7                          34          DC    C'27'
+ 000038 F2F8                          35          DC    C'28'
+ 00003A F2F9                          36          DC    C'29'
+ 00003C F3F0                          37          DC    C'30'
+ 00003E F3F1                          38          DC    C'31'
+ 000040 F3F2                          39          DC    C'32'
+ 000042 F3F3                          40          DC    C'33'
+ 000044 F3F4                          41          DC    C'34'
+ 000046 F3F5                          42          DC    C'35'
+ 000048 F3F6                          43          DC    C'36'
+ 00004A F3F7                          44          DC    C'37'
+ 00004C F3F8                          45          DC    C'38'
+ 00004E F3F9                          46          DC    C'39'
+-
+-
+-
+1                                                                                                               PAGE    3
+-  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.25 10/01/26
+-
+
+ 000050 C1F0                          52          DC    C'A0'
+ 000052 C2F1                          53          DC    C'B1'
+ 000054 C3F2                          54          DC    C'C2'
+ 000056 C4F3                          55          DC    C'D3'
+ 000058 C5F4                          56          DC    C'E4'
+ 00005A C6F5                          57          DC    C'F5'
+ 00005C C7F6                          58          DC    C'G6'
+ 00005E C8F7                          59          DC    C'H7'
+ 000060 C9F8                          60          DC    C'I8'
+ 000062 D1F9                          61          DC    C'J9'
+ 000064 D2F0                          62          DC    C'K0'
+ 000066 D3F1                          63          DC    C'L1'
+ 000068 D4F2                          64          DC    C'M2'
+ 00006A D5F3                          65          DC    C'N3'
+ 00006C D6F4                          66          DC    C'O4'
+ 00006E D7F5                          67          DC    C'P5'
+ 000070 D8F6                          68          DC    C'Q6'
+ 000072 D9F7                          69          DC    C'R7'
+ 000074 E2F8                          70          DC    C'S8'
+ 000076 E3F9                          71          DC    C'T9'
+ 000078 E7F4                          72          DC    C'X4'
+-
+
+ 00007A E8F4                          74          DC    C'Y4'
+ 00007C E7F5                          75          DC    C'X5'
+-
+0
+ 00007E E8F5                          77          DC    C'Y5'
+ 000080 E7F7                          78          DC    C'X7'
+-
+-
+
+ 000082 E8F7                          80          DC    C'Y7'
+                                      81          END
+1                                                  CROSS-REFERENCE                                              PAGE    4
+-SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.25 10/01/26
+0TSPL     00001 00000000 00006
+1                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+-                                                                                                 ASM 0201 15.25 10/01/26
+0NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+ HIGHEST SEVERITY WAS    0
+ OPTIONS FOR THIS ASSEMBLY
+   ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+   NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+   SYSPARM()
+ WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+ TOTAL RECORDS READ FROM SYSTEM INPUT         81
+ TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+ TOTAL RECORDS PUNCHED                         5
+ TOTAL RECORDS PRINTED                       108

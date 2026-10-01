@@ -7389,16 +7389,43 @@ static void a_objcode(long loc, int len, int instr, char *out) {
     out[o] = 0;
 }
 #define A_SRC_LINECOUNT 55
-static int a_srcrows;
+/* A SOURCE page is counted in PRINTED LINES, not in records (#623). IFOX00
+ * writes ASA carriage control: the first line under the column heading is
+ * double-spaced and every other one single, so LINECOUNT(55) is 56 lines of
+ * body -- 55 records when nothing else spaces. A SPACE is what makes the
+ * difference: measured with capture.py --asa (MVSTK5-REF JOB00312,
+ * tests/spacelines.s), forty single lines and three SPACE 3 fill a page and
+ * the fourth SPACE 3 starts the next one. The listing written here has no
+ * carriage-control column -- it is the spool's text, one line per record --
+ * so a_srclines carries the count the records alone cannot. */
+#define A_SRC_BODY (A_SRC_LINECOUNT + 1)
+static int a_srclines, a_srcopen;
 static void a_src_newpage(void) {
     a_src_heading = 1;
     a_newpage("", "  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT");
     a_src_heading = 0;
-    a_srcrows = 0;
+    a_srclines = 0; a_srcopen = 1;
 }
 static void a_src_emit(const char *ln) {
-    if (a_srcrows >= A_SRC_LINECOUNT) a_src_newpage();
-    a_line(ln); a_srcrows++;
+    int cost = a_srclines ? 1 : 2;               /* the first line of a page is double-spaced */
+    if (!a_srcopen || a_srclines + cost > A_SRC_BODY) { a_src_newpage(); cost = 2; }
+    a_line(ln); a_srclines += cost;
+}
+/* SPACE n: n blank lines, written as IFOX00 writes them -- one blank record per
+ * three lines (`-'), the rest as one double (`0') or single (` ') record, so
+ * SPACE 4 is two records and SPACE 7 three (JOB00311/00312). At the top of a
+ * page the double-spaced first line adds its own blank, so a SPACE 3 there is
+ * four lines. A SPACE that does not fit on the page starts the next one and
+ * is spent: the line after it is that page's first, double-spaced as ever
+ * (tests/spacelist.s, SPACE 10). SPACE 0 does nothing. */
+static void a_src_space(int n) {
+    int total, k;
+    if (n <= 0) return;
+    if (!a_srcopen) a_src_newpage();
+    total = n + (a_srclines ? 0 : 1);
+    if (a_srclines + total > A_SRC_BODY) { a_src_newpage(); return; }
+    for (k = 0; k < (total + 2) / 3; k++) a_line("");
+    a_srclines += total;
 }
 /* place 6-hex LOC at col 1 and the object code at col 8 in a blank 256-col line */
 static void a_locobj(char *ln, long loc, const char *hex) {
@@ -7516,7 +7543,7 @@ static int a_has_print(const char *opnd) {
 }
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j;
-    a_srcrows = A_SRC_LINECOUNT;   /* force the header before the first row */
+    a_srcopen = 0; a_srclines = 0;   /* the header goes out with the first row */
     a_pon = 1; a_pgen = 1; a_psp = 0;
     for (i = 0; i < nl; i++) {
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
@@ -7544,6 +7571,15 @@ static void a_src_section(char **lines, int nl) {
          * code (JOB00304, Q6). Under PRINT NOGEN IFOX00 sets the title without
          * the eject (tests/titlegen.s, captured right after JOB00305): that
          * is the `shown' test above. */
+        /* SPACE with a decimal operand, or none, spaces instead of being listed;
+         * one IFOX00 rejects (IFO242) is flagged and listed as written. */
+        if (!noasm && !strcmp(op, "SPACE") && !stmt_flagged[i]) {
+            const char *q = opnd; int n = 0;
+            while (isdigit((unsigned char)*q)) n = n * 10 + (*q++ - '0');
+            a_src_space(q == opnd ? 1 : n);
+            a_src_pool(i + 1);
+            continue;
+        }
         if (!noasm && (!strcmp(op, "TITLE") || !strcmp(op, "EJECT"))) {
             if (op[0] == 'T') title_text(opnd, a_title);
             a_src_newpage();
