@@ -1196,6 +1196,10 @@ afterwards.
 
 ## as370 against XF — found by #521
 
+**Epic #539 is closed (2026-10-01): every item below is fixed** -- #525–#535 and
+the four found later, #579–#582 (PRs in the closing comment on #539). Still open
+from this family: #540, and the listing gaps #603 and #609.
+
 `docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
 JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent:** #525,
@@ -1216,8 +1220,8 @@ latter two.
 The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
 2026-10-01, PR #596), ~~#529~~ / ~~#530~~ / ~~#531~~ (`IFO233`, `IFO104` and `IFO169` all closed
 2026-10-01, PRs #598, #602, #599), and #532–#535
-(`OPSYN` missing; ~~`AIFB`/`AGOB`~~, ~~`ICTL`~~ and ~~`PUNCH`~~ closed
-2026-10-01 -- #533, #534, #535 in PRs #606, #611, #612). Their corpus count is 0.
+(~~`OPSYN`~~, ~~`AIFB`/`AGOB`~~, ~~`ICTL`~~ and ~~`PUNCH`~~ all closed
+2026-10-01 -- #532, #533, #534, #535 in PRs #614, #606, #611, #612). Their corpus count is 0.
 
 ## Observability
 
@@ -1487,6 +1491,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #532, MERGED as `e94eab7` (PR #614); epic #539 closed.**
+  `OPSYN` builds its table in a prescan (XF allows it only at the head of the
+  source) and `parse()` applies it; chains resolve, a later definition wins;
+  IFO012/013/014 from the source, deletion refused at 12. With #533-#535,
+  `xfdirect` is IFOX00's deck but for the END card. MVSBLD and libc370: nothing
+  moved (no OPSYN in the tree).
 
 - **2026-10-01 — #534 and #535, MERGED as `fde637b` (PR #611) and `e3107d0`
   (PR #612).** `ICTL 1,71,16` on the first card is accepted; other columns are
