@@ -440,6 +440,69 @@ print("listref endloc: END's LOC column-exact to IFOX00 in %d references" % n if
 sys.exit(1 if bad or not n else 0)
 PYE
 
+# --- case 11: TITLE and EJECT, and the SOURCE page headings -- #603 --------
+# Every TITLE and every EJECT starts a SOURCE page at once and is not listed;
+# the TITLE's text heads every page from column 10 until the next one, '' and
+# && printed once, at most 100 characters (more is IFO171, severity 4). The
+# headings are compared here, which case 9 cannot do: it drops them.
+# titlenamed and titlelong compare line for line. titlepage and titlegen are
+# compared with the statement numbers masked and the macro definition left
+# out (#150), and differ from IFOX00 in exactly the lines #623 owns: PRINT
+# NOGEN is not honoured and SPACE is listed. Fixing either half of #623 trips
+# this case and is meant to; listing macro definitions (#150) does not, since
+# norm() drops MACRO...MEND on both sides.
+for T11 in titlenamed titlelong titlepage titlegen; do
+OUT11=/tmp/as370-listref-title.$$
+./as370 tests/$T11.s -a="$OUT11" >/dev/null 2>/tmp/as370-listref-title.err.$$
+rc11=$?
+python3 - tests/listref/ifox-listing-$T11.txt "$OUT11" "$T11" "$rc11" /tmp/as370-listref-title.err.$$ <<'PYT'
+import sys, re, difflib
+ref, mine, t, rc, err = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5]
+def src(path):
+    out, on = [], False
+    for l in open(path, encoding="latin-1").read().split("\n"):
+        l = l.replace("\f", "").rstrip()
+        if re.search(r"PAGE +\d+$", l):
+            if re.search(r"(CROSS-REFERENCE|RELOCATION DICTIONARY|DIAGNOSTICS AND|EXTERNAL SYMBOL)", l):
+                if on: break
+                continue
+            on = True; out.append("HEAD|" + l[:110].rstrip()); continue
+        if not on or "SOURCE STATEMENT" in l or l == "" or l.strip() == "*** ERROR ***": continue
+        out.append(l)
+    return out
+def norm(L):
+    out, indef = [], False
+    for l in L:
+        if not l.startswith("HEAD|") and re.match(r"^.{40}\s+MACRO\b", l): indef = True; continue
+        if indef:
+            if re.match(r"^.{40}\s+MEND\b", l): indef = False
+            continue
+        out.append(l if l.startswith("HEAD|") else l[:33] + "      " + l[39:])
+    return out
+R, M = src(ref), src(mine)
+known = {   # the lines #623 owns, as unified-diff additions on our side
+    "titlepage": ["+HEAD|         Q6-NOGEN", "+000083 D4                              +G2       DC    C'M'"],
+    "titlegen":  ["+HEAD|         N2-NOGEN", "+000002 D4                              +         DC    C'M'",
+                  "+                                                 SPACE 2"],
+}
+if t in known: R, M = norm(R), norm(M)
+d = [x for x in difflib.unified_diff(R, M, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("---", "+++")]
+want = known.get(t, [])
+ok = d == want and len(R) > 0
+if t == "titlelong":   # IFO171 twice, rc 4 -- IFOX00 flags statements 7 and 9
+    n171 = open(err).read().count("IFO171")
+    if rc != 4 or n171 != 2: ok = False; print("titlelong: rc %d, %d x IFO171 (IFOX00: rc 4, 2)" % (rc, n171))
+for x in d[:8]:
+    if x not in want: print("  unexpected " + x[:110])
+for x in want:
+    if x not in d: print("  #623 line no longer differs -- update this case: " + x[:90])
+print("listref %s: SOURCE headings %s" % (t, "match IFOX00" + (" (#623 aside)" if t in known else "") if ok else "MISMATCH"))
+sys.exit(0 if ok else 1)
+PYT
+[ $? = 0 ] || fail=1
+rm -f "$OUT11" /tmp/as370-listref-title.err.$$
+done
+
 # --- case 8: the cross-reference pages of every reference here -- #538 ------
 # Every listing in this directory was captured with XREF(FULL), so each carries
 # a CROSS-REFERENCE page and most a LITERAL CROSS-REFERENCE: xref.py compares

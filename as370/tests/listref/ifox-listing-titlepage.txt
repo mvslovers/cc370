@@ -1,0 +1,127 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.28 10/01/26
+TPAGE     SD  0001 000000 000086
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+                                      1 * TITLE und der Seitenkopf (#603).
+                                      2 *
+                                      3 * Was IFOX00 an TK5-Listings schon zeigt (mvs38src ifox-run):
+                                      4 * jeder TITLE beginnt eine Seite, sein Text steht ab Spalte 10
+                                      5 * im Kopf jeder SOURCE-Seite bis zum naechsten TITLE, die Anweisung
+                                      6 * wird gezaehlt, aber nicht gelistet; ein TITLE aus einer
+                                      7 * Makroexpansion tut dasselbe. Offen, und hier gemessen:
+                                      8 *   Q1  Kopf der ersten Seite vor jedem TITLE (leer?)
+                                      9 *   Q2  '' und && im Operanden: einfach oder doppelt im Kopf
+                                     10 *   Q3  EJECT direkt nach TITLE: eine leere Seite oder keine
+                                     11 *   Q5  Seitenueberlauf: traegt die Folgeseite den Titel
+                                     12 *   Q6  TITLE im Makro unter PRINT GEN und unter PRINT NOGEN
+                                     13          MACRO
+                                     14 &L       TMAC  &T
+                                     15          TITLE '&T'
+                                     16 &L       DC    C'M'
+                                     17          MEND
+000000                               18 TPAGE    CSECT
+000000 D7F1                          19          DC    C'P1'
+         Q2 A'B&C                                                                                              PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+000002 D8F2                          21          DC    C'Q2'
+         Q3 EJECT FOLGT                                                                                        PAGE    4
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+         Q3 EJECT FOLGT                                                                                        PAGE    5
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+000004 D8F3                          24          DC    C'Q3'
+         Q5 UEBERLAUF                                                                                          PAGE    6
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+000006 F0F0                          26          DC    C'00'
+000008 F0F1                          27          DC    C'01'
+00000A F0F2                          28          DC    C'02'
+00000C F0F3                          29          DC    C'03'
+00000E F0F4                          30          DC    C'04'
+000010 F0F5                          31          DC    C'05'
+000012 F0F6                          32          DC    C'06'
+000014 F0F7                          33          DC    C'07'
+000016 F0F8                          34          DC    C'08'
+000018 F0F9                          35          DC    C'09'
+00001A F1F0                          36          DC    C'10'
+00001C F1F1                          37          DC    C'11'
+00001E F1F2                          38          DC    C'12'
+000020 F1F3                          39          DC    C'13'
+000022 F1F4                          40          DC    C'14'
+000024 F1F5                          41          DC    C'15'
+000026 F1F6                          42          DC    C'16'
+000028 F1F7                          43          DC    C'17'
+00002A F1F8                          44          DC    C'18'
+00002C F1F9                          45          DC    C'19'
+00002E F2F0                          46          DC    C'20'
+000030 F2F1                          47          DC    C'21'
+000032 F2F2                          48          DC    C'22'
+000034 F2F3                          49          DC    C'23'
+000036 F2F4                          50          DC    C'24'
+000038 F2F5                          51          DC    C'25'
+00003A F2F6                          52          DC    C'26'
+00003C F2F7                          53          DC    C'27'
+00003E F2F8                          54          DC    C'28'
+000040 F2F9                          55          DC    C'29'
+000042 F3F0                          56          DC    C'30'
+000044 F3F1                          57          DC    C'31'
+000046 F3F2                          58          DC    C'32'
+000048 F3F3                          59          DC    C'33'
+00004A F3F4                          60          DC    C'34'
+00004C F3F5                          61          DC    C'35'
+00004E F3F6                          62          DC    C'36'
+000050 F3F7                          63          DC    C'37'
+000052 F3F8                          64          DC    C'38'
+000054 F3F9                          65          DC    C'39'
+000056 F4F0                          66          DC    C'40'
+000058 F4F1                          67          DC    C'41'
+00005A F4F2                          68          DC    C'42'
+00005C F4F3                          69          DC    C'43'
+00005E F4F4                          70          DC    C'44'
+000060 F4F5                          71          DC    C'45'
+000062 F4F6                          72          DC    C'46'
+000064 F4F7                          73          DC    C'47'
+000066 F4F8                          74          DC    C'48'
+000068 F4F9                          75          DC    C'49'
+00006A F5F0                          76          DC    C'50'
+00006C F5F1                          77          DC    C'51'
+00006E F5F2                          78          DC    C'52'
+000070 F5F3                          79          DC    C'53'
+000072 F5F4                          80          DC    C'54'
+         Q5 UEBERLAUF                                                                                          PAGE    7
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+000074 F5F5                          81          DC    C'55'
+000076 F5F6                          82          DC    C'56'
+000078 F5F7                          83          DC    C'57'
+00007A F5F8                          84          DC    C'58'
+00007C F5F9                          85          DC    C'59'
+         Q6 VOR DEM AUFRUF                                                                                     PAGE    8
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+00007E C7F0                          87          DC    C'G0'
+                                     88 G1       TMAC  Q6-GEN
+         Q6-GEN                                                                                                PAGE    9
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.28 10/01/26
+000080 D4                            90+G1       DC    C'M'
+000081 C7F1                          91          DC    C'G1'
+                                     92          PRINT NOGEN
+                                     93 G2       TMAC  Q6-NOGEN
+                                     96          PRINT GEN
+000084 C7F2                          97          DC    C'G2'
+                                     98          END
+                                                  CROSS-REFERENCE                                              PAGE   10
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.28 10/01/26
+G1       00001 00000080 00090
+G2       00001 00000083 00095
+TPAGE    00001 00000000 00018
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE   11
+                                                                                                 ASM 0201 14.28 10/01/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         94
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                       127
