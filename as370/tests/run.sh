@@ -2246,8 +2246,17 @@ rm -f /tmp/_bc.$$
 # first referenced from a LATER section, and an =A literal in the moved pool.
 # There is no oracle deck for this shape, so the bytes below are derived from the
 # rule; ksdsnatr is what proves the rule.
-if ! ./as370 tests/litpool_csect.s -o /tmp/_o68.obj >/dev/null 2>&1; then
-    echo "litpool_csect: ASSEMBLE FAILED"; fail=1
+#
+# One part of the derivation was wrong, and an oracle has since refuted it: the
+# L and MVC in POOLA reference literals that the LTORG places in POOLC, and the
+# only USING in range is POOLA's. A literal is addressed in the section that
+# placed it, so IFOX00 answers that shape with IFO209 and zeroes the instruction
+# (MVSTK5-REF JOB00302, tests/xrefcov.s case 10; #581). Until #581 this test
+# demanded rc 0 here. The bytes checked below are untouched by it.
+./as370 tests/litpool_csect.s -o /tmp/_o68.obj >/tmp/_o68.out 2>&1; rc68=$?
+if [ $rc68 != 8 ] || [ "$(grep -c 'ERROR: Addressability error' /tmp/_o68.out)" != 2 ] ||
+   ! grep -q 'Addressability error.* in line 42 - L$' /tmp/_o68.out || ! grep -q 'Addressability error.* in line 43 - MVC' /tmp/_o68.out; then
+    echo "litpool_csect: FAIL (expected rc 8 and IFO209 on lines 42 and 43, got rc $rc68)"; grep ERROR /tmp/_o68.out; fail=1
 else
     hex=$(od -An -tx1 -v /tmp/_o68.obj | tr -d ' \n')   # -v: the card is taken by offset, so no run may collapse
     # ESD: POOLA len 0x20 -- its own 0x12 of content plus the pool at 0x18.
@@ -2275,7 +2284,7 @@ else
         echo "litpool_csect: OK (END pool in POOLA at 0x18, punched last; LTORG's pool stays in POOLC)"
     fi
 fi
-rm -f /tmp/_o68.obj
+rm -f /tmp/_o68.obj /tmp/_o68.out
 
 # --- issue #53 (step 1): nothing may reserve zero storage in silence ---------
 # The DC/DS type chain ended in a label-only arm with no default: an unhandled
@@ -3508,6 +3517,32 @@ PY2
     [ $? = 0 ] || fail=$((fail + 1))
 fi
 rm -f /tmp/_vo$$.obj /tmp/_vo$$.out
+# ---------------------------------------------------------------- litsect --
+# cc370#581: two LAs in XREFCOV reference literals that the LTORG in XREFB
+# pools, and the only USING in range is XREFCOV's. A literal is addressed in
+# the section that placed it, so IFOX00 answers both with IFO209 and assembles
+# them as 41100000 (MVSTK5-REF JOB00302, tests/xrefcov.s case 10). The binary
+# before the fix resolved them through XREFCOV's base across the section
+# boundary -- 4110F0CC and 4110F14A, silently. The TXT cards are compared with
+# their ESDID field left out: that number is #579's, not this test's.
+./as370 tests/xrefcov.s -o /tmp/_ls$$.obj >/tmp/_ls$$.out 2>&1
+if [ "$(grep -c 'ERROR: Addressability error' /tmp/_ls$$.out)" != 2 ] ||
+   ! grep -q 'Addressability error.* in line 46 - LA' /tmp/_ls$$.out || ! grep -q 'Addressability error.*(statement 47) - LA' /tmp/_ls$$.out; then
+    echo "litsect: FAIL -- expected IFO209 on statements 46 and 47"
+    grep 'Addressability' /tmp/_ls$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_ls$$.obj tests/ref/xrefcov.obj <<'PY2'
+import sys
+def txt(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+14] + d[i+16:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] == b"\xe3\xe7\xe3"]
+if not txt(sys.argv[2]) or txt(sys.argv[1]) != txt(sys.argv[2]):
+    print("litsect: FAIL -- TXT differs from IFOX00's (both LAs must be 41100000)"); sys.exit(1)
+print("litsect: OK (IFO209 on both LAs, zeroed, TXT == IFOX00 but for the ESDID)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_ls$$.obj /tmp/_ls$$.out
 
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says

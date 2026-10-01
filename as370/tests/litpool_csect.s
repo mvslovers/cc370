@@ -31,6 +31,10 @@
 *   POOLB  0x000020  len 0x0D
 *   POOLC  0x000030  len 0x0E   keeps the LTORG's own pool, 0x30
 *   END pool  =F'2' at 0x18, =A(ATAB) at 0x1C, in POOLA
+*
+* The L and MVC below reference pool 0, which the LTORG places in
+* POOLC where no USING reaches: IFO209 on both, rc 8 (#581,
+* measured on a different module, tests/xrefcov.s case 10).
 *---------------------------------------------------------------
 POOLA    CSECT
          BALR  12,0
