@@ -93,8 +93,8 @@ cc370 hello.c -o hello -flinker-output=xmit  # no -I, no -L, no -lc needed
 - strict aliasing reorders code that casts between control-block layouts, for
   0.1 % of size (#592) -- now off by default.
 
-With them, all 1,017 ecosystem sources that compile with mbt's flags also
-assemble at `-Os`. Validated on MVS so far: one run of the rexx370 suite, with
+With them, all 1,017 ecosystem sources that compile also assemble at
+`-Os`. Validated on MVS so far: one run of the rexx370 suite, with
 `-Os` test modules (64 tests, batch and TSO, 5,685 assertions, 0 failures;
 mvsdev JOB01477). Modules the tests load from the production LINKLIB were
 still `-O1`, and no other project has been run. **A project that adopts `-Os`
