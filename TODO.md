@@ -1198,8 +1198,8 @@ afterwards.
 
 **Epic #539 is closed (2026-10-01): every item below is fixed** -- #525–#535 and
 the four found later, #579–#582 (PRs in the closing comment on #539). #540
-followed on 2026-10-01 (PR #616). Still open from this family: the listing gaps
-#603 and #609.
+followed on 2026-10-01 (PR #616), and the listing gap #609 the same day (PR
+#618). Still open from this family: the listing gap #603.
 
 `docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
@@ -1309,10 +1309,15 @@ was found while building a `listref` case, and each is excluded from that case
   and the split the 2026-09-08 comment predicted — a card-layout issue separate
   from an ESD-numbering one — is still on the table rather than made.
 
-- **#609** — new 2026-10-01, found with #607: a continued statement of open
-  code is listed as one joined line (no continuation cards, no remarks); #370 is
-  the same for generated statements. `listref/check.sh` case 9 compares aifcond
-  on statement numbers only until this is fixed.
+- ~~**#609**~~ — a continued statement of open code was listed as one joined
+  line. **Fixed** (PR #618, `0745cd2`): card by card, a continuation row carrying
+  the next eight bytes of object code. `listref` case 9 compares aifcond line
+  for line; aligned SOURCE lines over the 135 references 3,221 -> 3,279, none
+  fewer. #370 is the same gap for generated statements, still open.
+
+- **#619** — new 2026-10-01, found with #609: `END` with an operand is listed
+  with LOC blank where IFOX00 prints the entry symbol's value (22 references:
+  `000000` 20 times, `000008` in usingparenpc, `000012` in multi-csect).
 
 - **#603** — new 2026-10-01, found with #530: `TITLE` does not start a page,
   its text is not in the heading (column 10), and the statement is listed where
@@ -1493,6 +1498,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #609, MERGED as `0745cd2` (PR #618).** `-a` lists a continued
+  open-code statement card by card, remarks and column 72 included, and a
+  continuation row carries the next eight object bytes. listref: aifcond now
+  compared line for line; 3,221 -> 3,279 aligned SOURCE lines, aifcond,
+  blankcont and dcvals exact. MVSBLD gate: 0 decks moved; all 5,528 modules
+  also assemble with `-a`, every rc the gate's. Found on the way: #619.
 
 - **2026-10-01 — #540, MERGED as `8a266f8` (PR #616).** The open-code look-ahead
   now records `M` for a label on a macro call (a source definition, or a library
