@@ -959,11 +959,38 @@ static void xrl_negate_since(const struct xrlsnap *s) {
     }
 }
 static long x_add(void);   /* fwd: additive expression (term +/- term ...) */
+/* Parenthesis depth inside one expression. IFOX00's evaluator keeps six levels
+ * (EVALWORK MAXPARN=6) and a seventh is IFO233 MORE THAN 6 LEVELS OF
+ * PARENTHESES, severity 8, with the expression valued at 0: `A7 EQU
+ * (((((((1)))))))' is 0 where six levels give 1 (MVSTK5-REF JOB00285,
+ * tests/parendepth.s; #529). Only the evaluator's own groups count -- the
+ * parentheses of A(...) or of a subscript are not an expression's. */
+static int xdepth_, xdeep_;
+/* An EQU is valued in pass 1 only, so the statement is remembered there and
+ * the message raised when pass 2 reaches it (paren_depth_stmt); a statement
+ * evaluated in pass 2 reports directly. Once per statement either way. */
+static int pdeep_ln[256], npdeep, npdeep_seen;
+static void note_paren_depth(void) {
+    static int last = -1;
+    if (g_pass == 1) {
+        if (npdeep && pdeep_ln[npdeep - 1] == g_curln) return;
+        npdeep_seen++; if (npdeep < 256) pdeep_ln[npdeep++] = g_curln;
+        return;
+    }
+    if (g_pass != 2 || g_curln == last) return;   /* one message per statement, however often it is evaluated */
+    last = g_curln;
+    note_operr("More than 6 levels of parentheses (IFOX00 IFO233)", 8, g_curln);
+}
+static void paren_depth_stmt(int line) {   /* pass 2, at the top of each statement */
+    int k; for (k = 0; k < npdeep; k++) if (pdeep_ln[k] == line) { note_paren_depth(); return; }
+}
 static long x_factor(int sign) {
     while (*xp_ == ' ') xp_++;
     if (*xp_ == '(') {                                     /* grouping paren in factor position (e.g. 8+(64-1)); a '(' after a term is a subscript and is left to the caller */
         xp_++; struct xrlsnap gb; xrl_snap(&gb);
+        if (++xdepth_ > 6) xdeep_ = 1;
         int before = xrl_; xrl_ = 0; long v = x_add(); int delta = xrl_;
+        xdepth_--;
         xrl_ = before + (sign < 0 ? -delta : delta);
         if (sign < 0) xrl_negate_since(&gb);   /* a SUBTRACTED group tallies negatively per section too */
         while (*xp_ == ' ') { xp_++; } if (*xp_ == ')') xp_++;
@@ -1068,10 +1095,11 @@ static long x_add(void) {
 }
 static long expr_val(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = 0;
     while (*xp_ == ' ') xp_++;
     if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; }   /* leading '(' = subscript with no displacement prefix */
     else { v = x_add(); if (reloc) *reloc = xrl_; }
+    if (xdeep_) { v = 0; if (reloc) *reloc = 0; note_paren_depth(); }
     /* Drop the cursor before returning.  Callers hand us stack buffers, so
      * leaving this file-static pointing at one that has just gone out of scope
      * is a dangling store -- harmless today because nothing outside this
@@ -1087,10 +1115,11 @@ static long expr_val(const char *e, int *reloc) {
  * which it would silently value at 0.  Same evaluator, without that guard. */
 static long expr_val_full(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = 0;
     while (*xp_ == ' ') xp_++;
     if (*xp_) { v = x_add(); if (reloc) *reloc = xrl_; }
     else if (reloc) *reloc = 0;
+    if (xdeep_) { v = 0; if (reloc) *reloc = 0; note_paren_depth(); }
     xp_ = NULL;   /* see expr_val: never leave this pointing at a caller's stack buffer */
     return v;
 }
@@ -5364,6 +5393,7 @@ static int entry_unlinkable(const struct sym *s) {
 }
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0; g_pass = pass;
+    if (pass == 1) npdeep = npdeep_seen = 0;
     if (pass == 2) { npunch = 0; g_sect_seen = 0; }
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
     lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
@@ -5383,6 +5413,7 @@ static void do_pass(int pass, char **lines, int nlines) {
     for (i = 0; i < nlines; i++) {
         if (lflags[i] & LF_NOASM) continue;   /* a macro call line kept only for the listing -- never assembled */
         g_curln = i;                          /* line context for diagnostics raised inside sym_get/lit_get */
+        if (pass == 2) paren_depth_stmt(i);
         g_genstmt = (lflags[i] & LF_SUBST) != 0;   /* see g_genstmt: a blank SUBSTITUTED into an operand is not a field end */
         if (listing && pass == 2 && have_prev) emit_listing(prev_lc, lc, prev_src);
         if (pass == 2) { if (prev_li >= 0) lrecs[prev_li].len = (int)(lc - lrecs[prev_li].loc); lrecs[i].loc = lc; line_sect[i] = cur_sect_id; lrecs[i].len = 0; lrecs[i].hasa1 = lrecs[i].hasa2 = 0; prev_li = i; }

@@ -29,7 +29,6 @@ import difflib, glob, os, re, subprocess, sys, tempfile
 KNOWN = {
     "equparen":  "F7 EQU ( S1+4): IFOX00 stops at the blank (IFO234) and gives 0, "
                  "as370 evaluates past it -- the message gap equparen.s records",
-    "parendepth": "#529: more than 6 levels of parentheses, the value differs",
     "sdtlen5":   "#531: a five-character C self-defining term, the value differs",
     "titlenamed": "the TITLE name (deck id) is not printed in columns 1-8 of a "
                   "page heading, on any page; IFO104 itself is #530",

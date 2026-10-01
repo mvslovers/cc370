@@ -3460,6 +3460,30 @@ PY2
 fi
 rm -f /tmp/_xr$$.obj /tmp/_xr$$.out
 
+# ------------------------------------------------------------- parendepth --
+# cc370#529: an expression keeps six levels of parentheses. A seventh is IFO233
+# (severity 8) and the expression is 0: A6 = 1, A7 = A8 = 0, DC A(A6,A7,A8) is
+# 00000001 00000000 00000000 (MVSTK5-REF JOB00285, tests/parendepth.s). The
+# EQUs are valued in pass 1, so the message is held until pass 2 reaches them.
+# The binary before the fix accepted all three, rc 0, and wrote 1 three times.
+./as370 tests/parendepth.s -o /tmp/_pd$$.obj >/tmp/_pd$$.out 2>&1; rcpd=$?
+if [ $rcpd != 8 ] || [ "$(grep -c 'IFO233' /tmp/_pd$$.out)" != 2 ] ||
+   ! grep -q 'IFO233) in line 3$' /tmp/_pd$$.out || ! grep -q 'IFO233) in line 4$' /tmp/_pd$$.out; then
+    echo "parendepth: FAIL -- expected rc 8 and IFO233 on statements 3 and 4, got rc $rcpd"; grep -E 'ERROR|Done' /tmp/_pd$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_pd$$.obj tests/ref/parendepth.obj <<'PY2'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]   # END card left out (IDR)
+if body(sys.argv[1]) != body(sys.argv[2]):
+    print("parendepth: FAIL -- deck differs from IFOX00's (A7, A8 must be 0)"); sys.exit(1)
+print("parendepth: OK (IFO233 past six levels, the expression is 0, deck == IFOX00)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_pd$$.obj /tmp/_pd$$.out
+
 # ----------------------------------------------------------------- lblorg --
 # cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
 # `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0
