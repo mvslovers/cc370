@@ -6826,8 +6826,16 @@ static void do_pass(int pass, char **lines, int nlines) {
             { int mi; for (mi = 0; mi < nmem; mi++) {
                 struct lit *l = &lits[mem[mi]];
                 lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
+                /* A literal is addressed where its pool PLACED it, whichever
+                 * section referenced it: references resolve through a USING
+                 * covering the pool's section, and with none in range that is
+                 * IFO209 and a zeroed instruction (MVSTK5-REF JOB00302,
+                 * tests/xrefcov.s case 10; #581). Only the END pool that moves
+                 * sections used to re-stamp it; an LTORG in a later control
+                 * section left the first reference's section, so the old base
+                 * reached across the boundary silently. */
                 if (pass == 1) { l->loc = lc; l->psect = cur_sect_id;   /* =V external refs are registered at first use in lit_get */
-                    if (defer) l->sect = cur_sect_id; }   /* the pool moved sections: references resolve through the USING covering THIS one */
+                    l->sect = cur_sect_id; }
                 else { l->pline = i + 1; emit_lit(l); }
                 l->placed = 1;
                 lc += l->size;
