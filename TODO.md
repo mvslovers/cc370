@@ -1241,11 +1241,6 @@ The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
   21-byte record, one flag byte — and the fixture oracle settles the layout.
 ## Listing fidelity
 
-- **#603** — new 2026-10-01, found with #530: `TITLE` does not start a page,
-  its text is not in the heading (column 10), and the statement is listed where
-  IFOX00 numbers it but does not print it. SOURCE pages only. Capture the
-  carry-over, macro and truncation cases on the oracle first.
-
 All five are cosmetic, and the first three are pinned rather than hidden — each
 was found while building a `listref` case, and each is excluded from that case
 *with a reference to its issue* instead of being silently masked.
@@ -1306,6 +1301,11 @@ was found while building a `listref` case, and each is excluded from that case
   PRs #200 and #206 each say in their own bodies that they address a part of it,
   and the split the 2026-09-08 comment predicted — a card-layout issue separate
   from an ESD-numbering one — is still on the table rather than made.
+
+- **#603** — a sixth, new 2026-10-01, found with #530: `TITLE` does not start a page,
+  its text is not in the heading (column 10), and the statement is listed where
+  IFOX00 numbers it but does not print it. SOURCE pages only. Capture the
+  carry-over, macro and truncation cases on the oracle first.
 
 ## Conditional assembly — three that behave, and one that has to be decided
 
