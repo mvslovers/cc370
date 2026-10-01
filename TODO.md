@@ -1261,11 +1261,13 @@ was found while building a `listref` case, and each is excluded from that case
   `XREF(SHORT)`. Of the 122 references in `tests/listref`, 81 are identical and
   35 more once the SOURCE page's own numbering is mapped across
   (`listref/xref.py`, `check.sh` case 8). Of the other 6, five are assembly
-  divergences the page reports faithfully (#532–#535, and
+  divergences the page reports faithfully (#526, #529, #531, #532–#535, and
   `equparen`'s IFO234 gap, where the XREF shows F7 = 4 against IFOX00's 0 — a
   value gap, not only the message gap the fixture records), and one is a listing
   gap of its own: the TITLE name is not printed in columns 1–8 of any page
-  heading (`titlenamed`). Three
+  heading (`titlenamed`). (2026-10-01: #526, #529 and #531 are fixed; the
+  check now reads 86 exact, 35 renumbered, 3 known -- `equparen`, `titlenamed`,
+  `xfdirect`.) Three
   IBM modules with an IFOX00 `XREF(SHORT)` listing in `mvs38src` match entry for
   entry including page breaks. **`tests/xrefcov.s`** covers what neither had —
   a literal past 120 characters, `EXTRN` after a definition, `CNOP`/`CCW`/`DROP`,
