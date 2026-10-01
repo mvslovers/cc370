@@ -522,5 +522,63 @@ else
     fail=1
 fi
 
+# --- issue #575: an unconditional B is judged against the page it lands on --
+# The jump and indirect_jump patterns chose the short form (B label) when the
+# target was on the current page, and only then let mvs_check_page start a new
+# one -- so a backward B at the very end of a page was emitted behind the
+# DROP/USING of the next page, and as370 (like IFOX00) answered IFO209. The
+# conditional branches always asked mvs_check_page first. Seen at -Os in
+# rexx370 irx#pars.c; it is a matter of page geometry, not of -Os: the sweep
+# below hits the window at -O1. N filler stores push a small loop whose
+# back-edge is a plain B across the first page end. Before the fix 6 of these
+# variants (N+X = 284, N 279..284) put the B on page 2 with its label on
+# page 1; after it, none does, and the same variants take L 14,=A()/BR 14 as
+# the first instruction of the new page. Either form there means the sweep
+# reached the window; with none, the geometry has moved and the test says so.
+pgfail=0; pghit=0; pgn=0
+N=260
+while [ $N -le 300 ]; do
+    X=0
+    while [ $X -le 5 ]; do
+        { echo 'extern int g(int); extern volatile int v[1000]; extern volatile int w;'
+          echo 'void t(void) {'
+          i=0; while [ $i -lt $N ]; do echo "  v[$i] = $i;"; i=$((i+1)); done
+          echo '  for (;;) {'
+          echo '    if (g(1)) { w = 5;'
+          j=0; while [ $j -lt $X ]; do echo "      w = $j;"; j=$((j+1)); done
+          echo '      continue; }'
+          echo '    if (g(0)) return;'
+          echo '    w = 7;'
+          echo '  }'
+          echo '}'; } > "$WORK/pg.c"
+        if ! compile pg "$WORK/pg.c" -O1; then echo "page-jump: FAIL -- N=$N X=$X does not compile"; cat "$WORK/diag"; pgfail=1; fi
+        pgn=$((pgn + 1))
+        # a plain B to a local label must sit on the label's page (pages split at DROP 12)
+        bad=$(awk '/DROP[ \t]+12/ { p++ }
+                   /^@@L[0-9]+[ \t]+EQU/ { lp[$1] = p }
+                   $1 == "B" && $2 ~ /^@@L[0-9]+$/ { n++; bt[n] = $2; bp[n] = p }
+                   END { for (i = 1; i <= n; i++) if ((bt[i] in lp) && lp[bt[i]] != bp[i]) print bt[i] }' "$WORK/pg.s")
+        if [ -n "$bad" ]; then echo "page-jump: FAIL -- N=$N X=$X: B $bad crosses a page boundary"; pgfail=1; fi
+        # the window: an unconditional back-edge is the first instruction of a
+        # new page -- B (the defect) or L 14,=A() + BR 14 (the fix); counted on
+        # both binaries alike (6 of 246), so it says the sweep still reaches it
+        awk '/^@@L[0-9]+[ \t]+EQU/ { seen[$1] = 1 }
+             first && $1 == "B" && ($2 in seen) { f = 1 }
+             first && $1 == "L" && $2 ~ /^14,=A\(@@L[0-9]+\)$/ { t = $2; sub(/^14,=A\(/, "", t); sub(/\)$/, "", t); if (t in seen) want = 1 }
+             want && !first && $1 == "BR" && $2 == "14" { f = 1 }
+             { if (!first) want = 0; first = ($0 ~ /^@@PG[0-9]+[ \t]+EQU/) }
+             END { exit !f }' "$WORK/pg.s" && pghit=$((pghit + 1))
+        X=$((X + 1))
+    done
+    N=$((N + 1))
+done
+if [ $pgfail = 0 ] && [ $pghit -gt 0 ]; then
+    echo "page-jump: OK ($pgn variants, no B across a page; $pghit put the back-edge first on a new page)"
+elif [ $pgfail = 0 ]; then
+    echo "page-jump: FAIL -- no variant reached the page end; the sweep no longer tests #575"; fail=1
+else
+    fail=1
+fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail

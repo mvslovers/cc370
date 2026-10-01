@@ -44,6 +44,7 @@ extern int handle_pragma (int (*)(void), void (*)(int), const char *);
 
 extern void mvs_add_label (int);
 extern int mvs_check_label (int);
+extern int mvs_page_would_break (int, int);
 extern int mvs_check_page (FILE *, int, int);
 extern int mvs_function_check (const char *);
 extern void mvs_add_alias (const char *, const char *, int);
