@@ -1197,8 +1197,9 @@ afterwards.
 ## as370 against XF — found by #521
 
 **Epic #539 is closed (2026-10-01): every item below is fixed** -- #525–#535 and
-the four found later, #579–#582 (PRs in the closing comment on #539). Still open
-from this family: #540, and the listing gaps #603 and #609.
+the four found later, #579–#582 (PRs in the closing comment on #539). #540
+followed on 2026-10-01 (PR #616). Still open from this family: the listing gaps
+#603 and #609.
 
 `docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
@@ -1213,9 +1214,10 @@ latter two.
 - #525 — the type operand of `EQU` was ignored, so `T'` was `U`, rc 0. **Fixed.**
   It was ranked first for its reach, 1,110 maclib statements, and has none there:
   a macro-generated symbol is `U` to IFOX00 as well (JOB00291). Open code only.
-- #540 — new, found by the #525 probe: a label on a macro *call* is `T'` = `M` to
-  IFOX00 and `U` to as370, rc 0 (JOB00290, fixture `as370/tests/equtypegen.s`).
-  Silent, and not ranked until its corpus count exists.
+- ~~#540~~ — found by the #525 probe: a label on a macro *call* is `T'` = `M` to
+  IFOX00 and was `U` to as370, rc 0 (JOB00290, `as370/tests/equtypegen.s`).
+  **Fixed** (PR #616). Corpus count: 517 answers in 130 modules flip, none
+  decides a branch -- 0 decks moved.
 
 The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
 2026-10-01, PR #596), ~~#529~~ / ~~#530~~ / ~~#531~~ (`IFO233`, `IFO104` and `IFO169` all closed
@@ -1491,6 +1493,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #540, MERGED as `8a266f8` (PR #616).** The open-code look-ahead
+  now records `M` for a label on a macro call (a source definition, or a library
+  member `lib_path` finds -- asked, never loaded). `equtypegen` is IFOX00's deck;
+  `equtypegen2` stays `U U U U`. Reach: 517 `T'` answers in 130 MVSBLD modules
+  flip `U` -> `M`, none decides a branch. MVSBLD gate, HEAD vs fix: 0 decks and 0
+  rc moved; libc370: 0 of 743. Not covered: a call through an OPSYN alias.
 
 - **2026-10-01 — #532, MERGED as `e94eab7` (PR #614); epic #539 closed.**
   `OPSYN` builds its table in a prescan (XF allows it only at the head of the
