@@ -1198,8 +1198,9 @@ afterwards.
 
 **Epic #539 is closed (2026-10-01): every item below is fixed** -- #525–#535 and
 the four found later, #579–#582 (PRs in the closing comment on #539). #540
-followed on 2026-10-01 (PR #616), and the listing gap #609 the same day (PR
-#618). Still open from this family: the listing gap #603.
+followed on 2026-10-01 (PR #616), and the listing gaps #609 and #603 the same
+day (PRs #618, #624). Nothing from this family is open; #619 and #623 were
+found on the way.
 
 `docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
@@ -1319,10 +1320,17 @@ was found while building a `listref` case, and each is excluded from that case
   blank where IFOX00 prints the entry symbol's value. **Fixed** (PR #621,
   `7ea080a`); `listref` case 10 checks END's LOC in all 128 references.
 
-- **#603** — new 2026-10-01, found with #530: `TITLE` does not start a page,
-  its text is not in the heading (column 10), and the statement is listed where
-  IFOX00 numbers it but does not print it. SOURCE pages only. Capture the
-  carry-over, macro and truncation cases on the oracle first.
+- ~~**#603**~~ — `TITLE` did not start a page or head it. **Fixed** (PR #624,
+  `4349626`), EJECT with it: both start a page at once and are not listed, the
+  title heads every SOURCE page from column 10, over 100 characters is IFO171.
+  Measured on MVSTK5-REF (JOB00304/00305, `titlepage`, `titlelong`,
+  `titlegen`); `listref` case 11. Not measured: whether IFO171 counts before
+  or after the `''`/`&&` reduction.
+
+- **#623** — new 2026-10-01, found with #603: `SPACE` is listed as a statement
+  and `PRINT NOGEN` is not honoured (IFOX00 lists the call, not the expansion;
+  a generated TITLE under NOGEN sets the title without the eject). `listref`
+  case 11 pins the exact lines it owns, so fixing either half trips it.
 
 ## Conditional assembly — three that behave, and one that has to be decided
 
@@ -1498,6 +1506,14 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #603, MERGED as `4349626` (PR #624).** TITLE and EJECT start
+  a SOURCE page and are not listed; the title heads every page from column 10
+  (`''`/`&&` once, carried over overflow, generated TITLEs alike), IFO171 past
+  100 characters. Four MVSTK5-REF captures, snapshot pair unchanged (2,789
+  members). listref case 11; the title sequence of 8 of 8 real IFOX00 listings
+  in mvs38src ifox-run matches. MVSBLD gate: 0 decks or rcs moved; all 5,528
+  assemble with `-a`. Found on the way: #623.
 
 - **2026-10-01 — #619, MERGED as `7ea080a` (PR #621).** `-a` lists END's entry
   symbol value in LOC (`000000`, `000008` usingparenpc, `000012` multi-csect).
