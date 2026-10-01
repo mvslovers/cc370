@@ -3460,6 +3460,28 @@ PY2
 fi
 rm -f /tmp/_xr$$.obj /tmp/_xr$$.out
 
+# ----------------------------------------------------------------- lblorg --
+# cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
+# `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0
+# (MVSTK5-REF JOB00282, tests/lblorg.s, tests/listref/ifox-listing-lblorg.txt).
+# The binary before the fix left L1 undefined: IFO188, rc 8, A(L1) = 0.
+./as370 tests/lblorg.s -o /tmp/_lo$$.obj >/tmp/_lo$$.out 2>&1; rclo=$?
+if [ $rclo != 0 ]; then
+    echo "lblorg: FAIL -- expected rc 0, got $rclo"; cat /tmp/_lo$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_lo$$.obj tests/ref/lblorg.obj <<'PY2'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]   # END card left out (IDR)
+if body(sys.argv[1]) != body(sys.argv[2]):
+    print("lblorg: FAIL -- deck differs from IFOX00's (A(L1) must be 00000008)"); sys.exit(1)
+print("lblorg: OK (a labelled ORG names the counter before it, deck == IFOX00)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_lo$$.obj /tmp/_lo$$.out
+
 # ------------------------------------------------------------- extrnafter --
 # cc370#579, #564's opposite order: `XDEF DS F' then `EXTRN XDEF'. IFOX00 raises
 # IFO196 on the EXTRN and writes NO ER: the ESD is XREFCOV SD 1, VONLY ER 2,
