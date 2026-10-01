@@ -450,11 +450,11 @@ PYE
 # spacelist/spacelines SPACE (#623); sysparm_substr is #150's own fixture, an
 # in-stream definition listed and numbered where it is written. All compare
 # line for line, statement numbers included; printgen also holds NOMCALL, the
-# call inside OUTER's expansion neither listed nor numbered (#626). Each
-# remaining difference is
-# pinned below with the issue that owns it, so a fix to any of them trips this
-# case and is meant to. Blank lines count: a SPACE is blank records, one per
-# three lines, as spacelist and spacelines measured them.
+# call inside OUTER's expansion neither listed nor numbered (#626), and
+# printerr an aligned DC listed at its own address (#627). Nothing is pinned any
+# more; `known' is where a difference goes, with the issue that owns it, if one
+# has to be tolerated again. Blank lines count: a SPACE is blank records, one
+# per three lines, as spacelist and spacelines measured them.
 for T11 in titlenamed titlelong titlepage titlegen printgen printerr spacelist spacelines sysparm_substr; do
 OUT11=/tmp/as370-listref-title.$$
 ./as370 tests/$T11.s -a="$OUT11" >/dev/null 2>/tmp/as370-listref-title.err.$$
@@ -477,8 +477,6 @@ def src(path):
     return out
 R, M = src(ref), src(mine)
 known = {   # what is still different, and whose it is
-    "printerr":  ["-000004 00000000                      22+         DC    A(UNDEF1)",                    # #627
-                  "+000002 000000000000                  22+         DC    A(UNDEF1)"],
 }
 d = [x for x in difflib.unified_diff(R, M, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("---", "+++")]
 want = known.get(t, [])
@@ -501,25 +499,25 @@ done
 # --- case 12: every SOURCE page that matches IFOX00 keeps matching -- #150 --
 # The SOURCE page of each reference named here is IFOX00's line for line:
 # headings, statement numbers and blank lines; *** ERROR *** markers aside.
-# Before #150 listed in-stream macro definitions, 63 of the 135 did; 91 do
-# since #626 (NOMCALL), plus tstlist, which needs the libc370 macros and is
-# case 1's. A reference that starts matching belongs on this list; one that
+# Before #150 listed in-stream macro definitions, 63 of the 135 did; 95 do
+# since #626 (NOMCALL) and #627 (alignment pads), plus tstlist, which needs
+# the libc370 macros and is case 1's. A reference that starts matching belongs on this list; one that
 # stops is a regression.
 python3 - <<'PYS' || fail=1
 import re, os, subprocess
 NAMES = """
-absrx absssub absusing actr adcon aifcond aliasext amp_fold amp_selfdef
-amp_subst attrapos_remark attrdup attre basereg basereg2 bitlen blank_csect
-brmnem ccwstar cmprule collate contattr contparen csect_resume csect_resume2
-csect_resume3 dcattr dcvals dupfac emptydc emptyopnd endpool endstop
-entryprobe entsd equfwd equlen equlist eququote equtype esdself esdvsect
-fpopc genblank kwundef lblorg ldentry lenattr litdup litdupexpr litlist
-litplusterm litpz litscale logop macbuf orglen parendepth printgen regexpr
-relocerr relop rldlen sconabs selfdup setc_len95 setc_open setc_substr
-setc_undef spacelines spacelist spmrr ssb1 stmtlen subattr sublist substrcat
-syslist sysparm_substr tattr_expr tattr_literal tattr_selfdef titlegen
-titlelong titlenamed titlepage usingexpr usingkey var_opcode xfdirect
-xsectrel
+absrx absssub absusing actr adcon aifcond aliasext align amp_fold
+amp_selfdef amp_subst attrapos_remark attrdup attre basereg basereg2 bitlen
+blank_csect brmnem ccwstar cmprule collate contattr contparen csect_resume
+csect_resume2 csect_resume3 dcattr dcvals dupfac emptydc emptyopnd endpool
+endstop entryprobe entsd equfwd equlen equlist eququote equtype esdself
+esdvsect fpopc genblank kwundef lblorg ldentry lenattr litdup litdupexpr
+litlist litplusterm litpz litscale logop macbuf orglen parendepth pool
+printerr printgen regexpr relocerr relop rldlen sconabs selfdup setc_len95
+setc_open setc_substr setc_undef spacelines spacelist spmrr ssb1 stmtlen
+subattr sublist substrcat syslist sysparm_substr tattr_expr tattr_literal
+tattr_selfdef titlegen titlelong titlenamed titlepage usingexpr usingkey
+usingmul var_opcode xfdirect xsectrel
 """.split()
 def src(path):
     out, on = [], False
