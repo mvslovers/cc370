@@ -3449,6 +3449,32 @@ PY2
 fi
 rm -f /tmp/_xr$$.obj /tmp/_xr$$.out
 
+# ------------------------------------------------------------- extrnafter --
+# cc370#579, #564's opposite order: `XDEF DS F' then `EXTRN XDEF'. IFOX00 raises
+# IFO196 on the EXTRN and writes NO ER: the ESD is XREFCOV SD 1, VONLY ER 2,
+# F1 LD, XREFB SD 3. Oracle: MVSTK5-REF JOB00302, tests/xrefcov.s case 5,
+# tests/listref/ifox-listing-xrefcov.txt. The binary before the fix was silent
+# and wrote XDEF ER 2, so VONLY and XREFB came out one ESDID higher and every
+# RLD naming them with them. Only the ESD cards are compared: the rest of the
+# deck still differs by #581 (case 10).
+./as370 tests/xrefcov.s -o /tmp/_xa$$.obj >/tmp/_xa$$.out 2>&1
+if [ "$(grep -c 'IFO196) - XDEF' /tmp/_xa$$.out)" != 1 ] || ! grep -q 'IFO196) - XDEF in line 41' /tmp/_xa$$.out; then
+    echo "extrnafter: FAIL -- expected one IFO196 on XDEF (statement 41, the EXTRN)"
+    grep IFO196 /tmp/_xa$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_xa$$.obj tests/ref/xrefcov.obj <<'PY2'
+import sys
+def esd(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] == b"\xc5\xe2\xc4"]
+if not esd(sys.argv[2]) or esd(sys.argv[1]) != esd(sys.argv[2]):
+    print("extrnafter: FAIL -- ESD differs from IFOX00's (no ER for XDEF, VONLY ER 2, XREFB SD 3)"); sys.exit(1)
+print("extrnafter: OK (IFO196 on the EXTRN, no ER for XDEF, ESD == IFOX00)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_xa$$.obj /tmp/_xa$$.out
+
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
 # IFO161 INVALID LITERAL at severity 8, zeroes the instruction and does not pool

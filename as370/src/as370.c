@@ -5799,9 +5799,21 @@ static void do_pass(int pass, char **lines, int nlines) {
                         note_operr(m, 8, i); } } }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
             int weak = (op[0] == 'W');
+            /* A name already defined by an earlier statement is IFO196 PREVIOUSLY
+             * DEFINED, and IFOX00 writes no ER for it: the definition stands and
+             * every later ESDID keeps its number (MVSTK5-REF JOB00302,
+             * tests/xrefcov.s case 5; #579). Decided in pass 1, where "defined"
+             * means an earlier statement -- the opposite order is #564. Such an
+             * operand is the only kind left without declared_extrn, which is how
+             * pass 2 finds it again to report it. */
+            if (pass == 2 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
+                for (j = 0; j < nf; j++) { struct sym *s = extsym[j][0] ? sym_find(extsym[j]) : NULL;
+                    if (s && !s->declared_extrn) { char m[112];
+                        snprintf(m, sizeof m, "Symbol previously defined (IFOX00 IFO196) - %.8s", extsym[j]); note_operr(m, 8, i); } } }
             if (pass == 1 && opnd[0]) { int nf = split_fields(opnd, extsym, MAXEXTSYM), j;
                 for (j = 0; j < nf; j++) { if (!extsym[j][0]) continue;
-                    struct sym *s = sym_get(extsym[j]); if (!s->defined) s->type = S_ER; if (weak) s->is_weak = 1;
+                    struct sym *s = sym_get(extsym[j]); if (s->defined) continue;
+                    s->type = S_ER; if (weak) s->is_weak = 1;
                     s->declared_extrn = 1;   /* the DECLARATION is what makes a later CSECT of this name IFO196 (#290); a V-con reference does not -- #281 */
                     esd_add(s, ESD_ER); } }
         } else if (!strcmp(op, "USING")) {
