@@ -3585,6 +3585,29 @@ else
 fi
 rm -f /tmp/_ab$$.s /tmp/_ab$$.ref.s /tmp/_ab$$.obj /tmp/_ab$$.ref.obj /tmp/_ab$$.out
 
+# ------------------------------------------------------------------- ictl --
+# cc370#534: `ICTL 1,71,16' as the first card is accepted at rc 0 (MVSTK5-REF
+# JOB00288, tests/xfdirect.s). Other columns are valid XF that as370's card
+# reader cannot honour: severity 12, said rather than misread. An ICTL past the
+# first card is IFO012, severity 8 (ifnx1a SSEQ47; from the source). The binary
+# before the change answered all three with "Undefined operation code".
+printf '         ICTL  1,71,16\nT        CSECT\n         DC    F%s1%s\n         END\n' "'" "'" > /tmp/_ic$$.a.s
+printf '         ICTL  1,72,16\nT        CSECT\n         END\n' > /tmp/_ic$$.b.s
+printf 'T        CSECT\n         ICTL  1,71,16\n         END\n' > /tmp/_ic$$.c.s
+./as370 /tmp/_ic$$.a.s -o /tmp/_ic$$.obj >/tmp/_ic$$.a.out 2>&1; rca=$?
+./as370 /tmp/_ic$$.b.s -o /tmp/_ic$$.obj >/tmp/_ic$$.b.out 2>&1; rcb=$?
+./as370 /tmp/_ic$$.c.s -o /tmp/_ic$$.obj >/tmp/_ic$$.c.out 2>&1; rcc=$?
+if [ $rca != 0 ] || grep -q ERROR /tmp/_ic$$.a.out; then
+    echo "ictl: FAIL -- ICTL 1,71,16 first: rc $rca, expected a clean 0"; cat /tmp/_ic$$.a.out; fail=$((fail + 1))
+elif [ $rcb != 12 ] || ! grep -q 'ICTL with columns other than 1,71,16' /tmp/_ic$$.b.out; then
+    echo "ictl: FAIL -- ICTL 1,72,16: rc $rcb, expected 12 and the not-implemented message"; cat /tmp/_ic$$.b.out; fail=$((fail + 1))
+elif [ $rcc != 8 ] || ! grep -q 'IFO012) in line 2$' /tmp/_ic$$.c.out; then
+    echo "ictl: FAIL -- ICTL on the second card: rc $rcc, expected 8 and IFO012"; cat /tmp/_ic$$.c.out; fail=$((fail + 1))
+else
+    echo "ictl: OK (standard columns accepted first; other columns refused at 12; late ICTL is IFO012)"
+fi
+rm -f /tmp/_ic$$.a.s /tmp/_ic$$.b.s /tmp/_ic$$.c.s /tmp/_ic$$.a.out /tmp/_ic$$.b.out /tmp/_ic$$.c.out /tmp/_ic$$.obj
+
 # ----------------------------------------------------------------- lblorg --
 # cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
 # `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0

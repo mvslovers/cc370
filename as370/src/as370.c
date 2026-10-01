@@ -5895,6 +5895,23 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (s && entry_unlinkable(s)) { char m[112];
                         snprintf(m, sizeof m, "Invalid ENTRY operand, linkage cannot be performed (IFOX00 IFO189) - %.8s", extsym[j]);
                         note_operr(m, 8, i); } } }
+        } else if (!strcmp(op, "ICTL")) {
+            /* ICTL sets the begin, end and continue columns, and only as the
+             * first card of the source. `ICTL 1,71,16' -- the standard columns --
+             * is accepted at rc 0 (MVSTK5-REF JOB00288, tests/xfdirect.s; #534).
+             * Any other columns are valid XF that as370 cannot honour: its card
+             * reader is built on 1/71/16, so it says so at severity 12 rather
+             * than read the cards wrongly in silence. Past the first card IFOX00
+             * rejects ICTL with IFO012, severity 8 (ifnx1a SSEQ47; from the
+             * source, not separately measured). */
+            if (pass == 2) {
+                char cols[64]; int k, n = 0;
+                for (k = 0; opnd[k] && n < 63; k++) if (opnd[k] != ' ') cols[n++] = opnd[k];
+                cols[n] = 0;
+                if (i != 0) note_operr("ICTL statement appears too late in the program (IFOX00 IFO012)", 8, i);
+                else if (strcmp(cols, "1,71,16"))
+                    note_operr("ICTL with columns other than 1,71,16 is valid Assembler XF but not implemented by as370 - the cards are read with the standard columns", 12, i);
+            }
         } else if (!strcmp(op, "SPACE")) {
             /* The operand is a decimal self-defining term or nothing. A symbol
              * -- `SPACE ONE' with ONE EQU 1 -- is IFO242 (severity 4) and IFOX00
