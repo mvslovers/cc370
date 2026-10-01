@@ -1251,12 +1251,12 @@ was found while building a `listref` case, and each is excluded from that case
   prints bytes from the enclosing section. Two rows of `listref/README.md` are
   stale for the same reason.
 - ~~**#28**~~ — LTORG rendered at the pre-alignment LOC, and a mid-stream pool's
-  literals were numbered behind END. **Fixed on `feat/538-xref`** as a
+  literals were numbered behind END. **Fixed and closed** (PR #578, `b24661d`) as a
   prerequisite of #538: the cross-reference prints those numbers. `listref`
   case 3 now runs through the pool, and the SOURCE pages of 44 of the 122
   references are identical where 36 were (11 improved, none worse).
-- **#538** — the CROSS-REFERENCE and LITERAL CROSS-REFERENCE pages, on
-  `feat/538-xref`. `-as`, part of a bare `-a`, and `--xref=short` for
+- ~~**#538**~~ — the CROSS-REFERENCE and LITERAL CROSS-REFERENCE pages,
+  **merged 2026-10-01** (PR #578, `d34d19b`). `-as`, part of a bare `-a`, and `--xref=short` for
   `XREF(SHORT)`. Of the 122 references in `tests/listref`, 81 are identical and
   35 more once the SOURCE page's own numbering is mapped across
   (`listref/xref.py`, `check.sh` case 8). Of the other 6, five are assembly
