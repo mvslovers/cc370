@@ -609,5 +609,23 @@ if compile uat "$WORK/uat.c" "-Os -funit-at-a-time"; then
 else echo "unit-at-a-time: FAIL -- -Os -funit-at-a-time does not compile"; uatfail=1; fi
 if [ $uatfail = 0 ]; then echo "unit-at-a-time: OK (off at -O2/-Os: the table stays, top-level asm stays behind the code; -funit-at-a-time still works)"; else fail=1; fi
 
+# --- issue #592: strict aliasing is off by default at -O2/-Os ---------------
+# Under -fstrict-aliasing the store through a float * cannot touch an int,
+# so the function returns the constant 1 without reloading *i (LA 15,1).
+# MVS code casts between control-block layouts constantly; over the ecosystem
+# the rule moved code in 71 files for 0.1 % of size. The default must reload
+# (L 15,0(r)); -fstrict-aliasing still gives the constant.
+cat > "$WORK/sa.c" <<'EOF'
+int f(int *i, float *fl) { *i = 1; *fl = 2.0f; return *i; }
+EOF
+safail=0
+for o in -O2 -Os; do
+    compile sa "$WORK/sa.c" "$o" && grep -qE '^ +L +15,0\(' "$WORK/sa.s" ||
+        { echo "strict-aliasing: FAIL -- $o assumes no aliasing (no reload of *i)"; safail=1; }
+done
+compile sa "$WORK/sa.c" "-Os -fstrict-aliasing" && grep -qE '^ +LA +15,1\(' "$WORK/sa.s" ||
+    { echo "strict-aliasing: FAIL -- an explicit -fstrict-aliasing is no longer honoured"; safail=1; }
+if [ $safail = 0 ]; then echo "strict-aliasing: OK (off at -O2/-Os: *i is reloaded; -fstrict-aliasing still works)"; else fail=1; fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
