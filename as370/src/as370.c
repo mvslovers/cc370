@@ -2711,6 +2711,28 @@ static void eval_setc(struct ctx *c, const char *s, char *out, size_t outsz) {
  * record per symbol yet -- filed separately. Anything that is neither a
  * self-defining term nor a known symbol stays 'U'.
  */
+/* The text a TITLE statement puts in the page heading: the quoted operand
+ * with a doubled apostrophe and a doubled ampersand each printed once --
+ * `TITLE 'Q2 A''B&&C'' heads its pages `Q2 A'B&C' (MVSTK5-REF JOB00304,
+ * tests/titlepage.s). At most 100 characters reach the heading; a longer
+ * operand is IFO171 at severity 4 and the first 100 are printed (JOB00305,
+ * tests/titlelong.s, 101 and 110 characters). Whether IFO171 counts the
+ * operand before or after the '' and && reduction is NOT measured -- those
+ * titles carry neither -- and as370 counts after. Returns the length before
+ * the cut, so the caller can tell; `out' holds up to 100 characters and a NUL. */
+static int title_text(const char *opnd, char *out) {
+    const char *p = opnd; int n = 0;
+    while (*p == ' ') p++;
+    if (*p == '\'') p++;
+    while (*p) {
+        if (*p == '\'') { if (p[1] != '\'') break; p++; }      /* '' is one apostrophe; a lone one ends it */
+        else if (*p == '&' && p[1] == '&') p++;               /* && is one ampersand */
+        if (n < 100) out[n] = *p;
+        n++; p++;
+    }
+    out[n < 100 ? n : 100] = 0;
+    return n;
+}
 static int is_selfdef(const char *v) {
     int i, n;
     if (!v[0]) return 0;
@@ -5953,6 +5975,7 @@ static void do_pass(int pass, char **lines, int nlines) {
              * TITLE STATEMENT NAMED, severity 4, and the first name stays the deck
              * id (MVSTK5-REF JOB00286, tests/titlenamed.s; #530). */
             if (pass == 2 && lbl[0] && i != deck_id_ln) note_operr("More than one TITLE statement named (IFOX00 IFO104)", 4, i);
+            if (pass == 2) { char t[101]; if (title_text(opnd, t) > 100) note_operr("TITLE statement operand exceeds 100 characters (IFOX00 IFO171)", 4, i); }
         } else if (!strcmp(op, "ENTRY")) {
             /* ENTRY takes a comma-separated symbol list, exactly like EXTRN/WXTRN
              * below -- IFOX00 accepts `ENTRY ALPHA,BETA` and emits one LD per
@@ -7284,6 +7307,8 @@ static void a_line(const char *s) {                 /* write a print line, trail
     int n = (int)strlen(s); while (n > 0 && s[n - 1] == ' ') n--;
     fwrite(s, 1, (size_t)n, alst); fputc('\n', alst);
 }
+static char a_title[101];   /* the last TITLE's text: it heads every SOURCE page from column 10 (#603) */
+static int a_src_heading;   /* a_newpage is printing a SOURCE page: the heading is a_title, not a centred name */
 static void a_newpage(const char *title, const char *colhdr) {
     char ln[128]; int t = (int)strlen(title);
     if (a_page++) fputc('\f', alst);                /* page eject before every page but the first */
@@ -7292,6 +7317,7 @@ static void a_newpage(const char *title, const char *colhdr) {
     { int lead = (121 - t) / 2; if (lead < 0) lead = 0;
       if (!strncmp(title, "CROSS", 5) || !strncmp(title, "LITERAL CROSS", 13)) lead = 50;   /* not centred: IFOX00 starts both XREF titles in column 51, as it does RELOCATION DICTIONARY (tests/listref) */
       memcpy(ln + lead, title, (size_t)t); }
+    if (a_src_heading) memcpy(ln + 9, a_title, strlen(a_title));   /* TITLE text from column 10, up to 100 characters (#603) */
     { char pg[16]; snprintf(pg, sizeof pg, "PAGE%5d", a_page); memcpy(ln + 111, pg, strlen(pg)); }   /* PAGE at col 112 */
     a_line(ln);
     memset(ln, ' ', 120); ln[120] = 0;
@@ -7362,7 +7388,9 @@ static void a_objcode(long loc, int len, int instr, char *out) {
 #define A_SRC_LINECOUNT 55
 static int a_srcrows;
 static void a_src_newpage(void) {
-    a_newpage("", "  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT");   /* the source page has no centred title, only the column header */
+    a_src_heading = 1;
+    a_newpage("", "  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT");
+    a_src_heading = 0;
     a_srcrows = 0;
 }
 static void a_src_emit(const char *ln) {
@@ -7461,6 +7489,23 @@ static void a_src_section(char **lines, int nl) {
         parse(buf, lbl, op, opnd);
         int gen   = (lflags[i] & LF_GEN) != 0;
         int noasm = (lflags[i] & LF_NOASM) != 0;
+        /* TITLE and EJECT are numbered and not listed; each starts a page at
+         * once, so a TITLE followed by EJECT prints an empty page under the
+         * title and then another (MVSTK5-REF JOB00304, tests/titlepage.s, Q3),
+         * and two TITLEs in a row leave an empty page each (titlenamed). A
+         * TITLE that is the first statement does not: the SOURCE section's
+         * first heading waits for its first line or TITLE (IEAVESC0, mvs38src
+         * ifox-run). A TITLE a macro generates does the same as one in open
+         * code (JOB00304, Q6). Under PRINT NOGEN IFOX00 sets the title without
+         * the eject (tests/titlegen.s, captured right after JOB00305), but
+         * as370 does not honour NOGEN in the listing yet (#623), so a generated
+         * TITLE always ejects here. */
+        if (!noasm && (!strcmp(op, "TITLE") || !strcmp(op, "EJECT"))) {
+            if (op[0] == 'T') title_text(opnd, a_title);
+            a_src_newpage();
+            a_src_pool(i + 1);
+            continue;
+        }
         const struct opc *o = noasm ? NULL : op_find(op);
         int is_instr = (o != NULL);
         int show_loc = 0, show_obj = 0, show_equ = 0;

@@ -1,0 +1,108 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.29 10/01/26
+TGEN      SD  0001 000000 000081
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.29 10/01/26
+                                      1 * TITLE unter PRINT NOGEN, SPACE und EJECT (#603).
+                                      2 *
+                                      3 * titlepage.s zeigt: ein TITLE aus einer Expansion unter PRINT
+                                      4 * NOGEN beginnt keine Seite. Offen ist, ob er den Titel trotzdem
+                                      5 * setzt -- das zeigt der Kopf der Ueberlaufseite am Ende: N1 OFFEN
+                                      6 * oder N2-NOGEN. Dazu SPACE 2 und ein EJECT mitten auf der Seite.
+                                      7          MACRO
+                                      8          TMAC  &T
+                                      9          TITLE '&T'
+                                     10          DC    C'M'
+                                     11          MEND
+000000                               12 TGEN     CSECT
+         N1 OFFEN                                                                                              PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.29 10/01/26
+000000 C1F1                          14          DC    C'A1'
+                                     15          PRINT NOGEN
+                                     16          TMAC  N2-NOGEN
+                                     19          PRINT GEN
+000003 C1F2                          20          DC    C'A2'
+ 
+000005 C1F3                          22          DC    C'A3'
+         N2-NOGEN                                                                                              PAGE    4
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.29 10/01/26
+000007 C1F4                          24          DC    C'A4'
+000009 F0F0                          25          DC    C'00'
+00000B F0F1                          26          DC    C'01'
+00000D F0F2                          27          DC    C'02'
+00000F F0F3                          28          DC    C'03'
+000011 F0F4                          29          DC    C'04'
+000013 F0F5                          30          DC    C'05'
+000015 F0F6                          31          DC    C'06'
+000017 F0F7                          32          DC    C'07'
+000019 F0F8                          33          DC    C'08'
+00001B F0F9                          34          DC    C'09'
+00001D F1F0                          35          DC    C'10'
+00001F F1F1                          36          DC    C'11'
+000021 F1F2                          37          DC    C'12'
+000023 F1F3                          38          DC    C'13'
+000025 F1F4                          39          DC    C'14'
+000027 F1F5                          40          DC    C'15'
+000029 F1F6                          41          DC    C'16'
+00002B F1F7                          42          DC    C'17'
+00002D F1F8                          43          DC    C'18'
+00002F F1F9                          44          DC    C'19'
+000031 F2F0                          45          DC    C'20'
+000033 F2F1                          46          DC    C'21'
+000035 F2F2                          47          DC    C'22'
+000037 F2F3                          48          DC    C'23'
+000039 F2F4                          49          DC    C'24'
+00003B F2F5                          50          DC    C'25'
+00003D F2F6                          51          DC    C'26'
+00003F F2F7                          52          DC    C'27'
+000041 F2F8                          53          DC    C'28'
+000043 F2F9                          54          DC    C'29'
+000045 F3F0                          55          DC    C'30'
+000047 F3F1                          56          DC    C'31'
+000049 F3F2                          57          DC    C'32'
+00004B F3F3                          58          DC    C'33'
+00004D F3F4                          59          DC    C'34'
+00004F F3F5                          60          DC    C'35'
+000051 F3F6                          61          DC    C'36'
+000053 F3F7                          62          DC    C'37'
+000055 F3F8                          63          DC    C'38'
+000057 F3F9                          64          DC    C'39'
+000059 F4F0                          65          DC    C'40'
+00005B F4F1                          66          DC    C'41'
+00005D F4F2                          67          DC    C'42'
+00005F F4F3                          68          DC    C'43'
+000061 F4F4                          69          DC    C'44'
+000063 F4F5                          70          DC    C'45'
+000065 F4F6                          71          DC    C'46'
+000067 F4F7                          72          DC    C'47'
+000069 F4F8                          73          DC    C'48'
+00006B F4F9                          74          DC    C'49'
+00006D F5F0                          75          DC    C'50'
+00006F F5F1                          76          DC    C'51'
+000071 F5F2                          77          DC    C'52'
+000073 F5F3                          78          DC    C'53'
+         N2-NOGEN                                                                                              PAGE    5
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.29 10/01/26
+000075 F5F4                          79          DC    C'54'
+000077 F5F5                          80          DC    C'55'
+000079 F5F6                          81          DC    C'56'
+00007B F5F7                          82          DC    C'57'
+00007D F5F8                          83          DC    C'58'
+00007F F5F9                          84          DC    C'59'
+                                     85          END
+                                                  CROSS-REFERENCE                                              PAGE    6
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.29 10/01/26
+TGEN     00001 00000000 00012
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    7
+                                                                                                 ASM 0201 14.29 10/01/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         83
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                       108
