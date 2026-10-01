@@ -1216,8 +1216,8 @@ latter two.
 The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
 2026-10-01, PR #596), ~~#529~~ / ~~#530~~ / ~~#531~~ (`IFO233`, `IFO104` and `IFO169` all closed
 2026-10-01, PRs #598, #602, #599), and #532–#535
-(`OPSYN`, ~~`AIFB`/`AGOB`~~ -- #533 closed 2026-10-01, PR #606 --, `ICTL`,
-`PUNCH` missing). Their corpus count is 0.
+(`OPSYN` missing; ~~`AIFB`/`AGOB`~~, ~~`ICTL`~~ and ~~`PUNCH`~~ closed
+2026-10-01 -- #533, #534, #535 in PRs #606, #611, #612). Their corpus count is 0.
 
 ## Observability
 
@@ -1308,7 +1308,7 @@ was found while building a `listref` case, and each is excluded from that case
   the same for generated statements. `listref/check.sh` case 9 compares aifcond
   on statement numbers only until this is fixed.
 
-- **#603** — a sixth, new 2026-10-01, found with #530: `TITLE` does not start a page,
+- **#603** — new 2026-10-01, found with #530: `TITLE` does not start a page,
   its text is not in the heading (column 10), and the statement is listed where
   IFOX00 numbers it but does not print it. SOURCE pages only. Capture the
   carry-over, macro and truncation cases on the oracle first.
@@ -1487,6 +1487,14 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #534 and #535, MERGED as `fde637b` (PR #611) and `e3107d0`
+  (PR #612).** `ICTL 1,71,16` on the first card is accepted; other columns are
+  refused at severity 12 (the card reader is built on 1/71/16 -- a probe first),
+  a late ICTL is IFO012. `PUNCH` writes its card through REPRO's punch path,
+  byte-identical to IFOX00's card between TXT and END (JOB00288); a null
+  operand is IFO165. MVSBLD and libc370: nothing moved (no ICTL, and the 17
+  "PUNCH" hits are comments).
 
 - **2026-10-01 — #533 and #607, MERGED as `a1e0135` (PR #606) and `a5a8ed5`
   (PR #608).** `AIFB`/`AGOB` are aliases of `AIF`/`AGO`, mapped once in
