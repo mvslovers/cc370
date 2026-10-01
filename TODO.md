@@ -1214,8 +1214,8 @@ latter two.
   Silent, and not ranked until its corpus count exists.
 
 The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
-2026-10-01, PR #596), ~~#529~~ / #530 / ~~#531~~ (`IFO233` and `IFO169` closed 2026-10-01, PRs
-#598 and #599; `IFO104` still missing), and #532–#535
+2026-10-01, PR #596), ~~#529~~ / ~~#530~~ / ~~#531~~ (`IFO233`, `IFO104` and `IFO169` all closed
+2026-10-01, PRs #598, #602, #599), and #532–#535
 (`OPSYN`, `AIFB`/`AGOB`, `ICTL`, `PUNCH` missing). Their corpus count is 0.
 
 ## Observability
@@ -1240,6 +1240,11 @@ The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
   writes its identity into every END card; ld370 does not read it. One field, one
   21-byte record, one flag byte — and the fixture oracle settles the layout.
 ## Listing fidelity
+
+- **#603** — new 2026-10-01, found with #530: `TITLE` does not start a page,
+  its text is not in the heading (column 10), and the statement is listed where
+  IFOX00 numbers it but does not print it. SOURCE pages only. Capture the
+  carry-over, macro and truncation cases on the oracle first.
 
 All five are cosmetic, and the first three are pinned rather than hidden — each
 was found while building a `listref` case, and each is excluded from that case
@@ -1267,7 +1272,7 @@ was found while building a `listref` case, and each is excluded from that case
   gap of its own: the TITLE name is not printed in columns 1–8 of any page
   heading (`titlenamed`). (2026-10-01: #526, #529 and #531 are fixed; the
   check now reads 86 exact, 35 renumbered, 3 known -- `equparen`, `titlenamed`,
-  `xfdirect`.) Three
+  `xfdirect`; with #530, PR #602, 87 exact and 2 known.) Three
   IBM modules with an IFOX00 `XREF(SHORT)` listing in `mvs38src` match entry for
   entry including page breaks. **`tests/xrefcov.s`** covers what neither had —
   a literal past 120 characters, `EXTRN` after a definition, `CNOP`/`CCW`/`DROP`,
@@ -1476,6 +1481,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #530, MERGED as `7dc3f2d` (PR #602).** A second named `TITLE`
+  is IFO104 (severity 4); the deck id now heads every listing page in columns
+  1–8. `titlenamed` (JOB00286); `listref/xref.py` 87 exact, 2 known. MVSBLD: no
+  deck, no rc moved, and no module names more than one TITLE. The page-ejecting
+  half of TITLE is #603.
 
 - **2026-10-01 — #529 and #531, MERGED as `45daf2f` (PR #598) and `aaa2300`
   (PR #599).** More than six levels of parentheses is IFO233, a self-defining
