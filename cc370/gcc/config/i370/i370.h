@@ -142,9 +142,14 @@ extern void i370_override_options (void);
    @V1), and it writes every top-level asm ahead of the functions, so a
    DCB placed after the code that addresses it falls outside its USING.
    Off by default; this runs before the command line is read, so an
-   explicit -funit-at-a-time still turns it on.  */
+   explicit -funit-at-a-time still turns it on.
+
+   Strict aliasing is off for the same reason, by a different route
+   (cc370#592): MVS code casts between control-block layouts all the time,
+   and over the ecosystem the rule moves code in 71 files for 0.1 % of
+   size.  -fstrict-aliasing still turns it on.  */
 #define OPTIMIZATION_OPTIONS(LEVEL, SIZE) \
-  do { flag_unit_at_a_time = 0; } while (0)
+  do { flag_unit_at_a_time = 0; flag_strict_aliasing = 0; } while (0)
 
 /* To use IBM supplied macro function prologue and epilogue, define the
    following to 1.  Should only be needed if IBM changes the definition
