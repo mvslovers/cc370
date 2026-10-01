@@ -617,6 +617,14 @@ static struct sym *sym_find(const char *n) {
     int i; for (i = 0; i < nsym; i++) if (!strcmp(syms[i].name, n)) return &syms[i];
     return NULL;
 }
+/* A symbol of THIS assembly: defined, or declared by EXTRN/WXTRN. A name seen
+ * only in V() or =V() has an ER and an ESDID but is no symbol here: IFOX00
+ * makes A(VONLY) IFO188, zero and without an RLD entry (MVSTK5-REF JOB00302,
+ * tests/xrefcov.s case 6; #580). Testing type == S_ER instead let it relocate
+ * silently against the ER. */
+static int sym_known(const struct sym *s) {
+    return s && (s->defined || (s->type == S_ER && s->declared_extrn));
+}
 static struct sym *sym_get(const char *n) {
     struct sym *s = sym_find(n);
     if (s) return s;
@@ -980,7 +988,7 @@ static long x_factor(int sign) {
          * would decide a length -- a length modifier, a duplication factor --
          * reject an undefined symbol before evaluating, so pass 1 and pass 2
          * cannot disagree there. */
-        if (!s || (!s->defined && s->type != S_ER)) {
+        if (!sym_known(s)) {
             if (g_pass == 2 && nm[0]) note_undefsym(nm, g_curln);
             return 0;
         }
@@ -1005,7 +1013,8 @@ static long x_factor(int sign) {
      * still counts as relocatable exactly as it used to.  The empty name guard
      * matters: the implicit private-code section is entered under "" (sym_get("")
      * in do_pass), and a factor position holding no symbol at all yields "". */
-    if (g_pass == 2 && nm[0] && (!s || (!s->defined && s->type != S_ER))) note_undefsym(nm, g_curln);
+    if (g_pass == 2 && nm[0] && (!sym_known(s))) note_undefsym(nm, g_curln);
+    if (s && s->type == S_ER && !sym_known(s)) s = NULL;   /* known only from V(): no symbol, so 0 and not relocatable (#580) */
     if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) {
                  xrl_ += sign;
                  /* Tally the relocatable terms PER SECTION as well as in total.
@@ -1440,7 +1449,7 @@ static void reloc_sym(const char *expr, char *out, int outsz) {
         { char nm[64]; int n = 0; while (*p && !strchr("+-*/(), ", *p) && n < 63) nm[n++] = *p++; nm[n] = 0;
           if (!n) { p++; continue; }                                /* unhandled char: advance to guarantee progress */
           if (nm[0] && !isdigit((unsigned char)nm[0])) { struct sym *s = sym_find(nm);
-              if (s && (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) && sign > 0 && !out[0]) {
+              if (s && (s->type == S_SD || s->type == S_PC || s->type == S_REL || (s->type == S_ER && sym_known(s))) && sign > 0 && !out[0]) {
                   int i = 0; while (nm[i] && i < outsz - 1) { out[i] = nm[i]; i++; } out[i] = 0; } } }
         sign = 1; expect = 0;
     }
@@ -4793,7 +4802,7 @@ static int scan_undef_terms(const char *s, int line) {
             nm[n < 63 ? n : 63] = 0;
             if (*s == '\'') continue;                     /* X'..'/C'..'/B'..'/L'..' prefix, not a symbol */
             struct sym *sy = sym_find(nm);
-            if (!sy || (!sy->defined && sy->type != S_ER)) { note_undefsym(nm, line); found++; }
+            if (!sym_known(sy)) { note_undefsym(nm, line); found++; }
         } else s++;
     }
     return found;
@@ -4844,7 +4853,7 @@ static int undefined_lattr(const char *s, char *out) {
                 while (*t && (isalnum((unsigned char)*t) || *t == '@' || *t == '#' || *t == '$' || *t == '_')) { if (n < 63) nm[n++] = *t; t++; }
                 nm[n] = 0;
                 struct sym *sy = nm[0] ? sym_find(nm) : NULL;
-                if (nm[0] && (!sy || (!sy->defined && sy->type != S_ER))) { scopy(out, nm, 63); return 1; }
+                if (nm[0] && (!sym_known(sy))) { scopy(out, nm, 63); return 1; }
                 s = t; continue;
             }
             if (q || !attr_apos(base, (int)(s - base))) q = !q;
@@ -4884,7 +4893,7 @@ static void equ_undef_terms(const char *s, int line) {
             nm[n < 63 ? n : 63] = 0;
             if (*s == '\'') continue;                  /* X'..'/C'..'/B'..'/L'..' prefix */
             struct sym *sy = sym_find(nm);
-            if (!sy || (!sy->defined && sy->type != S_ER)) note_equbad(line, nm);
+            if (!sym_known(sy)) note_equbad(line, nm);
         } else s++;
     }
 }
@@ -4906,7 +4915,7 @@ static int org_undefined(const char *s, char *out) {
             nm[n < 63 ? n : 63] = 0;
             if (*s == '\'') continue;                  /* X'..'/C'..'/B'..'/L'..' prefix */
             struct sym *sy = sym_find(nm);
-            if (!sy || (!sy->defined && sy->type != S_ER)) { scopy(out, nm, 63); return 1; }
+            if (!sym_known(sy)) { scopy(out, nm, 63); return 1; }
         } else s++;
     }
     return 0;
@@ -6086,7 +6095,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 else if (pass == 2 && (oj = org_rejected(i)) >= 0) {
                     lc = orgbad_val[oj];
                     struct sym *os = sym_find(orgbad_sym[oj]);
-                    if (os && (os->defined || os->type == S_ER)) {
+                    if (sym_known(os)) {
                         char m[VALSZ];
                         snprintf(m, sizeof m, "Symbol not previously defined (IFOX00 IFO231) - %.20s", orgbad_sym[oj]);
                         note_operr(m, 8, i);
@@ -6240,7 +6249,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         int dj = dupsym_find(i, oi);
                         if (dj >= 0) {
                             struct sym *ds = sym_find(dupsym_sym[dj]);
-                            if (ds && (ds->defined || ds->type == S_ER)) {
+                            if (sym_known(ds)) {
                                 char m[VALSZ];
                                 snprintf(m, sizeof m, "Duplication factor uses a symbol not previously defined (IFOX00 IFO231) - %.20s", dupsym_sym[dj]);
                                 note_operr(m, 8, i);
@@ -6284,7 +6293,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                             note_lenbad(i, oi, bbad); cnt = 0; bitlen = 1;
                         } else if (pass == 2 && (brej = len_rejected(i, oi)) != NULL) {
                             struct sym *bs = sym_find(brej);
-                            if (bs && (bs->defined || bs->type == S_ER)) {
+                            if (sym_known(bs)) {
                                 char m[VALSZ];
                                 snprintf(m, sizeof m, "Length modifier uses a symbol not previously defined (IFOX00 IFO231) - %.20s", brej);
                                 note_operr(m, 8, i);
@@ -6328,7 +6337,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                             note_lenbad(i, oi, lbad); cnt = 0; blen = 0;
                         } else if (pass == 2 && (lrej = len_rejected(i, oi)) != NULL) {
                             struct sym *ls = sym_find(lrej);
-                            if (ls && (ls->defined || ls->type == S_ER)) {
+                            if (sym_known(ls)) {
                                 char m[VALSZ];
                                 snprintf(m, sizeof m, "Length modifier uses a symbol not previously defined (IFOX00 IFO231) - %.20s", lrej);
                                 note_operr(m, 8, i);
@@ -6750,7 +6759,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             else if (pass == 2 && lbl[0]) { int k;
                 for (k = 0; k < nequbad; k++) { if (equbad_ln[k] != i) continue;
                     const char *eb = equbad_sym[k]; struct sym *es = sym_find(eb);
-                    if (es && (es->defined || es->type == S_ER)) {
+                    if (sym_known(es)) {
                         char m[VALSZ];
                         snprintf(m, sizeof m, "Symbol not previously defined (IFOX00 IFO231) - %.20s", eb);
                         note_operr(m, 8, i);
