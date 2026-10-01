@@ -136,6 +136,16 @@ extern int mvs_need_to_globalize;
 extern void i370_override_options (void);
 #define OVERRIDE_OPTIONS i370_override_options()
 
+/* -O2 and -Os turn on unit-at-a-time, and on this target it breaks code
+   that assembles at -O1 (cc370#590): the callgraph drops a static table
+   whose only use is a global pointer's initializer (DC A(@V1+2) with no
+   @V1), and it writes every top-level asm ahead of the functions, so a
+   DCB placed after the code that addresses it falls outside its USING.
+   Off by default; this runs before the command line is read, so an
+   explicit -funit-at-a-time still turns it on.  */
+#define OPTIMIZATION_OPTIONS(LEVEL, SIZE) \
+  do { flag_unit_at_a_time = 0; } while (0)
+
 /* To use IBM supplied macro function prologue and epilogue, define the
    following to 1.  Should only be needed if IBM changes the definition
    of their prologue and epilogue.  */
