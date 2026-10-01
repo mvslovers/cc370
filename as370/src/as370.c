@@ -1946,6 +1946,11 @@ static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC
 #define LF_SUBST 4
 /* The name field redefines a symbol pass 1 had already defined (cc370#556). */
 #define LF_DUPDEF 8
+/* A macro call that an expansion generated: neither listed nor numbered, the
+ * way IFOX00 runs with NOMCALL (tests/printgen.s, JOB00308: OUTER's inner
+ * `INNER &T' has no line and no number; #626). The slot stays, because a
+ * diagnostic raised inside the inner expansion is addressed to it. */
+#define LF_NOLIST 16
 static unsigned char lflags[MAXLINES];
 static int g_genlevel;  /* >0 while inside a macro expansion (distinguishes generated lines from COPY'd source) */
 static int g_copyraw;   /* >0 while expanding a COPY'd member: nothing has been substituted into its cards yet */
@@ -4371,7 +4376,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
             lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
             out[*nout] = strdup(line); (*nout)++;
         }
-        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0)); line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0) | (g_genlevel > 0 ? LF_NOLIST : 0)); line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
         /* HLASM substitutes the caller's variable symbols in a macro's arguments
          * in the caller's context. At open-code level resolve them from g_opc, so
          * e.g. `DCB MACRF=P&OUTM.M` binds &MACRF='PMM' (not the literal 'P&OUTM.M',
@@ -7481,7 +7486,7 @@ static void a_number(int nl) {
     for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) ;   /* never placed in pass 2: numbered last */
     a_lcur = k;
     for (i = 0; i < nl; i++) {
-        a_lstmt[i] = ++st;
+        a_lstmt[i] = (lflags[i] & LF_NOLIST) ? st : ++st;   /* NOMCALL: an inner call takes no number (#626) */
         for (; k < a_nlord && lits[a_lorder[k]].pline == i + 1; k++) lits[a_lorder[k]].stmt = ++st;
     }
     for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) lits[a_lorder[k]].stmt = ++st;
@@ -7570,6 +7575,7 @@ static void a_src_section(char **lines, int nl) {
         parse(buf, lbl, op, opnd);
         int gen   = (lflags[i] & LF_GEN) != 0;
         int noasm = (lflags[i] & LF_NOASM) != 0;
+        if (lflags[i] & LF_NOLIST) { a_src_pool(i + 1); continue; }   /* NOMCALL (#626) */
         int on0 = a_pon, gen0 = a_pgen;
         if (!noasm && !strcmp(op, "PRINT")) a_print_opnd(opnd);
         else if (!noasm && !strcmp(op, "PUSH") && a_has_print(opnd)) { if (a_psp < 16) { a_pstack[a_psp][0] = (unsigned char)a_pon; a_pstack[a_psp][1] = (unsigned char)a_pgen; a_psp++; } }
