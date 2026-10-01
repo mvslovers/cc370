@@ -1474,6 +1474,14 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-10-01 — `-Os` made usable, declared experimental: #575 (PR #589),
+  #590 (PR #591), #592 (PR #594; #593 was closed by its deleted base).** A
+  backward `B` at a page end, unit-at-a-time (static tables dropped, top-level
+  `asm` moved) and strict aliasing; the last two are off by default now. All
+  1,017 ecosystem sources that compile also assemble at `-Os`; `-O1` output
+  byte-identical. One rexx370 suite run at `-Os` passed (JOB01477). README,
+  `CLAUDE.md` and `cc370(1)` say experimental; projects validate it themselves.
+
 - **2026-09-30 — #559, MERGED as `4811004` (PR #566).** ENTRY of an absolute or
   never-defined name is IFO189 and gets no LD (`entryprobe`, JOB00298). MVSBLD:
   5,231 -> 5,232 identical, gained IKJEGMNL; IFO189 equals IFOX00's (IKJEGMNL
@@ -2810,6 +2818,11 @@ Small things with no issue, recorded here so they are not lost twice.
 ## Cross-repo
 
 This file is cc370-only, and some threads are not.
+
+**`-Os` is rexx370's to validate (rexx370#258, 2026-10-01).** cc370 fixed what
+kept it from assembling and declared it experimental. One suite run with `-Os`
+test modules passed (JOB01477); the production LINKLIB the tests load from was
+still `-O1`. Adopting `-Os` and testing it end to end is rexx370's decision.
 
 **The entry-point work.** Its libc370 half is `mvslovers/libc370#159` (the CRT
 variants) and — now that #99 is in — the `__premain()` hook that closes #10. Do

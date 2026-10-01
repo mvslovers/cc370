@@ -74,9 +74,12 @@ library with L<ld370(1)> B<--pack>.
 
 =item B<-O1>
 
-Optimization level. B<Only -O1 is supported.> B<-O2>, B<-Os> and B<-O3> are
-unsafe on this backend (dead-code elimination drops address-held static tables,
-and B<-Os> miscompiles loops); B<-O1> is validated correct.
+Optimization level. B<-O1> is the validated level. B<-Os> is experimental:
+it assembles across the ecosystem and passed one rexx370 test run on MVS, but
+a project that uses it validates it with its own tests. B<-O2> and B<-O3> are
+untested and not supported. Unit-at-a-time and strict aliasing are off by
+default on this target; B<-funit-at-a-time> and B<-fstrict-aliasing> turn
+them back on.
 
 =item B<-I> I<dir>, B<-L> I<dir>, B<-l> I<name>
 

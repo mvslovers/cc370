@@ -73,8 +73,8 @@ a proposal, not a plan.
 
 Two smaller limits worth knowing: symbol names are still limited to eight
 characters (the archive format is already prepared for more), and the compiler is
-used at `-O1` only, because higher optimisation levels are unsafe on this
-backend.
+validated at `-O1`; `-Os` is experimental (see the README) and `-O2`/`-O3` are
+unsupported.
 
 ## References
 

@@ -79,14 +79,30 @@ make -C ../libc370 install                   # populate the sysroot once
 cc370 hello.c -o hello -flinker-output=xmit  # no -I, no -L, no -lc needed
 ```
 
-## Optimization: `-O1` only
+## Optimization: `-O1`, and `-Os` as experimental
 
-`-O2`/`-Os`/`-O3` are **unsafe** on this backend. At `-O2`+ the
-`-funit-at-a-time` DCE drops `static` tables whose address is held by a global
-pointer → dangling address constants → assembler RC=8; `-Os` additionally
-miscompiles the rexx parser (loops → S322). `-O1` is validated correct (rexx370
-TSTALLB 84/84, 0 ABEND). This — not any memory limit — is the reason for
-"`-O1` only".
+**`-O1` is the validated level** and mbt's default.
+
+**`-Os` is experimental.** It makes code about 5 % smaller across the ecosystem
+(rexx370 8.5 %). Three defects that kept it from even assembling are fixed:
+
+- an unconditional `B` at the end of a code page could land behind the next
+  page's `USING` (#575);
+- unit-at-a-time dropped `static` tables held only by a global pointer and
+  moved top-level `asm` ahead of the code (#590) -- now off by default;
+- strict aliasing reorders code that casts between control-block layouts, for
+  0.1 % of size (#592) -- now off by default.
+
+With them, all 1,017 ecosystem sources that compile with mbt's flags also
+assemble at `-Os`. Validated on MVS so far: one run of the rexx370 suite, with
+`-Os` test modules (64 tests, batch and TSO, 5,685 assertions, 0 failures;
+mvsdev JOB01477). Modules the tests load from the production LINKLIB were
+still `-O1`, and no other project has been run. **A project that adopts `-Os`
+validates it with its own tests.** An earlier note that `-Os` "miscompiles the
+rexx parser (loops → S322)" has no recorded measurement and did not reproduce.
+
+`-O2`/`-O3` are untested and not supported. They get the same two defaults;
+`-funit-at-a-time` / `-fstrict-aliasing` still turn the passes back on.
 
 ## Layout
 
