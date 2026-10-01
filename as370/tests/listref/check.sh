@@ -385,8 +385,8 @@ rm -f "$OUT7"
 # page headings and IFOX's *** ERROR *** markers aside. aifcond's AIFs are
 # continued, and until #609 as370 listed a continued open-code statement as one
 # joined line, so aifcond was compared on its statement numbers only.
-# Both have no macro definition; the other three fixtures with open-code AIF do,
-# and their definitions are not listed (#150).
+# Both have no macro definition; fixtures that do are compared line for line
+# by case 12 since #150 lists the definitions.
 for T9 in collate aifcond; do
 OUT9=/tmp/as370-listref-aif.$$
 ./as370 tests/$T9.s -a="$OUT9" >/dev/null 2>&1
@@ -417,7 +417,8 @@ done
 # END naming an entry point lists that symbol's VALUE in LOC: `END T' is 000000
 # where T opens the section, 000008 in usingparenpc, 000012 for multi-csect's
 # `END ENT2'. Without an operand LOC is blank. as370 left it blank always. The
-# END row is compared on LOC alone: its statement number moves with #150.
+# END row is compared on LOC alone: its statement number still moves in the
+# references case 12 does not hold.
 python3 - "$LIBC370" "$have_libc" <<'PYE' || fail=1
 import sys, re, glob, os, subprocess
 inc = ["-I", sys.argv[1] + "/maclib", "-I", sys.argv[1] + "/sysmac"] if sys.argv[2] == "1" else []
@@ -445,16 +446,16 @@ PYE
 # the TITLE's text heads every page from column 10 until the next one, '' and
 # && printed once, at most 100 characters (more is IFO171, severity 4). The
 # headings are compared here, which case 9 cannot do: it drops them.
-# titlenamed and titlelong compare line for line. The others are compared
-# with the statement numbers masked and the macro definitions left out (#150),
-# and printgen/printerr add PRINT ON/OFF, GEN/NOGEN and PUSH/POP PRINT (#623).
-# Each remaining difference is pinned below with the issue that owns it, so a
-# fix to any of them trips this case and is meant to: a macro call inside an
-# expansion is listed (#626), a DC's alignment pad is listed with it (#627),
-# and printgen's and spacelist's pages fill as IFOX00's do only once the macro
-# definitions are listed (#150). Blank lines count: a SPACE is blank records
-# (#623), one per three lines, as spacelist and spacelines measured them.
-for T11 in titlenamed titlelong titlepage titlegen printgen printerr spacelist spacelines; do
+# printgen/printerr add PRINT ON/OFF, GEN/NOGEN and PUSH/POP PRINT, and
+# spacelist/spacelines SPACE (#623); sysparm_substr is #150's own fixture, an
+# in-stream definition listed and numbered where it is written. All compare
+# line for line, statement numbers included -- except printgen, whose numbers
+# are masked: the macro call inside OUTER's expansion is listed and numbered
+# (#626), so every number after it is one high. Each remaining difference is
+# pinned below with the issue that owns it, so a fix to any of them trips this
+# case and is meant to. Blank lines count: a SPACE is blank records, one per
+# three lines, as spacelist and spacelines measured them.
+for T11 in titlenamed titlelong titlepage titlegen printgen printerr spacelist spacelines sysparm_substr; do
 OUT11=/tmp/as370-listref-title.$$
 ./as370 tests/$T11.s -a="$OUT11" >/dev/null 2>/tmp/as370-listref-title.err.$$
 rc11=$?
@@ -474,29 +475,16 @@ def src(path):
         out.append(l)
     while out and out[-1] == "": out.pop()
     return out
-def norm(L):
-    out, indef = [], False
-    for l in L:
-        if not l.startswith("HEAD|") and re.match(r"^.{40}\s+MACRO\b", l): indef = True; continue
-        if indef:
-            if re.match(r"^.{40}\s+MEND\b", l): indef = False
-            continue
-        out.append(l if l.startswith("HEAD|") else l[:33] + "      " + l[39:])
-    return out
+def norm(L):   # the statement numbers masked
+    return [l if l.startswith("HEAD|") else l[:33] + "      " + l[39:] for l in L]
 R, M = src(ref), src(mine)
 known = {   # what is still different, and whose it is
-    "titlepage": [],
-    "titlegen":  [],
-    "spacelines": [],
-    "spacelist": ["+      "] * 4 + [                                                                    # #150
-                  "+000036 C2F7                                      DC    C'B7'",
-                  "-000036 C2F7                                      DC    C'B7'"],
     "printgen":  ["+                                       +         INNER 3",                            # #626
-                  "-HEAD|"],                                                                                # #150
-    "printerr":  ["-000004 00000000                        +         DC    A(UNDEF1)",                    # #627
-                  "+000002 000000000000                    +         DC    A(UNDEF1)"],
+                  "+HEAD|", "-HEAD|"],                       # ...and the page breaks one row earlier for it
+    "printerr":  ["-000004 00000000                      22+         DC    A(UNDEF1)",                    # #627
+                  "+000002 000000000000                  22+         DC    A(UNDEF1)"],
 }
-if t in known: R, M = norm(R), norm(M)
+if t == "printgen": R, M = norm(R), norm(M)
 d = [x for x in difflib.unified_diff(R, M, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("---", "+++")]
 want = known.get(t, [])
 ok = d == want and len(R) > 0
@@ -514,6 +502,52 @@ PYT
 [ $? = 0 ] || fail=1
 rm -f "$OUT11" /tmp/as370-listref-title.err.$$
 done
+
+# --- case 12: every SOURCE page that matches IFOX00 keeps matching -- #150 --
+# The SOURCE page of each reference named here is IFOX00's line for line:
+# headings, statement numbers and blank lines; *** ERROR *** markers aside.
+# Before #150 listed in-stream macro definitions, 63 of the 135 did; 88 do now,
+# plus tstlist, which needs the libc370 macros and is case 1's. A reference that
+# starts matching belongs on this list; one that stops is a regression.
+python3 - <<'PYS' || fail=1
+import re, os, subprocess
+NAMES = """
+absrx absssub absusing actr adcon aifcond aliasext amp_fold amp_selfdef
+amp_subst attrapos_remark attrdup attre basereg basereg2 bitlen blank_csect
+brmnem ccwstar cmprule collate contattr contparen csect_resume csect_resume2
+csect_resume3 dcattr dcvals dupfac emptydc endpool endstop entryprobe entsd
+equfwd equlen equlist eququote equtype esdself esdvsect fpopc kwundef lblorg
+ldentry lenattr litdup litdupexpr litlist litplusterm litpz litscale logop
+macbuf orglen parendepth regexpr relocerr relop rldlen sconabs selfdup
+setc_len95 setc_open setc_substr setc_undef spacelines spacelist spmrr ssb1
+stmtlen subattr sublist substrcat syslist sysparm_substr tattr_expr
+tattr_literal tattr_selfdef titlegen titlelong titlenamed titlepage
+usingexpr usingkey var_opcode xfdirect xsectrel
+""".split()
+def src(path):
+    out, on = [], False
+    for l in open(path, encoding="latin-1").read().split("\n"):
+        l = l.replace("\f", "").rstrip()
+        if re.search(r"PAGE +\d+$", l):
+            if re.search(r"(CROSS-REFERENCE|RELOCATION DICTIONARY|DIAGNOSTICS AND|EXTERNAL SYMBOL)", l):
+                if on: break
+                continue
+            on = True; out.append("HEAD|" + l[:110].rstrip()); continue
+        if not on or "SOURCE STATEMENT" in l or l.strip() == "*** ERROR ***": continue
+        out.append(l)
+    while out and out[-1] == "": out.pop()
+    return out
+bad = []
+for t in NAMES:
+    s = next(x for x in ("tests/%s.s" % t, "tests/listref/%s.s" % t) if os.path.exists(x))
+    out = "/tmp/as370-listref-src.%d" % os.getpid()
+    subprocess.run(["./as370", s, "-a=" + out, "-o", "/dev/null"], capture_output=True)
+    if src(out) != src("tests/listref/ifox-listing-%s.txt" % t): bad.append(t)
+    os.remove(out)
+print("listref source: %d SOURCE pages line for line with IFOX00" % len(NAMES) if not bad
+      else "listref source: MISMATCH in %s" % " ".join(bad))
+raise SystemExit(1 if bad else 0)
+PYS
 
 # --- case 8: the cross-reference pages of every reference here -- #538 ------
 # Every listing in this directory was captured with XREF(FULL), so each carries

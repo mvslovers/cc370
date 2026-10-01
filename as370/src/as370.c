@@ -4471,7 +4471,26 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
             mexp_line(arr[pc], out, nout, depth);
             pc++; continue;
         }
-        if (!strcmp(op, "MACRO")) { capture_macro(arr, n, &pc, NULL); pc++; continue; }   /* COPY'd / inline macro definition */
+        if (!strcmp(op, "MACRO")) {   /* COPY'd / inline macro definition */
+            int from = pc, k;
+            capture_macro(arr, n, &pc, NULL);
+            /* IFOX00 lists an in-stream definition where it is written, every
+             * card from MACRO to MEND numbered as a statement, `.*' comments
+             * included, and never again at a call (tests/listref: contrem,
+             * printgen, sysparm_substr; IFCSXXXF in mvs38src ifox-run). They
+             * were captured here and never reached lines[], so everything after
+             * a definition was numbered short by its length (#150). Listing
+             * lines only, as #141 did for conditional assembly: LF_NOASM, never
+             * assembled. A definition read inside an expansion is not listed
+             * (NOMLOGIC), nor is a library macro (NOLIBMAC): neither comes
+             * through here at generation level 0. */
+            if (g_genlevel == 0)
+                for (k = from; k <= pc && k < n && *nout < MAXLINES; k++) {
+                    lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL;
+                    line_org[*nout] = org ? org[k] : g_curorg; out[*nout] = strdup(arr[k]); (*nout)++;
+                }
+            pc++; continue;
+        }
         /* An AIF or AGO of open code is listed and numbered, the way IFOX00
          * lists it under ALOGIC (its default) and the way SETx already is in
          * mexp_line; one inside a macro is not (NOMLOGIC). The statements it
