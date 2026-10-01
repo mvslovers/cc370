@@ -29,8 +29,6 @@ import difflib, glob, os, re, subprocess, sys, tempfile
 KNOWN = {
     "equparen":  "F7 EQU ( S1+4): IFOX00 stops at the blank (IFO234) and gives 0, "
                  "as370 evaluates past it -- the message gap equparen.s records",
-    "titlenamed": "the TITLE name (deck id) is not printed in columns 1-8 of a "
-                  "page heading, on any page; IFO104 itself is #530",
     "xfdirect":  "#532-#535: OPSYN, AIFB/AGOB, ICTL and PUNCH, so the SOURCE "
                  "page numbers its macro definition differently",
 }

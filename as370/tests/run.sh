@@ -3522,6 +3522,22 @@ EOF
 fi
 rm -f /tmp/_sd$$.obj /tmp/_sd$$.out /tmp/_sd$$.s
 
+# ------------------------------------------------------------- titlenamed --
+# cc370#530: only one TITLE may carry a name. An unnamed TITLE, then NAM1, then
+# NAM2: IFOX00 flags the third statement IFO104 (severity 4), NAM1 stays the
+# deck id in columns 73-80 and heads every listing page in columns 1-8
+# (MVSTK5-REF JOB00286, tests/listref/ifox-listing-titlenamed.txt). The binary
+# before the fix was silent, rc 0, and left columns 1-8 blank.
+./as370 -a tests/titlenamed.s -o /tmp/_tn$$.obj >/tmp/_tn$$.lst 2>/tmp/_tn$$.out; rctn=$?
+if [ $rctn != 4 ] || [ "$(grep -c 'IFO104' /tmp/_tn$$.out)" != 1 ] || ! grep -q 'IFO104) in line 3$' /tmp/_tn$$.out; then
+    echo "titlenamed: FAIL -- expected rc 4 and IFO104 on statement 3 only, got rc $rctn"; grep -E 'IFO|Done' /tmp/_tn$$.out; fail=$((fail + 1))
+elif [ "$(tr -d '\f' < /tmp/_tn$$.lst | grep -c 'PAGE  *[0-9]')" != "$(tr -d '\f' < /tmp/_tn$$.lst | grep -c '^NAM1 .*PAGE  *[0-9]')" ]; then
+    echo "titlenamed: FAIL -- not every page heading starts with NAM1"; tr -d '\f' < /tmp/_tn$$.lst | grep 'PAGE  *[0-9]'; fail=$((fail + 1))
+else
+    echo "titlenamed: OK (IFO104 on the second named TITLE; NAM1 heads every page)"
+fi
+rm -f /tmp/_tn$$.obj /tmp/_tn$$.lst /tmp/_tn$$.out
+
 # ----------------------------------------------------------------- lblorg --
 # cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
 # `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0

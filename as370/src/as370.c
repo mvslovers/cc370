@@ -456,6 +456,7 @@ static long sect_base(int id) {
 }
 static char g_ovl_name[64];     /* set by parse() to the full over-length ORDINARY name-field token (>8, non-&); the assembly loop abandons it (IFO016). Empty when the name field is <=8 or absent. */
 static char deck_id[9];        /* name field of the first named TITLE -> deck identifier in cols 73-80 */
+static int  deck_id_ln = -1;   /* lines[] index of that TITLE: any later named one is IFO104 */
 static char g_sysdate[9];       /* &SYSDATE  -> "MM/DD/YY" (assembly date) */
 static char g_systime[6];       /* &SYSTIME  -> "HH.MM"    (assembly time) */
 /* &SYSPARM: the assembly's PARM=SYSPARM() string, and the NULL string when
@@ -5851,7 +5852,11 @@ static void do_pass(int pass, char **lines, int nlines) {
              * reproduced is the IFO025 diagnostic itself. */
             /* nothing to do */
         } else if (!strcmp(op, "TITLE")) {
-            if (pass == 1 && lbl[0] && !deck_id[0]) scopy(deck_id, lbl, 8);   /* first named TITLE -> deck id */
+            if (pass == 1 && lbl[0] && !deck_id[0]) { scopy(deck_id, lbl, 8); deck_id_ln = i; }   /* first named TITLE -> deck id */
+            /* Only one TITLE may carry a name: a second is IFO104 MORE THAN ONE
+             * TITLE STATEMENT NAMED, severity 4, and the first name stays the deck
+             * id (MVSTK5-REF JOB00286, tests/titlenamed.s; #530). */
+            if (pass == 2 && lbl[0] && i != deck_id_ln) note_operr("More than one TITLE statement named (IFOX00 IFO104)", 4, i);
         } else if (!strcmp(op, "ENTRY")) {
             /* ENTRY takes a comma-separated symbol list, exactly like EXTRN/WXTRN
              * below -- IFOX00 accepts `ENTRY ALPHA,BETA` and emits one LD per
@@ -7136,6 +7141,7 @@ static void a_newpage(const char *title, const char *colhdr) {
     char ln[128]; int t = (int)strlen(title);
     if (a_page++) fputc('\f', alst);                /* page eject before every page but the first */
     memset(ln, ' ', 120); ln[120] = 0;
+    if (deck_id[0]) memcpy(ln, deck_id, strlen(deck_id));   /* the first named TITLE heads every page, columns 1-8 (tests/listref, titlenamed; #530) */
     { int lead = (121 - t) / 2; if (lead < 0) lead = 0;
       if (!strncmp(title, "CROSS", 5) || !strncmp(title, "LITERAL CROSS", 13)) lead = 50;   /* not centred: IFOX00 starts both XREF titles in column 51, as it does RELOCATION DICTIONARY (tests/listref) */
       memcpy(ln + lead, title, (size_t)t); }
