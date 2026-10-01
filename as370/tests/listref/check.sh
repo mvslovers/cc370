@@ -413,6 +413,33 @@ PYX
 rm -f "$OUT9"
 done
 
+# --- case 10: END's LOC, across every reference here -- #619 --------------
+# END naming an entry point lists that symbol's VALUE in LOC: `END T' is 000000
+# where T opens the section, 000008 in usingparenpc, 000012 for multi-csect's
+# `END ENT2'. Without an operand LOC is blank. as370 left it blank always. The
+# END row is compared on LOC alone: its statement number moves with #150.
+python3 - "$LIBC370" "$have_libc" <<'PYE' || fail=1
+import sys, re, glob, os, subprocess
+inc = ["-I", sys.argv[1] + "/maclib", "-I", sys.argv[1] + "/sysmac"] if sys.argv[2] == "1" else []
+endrow = lambda t: [l for l in t.split("\n") if re.match(r"^.{33} +[0-9]+[ +]+ +END\b", l)]
+n, bad = 0, []
+for ref in sorted(glob.glob("tests/listref/ifox-listing-*.txt")):
+    t = ref.split("ifox-listing-")[1][:-4]
+    src = next((x for x in ("tests/%s.s" % t, "tests/%s.s" % t.replace("-", "_"), "tests/listref/%s.s" % t) if os.path.exists(x)), None)
+    R = endrow(open(ref, encoding="latin-1").read())
+    if not src or not R: continue
+    out = "/tmp/as370-listref-end.%d" % os.getpid()
+    subprocess.run(["./as370", src] + inc + ["-a=" + out, "-o", "/dev/null"], capture_output=True)
+    M = endrow(open(out, encoding="latin-1").read()) if os.path.exists(out) else []
+    if os.path.exists(out): os.remove(out)
+    n += 1
+    if not M or M[-1][:6] != R[-1][:6]: bad.append((t, R[-1][:6], M[-1][:6] if M else "<none>"))
+for t, r, m in bad[:6]: print("DIFF %s: ref |%s| mine |%s|" % (t, r, m))
+print("listref endloc: END's LOC column-exact to IFOX00 in %d references" % n if not bad and n
+      else "listref endloc: MISMATCH (%d of %d)" % (len(bad), n))
+sys.exit(1 if bad or not n else 0)
+PYE
+
 # --- case 8: the cross-reference pages of every reference here -- #538 ------
 # Every listing in this directory was captured with XREF(FULL), so each carries
 # a CROSS-REFERENCE page and most a LITERAL CROSS-REFERENCE: xref.py compares
