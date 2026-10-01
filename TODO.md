@@ -1327,10 +1327,17 @@ was found while building a `listref` case, and each is excluded from that case
   `titlegen`); `listref` case 11. Not measured: whether IFO171 counts before
   or after the `''`/`&&` reduction.
 
-- **#623** — new 2026-10-01, found with #603: `SPACE` is listed as a statement
-  and `PRINT NOGEN` is not honoured (IFOX00 lists the call, not the expansion;
-  a generated TITLE under NOGEN sets the title without the eject). `listref`
-  case 11 pins the exact lines it owns, so fixing either half trips it.
+- **#623** — new 2026-10-01, found with #603. **The PRINT half is fixed**
+  (PR #628, `6974e37`): ON/OFF, GEN/NOGEN and PUSH/POP PRINT, measured on
+  MVSTK5-REF (JOB00308/00309). **Open: SPACE** is still listed as a statement;
+  how many lines IFOX00 skips cannot be read from a captured listing (carriage
+  control is dropped), so it needs another instrument first.
+- **#626** — new 2026-10-01, found with #623: a macro call inside an expansion
+  is listed and numbered; IFOX00 runs NOMCALL and does neither. Numbering
+  class, like #150.
+- **#627** — new 2026-10-01, found with #623: an aligned DC is listed from the
+  pad with the pad bytes in its object code; IFOX00 lists it at its own
+  address. Measure whether IFOX00 ever prints a DC's pad first.
 
 ## Conditional assembly — three that behave, and one that has to be decided
 
@@ -1506,6 +1513,14 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #623 (PRINT half), MERGED as `6974e37` (PR #628).** `-a`
+  honours PRINT ON/OFF, GEN/NOGEN and PUSH/POP PRINT; NOGEN still lists a
+  generated statement in error and an MNOTE with a severity, OFF lists
+  neither. The expander no longer drops PRINT/SPACE/EJECT from a macro body
+  unnumbered. listref case 11 pins what still differs (#623 SPACE, #626, #627,
+  #150). MVSBLD gate: 0 decks or rcs moved; libc370 0 of 743. Found on the
+  way: #626, #627.
 
 - **2026-10-01 — #603, MERGED as `4349626` (PR #624).** TITLE and EJECT start
   a SOURCE page and are not listed; the title heads every page from column 10
