@@ -123,19 +123,22 @@ the defaults are set in `HEWLFINT`, which is how #100 was established.
 
 **ld370 supports:** `-o`, `-e/--entry`, `-i/--include`, `-l`/`-L`,
 `--allow-unresolved`, `--ac`, `--norent`, `--noreus`, `--blocksize`, `--dsn`,
-`--name`, `--pack`, `--verbose`, `--warn-shadow`, `--map`, `-xmit`, `-iebcopy`, `-v`.
+`--name`, `--pack`, `--verbose`, `--warn-shadow`, `--map`, `--xref`, `-xmit`, `-iebcopy`, `-v`.
 
 Most absences are not defects — ld370 is a declared subset. Two are worth acting
 on:
 
-- **MAP: `--map FILE`, not in IEWL's format. XREF: still absent.** IEWL has
+- **MAP and XREF: `--map FILE [--xref]`, not in IEWL's format.** IEWL has
   `MAP` (module structure) and `XREF` (cross-reference including the map).
-  `--map` (#9) writes the structure half: every section in origin order with the
+  `--map` (#9) writes the structure: every section in origin order with the
   input it came from — object path, or `archive(member)` and whether `--include`
-  or autocall pulled it — its entries beneath, and any unresolved names. It is
-  deliberately not IEWL's page layout: it carries no clock and no page headers,
-  so two maps of two links `diff` line by line, which is the use the issue was
-  filed for. Who references whom — the XREF half — is not implemented.
+  or autocall pulled it — its entries beneath, and any unresolved names.
+  `--xref` adds, under each section, every address constant that names an
+  external symbol, at its offset in the section, with the address and section it
+  resolved to. Like IEWL's `XREF` it only comes with the map. The layout is
+  deliberately not IEWL's: no clock, no page headers, offsets relative to the
+  section, so two maps of two links `diff` line by line, which is the use the
+  issue was filed for.
 - **`ld370 --help` does not exist.** It is parsed as a filename:
   `--help: No such file or directory`. There is only a usage string on the error
   path. `as370` has a proper `--help`. Trivial, unfiled, and awkward for a tool

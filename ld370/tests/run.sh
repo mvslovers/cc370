@@ -1090,9 +1090,9 @@ fi
 
 # --map (cc370#9): a text load map, one line per section in origin order with
 # the input it came from, entries beneath. The fixtures cover every kind of row:
-# an explicit object with an entry, an unnamed private-code section, a member
-# pulled by --include and one by autocall (with its own entry), an unresolved
-# weak external, and the END-card entry. Four checks: the text itself; the
+# an explicit object with an entry, an unnamed private-code section with an
+# entry, a member pulled by --include and one by autocall (with its own entry),
+# an unresolved weak external, and the END-card entry. Four checks: the text itself; the
 # member is byte-identical with and without --map; ORIGIN/LENGTH/entry
 # addresses equal the produced member's CESD, read by file370 -- a second
 # instrument, so the map is not checking itself; --map with --pack is refused.
@@ -1110,9 +1110,10 @@ cat > "$TMP/mapm.want" <<'MAPW'
 LD370 MAP  MAPM  ENTRY 000000 (END card)  LENGTH 000030
 
 SECTION   TYPE  ORIGIN  LENGTH  SOURCE
-MAPMAIN   SD    000000  00000C  @T@/mapmain.o
+MAPMAIN   SD    000000  000010  @T@/mapmain.o
   MAPE1         000004
-          PC    000010  000004  @T@/mappc.o
+          PC    000010  000008  @T@/mappc.o
+  MAPPCE        000014
 MAPINC    SD    000018  00000C  @T@/libmap.a(mapinc.o) include
 MAPLIB    SD    000028  000008  @T@/libmap.a(maplib.o) autocall
   MAPLIBE       00002C
@@ -1144,6 +1145,48 @@ print("  map rows == CESD: %d" % rows)
     [ "$r" = 2 ] && [ ! -e "$TMP/mapp.map" ] || { echo "  FAIL: --map with --pack not refused (rc $r)"; mapok=0; }
 fi
 if [ $mapok = 1 ]; then echo "  OK: map text, member unchanged, rows == CESD, --pack refused"; else fails=$((fails + 1)); fi
+
+# --xref (cc370#9, the XREF half): under each section, every address constant
+# naming an external symbol, at its offset in the section, with where it
+# resolved. The fixtures reach every kind of target: a section (V(MAPLIB)), an
+# entry in a section (V(MAPLIBE), from the PC), an entry in an unnamed PC
+# (A(MAPPCE)) and an unresolved weak external (A(MAPWEAK)). Checked against the
+# text, and against the member by xref_check.py, which reads its RLD and adcons
+# through lmdiff.parse -- not ld370 -- and fails on a wrong offset, address or
+# target. --xref without --map is refused, and does not change the member.
+printf '\n=== --map --xref ===\n'
+xok=1
+"$LD" -o "$TMP/mapx" --map "$TMP/mapx.map" --xref -L"$TMP" -lmap --include mapinc "$TMP/mapmain.o" "$TMP/mappc.o" \
+    || { echo "  ld370 --xref failed"; xok=0; }
+cat > "$TMP/mapx.want" <<'MAPW'
+LD370 MAP  MAPX  ENTRY 000000 (END card)  LENGTH 000030
+
+SECTION   TYPE  ORIGIN  LENGTH  SOURCE
+  ENTRY         ADDRESS
+  +OFFSET  CON  SYMBOL    ADDRESS  IN SECTION
+MAPMAIN   SD    000000  000010  @T@/mapmain.o
+  MAPE1         000004
+  +000004  V    MAPLIB    000028  in MAPLIB
+  +000008  A    MAPWEAK   unresolved (weak)
+  +00000C  A    MAPPCE    000014  in PC 000010
+          PC    000010  000008  @T@/mappc.o
+  MAPPCE        000014
+  +000004  V    MAPLIBE   00002C  in MAPLIB
+MAPINC    SD    000018  00000C  @T@/libmap.a(mapinc.o) include
+MAPLIB    SD    000028  000008  @T@/libmap.a(maplib.o) autocall
+  MAPLIBE       00002C
+
+UNRESOLVED
+MAPWEAK   WX
+MAPW
+if [ $xok = 1 ]; then
+    sed "s#$TMP#@T@#g" "$TMP/mapx.map" | diff -u "$TMP/mapx.want" - || { echo "  FAIL: xref text"; xok=0; }
+    python3 ld370/tests/xref_check.py "$TMP/mapx" "$TMP/mapx.map" || xok=0
+    cmp -s "$TMP/mapx" "$TMP/mapn" || { echo "  FAIL: --xref changed the member"; xok=0; }
+    r=$(arc "$LD" -o "$TMP/mapy" --xref "$TMP/mapmain.o" -L"$TMP" -lmap)
+    [ "$r" = 2 ] || { echo "  FAIL: --xref without --map not refused (rc $r)"; xok=0; }
+fi
+if [ $xok = 1 ]; then echo "  OK: xref text, rows == member RLD + adcons, member unchanged, needs --map"; else fails=$((fails + 1)); fi
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

@@ -1799,15 +1799,68 @@ static int map_ld_cmp(const void *a, const void *b)
     if (x->in_addr != y->in_addr) return x->in_addr < y->in_addr ? -1 : 1;
     return memcmp(x->name, y->name, 8);
 }
+/* --xref: every address constant that names an external symbol -- an RLD item
+ * whose R pointer is an ER or WX in its own object -- listed under the section
+ * that holds it, at its offset in that section, with the section the name
+ * resolved to.  IEWL's XREF answers the same "who references whom". */
+struct xref { int sect; long off; int flag; unsigned char name[8]; int target; int weak; };
+static int map_xref_cmp(const void *a, const void *b)
+{
+    const struct xref *x = a, *y = b;
+    const struct gsym *sx = &G[x->sect], *sy = &G[y->sect];
+    if (sx->org != sy->org) return sx->org < sy->org ? -1 : 1;
+    if (sx->gid != sy->gid) return sx->gid < sy->gid ? -1 : 1;
+    if (x->off != y->off) return x->off < y->off ? -1 : 1;
+    return memcmp(x->name, y->name, 8);
+}
+static struct xref *collect_xrefs(int *nx)
+{
+    struct xref *x = NULL; long cap = 0; int n = 0, i, j;
+    for (i = 0; i < nO; i++) {
+        struct obj *o = &O[i];
+        for (j = 0; j < o->nrld; j++) {
+            int R = o->rld[j].R, P = o->rld[j].P, Pg, Rg;
+            if (R < 1 || R >= MAXESD || !o->loc[R].used) continue;
+            if (o->loc[R].type != T_ER && o->loc[R].type != T_WX) continue;   /* a reference inside the object */
+            Pg = local_to_g(o, P); Rg = local_to_g(o, R);
+            if (Pg < 0 || !G[Pg].is_sect) continue;
+            x = grow_arr(x, &cap, n + 1, sizeof *x);
+            x[n].sect = Pg; x[n].off = o->rld[j].addr - o->loc[P].addr; x[n].flag = o->rld[j].flag;
+            memcpy(x[n].name, o->loc[R].name, 8);
+            x[n].weak = o->loc[R].type == T_WX;
+            x[n].target = -1;
+            if (Rg >= 0 && G[Rg].is_sect) x[n].target = Rg;
+            else if (Rg >= 0 && G[Rg].type == 0x03 && G[Rg].owner >= 0 && G[G[Rg].owner].is_sect) x[n].target = Rg;
+            n++;
+        }
+    }
+    if (n) qsort(x, (size_t)n, sizeof *x, map_xref_cmp);
+    *nx = n;
+    return x;
+}
+static void print_xref(FILE *f, const struct xref *x)
+{
+    static const char *con[4] = { "A", "V", "Q", "CXD" };
+    fprintf(f, "  +%06lX  %-3s  %-8s  ", x->off, con[(x->flag >> 4) & 3], mvs_nm(x->name));
+    if (x->target < 0) { fprintf(f, "unresolved%s\n", x->weak ? " (weak)" : ""); return; }
+    {
+        const struct gsym *t = &G[x->target];
+        const struct gsym *s = t->is_sect ? t : &G[t->owner];
+        long a = t->is_sect ? t->org : s->org + t->in_addr;
+        fprintf(f, "%06lX  in ", a);
+        if (s->type == T_PC) fprintf(f, "PC %06lX\n", s->org); else fprintf(f, "%s\n", mvs_nm(s->name));
+    }
+}
 static const char *map_type(int t)
 {
     return t == T_SD ? "SD" : t == T_PC ? "PC" : t == T_CM ? "CM" : t == T_WX ? "WX" : "ER";
 }
 static int write_map(const char *path, const char *mname, const char *entryname, int entry_obj,
-                     long entry_addr, long modlen, const int *gidx, int nsect)
+                     long entry_addr, long modlen, const int *gidx, int nsect, int want_xref)
 {
     FILE *f = strcmp(path, "-") ? fopen(path, "w") : stdout;
-    int *ld, nld = 0, i, k, nunres = 0, nloose = 0;
+    int *ld, nld = 0, i, k, kx = 0, nx = 0, nunres = 0, nloose = 0;
+    struct xref *xr = NULL;
     unsigned char mn[8];
     if (!f) { perror(path); return 1; }
     ld = malloc((size_t)(nG ? nG : 1) * sizeof *ld);
@@ -1817,6 +1870,7 @@ static int write_map(const char *path, const char *mname, const char *entryname,
             if (G[i].owner >= 0 && G[G[i].owner].is_sect) ld[nld++] = i; else nloose++;
         } else if (!G[i].is_sect) nunres++;
     qsort(ld, (size_t)nld, sizeof *ld, map_ld_cmp);
+    if (want_xref) xr = collect_xrefs(&nx);
 
     member_name(mn, mname);
     fprintf(f, "LD370 MAP  %s  ENTRY ", mvs_nm(mn));
@@ -1824,6 +1878,7 @@ static int write_map(const char *path, const char *mname, const char *entryname,
     else if (entry_obj >= 0) fprintf(f, "%06lX (END card)", entry_addr);
     else fprintf(f, "%06lX (none given)", entry_addr);
     fprintf(f, "  LENGTH %06lX\n\nSECTION   TYPE  ORIGIN  LENGTH  SOURCE\n", modlen);
+    if (want_xref) fprintf(f, "  ENTRY         ADDRESS\n  +OFFSET  CON  SYMBOL    ADDRESS  IN SECTION\n");
     for (i = 1, k = 0; i <= nsect; i++) {
         const struct gsym *g = &G[gidx[i]];
         const struct obj *o = g->def_obj >= 0 ? &O[g->def_obj] : NULL;
@@ -1834,6 +1889,7 @@ static int write_map(const char *path, const char *mname, const char *entryname,
                      o->src_kind == SRC_AUTOCALL ? "autocall" : "include");
         for (; k < nld && G[ld[k]].owner == gidx[i]; k++)
             fprintf(f, "  %-8s      %06lX\n", mvs_nm(G[ld[k]].name), g->org + G[ld[k]].in_addr);
+        for (; kx < nx && xr[kx].sect == gidx[i]; kx++) print_xref(f, &xr[kx]);
     }
     if (nunres) {                               /* only reachable with --allow-unresolved, or weak */
         fprintf(f, "\nUNRESOLVED\n");
@@ -1846,7 +1902,7 @@ static int write_map(const char *path, const char *mname, const char *entryname,
             if (!G[i].is_sect && G[i].type == 0x03 && !(G[i].owner >= 0 && G[G[i].owner].is_sect))
                 fprintf(f, "%-8s  %06lX\n", mvs_nm(G[i].name), G[i].in_addr);
     }
-    free(ld);
+    free(ld); free(xr);
     if (f != stdout && fclose(f)) { perror(path); return 1; }
     return 0;
 }
@@ -1855,6 +1911,7 @@ int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *mname = NULL;
     const char *xmitfile = NULL, *dsn = NULL, *entryname = NULL, *mapfile = NULL;
+    int want_xref = 0;
     /* command-line lists, sized to argc (their exact upper bound -- each entry is
      * a distinct argv slot); no fixed cap to silently drop past. */
     const char **objfiles = malloc((size_t)argc * sizeof *objfiles);
@@ -1880,6 +1937,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--alias") && i + 1 < argc) aliasv[naliasv++] = argv[++i];
         else if ((!strcmp(argv[i], "--include") || !strcmp(argv[i], "-i")) && i + 1 < argc) incspec[ninc++] = argv[++i];
         else if (!strcmp(argv[i], "--map") && i + 1 < argc) mapfile = argv[++i];   /* text load map, "-" = stdout */
+        else if (!strcmp(argv[i], "--xref")) want_xref = 1;           /* add the references to the map */
         else if (!strcmp(argv[i], "--sparse-text")) sparse_text = 1;  /* elide records no TXT card covered */
         else if (!strcmp(argv[i], "--pack")) pack_mode = 1;       /* positional args after this are members to pack */
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
@@ -1934,6 +1992,11 @@ int main(int argc, char **argv)
                             "first, then letters/digits/@#$)\n", aliasv[i]);
             return 2;
         }
+    /* --xref is printed into the map, as IEWL's XREF includes its MAP. */
+    if (want_xref && !mapfile) {
+        fprintf(stderr, "ld370: --xref adds the references to the load map; give --map FILE\n");
+        return 2;
+    }
     /* A pack links nothing, so there is no map to write -- refused, not dropped:
      * a flag the parser accepts and the pack path ignores is cc370#37's shape. */
     if (mapfile && pack_mode) {
@@ -2065,7 +2128,7 @@ int main(int argc, char **argv)
                 "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
                 "             [--alias NAME]... [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
                 "             [--ac N] [--rent|--norent] [--reus|--noreus] [--refr]\n"
-                "             [--sparse-text] [--warn-shadow] [--map FILE] OBJ...\n"
+                "             [--sparse-text] [--warn-shadow] [--map FILE [--xref]] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
                 "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
@@ -2092,6 +2155,8 @@ int main(int argc, char **argv)
                 "         origin order with its input -- object path, or archive(member)\n"
                 "         and whether --include or autocall pulled it -- its entries\n"
                 "         beneath it, and any unresolved names.  No clock, so maps diff.\n"
+                "         --xref adds, under each section, every address constant naming an\n"
+                "         external symbol: its offset, A/V, the name and where it resolved.\n"
                 "         --sparse-text omits text records no TXT card covered, so a DS\n"
                 "         reservation is left unwritten.  OFF by default: it costs\n"
                 "         byte-fidelity to IEWL (which writes those records) and relies on\n"
@@ -2477,7 +2542,7 @@ int main(int argc, char **argv)
     /* After the member, not before: a map for a module that was never written
      * would describe nothing on disk. */
     if (mapfile && write_map(mapfile, mname ? mname : basename_member(outfile), entryname,
-                             entry_obj, entry_addr, modlen, gidx, nsect)) return 1;
+                             entry_obj, entry_addr, modlen, gidx, nsect, want_xref)) return 1;
 
     /* additionally emit the host->MVS transport wrappers when requested: -xmit
      * -> OUT.xmit (TSO TRANSMIT/NETDATA), -iebcopy -> OUT.iebcopy (IEBCOPY unload).
