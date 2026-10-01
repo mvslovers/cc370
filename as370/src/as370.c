@@ -2756,7 +2756,13 @@ static int card_op_is(const char *l, const char *op);   /* defined with the macr
  * and is invisible here -- and IFOX00 does not resolve it either. An EQU with
  * a type operand, or a DC, in a macro body answers 'U' before and after the
  * call (tests/equtypegen2.s, JOB00291). A label on the macro CALL is 'M' to
- * IFOX00 (tests/equtypegen.s, JOB00290), which this table does not yet give (#540).
+ * IFOX00 (tests/equtypegen.s, JOB00290), before and after the call and whatever
+ * the body generates under that name (#540). The call is recognised the way
+ * macro_pass recognises it -- an operation that is not a machine or assembler
+ * operation and names a macro, defined in the source or found in the library --
+ * but the library is only ASKED here (lib_path), never loaded: lib_load would
+ * put a library definition into macros[] ahead of a source definition of the
+ * same name, and mac_find returns the first one.
  *
  * A macro BODY is not open code: labels between MACRO and MEND belong to the
  * expansion, not to the assembly, so the depth counter skips them. */
@@ -2786,16 +2792,39 @@ static char ds_type_letter(const char *opnd) {
     return *p ? (char)toupper((unsigned char)*p) : 0;
 }
 static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12], int as_macro);   /* fwd: COPY in the prescan */
+static int lib_path(const char *name, char *path);   /* fwd: a macro call in the prescan */
+static int known_op(const char *o);                   /* fwd */
+/* Macros DEFINED in the source, by prototype name, in the order the prescan
+ * meets them. Shared across COPY nesting: a member full of definitions is the
+ * usual way a source carries its own macros. */
+static char (*srcmac)[9]; static int nsrcmac, srcmac_cap;
+static int srcmac_has(const char *nm) {
+    int i; for (i = 0; i < nsrcmac; i++) if (!strcmp(srcmac[i], nm)) return 1;
+    return 0;
+}
+static void srcmac_add(const char *nm) {
+    if (!nm[0] || strlen(nm) > 8 || srcmac_has(nm)) return;
+    if (nsrcmac >= srcmac_cap) {
+        int cap = srcmac_cap ? 2 * srcmac_cap : 64;
+        char (*g)[9] = realloc(srcmac, (size_t)cap * sizeof *g);
+        if (!g) return;
+        srcmac = g; srcmac_cap = cap;
+    }
+    strcpy(srcmac[nsrcmac++], nm);
+}
 /* `nest' bounds COPY-within-COPY; the caller passes 0 and clears the table. */
 static void prescan_cards(char **in, int n, int nest);
-static void prescan_symtypes(char **in, int n) { nstypes = 0; prescan_cards(in, n, 0); }
+static void prescan_symtypes(char **in, int n) { nstypes = 0; nsrcmac = 0; prescan_cards(in, n, 0); }
 static void prescan_cards(char **in, int n, int nest) {
-    int i, depth = 0;
+    int i, depth = 0, proto = 0;
     for (i = 0; i < n; i++) {
         char lbl[32], op[16], opnd[STMTSZ];
-        if (card_op_is(in[i], "MACRO")) { depth++; continue; }
+        if (card_op_is(in[i], "MACRO")) { if (!depth) proto = 1; depth++; continue; }
         if (card_op_is(in[i], "MEND")) { if (depth) depth--; continue; }
-        if (depth) continue;                       /* a macro body is not open code */
+        if (depth) {                               /* a macro body is not open code */
+            if (proto && parse(in[i], lbl, op, opnd) && op[0]) { srcmac_add(op); proto = 0; }   /* its prototype names it */
+            continue;
+        }
         if (!parse(in[i], lbl, op, opnd) || !op[0]) continue;
         if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
             const char *s = opnd; char nm[16];
@@ -2841,6 +2870,10 @@ static void prescan_cards(char **in, int n, int nest) {
             styp_add(lbl, t);
         }
         else if (op_find(op)) styp_add(lbl, 'I');
+        else if (lbl[0] != '.' && lbl[0] != '&' && strcmp(op, "OPSYN") && !known_op(op)) {
+            char path[256];
+            if (srcmac_has(op) || lib_path(op, path)) styp_add(lbl, 'M');   /* a label on a macro call (#540) */
+        }
     }
 }
 /* a comparison term is character if quoted or a T' (type) attribute */

@@ -18,7 +18,7 @@
 * drei Regeln.  G1 und G2 sind Label auf dem MAKROAUFRUF, und T'
 * eines solchen Labels ist M.  Die Probe verwechselt also das
 * erzeugte Symbol mit dem Aufruf; equtypegen2.s trennt die beiden
-* und misst U U U U, Regel (a).  as370 gibt hier U statt M.
+* und misst U U U U, Regel (a).  as370 gab hier bis #540 U statt M.
          MACRO
          TYP   &S
          LCLC  &T
