@@ -290,7 +290,7 @@ not closed**; #111, #112, #113, #117, #118 open — the only band with an outsid
 consumer), **loud gaps** (#56, #76, #78, #101, #102, #103, #128, #211, #229, #297 —
 **#108 closed on 2026-09-06 and should have left this band then**), **populations**
 (#160, #193, #199, #241), **observability** (#9, #106, #345), **listing
-fidelity** (#24, #91, #370, #626, #627), **conditional assembly** (#258, #272, #333),
+fidelity** (#91, #370), **conditional assembly** (#258, #272, #333),
 **deferred** (#36). `&&` folding moved from the substituter to the DC scanner
 en route to #141 (`6d235db`): the two paths had contradicted each other at `rc=0`
 since as370 existed, and the two defects cancelled, so 950 modules of deck
@@ -1246,12 +1246,10 @@ All five are cosmetic, and the first three are pinned rather than hidden — eac
 was found while building a `listref` case, and each is excluded from that case
 *with a reference to its issue* instead of being silently masked.
 
-- **#24** — DS inside a DSECT renders with the enclosing CSECT's LOC and stale
-  object-code bytes. **Half of it is fixed and the issue does not say so**: PR
-  #230 (closing #227) gave `DSECT` its own counter, so the LOC half is right at
-  `fd287d3`. What survives is the object code — a `DS` in a DSECT body still
-  prints bytes from the enclosing section. Two rows of `listref/README.md` are
-  stale for the same reason.
+- ~~**#24**~~ — DS inside a DSECT rendered with the enclosing CSECT's LOC and
+  stale object-code bytes. The LOC half was PR #230 (#227); the object half is
+  **fixed** (PR #636, `d0419bb`): a DS shows no object code, as IFOX00 does for
+  all 1,503 DS statements in the listings at hand.
 - ~~**#28**~~ — LTORG rendered at the pre-alignment LOC, and a mid-stream pool's
   literals were numbered behind END. **Fixed and closed** (PR #578, `b24661d`) as a
   prerequisite of #538: the cross-reference prints those numbers. `listref`
@@ -1327,12 +1325,12 @@ was found while building a `listref` case, and each is excluded from that case
   and a SOURCE page counted in printed lines (56 of body, the first
   double-spaced). Measured with `capture.py --asa`, which keeps the
   carriage-control column the spool drops.
-- **#626** — new 2026-10-01, found with #623: a macro call inside an expansion
-  is listed and numbered; IFOX00 runs NOMCALL and does neither. Numbering
-  class, like #150.
-- **#627** — new 2026-10-01, found with #623: an aligned DC is listed from the
-  pad with the pad bytes in its object code; IFOX00 lists it at its own
-  address. Measure whether IFOX00 ever prints a DC's pad first.
+- ~~**#626**~~ — a macro call inside an expansion was listed and numbered.
+  **Fixed** (PR #634, `f949805`): `LF_NOLIST` keeps it off the page and out of
+  the numbering (NOMCALL), the slot stays for diagnostics.
+- ~~**#627**~~ — an aligned DC/DS/CCW was listed from the pad. **Fixed** (PR
+  #635, `0439425`): listed at the first operand's boundary; tests/listref had
+  the answer, fourteen aligned statements and no pad printed anywhere.
 
 ## Conditional assembly — three that behave, and one that has to be decided
 
@@ -1508,6 +1506,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #626, #627 and #24, MERGED as `f949805`, `0439425`,
+  `d0419bb` (PRs #634, #635, #636).** NOMCALL; an aligned statement listed at
+  its own address; no object code on a DS. tests/listref SOURCE pages identical
+  to IFOX00: 89 -> 92 -> 96 -> 108 of 135, none lost at any step; case 12 holds
+  107 (tstlist is case 1's). Every step: MVSBLD gate 0 moved, all 5,528 with
+  `-a` at the gate's rc.
 
 - **2026-10-01 — #150, MERGED as `ae95b87` (PR #632).** An in-stream macro
   definition is listed and numbered where it is written. tests/listref: 63 ->
