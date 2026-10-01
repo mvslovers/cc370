@@ -367,6 +367,7 @@ static long pool_org;         /* address the reserved pool starts at */
 static char dsect_sect[256];                  /* dsect_sect[id]=1 if section id is a DSECT (its symbols are absolute) */
 static int  cur_sect_esdid, main_sect_esdid;
 static int  end_esdid; static long end_addr; static int end_has;
+static int  end_known;   /* end_addr is a defined symbol's value: the listing prints it as END's LOC (#619) */
 static int  errors;
 /* The statement being parsed came from a macro expansion (or from open-code
  * substitution). A BLANK in it does not end the operand field: IFOX00 fixes the
@@ -7030,7 +7031,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * as the ESD's LD entry and the RLD's R (#52): an ENTRY symbol
                      * carries no ESDID of its own, and taking the module's first
                      * section for it stamped an offset into CSECT 2 against CSECT 1. */
-                    if (pass == 2) { struct sym *s = sym_find(ent); if (s) { end_addr = s->val;
+                    if (pass == 2) { struct sym *s = sym_find(ent); if (s) { end_addr = s->val; end_known = s->defined;
                         end_esdid = s->esdid ? s->esdid : sect_esdid(s->sect); } }
                 }
             }
@@ -7478,6 +7479,11 @@ static void a_src_section(char **lines, int nl) {
             else if (!strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }   /* ORG's ADDR2 is set at the statement, above */
         }
         long loc = lrecs[i].loc; int len = lrecs[i].len;
+        /* END naming an entry point lists the entry symbol's VALUE in LOC, not
+         * the location counter: `END T' is 000000 where T opens the section,
+         * 000008 in usingparenpc (two cards of private code ahead of T) and
+         * 000012 for multi-csect's `END ENT2' (tests/listref, #619). */
+        if (!noasm && !strcmp(op, "END") && end_known) { show_loc = 1; loc = end_addr; }
         if (is_instr) {                                /* a halfword-alignment pad prints as its own object line */
             int pad = (int)(loc & 1);
             if (pad) { char hex[40]; a_objcode(loc, pad, 0, hex); a_locobj(ln, loc, hex); a_src_emit(ln); loc += pad; len -= pad; }
