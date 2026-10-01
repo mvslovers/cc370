@@ -10,7 +10,7 @@ cc370 compiles C source to IBM System/370 HLASM assembler (`.s` files) for MVS 3
 
 | Tool | Role | Status |
 |------|------|--------|
-| **cc370** | C → i370 HLASM `.s` (the GCC 3.4.6 fork; `cc370/gcc/`) | works; `-O1` only |
+| **cc370** | C → i370 HLASM `.s` (the GCC 3.4.6 fork; `cc370/gcc/`) | works; `-O1` validated, `-Os` experimental |
 | **as370** | `.s`/`.asm` → OS/360 OBJ deck (`as370/src/as370.c`) | **byte-identical to IFOX00 (950 modules); links + runs on MVS** |
 | **ld370** | OBJ decks → MVS load module (replace IEWL) + automatic library call (`-l`/`-L` over `.a`) + `-iebcopy`/`-xmit` host→MVS transport (`ld370/src/ld370.c`) | member byte-identical to IEWL; `-iebcopy`/`-xmit` byte-identical to their oracles (XMIT modulo timestamp); autocall validated (single + transitive pull == explicit link). **End-to-end on real MVS: `as370→ld370→-xmit` → upload → RECV370 → runs, RC=7 (Stage 2 done)** |
 | **ar370** | OBJ decks → `.a` archive + ESD symbol index (`ar370/src/ar370.c`) | standard `ar` container (host-inspectable) with a GNU `/`-member symbol table built from each deck's ESD (variable-length names, long-symbol-ready); the static-library ld370 autocalls against |
@@ -74,7 +74,7 @@ driven, not -o-extension-driven. Mechanism: `flinker-output=` is registered in
 `%{flinker-output=xmit:-xmit}`. ld370 itself is flag-driven too: `-o OUT` =
 member, `-xmit`/`-iebcopy` (no-arg) add `OUT.xmit`/`OUT.iebcopy`.
 
-**Optimization: `-O1` only.** `-O2`/`-Os`/`-O3` are UNSAFE on this backend: at `-O2`+ the `-funit-at-a-time` DCE drops `static` tables whose address is held by a global pointer (`static t[]={..}; T *p=t;`) → dangling `=V`/`DC A(@V)` → IFOX RC=8; and `-Os` additionally **miscompiles the rexx parser** (loops → S322). `-O1` is validated correct (rexx370 TSTALLB 84/84, 0 ABEND). This — not the old "3.2.3 memory issues" note — is the real reason for "-O1 only".
+**Optimization: `-O1` validated, `-Os` experimental, `-O2`/`-O3` unsupported.** `-O1` is validated correct (rexx370 TSTALLB 84/84, 0 ABEND) and is mbt's default. `-Os` was blocked by three defects, all fixed on 2026-10-01: an unconditional `B` judged against the page before a page break (#575, `mvs_page_would_break`); unit-at-a-time, which dropped `static` tables held only by a global pointer (`DC A(@V1+2)` with no `@V1`) and wrote top-level `asm` ahead of the code, outside its `USING` (#590); and strict aliasing, which moved code in 71 files for 0.1 % of size (#592). Both passes are now **off by default** via `OPTIMIZATION_OPTIONS` in `i370.h`; `-funit-at-a-time`/`-fstrict-aliasing` turn them back on. With that, all 1,017 ecosystem sources that compile also assemble at `-Os`, and `-O1` output is byte-identical to before. On MVS only one rexx370 suite run is recorded (64 tests batch+TSO, 5,685 assertions, 0 FAIL, mvsdev JOB01477, test modules `-Os`, production LINKLIB still `-O1`) -- so `-Os` stays experimental and each project validates it itself. The old claim that `-Os` "miscompiles the rexx parser (loops → S322)" has no recorded measurement and did not reproduce.
 
 ## Testing
 
