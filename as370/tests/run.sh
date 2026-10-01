@@ -3538,6 +3538,53 @@ else
 fi
 rm -f /tmp/_tn$$.obj /tmp/_tn$$.lst /tmp/_tn$$.out
 
+# -------------------------------------------------------------- aifbagob --
+# cc370#533: AIFB and AGOB are Assembler F's spellings of AIF and AGO, plain
+# aliases in XF (genop; tests/xfdirect.s, MVSTK5-REF JOB00288 assembles them
+# at rc 0). The xfdirect probe cannot show a branch -- its target is the next
+# statement -- so this one skips: in a macro (MB A -> Y, MB B -> N) and in open
+# code (C'X' and C'Z' jumped over), text YNE. It must give the deck the same
+# source with AIF/AGO gives. The binary before the fix answered both with
+# "Undefined operation code", six times, rc 8.
+cat > /tmp/_ab$$.s <<'EOF'
+         MACRO
+         MB    &X
+         AIFB  ('&X' EQ 'A').SKIP
+         DC    C'N'
+         AGOB  .END
+.SKIP    DC    C'Y'
+.END     MEND
+T        CSECT
+         MB    A
+         MB    B
+         AIFB  (1 EQ 1).OC
+         DC    C'X'
+.OC      ANOP
+         AGOB  .OD
+         DC    C'Z'
+.OD      ANOP
+         DC    C'E'
+         END
+EOF
+sed 's/AIFB/AIF /; s/AGOB/AGO /' /tmp/_ab$$.s > /tmp/_ab$$.ref.s
+./as370 /tmp/_ab$$.s -o /tmp/_ab$$.obj >/tmp/_ab$$.out 2>&1; rcab=$?
+./as370 /tmp/_ab$$.ref.s -o /tmp/_ab$$.ref.obj >/dev/null 2>&1
+if [ $rcab != 0 ]; then
+    echo "aifbagob: FAIL -- expected rc 0, got $rcab"; grep ERROR /tmp/_ab$$.out; fail=$((fail + 1))
+elif ! cmp -s /tmp/_ab$$.obj /tmp/_ab$$.ref.obj; then
+    echo "aifbagob: FAIL -- the deck differs from the AIF/AGO spelling's"; fail=$((fail + 1))
+elif [ "$(python3 -c "
+import sys; d=open(sys.argv[1],'rb').read(); t=b''
+for i in range(0,len(d),80):
+    c=d[i:i+80]
+    if c[1:4]==bytes([0xE3,0xE7,0xE3]): t+=c[16:16+int.from_bytes(c[10:12],'big')]
+print(t.hex())" /tmp/_ab$$.obj)" != e8d5c5 ]; then
+    echo "aifbagob: FAIL -- text is not YNE (the branches were not taken)"; fail=$((fail + 1))
+else
+    echo "aifbagob: OK (AIFB/AGOB branch as AIF/AGO, in a macro and in open code)"
+fi
+rm -f /tmp/_ab$$.s /tmp/_ab$$.ref.s /tmp/_ab$$.obj /tmp/_ab$$.ref.obj /tmp/_ab$$.out
+
 # ----------------------------------------------------------------- lblorg --
 # cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
 # `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0

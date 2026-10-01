@@ -1823,6 +1823,13 @@ static int parse(const char *line, char *lbl, char *op, char *opnd) {
      * field ends where the text does; trailing blanks were never part of it. */
     if (g_genstmt) while (i > 0 && (opnd[i-1] == ' ' || opnd[i-1] == '\t')) i--;
     opnd[i] = 0;
+    /* AIFB and AGOB are Assembler F's spellings of AIF and AGO, and XF keeps
+     * them as plain aliases (genop): `AIFB (1 EQ 1).L' / `AGOB .L' in a macro
+     * branch exactly as AIF/AGO do (MVSTK5-REF JOB00288, tests/xfdirect.s;
+     * #533). Mapped here, once, so every consumer of the op field sees AIF/AGO;
+     * the listing prints the card as written. */
+    if (!strcmp(op, "AIFB")) op[3] = 0;
+    else if (!strcmp(op, "AGOB")) op[3] = 0;
     return 1;
 }
 static const struct opc *op_find(const char *n) {
@@ -3302,7 +3309,7 @@ static void check_cont_card(const char *c, int cl, int card, int stmt, int by_co
  * here on grammar, not on measurement: same operand syntax, no instance in the
  * corpus that separates them. */
 static int op_is_cond_expr(const char *s, int n) {
-    static const char *const ops[] = { "AIF", "AGO", "SETA", "SETB", "SETC", "ACTR" };
+    static const char *const ops[] = { "AIF", "AGO", "AIFB", "AGOB", "SETA", "SETB", "SETC", "ACTR" };   /* AIFB/AGOB: #533 */
     size_t k; int j;
     for (k = 0; k < sizeof ops / sizeof *ops; k++) {
         if ((int)strlen(ops[k]) != n) continue;
