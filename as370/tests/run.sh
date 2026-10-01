@@ -3484,6 +3484,44 @@ PY2
 fi
 rm -f /tmp/_pd$$.obj /tmp/_pd$$.out
 
+# ---------------------------------------------------------------- sdtlen5 --
+# cc370#531: a C self-defining term holds at most four characters. `A EQU
+# C'ABCDE'' is IFO169 (severity 8) and A = 0; the four-character control B is
+# C1C2C3C4 (MVSTK5-REF JOB00287, tests/sdtlen5.s). The binary before the fix
+# dropped the first character, rc 0, A = C2C3C4C5. The second half checks the
+# rest of xeval's test, derived from the source rather than measured: X'' of
+# nine digits and an empty C'' are IFO169 too; X'FFFFFFFF' and C (two
+# quotes, doubled) are not.
+./as370 tests/sdtlen5.s -o /tmp/_sd$$.obj >/tmp/_sd$$.out 2>&1; rcsd=$?
+if [ $rcsd != 8 ] || [ "$(grep -c 'IFO169' /tmp/_sd$$.out)" != 1 ] || ! grep -q 'IFO169) in line 2$' /tmp/_sd$$.out; then
+    echo "sdtlen5: FAIL -- expected rc 8 and IFO169 on statement 2 only, got rc $rcsd"; grep -E 'ERROR|Done' /tmp/_sd$$.out; fail=$((fail + 1))
+elif ! python3 - /tmp/_sd$$.obj tests/ref/sdtlen5.obj <<'PY2'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]   # END card left out (IDR)
+sys.exit(body(sys.argv[1]) != body(sys.argv[2]))
+PY2
+then
+    echo "sdtlen5: FAIL -- deck differs from IFOX00's (A(A) must be 00000000)"; fail=$((fail + 1))
+else
+    cat > /tmp/_sd$$.s <<'EOF'
+T        CSECT
+X9       EQU   X'123456789'
+CE       EQU   C''
+X8       EQU   X'FFFFFFFF'
+Q2       EQU   C''''''
+         END
+EOF
+    ./as370 /tmp/_sd$$.s -o /tmp/_sd$$.obj >/tmp/_sd$$.out 2>&1
+    if [ "$(grep -c 'IFO169' /tmp/_sd$$.out)" != 2 ] || ! grep -q 'IFO169) in line 2$' /tmp/_sd$$.out || ! grep -q 'IFO169) in line 3$' /tmp/_sd$$.out; then
+        echo "sdtlen5: FAIL -- X'123456789' and C'' must be IFO169, X'FFFFFFFF' and C not"; grep -E 'ERROR' /tmp/_sd$$.out; fail=$((fail + 1))
+    else
+        echo "sdtlen5: OK (IFO169 past 4 characters / 8 hex digits and on an empty term, the expression is 0, deck == IFOX00)"
+    fi
+fi
+rm -f /tmp/_sd$$.obj /tmp/_sd$$.out /tmp/_sd$$.s
+
 # ----------------------------------------------------------------- lblorg --
 # cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
 # `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0
