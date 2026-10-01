@@ -522,5 +522,35 @@ else
     fail=1
 fi
 
+# --- issue #590: unit-at-a-time is off by default at -O2/-Os ----------------
+# GCC 3.4 turns it on for optimize >= 2, and on this target the callgraph
+# (a) drops a static table whose only use is a global pointer's initializer
+#     -- libc370 @@tolow.c became DC A(@V1+2) with no @V1, rc 8 -- and
+# (b) writes top-level asm ahead of every function, so a DCB placed after the
+#     code that addresses it lands outside that code's USING (IFO209).
+# Both assemble at -O1. The default is now off; -funit-at-a-time still wins.
+cat > "$WORK/uat.c" <<'EOF'
+static short tabR[3] = { -1, 7, 9 };
+short *tab = tabR + 1;
+void f(void *p) { __asm__("MVC 0(PROTOLEN,%0),PROTODCB" : : "r"(p)); }
+__asm__("\n" "PROTODCB DC CL8'X'\n" "PROTOLEN EQU *-PROTODCB");
+EOF
+uatfail=0
+for o in -O2 -Os; do
+    if ! compile uat "$WORK/uat.c" "$o"; then echo "unit-at-a-time: FAIL -- $o does not compile"; cat "$WORK/diag"; uatfail=1; continue; fi
+    # (a) the table is emitted and tab points into it
+    lbl=$(awk '$1 == "DC" && $2 ~ /^A\(@[A-Z0-9]+\+2\)$/ { s = $2; sub(/^A\(/, "", s); sub(/\+2\)$/, "", s); print s }' "$WORK/uat.s")
+    if [ -z "$lbl" ] || ! grep -q "^$lbl " "$WORK/uat.s"; then echo "unit-at-a-time: FAIL -- $o: tab's table '$lbl' is not emitted"; uatfail=1; fi
+    # (b) the top-level asm stays behind the function
+    fl=$(grep -n 'PDPPRLG' "$WORK/uat.s" | head -1 | cut -d: -f1); dl=$(grep -n '^PROTODCB' "$WORK/uat.s" | head -1 | cut -d: -f1)
+    if [ -z "$fl" ] || [ -z "$dl" ] || [ "$dl" -lt "$fl" ]; then echo "unit-at-a-time: FAIL -- $o: PROTODCB (line $dl) ahead of the function (line $fl)"; uatfail=1; fi
+done
+# -funit-at-a-time is still honoured: the asm moves ahead again
+if compile uat "$WORK/uat.c" "-Os -funit-at-a-time"; then
+    fl=$(grep -n 'PDPPRLG' "$WORK/uat.s" | head -1 | cut -d: -f1); dl=$(grep -n '^PROTODCB' "$WORK/uat.s" | head -1 | cut -d: -f1)
+    [ -n "$dl" ] && [ -n "$fl" ] && [ "$dl" -lt "$fl" ] || { echo "unit-at-a-time: FAIL -- an explicit -funit-at-a-time is no longer honoured"; uatfail=1; }
+else echo "unit-at-a-time: FAIL -- -Os -funit-at-a-time does not compile"; uatfail=1; fi
+if [ $uatfail = 0 ]; then echo "unit-at-a-time: OK (off at -O2/-Os: the table stays, top-level asm stays behind the code; -funit-at-a-time still works)"; else fail=1; fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
