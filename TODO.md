@@ -1327,11 +1327,12 @@ was found while building a `listref` case, and each is excluded from that case
   `titlegen`); `listref` case 11. Not measured: whether IFO171 counts before
   or after the `''`/`&&` reduction.
 
-- **#623** — new 2026-10-01, found with #603. **The PRINT half is fixed**
-  (PR #628, `6974e37`): ON/OFF, GEN/NOGEN and PUSH/POP PRINT, measured on
-  MVSTK5-REF (JOB00308/00309). **Open: SPACE** is still listed as a statement;
-  how many lines IFOX00 skips cannot be read from a captured listing (carriage
-  control is dropped), so it needs another instrument first.
+- ~~**#623**~~ — found with #603. **Fixed** in two PRs: PRINT ON/OFF,
+  GEN/NOGEN and PUSH/POP PRINT (#628, `6974e37`, JOB00308/00309), and SPACE
+  (#630, `09a14d0`, JOB00311/00312): n blank lines, one blank record per three,
+  and a SOURCE page counted in printed lines (56 of body, the first
+  double-spaced). Measured with `capture.py --asa`, which keeps the
+  carriage-control column the spool drops.
 - **#626** — new 2026-10-01, found with #623: a macro call inside an expansion
   is listed and numbered; IFOX00 runs NOMCALL and does neither. Numbering
   class, like #150.
@@ -1513,6 +1514,14 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #623 closed: SPACE, MERGED as `09a14d0` (PR #630).** SPACE
+  spaces the listing as IFOX00 does, and a page counts printed lines.
+  `capture.py --asa FILE` keeps column 1 (control: titlegen recaptured,
+  JOB00310, identical). listref case 11 keeps blank lines; the eight real
+  IFOX00 listings in mvs38src ifox-run: 6,578 -> 7,022 aligned SOURCE lines.
+  MVSBLD gate: 0 moved. Snapshot pair 1613 -> 1710 unchanged (one member
+  unreadable mid-run while mvsdev.lan was down, re-read identical).
 
 - **2026-10-01 — #623 (PRINT half), MERGED as `6974e37` (PR #628).** `-a`
   honours PRINT ON/OFF, GEN/NOGEN and PUSH/POP PRINT; NOGEN still lists a
