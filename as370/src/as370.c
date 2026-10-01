@@ -6123,6 +6123,32 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * log, and a statement with no records at all is a hole in
                      * it that looks like agreement. */
                     if (!hit) uev_add(i + 1, UEV_DROP, cur_sect_id, lc, r, 0, 0, 0, 0, UEB_NOOP); } }
+        } else if (!strcmp(op, "PUNCH")) {
+            /* PUNCH writes its operand -- a quoted string, '' and && standing for
+             * one character each -- as an 80-column card into the object deck,
+             * placed exactly as a REPRO card is: ` PUNCHED CARD' lands between
+             * the TXT and the END card (MVSTK5-REF JOB00288, tests/xfdirect.s;
+             * #535). The image is built in pass 1, from the substituted
+             * operand; pass 2 records where it falls, through REPRO's path. A
+             * null operand or one past 80 characters is IFO165, severity 4
+             * (jermsgcd); then nothing, or the first 80, is punched -- from the
+             * source, not measured. */
+            char img[256]; int n = 0, k = 0, ok = (opnd[0] == '\'');
+            if (ok) for (k = 1; opnd[k]; k++) {
+                if (opnd[k] == '\'') { if (opnd[k + 1] == '\'') k++; else break; }
+                else if (opnd[k] == '&' && opnd[k + 1] == '&') k++;
+                if (n < (int)sizeof img - 1) img[n++] = opnd[k];
+            }
+            if (pass == 1 && ok && n > 0 && nrepro < MAXREPRO) {
+                int j; for (j = 0; j < 80; j++) repro_img[nrepro][j] = mvs_a2e((unsigned char)(j < n ? img[j] : ' '));
+                repro_line[nrepro] = i; nrepro++;
+            }
+            if (pass == 2 && (!ok || n == 0 || n > 80))
+                note_operr("Null PUNCH operand or PUNCH operand exceeds 80 characters (IFOX00 IFO165)", 4, i);
+            if (pass == 2 && npunch < MAXREPRO) {
+                int r; for (r = 0; r < nrepro; r++) if (repro_line[r] == i) {
+                    punches[npunch].ridx = r; punches[npunch].at_bytes = txl_blen;
+                    punches[npunch].before_esd = !g_sect_seen; npunch++; break; } }
         } else if (!strcmp(op, "REPRO")) {
             /* Nothing is assembled and the location counter does not move. All
              * this records is WHERE the card falls in the punch stream. */
