@@ -3608,6 +3608,38 @@ else
 fi
 rm -f /tmp/_ic$$.a.s /tmp/_ic$$.b.s /tmp/_ic$$.c.s /tmp/_ic$$.a.out /tmp/_ic$$.b.out /tmp/_ic$$.c.out /tmp/_ic$$.obj
 
+# ------------------------------------------------------------------ punch --
+# cc370#535: PUNCH puts its operand into the deck as an 80-column card, where a
+# REPRO card would go. IFOX00 (MVSTK5-REF JOB00288, tests/xfdirect.s, card 2 of
+# tests/ref/xfdirect.obj) has ` PUNCHED CARD' between the TXT and the END card,
+# blank in 73-80 and not counted in the sequence. The fixture itself still
+# needs OPSYN (#532), so the probe here is the same PUNCH after a TXT, and the
+# card is compared byte for byte with IFOX00's. A null operand is IFO165,
+# severity 4 (jermsgcd; not measured). The binary before the change answered
+# "Undefined operation code" and punched nothing.
+printf 'T        CSECT\n         DC    F%s1%s\n         PUNCH %s PUNCHED CARD%s\n         END\n' "'" "'" "'" "'" > /tmp/_pu$$.s
+printf 'T        CSECT\n         PUNCH %s%s\n         END\n' "'" "'" > /tmp/_pu$$.n.s
+./as370 /tmp/_pu$$.s -o /tmp/_pu$$.obj >/tmp/_pu$$.out 2>&1; rcpu=$?
+./as370 /tmp/_pu$$.n.s -o /tmp/_pu$$.n.obj >/tmp/_pu$$.n.out 2>&1; rcpn=$?
+if [ $rcpu != 0 ]; then
+    echo "punch: FAIL -- expected rc 0, got $rcpu"; cat /tmp/_pu$$.out; fail=$((fail + 1))
+elif ! python3 - /tmp/_pu$$.obj tests/ref/xfdirect.obj <<'PY2'
+import sys
+a = open(sys.argv[1], 'rb').read(); b = open(sys.argv[2], 'rb').read()
+kinds = [a[i+1:i+4] for i in range(0, len(a), 80)]
+ok = len(a) == 320 and kinds[1] == b"\xe3\xe7\xe3" and kinds[3] == b"\xc5\xd5\xc4" \
+     and a[160:240] == b[160:240] and a[312:320] == "00000003".encode('cp037')
+sys.exit(0 if ok else 1)
+PY2
+then
+    echo "punch: FAIL -- the card is not IFOX00's, or not between TXT and END, or it took a sequence number"; fail=$((fail + 1))
+elif [ $rcpn != 4 ] || ! grep -q 'IFO165' /tmp/_pu$$.n.out; then
+    echo "punch: FAIL -- a null PUNCH operand must be IFO165 at rc 4, got rc $rcpn"; cat /tmp/_pu$$.n.out; fail=$((fail + 1))
+else
+    echo "punch: OK (the card is IFOX00's, between TXT and END, unsequenced; null operand is IFO165)"
+fi
+rm -f /tmp/_pu$$.s /tmp/_pu$$.n.s /tmp/_pu$$.obj /tmp/_pu$$.n.obj /tmp/_pu$$.out /tmp/_pu$$.n.out
+
 # ----------------------------------------------------------------- lblorg --
 # cc370#526: a name on an ORG is the counter BEFORE the ORG moves it, length 1.
 # `L1 ORG P2LORG+16' after 8 bytes gives L1 = 8 and DC A(L1) = 00000008, rc 0
