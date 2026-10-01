@@ -1213,8 +1213,8 @@ latter two.
   IFOX00 and `U` to as370, rc 0 (JOB00290, fixture `as370/tests/equtypegen.s`).
   Silent, and not ranked until its corpus count exists.
 
-The rest are loud or diagnostic-only: #526 (labelled `ORG`, rc 8 where IFOX is
-clean), #529 / #530 / #531 (missing `IFO233` / `IFO104` / `IFO169`), and #532–#535
+The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
+2026-10-01, PR #596), #529 / #530 / #531 (missing `IFO233` / `IFO104` / `IFO169`), and #532–#535
 (`OPSYN`, `AIFB`/`AGOB`, `ICTL`, `PUNCH` missing). Their corpus count is 0.
 
 ## Observability
@@ -1260,7 +1260,7 @@ was found while building a `listref` case, and each is excluded from that case
   `XREF(SHORT)`. Of the 122 references in `tests/listref`, 81 are identical and
   35 more once the SOURCE page's own numbering is mapped across
   (`listref/xref.py`, `check.sh` case 8). Of the other 6, five are assembly
-  divergences the page reports faithfully (#526, #529, #531, #532–#535, and
+  divergences the page reports faithfully (#529, #531, #532–#535, and
   `equparen`'s IFO234 gap, where the XREF shows F7 = 4 against IFOX00's 0 — a
   value gap, not only the message gap the fixture records), and one is a listing
   gap of its own: the TITLE name is not printed in columns 1–8 of any page
@@ -1473,6 +1473,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #526, MERGED as `1ad8b6a` (PR #596).** A labelled `ORG` names
+  the counter before it moves, length 1 (`lblorg`, JOB00282); `listref/xref.py`
+  drops it from the known divergences (84 exact, 5 known). MVSBLD: no deck, no
+  rc moved -- the tree's labelled ORGs (IKJEGWHR `MYWORK`, IHALRB's seven) are
+  never referenced in code.
 
 - **2026-10-01 — `-Os` made usable, declared experimental: #575 (PR #589),
   #590 (PR #591), #592 (PR #594; #593 was closed by its deleted base).** A
