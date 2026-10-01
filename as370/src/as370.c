@@ -7565,6 +7565,30 @@ static int a_has_print(const char *opnd) {
     for (k = 0; k < n; k++) if (!strcmp(f[k], "PRINT")) return 1;
     return 0;
 }
+/* The boundary a DC, DS or CCW aligns its FIRST operand to, or 1 for none.
+ * The statement is listed at that aligned address and its pad bytes are listed
+ * nowhere -- not at the end of the statement before, not at the start of this
+ * one (#627). Measured across the IFOX00 listings in tests/listref: DS 0F
+ * (align, orgnever), DS 16F (usingparen, usingparenpc), DC A (cnop, printerr)
+ * and CCW (sectlen, xrefcov) -- fourteen statements, every one at its aligned
+ * address. Pads BETWEEN a statement's operands stay inside it. The boundaries
+ * are DCTBL's (F A V E 4, H Y S 2, D L 8); a length modifier, before or after a
+ * scale, removes the alignment. */
+static int a_first_align(const char *op, const char *opnd) {
+    const char *p = opnd;
+    if (!strncmp(op, "CCW", 3)) return 8;
+    if (strcmp(op, "DC") && strcmp(op, "DS")) return 1;
+    while (*p == ' ') p++;
+    if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } }
+    else while (isdigit((unsigned char)*p)) p++;
+    int ty = toupper((unsigned char)*p), b;
+    if (!ty) return 1;
+    p++;
+    b = strchr("FAVE", ty) ? 4 : strchr("HYS", ty) ? 2 : strchr("DL", ty) ? 8 : 1;
+    if (*p == 'S') { p++; if (*p == '+' || *p == '-') p++; while (isdigit((unsigned char)*p)) p++; }
+    if (*p == 'L') return 1;
+    return b;
+}
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j;
     a_srcopen = 0; a_srclines = 0;   /* the header goes out with the first row */
@@ -7629,6 +7653,10 @@ static void a_src_section(char **lines, int nl) {
             else if (!strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }   /* ORG's ADDR2 is set at the statement, above */
         }
         long loc = lrecs[i].loc; int len = lrecs[i].len;
+        if (show_loc && !noasm) {   /* the alignment pad belongs to no statement's line (#627) */
+            int b = a_first_align(op, opnd), pad = b > 1 ? (int)((b - (loc % b)) % b) : 0;
+            if (pad && pad <= len) { loc += pad; len -= pad; }
+        }
         /* END naming an entry point lists the entry symbol's VALUE in LOC, not
          * the location counter: `END T' is 000000 where T opens the section,
          * 000008 in usingparenpc (two cards of private code ahead of T) and
