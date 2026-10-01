@@ -1,0 +1,71 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 15.24 10/01/26
+TSPC      SD  0001 000000 000038
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.24 10/01/26
+                                      1 * SPACE im Listing (#623), gemessen MIT Spalte 1 (capture.py --asa).
+                                      2 * Jeder Fall steht zwischen zwei DC, damit die Zeilen um ihn herum
+                                      3 * zeigen, was er bewirkt:
+                                      4 *   S1  SPACE ohne Operand    S2  SPACE 2    S3  SPACE 3
+                                      5 *   S4  SPACE 0               S5  SPACE aus einem Makro unter GEN
+                                      6 *   S6  dasselbe unter NOGEN  S7  SPACE ueber das Seitenende hinaus
+                                      7          MACRO
+                                      8          SPMAC &N
+                                      9          DC    C'M&N'
+                                     10          SPACE 2
+                                     11          DC    C'N&N'
+                                     12          MEND
+000000                               13 TSPC     CSECT
+000000 C1F1                          14          DC    C'A1'
+
+000002 C2F1                          16          DC    C'B1'
+000004 C1F2                          17          DC    C'A2'
+
+000006 C2F2                          19          DC    C'B2'
+000008 C1F3                          20          DC    C'A3'
+
+00000A C2F3                          22          DC    C'B3'
+00000C C1F4                          23          DC    C'A4'
+00000E C2F4                          25          DC    C'B4'
+000010 C1F5                          26          DC    C'A5'
+                                     27          SPMAC 5
+000012 D4F5                          28+         DC    C'M5'
+
+000014 D5F5                          30+         DC    C'N5'
+000016 C2F5                          31          DC    C'B5'
+                                     32          PRINT NOGEN
+000018 C1F6                          33          DC    C'A6'
+                                     34          SPMAC 6
+00001E C2F6                          38          DC    C'B6'
+                                     39          PRINT GEN
+000020 F0F0                          40          DC    C'00'
+000022 F0F1                          41          DC    C'01'
+000024 F0F2                          42          DC    C'02'
+000026 F0F3                          43          DC    C'03'
+000028 F0F4                          44          DC    C'04'
+00002A F0F5                          45          DC    C'05'
+00002C F0F6                          46          DC    C'06'
+00002E F0F7                          47          DC    C'07'
+000030 F0F8                          48          DC    C'08'
+000032 F0F9                          49          DC    C'09'
+000034 C1F7                          50          DC    C'A7'
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 15.24 10/01/26
+000036 C2F7                          52          DC    C'B7'
+                                     53          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 15.24 10/01/26
+TSPC     00001 00000000 00013
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 15.24 10/01/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         47
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        71

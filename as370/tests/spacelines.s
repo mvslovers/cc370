@@ -1,0 +1,81 @@
+* SPACE: Zeilen oder Datensaetze? (#623, capture.py --asa)
+* 40 DC, dann fuenfmal SPACE 3, dann 20 DC. Zaehlt IFOX00 die Zeilen
+* eines SPACE, ist die Seite nach den SPACE voll (40+15=55); zaehlt
+* es Datensaetze, passen noch zehn DC darauf (40+5+10=55).
+* Danach SPACE 4, 5 und 7: wie schreibt IFOX00 mehr als drei Zeilen.
+TSPL     CSECT
+         DC    C'00'
+         DC    C'01'
+         DC    C'02'
+         DC    C'03'
+         DC    C'04'
+         DC    C'05'
+         DC    C'06'
+         DC    C'07'
+         DC    C'08'
+         DC    C'09'
+         DC    C'10'
+         DC    C'11'
+         DC    C'12'
+         DC    C'13'
+         DC    C'14'
+         DC    C'15'
+         DC    C'16'
+         DC    C'17'
+         DC    C'18'
+         DC    C'19'
+         DC    C'20'
+         DC    C'21'
+         DC    C'22'
+         DC    C'23'
+         DC    C'24'
+         DC    C'25'
+         DC    C'26'
+         DC    C'27'
+         DC    C'28'
+         DC    C'29'
+         DC    C'30'
+         DC    C'31'
+         DC    C'32'
+         DC    C'33'
+         DC    C'34'
+         DC    C'35'
+         DC    C'36'
+         DC    C'37'
+         DC    C'38'
+         DC    C'39'
+         SPACE 3
+         SPACE 3
+         SPACE 3
+         SPACE 3
+         SPACE 3
+         DC    C'A0'
+         DC    C'B1'
+         DC    C'C2'
+         DC    C'D3'
+         DC    C'E4'
+         DC    C'F5'
+         DC    C'G6'
+         DC    C'H7'
+         DC    C'I8'
+         DC    C'J9'
+         DC    C'K0'
+         DC    C'L1'
+         DC    C'M2'
+         DC    C'N3'
+         DC    C'O4'
+         DC    C'P5'
+         DC    C'Q6'
+         DC    C'R7'
+         DC    C'S8'
+         DC    C'T9'
+         DC    C'X4'
+         SPACE 4
+         DC    C'Y4'
+         DC    C'X5'
+         SPACE 5
+         DC    C'Y5'
+         DC    C'X7'
+         SPACE 7
+         DC    C'Y7'
+         END

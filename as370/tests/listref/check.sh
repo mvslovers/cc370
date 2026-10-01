@@ -449,11 +449,12 @@ PYE
 # with the statement numbers masked and the macro definitions left out (#150),
 # and printgen/printerr add PRINT ON/OFF, GEN/NOGEN and PUSH/POP PRINT (#623).
 # Each remaining difference is pinned below with the issue that owns it, so a
-# fix to any of them trips this case and is meant to: SPACE is listed (#623),
-# a macro call inside an expansion is listed (#626), a DC's alignment pad is
-# listed with it (#627), and printgen's page fills at 55 rows only once the
-# macro definitions are listed (#150).
-for T11 in titlenamed titlelong titlepage titlegen printgen printerr; do
+# fix to any of them trips this case and is meant to: a macro call inside an
+# expansion is listed (#626), a DC's alignment pad is listed with it (#627),
+# and printgen's and spacelist's pages fill as IFOX00's do only once the macro
+# definitions are listed (#150). Blank lines count: a SPACE is blank records
+# (#623), one per three lines, as spacelist and spacelines measured them.
+for T11 in titlenamed titlelong titlepage titlegen printgen printerr spacelist spacelines; do
 OUT11=/tmp/as370-listref-title.$$
 ./as370 tests/$T11.s -a="$OUT11" >/dev/null 2>/tmp/as370-listref-title.err.$$
 rc11=$?
@@ -469,8 +470,9 @@ def src(path):
                 if on: break
                 continue
             on = True; out.append("HEAD|" + l[:110].rstrip()); continue
-        if not on or "SOURCE STATEMENT" in l or l == "" or l.strip() == "*** ERROR ***": continue
+        if not on or "SOURCE STATEMENT" in l or l.strip() == "*** ERROR ***": continue
         out.append(l)
+    while out and out[-1] == "": out.pop()
     return out
 def norm(L):
     out, indef = [], False
@@ -484,7 +486,11 @@ def norm(L):
 R, M = src(ref), src(mine)
 known = {   # what is still different, and whose it is
     "titlepage": [],
-    "titlegen":  ["+                                                 SPACE 2"],                           # #623
+    "titlegen":  [],
+    "spacelines": [],
+    "spacelist": ["+      "] * 4 + [                                                                    # #150
+                  "+000036 C2F7                                      DC    C'B7'",
+                  "-000036 C2F7                                      DC    C'B7'"],
     "printgen":  ["+                                       +         INNER 3",                            # #626
                   "-HEAD|"],                                                                                # #150
     "printerr":  ["-000004 00000000                        +         DC    A(UNDEF1)",                    # #627

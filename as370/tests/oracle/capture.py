@@ -18,6 +18,13 @@ What it does on the target: submits one job. SYSIN is inline and SYSPRINT goes
 to the spool, so nothing is left behind -- except while --deck is asked for,
 when SYSPUNCH needs a dataset. That one is created, read back with
 X-IBM-Data-Type: binary, and deleted again in the same run.
+
+--asa FILE keeps the carriage control. The spool route hands the listing back
+without column 1, so a SPACE or a double-spaced line cannot be told from the
+lines around it (#623). With --asa, SYSPRINT goes to a second scratch dataset,
+RECFM=FBA LRECL=121 -- the way mvs38src's ifox_run.py captures its listings --
+is read back with column 1 intact and deleted. --listing is then derived from
+it by dropping column 1, which is the same text the spool gives.
 """
 import argparse
 import os
@@ -36,6 +43,7 @@ except ImportError:
              f"            set MBT_ROOT=<path to the mbt checkout>")
 
 SCRATCH_SUFFIX = "CC370.ORACLE.OBJ"
+LISTING_SUFFIX = "CC370.ORACLE.LST"
 
 
 def load_env(path):
@@ -49,7 +57,7 @@ def load_env(path):
     return env
 
 
-def build_jcl(env, src, scratch, deck, syslib=None, xref="FULL"):
+def build_jcl(env, src, scratch, deck, syslib=None, xref="FULL", lst=None):
     """One IFOX00 step. PARM matches tests/listref: the listing is column-exact
     to what the committed references were captured with."""
     # SYSLIB is a concatenation: the first DD carries the name, the rest are
@@ -67,10 +75,15 @@ def build_jcl(env, src, scratch, deck, syslib=None, xref="FULL"):
              f"//             DCB=(RECFM=FB,LRECL=80,BLKSIZE=800)"
              if deck else "//SYSPUNCH DD DUMMY")
     # a leading IEFBR14 clears a scratch dataset left by an interrupted run
-    predel = (f"//DEL      EXEC PGM=IEFBR14\n"
-              f"//OLD      DD DSN={scratch},DISP=(MOD,DELETE,DELETE),\n"
-              f"//             UNIT=SYSDA,SPACE=(TRK,(1,1))\n"
-              if deck else "")
+    olds = ([scratch] if deck else []) + ([lst] if lst else [])
+    predel = ("//DEL      EXEC PGM=IEFBR14\n" + "".join(
+              f"//OLD{k}     DD DSN={d},DISP=(MOD,DELETE,DELETE),\n"
+              f"//             UNIT=SYSDA,SPACE=(TRK,(1,1))\n" for k, d in enumerate(olds))
+              if olds else "")
+    sysprint = (f"//SYSPRINT DD DSN={lst},DISP=(NEW,CATLG,DELETE),\n"
+                f"//             UNIT=SYSDA,SPACE=(TRK,(30,30)),\n"
+                f"//             DCB=(RECFM=FBA,LRECL=121,BLKSIZE=1210)"
+                if lst else "//SYSPRINT DD SYSOUT=*")
     return f"""//ASMORCL  JOB (ACCT),'IFOX ORACLE',CLASS={env.get('MBT_JES_JOBCLASS', 'A')},
 //             MSGCLASS={env.get('MBT_JES_MSGCLASS', 'A')},MSGLEVEL=(1,1)
 {predel}//ASM      EXEC PGM=IFOX00,
@@ -79,7 +92,7 @@ def build_jcl(env, src, scratch, deck, syslib=None, xref="FULL"):
 //SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
 //SYSUT2   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
 //SYSUT3   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
-//SYSPRINT DD SYSOUT=*
+{sysprint}
 //SYSGO    DD DUMMY
 {punch}
 //SYSIN    DD *
@@ -113,6 +126,10 @@ def main():
                          "written to provoke a diagnostic assembles at rc 4 or 8 BY "
                          "DESIGN and still punches a deck; without this the deck is "
                          "thrown away and only the listing survives.")
+    ap.add_argument("--asa", metavar="FILE",
+                    help="write the listing WITH its carriage-control column here "
+                         "(SYSPRINT to a scratch FBA dataset); --listing is then "
+                         "derived from it")
     ap.add_argument("--xref", choices=("full", "short"), default="full",
                     help="XREF(FULL) (default, what tests/listref was captured with) or "
                          "XREF(SHORT), which as370 writes for --xref=short")
@@ -126,6 +143,7 @@ def main():
     client = MvsMFClient(env["MBT_MVS_HOST"], int(env["MBT_MVS_PORT"]),
                          env["MBT_MVS_USER"], env["MBT_MVS_PASS"])
     scratch = f"{env['MBT_MVS_USER']}.{SCRATCH_SUFFIX}"
+    lst = f"{env['MBT_MVS_USER']}.{LISTING_SUFFIX}" if args.asa else None
     src = Path(args.source).read_text().rstrip("\n")
 
     # A source line reaching column 72 is a continuation card to IFOX00 -- for
@@ -138,10 +156,29 @@ def main():
 
     print(f"submitting to {env['MBT_MVS_HOST']}:{env['MBT_MVS_PORT']} "
           f"as {env['MBT_MVS_USER']}")
-    res = client.submit_jcl(build_jcl(env, src, scratch, bool(args.deck), args.syslib, args.xref.upper()),
+    res = client.submit_jcl(build_jcl(env, src, scratch, bool(args.deck), args.syslib, args.xref.upper(), lst),
                             wait=True, timeout=180)
     print(f"job {res.jobname} {res.jobid}  status={res.status}  rc={res.rc}")
-    if args.listing:
+    if lst:
+        try:
+            raw = client._request("GET", f"/restfiles/ds/{lst}", accept="text/plain")
+            text = raw.decode("latin-1") if isinstance(raw, bytes) else raw
+        except Exception as exc:                          # noqa: BLE001
+            text = None
+            print(f"capture.py: no listing in {lst} ({exc})", file=sys.stderr)
+        try:
+            client.delete_dataset(lst)
+            print(f"scratch dataset {lst} deleted")
+        except Exception as exc:                          # noqa: BLE001 - best effort
+            print(f"capture.py: could not delete {lst}: {exc}", file=sys.stderr)
+        if text is not None:
+            recs = text.rstrip("\n").split("\n")
+            Path(args.asa).write_text("\n".join(recs) + "\n")
+            print(f"asa listing -> {args.asa} ({len(recs)} records)")
+            if args.listing:
+                Path(args.listing).write_text("\n".join(r[1:] for r in recs) + "\n")
+                print(f"listing -> {args.listing} (column 1 dropped)")
+    elif args.listing:
         Path(args.listing).write_text(sysprint_of(res.spool))
         print(f"listing -> {args.listing}")
     failed = res.rc != 0
