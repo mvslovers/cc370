@@ -499,25 +499,27 @@ done
 # --- case 12: every SOURCE page that matches IFOX00 keeps matching -- #150 --
 # The SOURCE page of each reference named here is IFOX00's line for line:
 # headings, statement numbers and blank lines; *** ERROR *** markers aside.
-# Before #150 listed in-stream macro definitions, 63 of the 135 did; 95 do
-# since #626 (NOMCALL) and #627 (alignment pads), plus tstlist, which needs
-# the libc370 macros and is case 1's. A reference that starts matching belongs on this list; one that
+# Before #150 listed in-stream macro definitions, 63 of the 135 did; 107 do
+# since #626 (NOMCALL), #627 (alignment pads) and #24 (no object code on a
+# DS), plus tstlist, which needs the libc370 macros and is case 1's. A reference that starts matching belongs on this list; one that
 # stops is a regression.
 python3 - <<'PYS' || fail=1
 import re, os, subprocess
 NAMES = """
 absrx absssub absusing actr adcon aifcond aliasext align amp_fold
-amp_selfdef amp_subst attrapos_remark attrdup attre basereg basereg2 bitlen
-blank_csect brmnem ccwstar cmprule collate contattr contparen csect_resume
-csect_resume2 csect_resume3 dcattr dcvals dupfac emptydc emptyopnd endpool
-endstop entryprobe entsd equfwd equlen equlist eququote equtype esdself
-esdvsect fpopc genblank kwundef lblorg ldentry lenattr litdup litdupexpr
-litlist litplusterm litpz litscale logop macbuf orglen parendepth pool
-printerr printgen regexpr relocerr relop rldlen sconabs selfdup setc_len95
-setc_open setc_substr setc_undef spacelines spacelist spmrr ssb1 stmtlen
-subattr sublist substrcat syslist sysparm_substr tattr_expr tattr_literal
-tattr_selfdef titlegen titlelong titlenamed titlepage usingexpr usingkey
-usingmul var_opcode xfdirect xsectrel
+amp_selfdef amp_subst attrapos attrapos_remark attrdup attre basereg
+basereg2 bitlen blank_csect brmnem ccwstar cmprule collate contattr
+contparen csect_resume csect_resume2 csect_resume3 dcattr dcvals droplist
+dupfac emptydc emptyopnd endpool endstop entryprobe entsd equfwd equlen
+equlist eququote equsect equtype esdself esdvsect fpopc genblank kwundef
+lblorg ldentry lenattr litdup litdupexpr litlist litplusterm litpz litscale
+logop macbuf multi-csect orglen orgnever ovlattr parendepth pool printerr
+printgen regexpr reloc-addr relocerr relop rldlen rldorg rxparen sconabs
+selfdup setc_len95 setc_open setc_substr setc_undef spacelines spacelist
+spmrr ssb1 ssomit stmtlen subattr sublist substrcat syslist sysparm_substr
+tattr_expr tattr_literal tattr_selfdef titlegen titlelong titlenamed
+titlepage usingexpr usingkey usingmul usingparen usingparenpc var_opcode
+xfdirect xsectrel
 """.split()
 def src(path):
     out, on = [], False
@@ -534,7 +536,8 @@ def src(path):
     return out
 bad = []
 for t in NAMES:
-    s = next(x for x in ("tests/%s.s" % t, "tests/listref/%s.s" % t) if os.path.exists(x))
+    s = next(x for x in ("tests/%s.s" % t, "tests/%s.s" % t.replace("-", "_"), "tests/listref/%s.s" % t)
+             if os.path.exists(x))
     out = "/tmp/as370-listref-src.%d" % os.getpid()
     subprocess.run(["./as370", s, "-a=" + out, "-o", "/dev/null"], capture_output=True)
     if src(out) != src("tests/listref/ifox-listing-%s.txt" % t): bad.append(t)
