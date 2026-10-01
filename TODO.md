@@ -265,21 +265,14 @@ Thirteen, not ten — and two of the ten had already gone: **#13 closed
 2026-08-30, #99 on 2026-09-04, #39 on 2026-09-08, and #35 closes on this pass.**
 See *Recently landed*.
 
-**The three issues this block used to carry are down to one.** #148, #149 and
+**The three issues this block used to carry are down to none.** #148, #149 and
 #151 were all filed while fixing #141, all silent, all found by a gate rather
 than by reading — and #149 and #151 both closed on 2026-09-09/10 on their own
-re-derivations. What is left of that family is #184, which is ranked above, and
-one listing item:
-
-- **#150** — an **in-stream** macro definition is not listed, so every statement
-  after one is numbered short by the number of cards it held. Listing-only, but
-  the statement number is what a diagnostic is addressed by. **#233 was filed a
-  day later from a different fixture and closed as a duplicate of this one**, so
-  #150 is the canonical record and carries the scope note that decides how a fix
-  is tested: `NOLIBMAC` is the default and IFOX00 does not list a library macro
-  either, which is why `listref` case 1 compares clean — in-stream definitions
-  only. It is the reason `tests/sysparm_substr.s` is checked on its deck rather
-  than as a `listref` case.
+re-derivations. What is left of that family is #184, which is ranked above. The
+listing item, ~~#150~~ (in-stream definitions not listed, every later statement
+numbered short), **closed on 2026-10-01** (PR #632): 89 of the 135 `listref`
+SOURCE pages are now IFOX00's line for line, and `sysparm_substr` is a
+`listref` case.
 
 **What #149 left behind is worth keeping, because it is the rule for #184.**
 The three attribute-apostrophe letter sets in as370 are not all one bug, and the
@@ -297,7 +290,7 @@ not closed**; #111, #112, #113, #117, #118 open — the only band with an outsid
 consumer), **loud gaps** (#56, #76, #78, #101, #102, #103, #128, #211, #229, #297 —
 **#108 closed on 2026-09-06 and should have left this band then**), **populations**
 (#160, #193, #199, #241), **observability** (#9, #106, #345), **listing
-fidelity** (#24, #28, #91, #150), **conditional assembly** (#258, #272, #333),
+fidelity** (#24, #91, #370, #626, #627), **conditional assembly** (#258, #272, #333),
 **deferred** (#36). `&&` folding moved from the substituter to the DC scanner
 en route to #141 (`6d235db`): the two paths had contradicted each other at `rc=0`
 since as370 existed, and the two defects cancelled, so 950 modules of deck
@@ -1301,9 +1294,10 @@ was found while building a `listref` case, and each is excluded from that case
   modules** produce one at all. The residual is pinned as a tripwire in
   `flagged_libmac`, so implementing it fails that case and brings whoever does it
   to the number that has to change.
-- **#150** — an in-stream macro definition is not listed, so every statement after
-  one is numbered short. The canonical record of the defect #233 duplicated; see
-  the block under *The order*.
+- ~~**#150**~~ — an in-stream macro definition was not listed, so every
+  statement after one was numbered short. **Fixed** (PR #632, `ae95b87`): one
+  listing-only line per card, MACRO to MEND, at generation level 0. listref
+  case 12 holds the 88 SOURCE pages that are now IFOX00's line for line.
 - **#199** — three modules whose object image matches IFOX00 exactly and whose
   *deck* does not, both assemblers silent. Re-derived at `fd287d3`: still three.
   PRs #200 and #206 each say in their own bodies that they address a part of it,
@@ -1514,6 +1508,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #150, MERGED as `ae95b87` (PR #632).** An in-stream macro
+  definition is listed and numbered where it is written. tests/listref: 63 ->
+  89 of 135 SOURCE pages identical to IFOX00, none lost; cross-reference exact
+  124 (was 89). New listref case 12 holds the 88 line for line. Eight real
+  IFOX00 listings: 7,022 -> 7,810 aligned lines. MVSBLD gate: 0 moved;
+  libc370 0 of 743.
 
 - **2026-10-01 — #623 closed: SPACE, MERGED as `09a14d0` (PR #630).** SPACE
   spaces the listing as IFOX00 does, and a page counts printed lines.
