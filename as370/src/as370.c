@@ -3930,9 +3930,10 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
                 /* lines[] keeps the SUBSTITUTED MNOTE statement so the stderr
                  * card print shows what the macro actually wrote; gcard carries
                  * the rendered image the listing column wants. */
-                lflags[*nout] = LF_GEN | LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = strdup(mimg);
+                lflags[*nout] = LF_GEN | LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = msev < 0 ? NULL : strdup(mimg);   /* IFO178: listed as written, no MNOTE image */
                 line_org[*nout] = g_curorg; out[*nout] = strdup(mex);
-                note_mnote(msev, mtext, *nout);
+                if (msev < 0) note_operr("Syntax error in the MNOTE severity (IFOX00 IFO178)", 8, *nout);
+                else note_mnote(msev, mtext, *nout);
                 (*nout)++;
             }
             pc++; continue;
@@ -4115,8 +4116,9 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         int msev = mnote_split(opnd, mtext, sizeof mtext, mimg, sizeof mimg, &mcom);
         if (*nout < MAXLINES) {
             lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); line_mcall[*nout] = mcall_cur() + 1;
-            gcard[*nout] = strdup(mimg); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf);
-            note_mnote(msev, mtext, *nout);
+            gcard[*nout] = msev < 0 ? NULL : strdup(mimg); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf);   /* IFO178: listed as written */
+            if (msev < 0) note_operr("Syntax error in the MNOTE severity (IFOX00 IFO178)", 8, *nout);
+            else note_mnote(msev, mtext, *nout);
             (*nout)++;
         }
         return;
@@ -4558,6 +4560,14 @@ static int mnote_split(const char *opnd, char *text, int textsz, char *image, in
         if (*p == ',') p++;
     }
     else if (*p == ',') p++;                  /* `MNOTE ,'text'' -- no severity */
+    else if (isalpha((unsigned char)*p) || *p == '@' || *p == '#' || *p == '$') {
+        /* A severity field that is a symbol: IFOX00 takes only a decimal term
+         * or `*' there, and `MNOTE ZERO,'XREFCOV'' with ZERO EQU 0 is IFO178
+         * SYNTAX ERROR (severity 8) with no MNOTE printed (MVSTK5-REF JOB00302,
+         * tests/xrefcov.s case 3; #582). Unquoted text with no comma stays text. */
+        const char *q = p; while (isalnum((unsigned char)*q) || *q == '@' || *q == '#' || *q == '$' || *q == '_') q++;
+        if (*q == ',') { text[0] = 0; snprintf(image, (size_t)imagesz, "%s", opnd); return -1; }
+    }
     while (*p == ' ') p++;
     int n = 0;
     if (*p == '\'') { p++;
@@ -5806,6 +5816,17 @@ static void do_pass(int pass, char **lines, int nlines) {
                     if (s && entry_unlinkable(s)) { char m[112];
                         snprintf(m, sizeof m, "Invalid ENTRY operand, linkage cannot be performed (IFOX00 IFO189) - %.8s", extsym[j]);
                         note_operr(m, 8, i); } } }
+        } else if (!strcmp(op, "SPACE")) {
+            /* The operand is a decimal self-defining term or nothing. A symbol
+             * -- `SPACE ONE' with ONE EQU 1 -- is IFO242 (severity 4) and IFOX00
+             * lists the statement it would otherwise have consumed (MVSTK5-REF
+             * JOB00302, tests/xrefcov.s case 3; #582). SPACE 0 is not measured
+             * and stays silent. Only the part before a comma counts: `SPACE ,'
+             * is IBM's way of starting a remark, and IFOX00 assembles it at rc 0
+             * (BLSDMSGS, IEAVMWSV, IFG0196N, IFNX6A, IFOX0B -- the tree-wide gate
+             * caught it). */
+            if (pass == 2 && opnd[0] && opnd[0] != ',') { const char *q = opnd; while (isdigit((unsigned char)*q)) q++;
+                if (q == opnd || (*q && *q != ',')) note_operr("SPACE operand not a single positive decimal self-defining term (IFOX00 IFO242)", 4, i); }
         } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
             int weak = (op[0] == 'W');
             /* A name already defined by an earlier statement is IFO196 PREVIOUSLY
@@ -6568,7 +6589,14 @@ static void do_pass(int pass, char **lines, int nlines) {
                                           for (q = 0; q < nt; q++) { long t = tg[q], u;
                                               for (u = 0; u < (t < 0 ? -t : t); u++)
                                                   add_reloc_sect(lc, ts[q], blen, t < 0); }
-                                      } else if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0, blen); } } }   /* AL3 address -> 3-byte relocation, etc. */
+                                      } else if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0, blen); }
+                                      /* A relocatable Y-con -- simply or complexly -- is IFO205
+                                       * (severity 4) under YFLAG, IFOX00's default, from a length
+                                       * of 2 up; the bytes and the RLD stay as they are (ifnx5d
+                                       * AYREL..YCHK; MVSTK5-REF JOB00302, tests/xrefcov.s case 4;
+                                       * #582). YL1 is IFO204 and not handled here. */
+                                      if (ty == 'Y' && blen >= 2 && !in_dsect && (rc != 0 || nz))
+                                          note_operr("Relocatable Y-type constant, value truncated to rightmost 2 bytes (IFOX00 IFO205)", 4, i); } }   /* AL3 address -> 3-byte relocation, etc. */
                             }
                             lc += blen;
                         } }
@@ -7226,7 +7254,12 @@ static void a_src_section(char **lines, int nl) {
         if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex); if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
         if (!noasm && lrecs[i].hasa1) { char b[16]; sprintf(b, "%05lX", lrecs[i].a1 & 0xfffffL); memcpy(ln + 22, b, 5); }
         if (!noasm && lrecs[i].hasa2) { char b[16]; sprintf(b, "%05lX", lrecs[i].a2 & 0xfffffL); memcpy(ln + 28, b, 5); }
-        if (show_equ && lbl[0]) { struct sym *s = sym_find(lbl);
+        /* A duplicate EQU (IFO196) prints ITS OWN value, not the surviving
+         * symbol's: `DUPE EQU 5' / `DUPE EQU 6' lists 00006 on the second
+         * (MVSTK5-REF JOB00302, tests/xrefcov.s case 5; #582). The rejected
+         * definition lives under its shadow name, as for the cross-reference. */
+        if (show_equ && lbl[0]) { char sh[16]; if (lflags[i] & LF_DUPDEF) snprintf(sh, sizeof sh, "\2%05X", (unsigned)i & 0xfffffu);
+            struct sym *s = sym_find((lflags[i] & LF_DUPDEF) ? sh : lbl);
             if (s && s->defined) { char b[16]; sprintf(b, "%05lX", s->val & 0xfffffL); memcpy(ln + 28, b, 5); } }
         { char sn[12]; int dl = sprintf(sn, "%d", a_lstmt[i]); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
         { const char *s = gcard[i] ? gcard[i] : lines[i]; int sl = (int)strlen(s);

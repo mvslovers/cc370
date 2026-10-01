@@ -2349,8 +2349,10 @@ done
   echo '         END'; } > /tmp/_d53.s
 ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1 || { echo "dc_types: FAIL (continued DC wrongly rejected)"; dcfail=1; }
 
-# (c) control -- the nine implemented types must NOT be over-rejected
-for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q}1${q}" "A(T)" "Y(T)" "V(EXTFOO)" "P${q}1${q}" "Z${q}1${q}" "E${q}1.5${q}" "L${q}1.5${q}"; do
+# (c) control -- the nine implemented types must NOT be over-rejected. Y(0),
+# not Y(T): a relocatable Y-con is IFO205 at severity 4 under IFOX00's default
+# YFLAG (#582), so it cannot be a must-assemble-clean control.
+for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q}1${q}" "A(T)" "Y(0)" "V(EXTFOO)" "P${q}1${q}" "Z${q}1${q}" "E${q}1.5${q}" "L${q}1.5${q}"; do
     printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
     if ! ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1; then
         echo "dc_types: FAIL (implemented type $t wrongly rejected)"; dcfail=1; fi
@@ -3543,6 +3545,36 @@ PY2
     [ $? = 0 ] || fail=$((fail + 1))
 fi
 rm -f /tmp/_ls$$.obj /tmp/_ls$$.out
+# --------------------------------------------------------------- xrefdiag --
+# cc370#582: three statements IFOX00 flags and as370 assembled in silence, all
+# with unchanged bytes (MVSTK5-REF JOB00302, tests/xrefcov.s cases 3 and 4,
+# tests/listref/ifox-listing-xrefcov.txt; severities from jermsgcd):
+#   31  SPACE ONE              IFO242, severity 4
+#   32  MNOTE ZERO,'XREFCOV'   IFO178, severity 8, no MNOTE printed
+#   36  DC Y(F1)               IFO205, severity 4 (YFLAG, IFOX00's default)
+# and a listing-only one: the duplicate `DUPE EQU 6' (statement 39) prints its
+# own value 00006 in ADDR2, not the surviving 00005. The binary before the fix
+# printed the MNOTE as a note, flagged none of the three, and listed 00005.
+./as370 -a tests/xrefcov.s -o /tmp/_xd$$.obj >/tmp/_xd$$.lst 2>/tmp/_xd$$.out
+if ! grep -q 'IFO242) in line 31' /tmp/_xd$$.out || ! grep -q 'ERROR: .*IFO178) in line 32' /tmp/_xd$$.out ||
+   ! grep -q 'WARNING: .*IFO205) in line 36' /tmp/_xd$$.out || grep -q 'NOTE: MNOTE' /tmp/_xd$$.out; then
+    echo "xrefdiag: FAIL -- expected IFO242 (31), IFO178 (32, no MNOTE) and IFO205 (36)"
+    grep -E 'IFO242|IFO178|IFO205|MNOTE' /tmp/_xd$$.out; fail=$((fail + 1))
+elif ! grep -q '^                            00006    39 DUPE     EQU   6' /tmp/_xd$$.lst ||
+     ! grep -q "^                                     32          MNOTE ZERO,'XREFCOV'" /tmp/_xd$$.lst; then
+    echo "xrefdiag: FAIL -- listing: DUPE EQU 6 must show 00006, the MNOTE its own statement"
+    grep -E ' 39 DUPE| 32 ' /tmp/_xd$$.lst; fail=$((fail + 1))
+else
+    # control: `SPACE ,' opens a remark and `SPACE 2' is the ordinary form --
+    # both silent in IFOX00 (BLSDMSGS, IFNX6A and three more, rc 0 there)
+    printf 'T        CSECT\n         SPACE ,                 A REMARK\n         SPACE 2\n         SPACE\n         END\n' > /tmp/_xd$$.s
+    if ! ./as370 /tmp/_xd$$.s -o /tmp/_xd$$.obj >/tmp/_xd$$.out 2>&1 || grep -q IFO242 /tmp/_xd$$.out; then
+        echo "xrefdiag: FAIL -- SPACE , / SPACE 2 / SPACE must be silent"; cat /tmp/_xd$$.out; fail=$((fail + 1))
+    else
+        echo "xrefdiag: OK (IFO242, IFO178, IFO205; a duplicate EQU lists its own value; SPACE , silent)"
+    fi
+fi
+rm -f /tmp/_xd$$.obj /tmp/_xd$$.lst /tmp/_xd$$.out /tmp/_xd$$.s
 
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
