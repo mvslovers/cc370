@@ -1272,14 +1272,18 @@ was found while building a `listref` case, and each is excluded from that case
   its `XREF(FULL)` and `XREF(SHORT)` pages are exact (MVSTK5-REF JOB00302,
   JOB00303). Two rules read in the IFOX00 source were refuted there: a symbol as
   `SPACE`'s operand or `MNOTE`'s severity is no reference (IFO242, IFO178).
-  **The same fixture's deck differs, and that is not #538:** as370 is silent
-  where IFOX00 flags `EXTRN` after a definition (IFO196, and as370 still
-  writes the ER), `A(VONLY)` for a name only seen in `V()` (IFO188), a literal
-  pooled in another section than the `USING` base (IFO209, zeroed), plus
-  IFO242 / IFO178 / IFO205 — filed as #579, #580, #581 (silent) and #582
-  (diagnostics), under #539. **#579** — PR #584
-  (`fix/579-extrn-after-definition`): IFO196 on the `EXTRN`, no ER, ESD ==
-  IFOX00 (`run.sh` `extrnafter`); the deck now differs only in case 10 (#581).
+  **The same fixture's deck differed, and that was not #538:** `EXTRN` after
+  a definition (IFO196, no ER), `A(VONLY)` for a name only seen in `V()`
+  (IFO188, no RLD), a literal pooled in another section than the `USING` base
+  (IFO209, zeroed), and IFO242 / IFO178 / IFO205. **All four closed on
+  2026-10-01** — #579 (PR #584), #580 (#585), #581 (#586), #582 (#587). xrefcov
+  is now IFOX00's deck but for the END card, 9 statements flagged, highest
+  severity 8 (`run.sh` `extrnafter`, `vcononly`, `litsect`, `xrefdiag`). Each
+  PR and the merged `main` left the 5,528-module gate unmoved. Two things the
+  work turned up: `litpool_csect` had demanded rc 0 for the #581 shape, a
+  derived expectation the oracle refutes (it now expects IFO209 twice); and
+  the first IFO242 rule flagged `SPACE ,` -- IBM's remark idiom, rc 0 in IFOX00
+  -- in five modules, which only the gate saw.
 - **#91** — a library-member continuation diagnostic cannot be reconciled with the
   statement it belongs to, so the flagged count can be one too high. The printed
   count only; RC, bytes and listing are unaffected, and **0 of 835 ecosystem
