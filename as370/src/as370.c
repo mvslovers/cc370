@@ -7640,7 +7640,13 @@ static void a_src_section(char **lines, int nl) {
         int show_loc = 0, show_obj = 0, show_equ = 0;
         if (!noasm) {
             if (is_instr) { show_loc = show_obj = 1; }
-            else if (!strcmp(op, "DC") || !strcmp(op, "DS") || !strcmp(op, "CCW") || !strcmp(op, "CNOP")) { show_loc = show_obj = 1; }
+            /* A DS reserves and never assembles, so it never shows object code:
+             * 0 of 1,503 DS statements in the IFOX00 listings at hand do
+             * (tests/listref 278, mvs38src ifox-run 1,225). as370 printed
+             * whatever text lay at that offset -- in a DSECT the enclosing
+             * section's, in a later section another one's (#24). */
+            else if (!strcmp(op, "DS")) { show_loc = 1; }
+            else if (!strcmp(op, "DC") || !strcmp(op, "CCW") || !strcmp(op, "CNOP")) { show_loc = show_obj = 1; }
             else if (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") || !strcmp(op, "COM")) { show_loc = 1; }
             /* An EQU does not sit at the location counter -- it names a value --
              * and IFOX00 lists it that way: LOC blank, the symbol's value in

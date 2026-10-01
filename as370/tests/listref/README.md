@@ -66,16 +66,10 @@ the reason it was needed: the ESD section's LENGTH column took its figure from
 section `modlen` *is* that section's length, so all three references above agreed
 with the wrong expression.
 
-`check.sh` compares it down to `THIRD CSECT` and stops. Everything below is a
-listing-rendering defect with its own issue — the object deck for this module is
-byte-identical to IFOX00 throughout:
-
-| line | as370 | IFOX00 | |
-|---|---|---|---|
-| `THIRD CSECT` | LOC `000014` | `000018` | pre-alignment LOC, #28 |
-| `MYDS DSECT` | LOC `00001C` | `000000` | DSECT body, #24 |
-| `DSFLD DS F` | object `00000010` | none | DSECT body, #24 |
-| `END ENT2` | LOC blank | `000012` | entry-point address |
+`check.sh` case 4 compares it down to `THIRD CSECT`; case 12 compares the whole
+SOURCE page line for line. The four rows below `THIRD CSECT` that used to differ
+-- its pre-alignment LOC (#28), the DSECT's LOC and the stale object bytes on its
+`DS` (#24), and `END ENT2`'s LOC (#619) -- are all fixed.
 
 IFOX flags one statement in it, `IFO158` for the deliberate DSECT-adcon control
 (#72), so the reference carries an `*** ERROR ***` marker like the other error
