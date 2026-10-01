@@ -445,13 +445,15 @@ PYE
 # the TITLE's text heads every page from column 10 until the next one, '' and
 # && printed once, at most 100 characters (more is IFO171, severity 4). The
 # headings are compared here, which case 9 cannot do: it drops them.
-# titlenamed and titlelong compare line for line. titlepage and titlegen are
-# compared with the statement numbers masked and the macro definition left
-# out (#150), and differ from IFOX00 in exactly the lines #623 owns: PRINT
-# NOGEN is not honoured and SPACE is listed. Fixing either half of #623 trips
-# this case and is meant to; listing macro definitions (#150) does not, since
-# norm() drops MACRO...MEND on both sides.
-for T11 in titlenamed titlelong titlepage titlegen; do
+# titlenamed and titlelong compare line for line. The others are compared
+# with the statement numbers masked and the macro definitions left out (#150),
+# and printgen/printerr add PRINT ON/OFF, GEN/NOGEN and PUSH/POP PRINT (#623).
+# Each remaining difference is pinned below with the issue that owns it, so a
+# fix to any of them trips this case and is meant to: SPACE is listed (#623),
+# a macro call inside an expansion is listed (#626), a DC's alignment pad is
+# listed with it (#627), and printgen's page fills at 55 rows only once the
+# macro definitions are listed (#150).
+for T11 in titlenamed titlelong titlepage titlegen printgen printerr; do
 OUT11=/tmp/as370-listref-title.$$
 ./as370 tests/$T11.s -a="$OUT11" >/dev/null 2>/tmp/as370-listref-title.err.$$
 rc11=$?
@@ -480,10 +482,13 @@ def norm(L):
         out.append(l if l.startswith("HEAD|") else l[:33] + "      " + l[39:])
     return out
 R, M = src(ref), src(mine)
-known = {   # the lines #623 owns, as unified-diff additions on our side
-    "titlepage": ["+HEAD|         Q6-NOGEN", "+000083 D4                              +G2       DC    C'M'"],
-    "titlegen":  ["+HEAD|         N2-NOGEN", "+000002 D4                              +         DC    C'M'",
-                  "+                                                 SPACE 2"],
+known = {   # what is still different, and whose it is
+    "titlepage": [],
+    "titlegen":  ["+                                                 SPACE 2"],                           # #623
+    "printgen":  ["+                                       +         INNER 3",                            # #626
+                  "-HEAD|"],                                                                                # #150
+    "printerr":  ["-000004 00000000                        +         DC    A(UNDEF1)",                    # #627
+                  "+000002 000000000000                    +         DC    A(UNDEF1)"],
 }
 if t in known: R, M = norm(R), norm(M)
 d = [x for x in difflib.unified_diff(R, M, lineterm="", n=0) if x[:1] in "+-" and x[:3] not in ("---", "+++")]
@@ -492,11 +497,12 @@ ok = d == want and len(R) > 0
 if t == "titlelong":   # IFO171 twice, rc 4 -- IFOX00 flags statements 7 and 9
     n171 = open(err).read().count("IFO171")
     if rc != 4 or n171 != 2: ok = False; print("titlelong: rc %d, %d x IFO171 (IFOX00: rc 4, 2)" % (rc, n171))
+if t == "printerr" and rc != 8: ok = False; print("printerr: rc %d (IFOX00: 8)" % rc)
 for x in d[:8]:
     if x not in want: print("  unexpected " + x[:110])
 for x in want:
-    if x not in d: print("  #623 line no longer differs -- update this case: " + x[:90])
-print("listref %s: SOURCE headings %s" % (t, "match IFOX00" + (" (#623 aside)" if t in known else "") if ok else "MISMATCH"))
+    if x not in d: print("  no longer differs -- update this case: " + x[:90])
+print("listref %s: SOURCE page %s" % (t, "matches IFOX00" + (" (%d pinned)" % len(want) if want else "") if ok else "MISMATCH"))
 sys.exit(0 if ok else 1)
 PYT
 [ $? = 0 ] || fail=1

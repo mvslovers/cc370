@@ -1,0 +1,88 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.58 10/01/26
+TPRT      SD  0001 000000 000024
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.58 10/01/26
+                                      1 * PRINT GEN, NOGEN, ON, OFF, PUSH und POP im Listing (#623).
+                                      2 *
+                                      3 * Jeder Fall erzeugt DC-Konstanten mit eigenem Text, damit im
+                                      4 * Listing zu sehen ist, welche Zeilen erscheinen:
+                                      5 *   P1  NOGEN: der Aufruf erscheint, die Expansion nicht
+                                      6 *   P2  NOGEN, verschachtelt: der innere Aufruf erscheint nicht
+                                      7 *   P5  PRINT NOGEN im Makrorumpf: wirkt es auf den Rest der
+                                      8 *       eigenen Expansion, erscheint das PRINT selbst, und gilt es
+                                      9 *       nach dem Aufruf weiter
+                                     10 *   P6  PUSH PRINT und POP PRINT stellen GEN wieder her
+                                     11 *   P7  PRINT OFF / ON: erscheinen die beiden PRINT-Zeilen
+                                     12 *   P8  PRINT ON,NOGEN in einer Anweisung
+                                     13          MACRO
+                                     14 &L       INNER &T
+                                     15 &L       DC    C'I&T'
+                                     16          MEND
+                                     17          MACRO
+                                     18 &L       OUTER &T
+                                     19 &L       DC    C'O&T'
+                                     20          INNER &T
+                                     21          DC    C'Z&T'
+                                     22          MEND
+                                     23          MACRO
+                                     24 &L       SELFNG &T
+                                     25          DC    C'A&T'
+                                     26          PRINT NOGEN
+                                     27          DC    C'B&T'
+                                     28          MEND
+000000                               29 TPRT     CSECT
+000000 C7F0                          30          DC    C'G0'
+                                     31          PRINT NOGEN
+                                     32 P1       INNER 1
+                                     34 P2       OUTER 2
+                                     38          PRINT GEN
+                                     39 P2G      OUTER 3
+00000A D6F3                          40+P2G      DC    C'O3'
+00000C C9F3                          41+         DC    C'I3'
+00000E E9F3                          42+         DC    C'Z3'
+                                     43 P5       SELFNG 5
+000010 C1F5                          44+         DC    C'A5'
+                                     45+         PRINT NOGEN
+                                     47 P5N      INNER 6
+                                     49          PRINT GEN
+                                     50          PUSH  PRINT
+                                     51          PRINT NOGEN
+                                     52 P6N      INNER 7
+                                     54          POP   PRINT
+                                     55 P6G      INNER 8
+000018 C9F8                          56+P6G      DC    C'I8'
+                                     57          PRINT OFF
+                                     61          PRINT ON
+00001E D6D5                          62          DC    C'ON'
+                                     63          PRINT ON,NOGEN
+                                     64 P8       INNER A
+                                     66          PRINT GEN
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.58 10/01/26
+000022 C7F9                          67          DC    C'G9'
+                                     68          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.58 10/01/26
+P1       00002 00000002 00033
+P2       00002 00000004 00035
+P2G      00002 0000000A 00040
+P5N      00002 00000014 00048
+P6G      00002 00000018 00056
+P6N      00002 00000016 00053
+P7       00002 0000001C 00060
+P8       00002 00000020 00065
+TPRT     00001 00000000 00029
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 14.58 10/01/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         53
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        88

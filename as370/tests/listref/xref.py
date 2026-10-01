@@ -75,9 +75,17 @@ def renumber(ref, mine, pages):
     for n, _ in b:                       # an unmatched statement keeps its neighbour's offset
         if n in mp: off = mp[n] - n
         else: mp[n] = n + off
+    keys = sorted(mp)
+    def to_ifox(n):
+        # A statement that is numbered but not listed -- under PRINT NOGEN or
+        # OFF (#623) -- is on neither SOURCE page, so it takes the offset of
+        # the nearest listed statement before it.
+        if n in mp: return mp[n]
+        lo = [k for k in keys if k < n]
+        return n + (mp[lo[-1]] - lo[-1]) if lo else n
     def fix(l):
         if l.startswith("SYMBOL") or "CROSS-REFERENCE" in l: return l
-        return l[:24] + re.sub(r"\b(\d{5})\b", lambda m: "%05d" % mp.get(int(m.group(1)), 0), l[24:])
+        return l[:24] + re.sub(r"\b(\d{5})\b", lambda m: "%05d" % to_ifox(int(m.group(1))), l[24:])
     return [fix(l) for l in pages]
 
 

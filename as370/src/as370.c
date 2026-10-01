@@ -4069,7 +4069,10 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             long v = bod[0] ? expr_val_full(bod, NULL) : 0;
             if (v > 0) actr = v;
             pc++; continue; }
-        if (!strcmp(bo, "PRINT") || !strcmp(bo, "SPACE") || !strcmp(bo, "EJECT")) { pc++; continue; }
+        /* PRINT, SPACE and EJECT in a macro body are statements of the expansion
+         * like any other: IFOX00 numbers them, lists them under GEN, and a
+         * generated PRINT governs the rest of the listing (tests/printgen.s,
+         * statement 45+; #623). They used to be dropped here, unnumbered. */
         { g_ca_slot = g_mcall_slot;                          /* a substring error in the body points at the call */
           int isca = set_stmt(c, bl, bo, bod); g_ca_slot = -1;
           if (isca) { pc++; continue; } }                     /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
@@ -7480,15 +7483,57 @@ static int a_rawno(int org, const char *line) {
     k--;
     return strcmp(a_raw[k], line) ? -1 : k;
 }
+/* PRINT ON|OFF and GEN|NOGEN, and PUSH/POP PRINT (#623). Measured on
+ * MVSTK5-REF (tests/printgen.s JOB00308, tests/printerr.s JOB00309):
+ *   - OFF lists nothing up to the PRINT ON -- not a statement in error, not an
+ *     MNOTE. The PRINT OFF and the PRINT ON are both listed.
+ *   - NOGEN lists the macro call and none of its expansion, inner calls
+ *     included -- except a generated statement in error and an MNOTE with a
+ *     severity, which are listed anyway.
+ *   - a PRINT inside a macro body takes effect at once, for the rest of that
+ *     expansion and after it, and is listed itself while GEN still holds.
+ *   - PRINT GEN, NOGEN, PUSH and POP are listed.
+ *   - the statement numbers do not change: a line not listed is still counted.
+ * A PRINT is listed when it would be either before or after it takes effect,
+ * which gives the measured OFF and ON; the generated PRINT GEN under NOGEN is
+ * the one case that rule predicts and nothing measured. DATA and NODATA are
+ * accepted and not acted on. */
+static int a_pon = 1, a_pgen = 1;
+static unsigned char a_pstack[16][2]; static int a_psp;
+static void a_print_opnd(const char *opnd) {
+    char f[16][FLDW]; int n = split_fields(opnd, f, 16), k;
+    for (k = 0; k < n; k++) {
+        if (!strcmp(f[k], "ON")) a_pon = 1;
+        else if (!strcmp(f[k], "OFF")) a_pon = 0;
+        else if (!strcmp(f[k], "GEN")) a_pgen = 1;
+        else if (!strcmp(f[k], "NOGEN")) a_pgen = 0;
+    }
+}
+static int a_has_print(const char *opnd) {
+    char f[8][FLDW]; int n = split_fields(opnd, f, 8), k;
+    for (k = 0; k < n; k++) if (!strcmp(f[k], "PRINT")) return 1;
+    return 0;
+}
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j;
     a_srcrows = A_SRC_LINECOUNT;   /* force the header before the first row */
+    a_pon = 1; a_pgen = 1; a_psp = 0;
     for (i = 0; i < nl; i++) {
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         parse(buf, lbl, op, opnd);
         int gen   = (lflags[i] & LF_GEN) != 0;
         int noasm = (lflags[i] & LF_NOASM) != 0;
+        int on0 = a_pon, gen0 = a_pgen;
+        if (!noasm && !strcmp(op, "PRINT")) a_print_opnd(opnd);
+        else if (!noasm && !strcmp(op, "PUSH") && a_has_print(opnd)) { if (a_psp < 16) { a_pstack[a_psp][0] = (unsigned char)a_pon; a_pstack[a_psp][1] = (unsigned char)a_pgen; a_psp++; } }
+        else if (!noasm && !strcmp(op, "POP") && a_has_print(opnd)) { if (a_psp > 0) { a_psp--; a_pon = a_pstack[a_psp][0]; a_pgen = a_pstack[a_psp][1]; } }
+        int shown = (on0 || a_pon) && (!gen || gen0 || a_pgen || stmt_flagged[i]);
+        if (!shown) {
+            if (!noasm && !strcmp(op, "TITLE")) title_text(opnd, a_title);   /* the title is set, the page is not started (titlegen) */
+            if (a_pon) a_src_pool(i + 1);
+            continue;
+        }
         /* TITLE and EJECT are numbered and not listed; each starts a page at
          * once, so a TITLE followed by EJECT prints an empty page under the
          * title and then another (MVSTK5-REF JOB00304, tests/titlepage.s, Q3),
@@ -7497,9 +7542,8 @@ static void a_src_section(char **lines, int nl) {
          * first heading waits for its first line or TITLE (IEAVESC0, mvs38src
          * ifox-run). A TITLE a macro generates does the same as one in open
          * code (JOB00304, Q6). Under PRINT NOGEN IFOX00 sets the title without
-         * the eject (tests/titlegen.s, captured right after JOB00305), but
-         * as370 does not honour NOGEN in the listing yet (#623), so a generated
-         * TITLE always ejects here. */
+         * the eject (tests/titlegen.s, captured right after JOB00305): that
+         * is the `shown' test above. */
         if (!noasm && (!strcmp(op, "TITLE") || !strcmp(op, "EJECT"))) {
             if (op[0] == 'T') title_text(opnd, a_title);
             a_src_newpage();
