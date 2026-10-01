@@ -1331,6 +1331,16 @@ was found while building a `listref` case, and each is excluded from that case
 - ~~**#627**~~ — an aligned DC/DS/CCW was listed from the pad. **Fixed** (PR
   #635, `0439425`): listed at the first operand's boundary; tests/listref had
   the answer, fourteen aligned statements and no pad printed anywhere.
+  That last part was wrong -- see #640.
+- ~~**#640**~~ — found triaging `tattr_symbol`: IFOX00 lists the pad of a DC,
+  CCW or CNOP as a row of its own; #627 had generalised from printerr, where
+  the pad sits under PRINT NOGEN. **Fixed** (PR #641, `24aa798`). The
+  `tattr_symbol` "0x21 LOC gap" was a stale reference: a header comment added
+  after capture had shifted every statement number by 22.
+- **Open, found with #640:** a DC's own object code is read from the final
+  text, so a later ORG overlay shows in its row (BLSR3270 statement 3893,
+  mvs38src ifox-run). IEAVESC0's listing runs 4 bytes off IFOX00 around `FW0`.
+  sectlen's reference predates a comment edit (#281 -> #282).
 
 ## Conditional assembly — three that behave, and one that has to be decided
 
@@ -1506,6 +1516,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #640, MERGED as `24aa798` (PR #641).** The alignment pad of a
+  DC, CCW or CNOP listed on a row of its own (LOC + zeros), as for
+  instructions; none for DS, none under NOGEN. tests/listref: 110 -> 119 of 136
+  SOURCE pages identical to IFOX00, none lost; case 12 holds 118. MVSBLD gate 0
+  moved, all 5,528 with `-a` at the gate's rc.
 
 - **2026-10-01 — #370, MERGED as `91fa640` (PR #638).** A generated statement
   whose model is continued is listed card by card: substituted into the
