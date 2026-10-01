@@ -54,7 +54,9 @@ static size_t bcat(char *d, size_t dsz, size_t at, const char *s) {
 #include "opc_table.h"
 
 enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; int eq_to; int declared_extrn; };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; int eq_to; int declared_extrn; int defln; };
+/* `defln` is 1 + the lines[] index of the statement that defined the symbol --
+ * the DEFN column of the -a cross-reference. 0 = not defined by any statement. */
 /* `eq_to` is 1 + the index of the symbol this one was EQU'd to, when the EQU
  * operand is that symbol alone. It exists for one reason: an alias of an
  * EXTERNAL has to relocate against the external's ESD entry, and an alias
@@ -115,7 +117,11 @@ static struct esdent esdord[MAXSYM]; static int nesdord;
  * following by position, the clobbered value shifted the whole first card
  * (cc370#199). */
 
-struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; };
+struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; int pline; int stmt; };
+/* `pline` is 1 + the lines[] index of the LTORG or END that placed the literal,
+ * and `stmt` its statement number in the -a listing: a pool is listed behind the
+ * statement that flushed it, so both the SOURCE page and the LITERAL
+ * CROSS-REFERENCE number it from there. */
 /* `sect` is where the literal was first REFERENCED -- it drives USING
  * resolution, and an END pool that moves sections re-stamps it so the
  * reference resolves through a USING covering the section it landed in.
@@ -5400,7 +5406,11 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (pass == 1) { struct sym *ds = sym_find(lbl); if (ds && (ds->defined || ds->declared_extrn)) lflags[i] |= LF_DUPDEF; }
             if (lflags[i] & LF_DUPDEF) {
                 if (pass == 2) { char m[112]; snprintf(m, sizeof m, "Symbol previously defined (IFOX00 IFO196) - %.8s", lbl); note_operr(m, 8, i); }
-                lbl[0] = 0;
+                /* Defined under a shadow name the source cannot write, so the
+                 * definition the assembly discards still has a length and a
+                 * value: the cross-reference lists it as ****DUPLICATE**** under
+                 * the first (tests/listref, entryprobe). */
+                snprintf(lbl, 32, "\2%05X", (unsigned)i & 0xfffffu);
             }
         }
         if (o && o->fmt == F_S0) opnd[0] = 0;   /* a zero-operand instruction's operand field is a remark: not a literal, not a symbol reference, not a length-attribute term */
@@ -6797,7 +6807,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 lc = (lc + l->algn - 1) & ~(long)(l->algn - 1);
                 if (pass == 1) { l->loc = lc; l->psect = cur_sect_id;   /* =V external refs are registered at first use in lit_get */
                     if (defer) l->sect = cur_sect_id; }   /* the pool moved sections: references resolve through the USING covering THIS one */
-                else emit_lit(l);
+                else { l->pline = i + 1; emit_lit(l); }
                 l->placed = 1;
                 lc += l->size;
             } }
@@ -7011,7 +7021,9 @@ static void a_newpage(const char *title, const char *colhdr) {
     char ln[128]; int t = (int)strlen(title);
     if (a_page++) fputc('\f', alst);                /* page eject before every page but the first */
     memset(ln, ' ', 120); ln[120] = 0;
-    { int lead = (121 - t) / 2; if (lead < 0) lead = 0; memcpy(ln + lead, title, (size_t)t); }
+    { int lead = (121 - t) / 2; if (lead < 0) lead = 0;
+      if (!strncmp(title, "CROSS", 5) || !strncmp(title, "LITERAL CROSS", 13)) lead = 50;   /* not centred: IFOX00 starts both XREF titles in column 51, as it does RELOCATION DICTIONARY (tests/listref) */
+      memcpy(ln + lead, title, (size_t)t); }
     { char pg[16]; snprintf(pg, sizeof pg, "PAGE%5d", a_page); memcpy(ln + 111, pg, strlen(pg)); }   /* PAGE at col 112 */
     a_line(ln);
     memset(ln, ' ', 120); ln[120] = 0;
@@ -7095,17 +7107,63 @@ static void a_locobj(char *ln, long loc, const char *hex) {
     char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6);
     if (hex && hex[0]) memcpy(ln + 7, hex, strlen(hex));
 }
+/* Statement numbers, shared by the SOURCE page and the cross-reference pages.
+ *
+ * Every expanded line is a statement, and a literal pool is numbered where it
+ * is listed: behind the LTORG or END that placed it, in address order. The
+ * listing used to print every literal after the last line, which is right only
+ * for a single END pool -- a mid-stream LTORG's literals came out behind END,
+ * and every statement after that LTORG was numbered too low by the size of its
+ * pool (IFOX00 lists the pool right below the LTORG; tests/listref,
+ * aliasext). The cross-reference prints these numbers, so they have to be
+ * IFOX's before a single reference can be. */
+static int *a_lstmt;            /* statement number of lines[i] */
+static int *a_lorder, a_nlord;  /* placed literals, by (pline, loc); pline 0 sorts first */
+static int a_lcur;              /* a_src_pool's cursor into a_lorder */
+static int a_bypool(const void *pa, const void *pb) {
+    const struct lit *a = &lits[*(const int *)pa], *b = &lits[*(const int *)pb];
+    if (a->pline != b->pline) return a->pline - b->pline;
+    return a->loc < b->loc ? -1 : a->loc > b->loc;
+}
+static void a_number(int nl) {
+    int i, k, st = 0;
+    free(a_lstmt); free(a_lorder);
+    a_lstmt = calloc((size_t)nl + 1, sizeof *a_lstmt);
+    a_lorder = calloc((size_t)nlit + 1, sizeof *a_lorder);
+    if (!a_lstmt || !a_lorder) { fprintf(stderr, "as370: out of memory\n"); exit(2); }
+    for (a_nlord = 0, k = 0; k < nlit; k++) if (lits[k].placed) a_lorder[a_nlord++] = k;
+    if (a_nlord > 1) qsort(a_lorder, (size_t)a_nlord, sizeof *a_lorder, a_bypool);
+    for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) ;   /* never placed in pass 2: numbered last */
+    a_lcur = k;
+    for (i = 0; i < nl; i++) {
+        a_lstmt[i] = ++st;
+        for (; k < a_nlord && lits[a_lorder[k]].pline == i + 1; k++) lits[a_lorder[k]].stmt = ++st;
+    }
+    for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) lits[a_lorder[k]].stmt = ++st;
+}
+static void a_src_lit(const struct lit *l) {
+    char ln[256], hex[40];
+    a_objcode(l->loc, l->size, 0, hex);
+    a_locobj(ln, l->loc, hex);
+    { char sn[12]; int dl = sprintf(sn, "%d", l->stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
+    { int sl = (int)strlen(l->text), x; for (x = 0; x < sl && 55 + x < 255; x++) ln[55 + x] = l->text[x]; }   /* literal text at the operand column (listing col 56) */
+    a_src_emit(ln);
+}
+/* the literals listed behind statement `pline' (0: the stragglers, last) */
+static void a_src_pool(int pline) {
+    int k;
+    if (!pline) { for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) a_src_lit(&lits[a_lorder[k]]); return; }
+    for (; a_lcur < a_nlord && lits[a_lorder[a_lcur]].pline == pline; a_lcur++) a_src_lit(&lits[a_lorder[a_lcur]]);
+}
 /* the SOURCE STATEMENT listing: one row per expanded line (macro-generated rows
- * carry a '+'), then the literal pool numbered after the last source statement.
+ * carry a '+'), each literal pool behind the LTORG or END that placed it.
  * Columns: LOC@1 OBJECT@8 ADDR1@23 ADDR2@29 STMT(right-justified to 39)
  * '+'@40 SOURCE@41 -- the SOURCE image keeps the model card's column layout
  * (see gcard / render_model). */
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j;
     a_srcrows = A_SRC_LINECOUNT;   /* force the header before the first row */
-    int stmt = 0;
     for (i = 0; i < nl; i++) {
-        stmt++;
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
         parse(buf, lbl, op, opnd);
@@ -7134,43 +7192,333 @@ static void a_src_section(char **lines, int nl) {
             if (pad) { char hex[40]; a_objcode(loc, pad, 0, hex); a_locobj(ln, loc, hex); a_src_emit(ln); loc += pad; len -= pad; }
         }
         for (j = 0; j < 255; j++) { ln[j] = ' '; } ln[255] = 0;
+        if (show_loc && !strcmp(op, "LTORG")) loc = align8(loc);   /* LOC is where the pool starts: the counter after the doubleword alignment (tests/listref, litdup and pool) */
         if (show_loc) { char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6); }
         if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex); if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
         if (!noasm && lrecs[i].hasa1) { char b[16]; sprintf(b, "%05lX", lrecs[i].a1 & 0xfffffL); memcpy(ln + 22, b, 5); }
         if (!noasm && lrecs[i].hasa2) { char b[16]; sprintf(b, "%05lX", lrecs[i].a2 & 0xfffffL); memcpy(ln + 28, b, 5); }
         if (show_equ && lbl[0]) { struct sym *s = sym_find(lbl);
             if (s && s->defined) { char b[16]; sprintf(b, "%05lX", s->val & 0xfffffL); memcpy(ln + 28, b, 5); } }
-        { char sn[12]; int dl = sprintf(sn, "%d", stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
+        { char sn[12]; int dl = sprintf(sn, "%d", a_lstmt[i]); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
         { const char *s = gcard[i] ? gcard[i] : lines[i]; int sl = (int)strlen(s);
           while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
           for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j]; }
         a_src_emit(ln);
+        a_src_pool(i + 1);
     }
-    /* literal pool: continue the statement numbers, in placement (address) order.
-     * NB: this dumps ALL literals after the last source line -- correct for a
-     * single trailing END pool, but a mid-stream LTORG would print its literals
-     * here instead of at the LTORG, with out-of-sequence statement numbers. */
-    { int order[4096], no = 0, k;
-      for (k = 0; k < nlit && no < 4096; k++) if (lits[k].placed) order[no++] = k;
-      for (k = 1; k < no; k++) { int t = order[k], m = k - 1;     /* insertion sort by location */
-          while (m >= 0 && lits[order[m]].loc > lits[t].loc) { order[m + 1] = order[m]; m--; }
-          order[m + 1] = t; }
-      for (k = 0; k < no; k++) { struct lit *l = &lits[order[k]];
-          char hex[40]; a_objcode(l->loc, l->size, 0, hex);
-          a_locobj(ln, l->loc, hex);
-          stmt++;
-          { char sn[12]; int dl = sprintf(sn, "%d", stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
-          { int sl = (int)strlen(l->text), x; for (x = 0; x < sl && 55 + x < 255; x++) ln[55 + x] = l->text[x]; }   /* literal text at the operand column (listing col 56) */
-          a_src_emit(ln); } }
+    a_src_pool(0);   /* a literal no LTORG or END placed (none should be left) */
+}
+/* ---- CROSS-REFERENCE and LITERAL CROSS-REFERENCE (#538) -------------------
+ *
+ * IFOX00's XREF pages (IFNX6A prints them; IFNX5x records them). A reference is
+ * an OCCURRENCE, so `A((TGT-TGT))' lists its statement twice. What counts,
+ * measured against the IFOX00 listings in tests/listref and read in the source:
+ *
+ *   a machine instruction's operands, every field but a literal: `L 1,=A(X)'
+ *     references the literal, and the literal's own pool statement references X;
+ *   DC/DS/DXD: duplication factor, modifiers, and the nominal values of A, Y, S
+ *     and Q. Never V: a V-con names an external, not a symbol of this assembly,
+ *     and a name only ever seen in V() is not listed at all;
+ *   EQU, USING, DROP, ORG, CNOP, CCW, ENTRY and END's first operand -- not
+ *     START's, and not a symbol as SPACE's operand or MNOTE's severity, which
+ *     IFOX00 rejects (IFO242, IFO178; tests/xrefcov.s, JOB00301);
+ *   the name of a section statement that RESUMES a section.
+ *
+ * Nothing in conditional assembly or a macro call's operands counts: the
+ * generated statements do, under their own numbers. A name defined twice gets a
+ * ****DUPLICATE**** line of its own after its references, with the length and
+ * value the second definition would have given it.
+ *
+ * The statements are re-read from lines[] after pass 2 rather than recorded
+ * while the expression evaluator runs: pass 2 evaluates some operands more than
+ * once, and an occurrence must count once. */
+struct xref { int key; int stmt; };    /* key: sym index, or -1-n for undefined name n; for a literal, its lits[] index */
+struct xdup { int key; int stmt; long len, val; };
+static struct xref *xr, *lxr;
+static struct xdup *xdp;
+static int nxr, axr, nlxr, alxr, nxdp, axdp;
+static char (*xundef)[9]; static int nxundef, axundef;
+static int a_xref_short;               /* XREF(SHORT): drop the definitions nothing references */
+static void *xr_grow(void *v, int n, int *a, size_t sz) {
+    if (n < *a) return v;
+    *a = *a ? *a * 2 : 1024;
+    if (!(v = realloc(v, (size_t)*a * sz))) { fprintf(stderr, "as370: out of memory\n"); exit(2); }
+    return v;
+}
+static void xr_add(struct xref **v, int *n, int *a, int key, int stmt) {
+    *v = xr_grow(*v, *n, a, sizeof **v);
+    (*v)[*n].key = key; (*v)[*n].stmt = stmt; (*n)++;
+}
+static void xr_dupl(int key, int stmt, long len, long val) {
+    xdp = xr_grow(xdp, nxdp, &axdp, sizeof *xdp);
+    xdp[nxdp].key = key; xdp[nxdp].stmt = stmt; xdp[nxdp].len = len; xdp[nxdp].val = val; nxdp++;
+}
+static void xr_sym(const char *nm, int stmt) {
+    struct sym *s = sym_find(nm); int k;
+    if (s && (s->defined || s->declared_extrn)) { xr_add(&xr, &nxr, &axr, (int)(s - syms), stmt); return; }
+    /* Anything else is UNDEFINED -- a name known only from V() too: IFOX00
+     * answers A(VONLY) with IFO188 and lists VONLY so (tests/xrefcov.s,
+     * MVSTK5-REF JOB00301), where as370 resolves it against the ER in silence. */
+    for (k = 0; k < nxundef; k++) if (!strcmp(xundef[k], nm)) break;
+    if (k == nxundef) {
+        xundef = xr_grow(xundef, nxundef, &axundef, sizeof *xundef);
+        scopy(xundef[nxundef], nm, 8); nxundef++;
+    }
+    xr_add(&xr, &nxr, &axr, -1 - k, stmt);
+}
+static int xr_idch(int c) { return isalnum(c) || c == '@' || c == '#' || c == '$' || c == '_'; }
+/* every ordinary symbol in an expression; self-defining terms skipped */
+static void xr_expr(const char *p, int stmt) {
+    while (*p) {
+        unsigned char c = (unsigned char)*p;
+        if (c == '\'') { p++; while (*p && *p != '\'') p++; if (*p) p++; continue; }   /* a quoted string where none belongs */
+        if (c == '=') return;                  /* a literal: the field holds nothing else of ours */
+        if (isdigit(c)) { while (xr_idch((unsigned char)*p)) p++; continue; }
+        if (isalpha(c) || c == '@' || c == '#' || c == '$') {
+            char nm[64]; int n = 0;
+            while (xr_idch((unsigned char)*p)) { if (n < 63) nm[n++] = (char)toupper((unsigned char)*p); p++; }
+            nm[n] = 0;
+            if (*p == '\'' && n == 1) {
+                if (strchr("XBC", nm[0])) {        /* self-defining term: skip the quoted value */
+                    p++; while (*p) { if (*p == '\'') { if (p[1] == '\'') { p += 2; continue; } p++; break; } p++; }
+                } else p++;                        /* L'X: the symbol after it is a reference (XEVAL records it before the attribute check) */
+                continue;
+            }
+            xr_sym(nm, stmt);
+            continue;
+        }
+        p++;
+    }
+}
+/* the parenthesised group at p, optionally scanned; returns the text after it.
+ * A quote opens a string unless it is an attribute's, as in split_fields. */
+static const char *xr_paren(const char *p, int stmt, int scan) {
+    const char *b = p + 1, *s0 = p; int d = 0, q = 0;
+    for (; *p; p++) {
+        if (*p == '\'') { if (q || !(p > s0 && strchr("KNLT", p[-1]) && !(p - 1 > s0 && xr_idch((unsigned char)p[-2])))) q = !q; }
+        else if (!q && *p == '(') d++;
+        else if (!q && *p == ')' && --d == 0) break;
+    }
+    if (scan) { char e[STMTSZ]; size_t n = (size_t)(p - b); if (n >= sizeof e) n = sizeof e - 1; memcpy(e, b, n); e[n] = 0; xr_expr(e, stmt); }
+    return *p ? p + 1 : p;
+}
+/* one DC/DS operand, or a literal's text past its '=' */
+static void xr_dc(const char *p, int stmt) {
+    char ty;
+    if (*p == '(') p = xr_paren(p, stmt, 1); else while (isdigit((unsigned char)*p)) p++;
+    if (!*p) return;
+    ty = (char)toupper((unsigned char)*p++);
+    while (*p && strchr("LSE", toupper((unsigned char)*p))) {
+        p++; if (*p == '.') p++;
+        if (*p == '(') p = xr_paren(p, stmt, 1);
+        else { if (*p == '-' || *p == '+') p++; while (isdigit((unsigned char)*p) || *p == '.') p++; }
+    }
+    if (*p == '(') xr_paren(p, stmt, strchr("AYSQ", ty) != NULL);
+}
+static int xr_isop(const char *op, const char *const *set) { for (; *set; set++) if (!strcmp(op, *set)) return 1; return 0; }
+/* One walk over the assembled statements: definitions, duplicates, references. */
+static void xr_collect(char **lines, int nl) {
+    static const char *const sectop[] = { "CSECT", "DSECT", "START", "COM", NULL };
+    static const char *const exprop[] = { "ENTRY", "EQU", "USING", "DROP", "ORG", "CNOP", "CCW", "CCW0", "CCW1", NULL };
+    int i, k, pool = 0;
+    nxr = nlxr = nxundef = nxdp = 0;
+    for (i = 0; i < nl; i++) {
+        char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ], F[64][FLDW]; int nf, st = a_lstmt[i];
+        strncpy(buf, lines[i], sizeof buf - 1); buf[sizeof buf - 1] = 0;
+        if (!parse(buf, lbl, op, opnd) || !op[0]) continue;
+        if (lflags[i] & LF_NOASM) continue;
+        const struct opc *o = op_find(op);
+        if (lbl[0] && strcmp(op, "TITLE")) { struct sym *s = sym_find(lbl); int sect = xr_isop(op, sectop);
+            if (s && sect && s->declared_extrn && !s->defined)
+                xr_dupl((int)(s - syms), st, 1, lrecs[i].loc);   /* EXTRN X / X CSECT: IFO196, the name stays the ER (tests/listref, extrn_csect) */
+            else if (s && (s->defined || s->declared_extrn)) {
+                if (!s->defln) s->defln = st;
+                else if (sect && !(lflags[i] & LF_DUPDEF)) xr_sym(lbl, st);   /* resuming a section names it */
+            }
+            if (s && (lflags[i] & LF_DUPDEF)) { char sh[16]; struct sym *d; snprintf(sh, sizeof sh, "\2%05X", (unsigned)i & 0xfffffu);
+                if ((d = sym_find(sh)) != NULL) xr_dupl((int)(s - syms), st, d->len ? d->len : 1, d->val); }
+        }
+        if (o) {
+            if (o->fmt == F_S0) continue;
+            nf = split_fields(opnd, F, 64);
+            for (k = 0; k < nf; k++) {
+                if (F[k][0] == '=') { int j;
+                    for (j = 0; j < nlit; j++) if (lits[j].ltseq == pool && lits[j].placed && !strcmp(lits[j].text, F[k])) break;
+                    if (j < nlit) xr_add(&lxr, &nlxr, &alxr, j, st);
+                } else xr_expr(F[k], st);
+            }
+        } else if (!strcmp(op, "DC") || !strcmp(op, "DS") || !strcmp(op, "DXD")) {
+            nf = split_fields(opnd, F, 64);
+            for (k = 0; k < nf; k++) xr_dc(F[k], st);
+        } else if (!strcmp(op, "EXTRN") || !strcmp(op, "WXTRN")) {
+            nf = split_fields(opnd, F, 64);
+            for (k = 0; k < nf; k++) { struct sym *s = F[k][0] ? sym_find(F[k]) : NULL;
+                if (!s) continue;
+                if (!s->defln) s->defln = st; else xr_dupl((int)(s - syms), st, 1, 0); }   /* declared after a definition: IFNX5A writes a DUPL */
+        } else if (!strcmp(op, "END")) {
+            nf = split_fields(opnd, F, 64);
+            if (nf > 0 && F[0][0] != '\'') xr_expr(F[0], st);
+        } else if (xr_isop(op, exprop)) {
+            nf = split_fields(opnd, F, 64);
+            for (k = 0; k < nf; k++) xr_expr(F[k], st);
+        } else if (!strcmp(op, "LTORG")) pool++;
+    }
+    for (k = 0; k < a_nlord; k++) { struct lit *l = &lits[a_lorder[k]];   /* a literal's pool statement references what it names */
+        if (l->text[0] == '=' && !l->isV) xr_dc(l->text + 1, l->stmt); }
+}
+/* EBCDIC collating order, as IFOX sorts: special characters, letters, digits */
+static int xr_cmp(const char *a, const char *b) {
+    int i;
+    for (i = 0; i < 8; i++) {
+        unsigned char x = *a ? (unsigned char)*a++ : ' ', y = *b ? (unsigned char)*b++ : ' ';
+        int dd = mvs_a2e(x) - mvs_a2e(y); if (dd) return dd;
+    }
+    return 0;
+}
+static const char *xr_name(int key) { return key >= 0 ? syms[key].name : xundef[-1 - key]; }
+static int xr_bystmt(const void *pa, const void *pb) {
+    const struct xref *a = pa, *b = pb;
+    return a->key != b->key ? (a->key < b->key ? -1 : 1) : a->stmt - b->stmt;
+}
+static int xr_dupcmp(const void *pa, const void *pb) {
+    const struct xdup *a = pa, *b = pb;
+    return a->key != b->key ? (a->key < b->key ? -1 : 1) : a->stmt - b->stmt;
+}
+static int xr_keycmp(const void *pa, const void *pb) {
+    int a = *(const int *)pa, b = *(const int *)pb, c = xr_cmp(xr_name(a), xr_name(b));
+    return c ? c : a - b;
+}
+/* A literal's length attribute: one nominal value's, not the pool entry's --
+ * =8X'0F' is 1, =X'01,02,03,04' is 1 (tests/listref, litdup and tstlist). */
+static long lit_lenattr(const struct lit *l) {
+    const char *p = l->text + 1; char ty; long n = 0;
+    if (*p == '(') { int d = 0; for (; *p; p++) { if (*p == '(') d++; else if (*p == ')' && --d == 0) { p++; break; } } }
+    else while (isdigit((unsigned char)*p)) p++;
+    ty = (char)toupper((unsigned char)*p); if (*p) p++;
+    if (toupper((unsigned char)*p) == 'L' && isdigit((unsigned char)p[1])) return strtol(p + 1, NULL, 10);
+    while (*p && *p != '\'' && *p != '(') p++;
+    if (*p) p++;
+    switch (ty) {
+    case 'A': case 'F': case 'V': case 'E': case 'Q': return 4;
+    case 'H': case 'Y': case 'S': return 2;
+    case 'D': return 8;
+    case 'X': while (*p && *p != ',' && *p != '\'') { if (isxdigit((unsigned char)*p)) n++; p++; } return n ? (n + 1) / 2 : 1;
+    case 'B': while (*p && *p != ',' && *p != '\'') { if (*p == '0' || *p == '1') n++; p++; } return n ? (n + 7) / 8 : 1;
+    case 'P': while (*p && *p != ',' && *p != '\'') { if (isdigit((unsigned char)*p)) n++; p++; } return n / 2 + 1;
+    case 'Z': while (*p && *p != ',' && *p != '\'') { if (isdigit((unsigned char)*p)) n++; p++; } return n ? n : 1;
+    }
+    return l->dup > 0 ? l->size / l->dup : l->size;
+}
+/* Paging: A_SRC_LINECOUNT printed lines to a page, and the heading goes out
+ * with the first line printed under it. Under XREF(SHORT) a definition nothing
+ * references is overwritten in IFNX6A's print buffer before HDLINE ever counts
+ * it, so it costs no line: IEAVEXS's first XREF(SHORT) page holds 55 printed
+ * lines (mvs38src ifox-run/listings). */
+static int xr_rows, xr_hdr;
+static const char *xr_title;
+static void xr_start(const char *title) { xr_title = title; xr_rows = 0; xr_hdr = 1; }
+static void xr_line(const char *ln, int show) {
+    if (!show) return;
+    if (xr_rows >= A_SRC_LINECOUNT) { xr_rows = 0; xr_hdr = 1; }
+    if (xr_hdr) { a_newpage(xr_title, "SYMBOL    LEN   VALUE   DEFN    REFERENCES"); xr_hdr = 0; }
+    a_line(ln);
+    xr_rows++;
+}
+static void xr_blank(char *ln) { memset(ln, ' ', 120); ln[120] = 0; }
+/* the head (name, LEN/VALUE/DEFN) and its references, fifteen to a line; a
+ * continuation starts in column 32 again with the head blank */
+static void xr_entry(const char *head, const struct xref *r, int n, int show) {
+    char ln[128]; int k, col = 31;
+    xr_blank(ln); memcpy(ln, head, 31);
+    for (k = 0; k < n; k++) {
+        if (col + 5 > 120) { xr_line(ln, show); xr_blank(ln); col = 31; }
+        { char b[16]; snprintf(b, sizeof b, "%05d", r[k].stmt); memcpy(ln + col, b, 5); }
+        col += 6;
+    }
+    xr_line(ln, show);
+}
+static void xr_cols(char *h, long len, long val, int defn) {   /* LEN, VALUE, DEFN from column 10 */
+    char b[40]; snprintf(b, sizeof b, "%05ld %08lX %05d", len, (unsigned long)val & 0xffffffffUL, defn); memcpy(h + 9, b, strlen(b));
+}
+/* IFNX5A keys a literal's cross-reference record on its location counter, then
+ * ESDID, then pool: address order, where the SOURCE page lists each pool behind
+ * the statement that placed it. The two part when an END pool deferred into the
+ * first section lies below a pool an earlier LTORG placed further up. */
+static int xr_byaddr(const void *pa, const void *pb) {
+    const struct lit *a = &lits[*(const int *)pa], *b = &lits[*(const int *)pb];
+    if (a->loc != b->loc) return a->loc < b->loc ? -1 : 1;
+    if (a->psect != b->psect) return a->psect - b->psect;
+    return a->ltseq - b->ltseq;
+}
+static int *xr_keys; static int axkeys;
+static void a_xref_section(char **lines, int nl) {
+    int i, k, n = 0, r, d;
+    char h[128];
+    xr_collect(lines, nl);
+    if (nxr > 1) qsort(xr, (size_t)nxr, sizeof *xr, xr_bystmt);
+    if (nxdp > 1) qsort(xdp, (size_t)nxdp, sizeof *xdp, xr_dupcmp);
+    /* every symbol of this assembly, referenced or not, and the undefined names */
+    if (axkeys < nsym + nxundef + 1) { axkeys = nsym + nxundef + 1; xr_keys = realloc(xr_keys, (size_t)axkeys * sizeof *xr_keys);
+        if (!xr_keys) { fprintf(stderr, "as370: out of memory\n"); exit(2); } }
+    for (i = 0; i < nsym; i++) { struct sym *s = &syms[i];
+        if ((unsigned char)s->name[0] < 0x20) continue;            /* "" private code, "\1DSECT", a duplicate's shadow: the source named none */
+        if (!(s->defined || s->declared_extrn)) continue;         /* a name known only from V() is not a symbol of this assembly */
+        xr_keys[n++] = i; }
+    for (k = 0; k < nxundef; k++) xr_keys[n++] = -1 - k;
+    if (n > 1) qsort(xr_keys, (size_t)n, sizeof *xr_keys, xr_keycmp);
+    if (n) {
+        xr_start("CROSS-REFERENCE");
+        for (k = 0; k < n; k++) {
+            int key = xr_keys[k], r0;
+            for (r = 0; r < nxr && xr[r].key < key; r++) ;      /* xr is sorted by key */
+            for (r0 = r; r < nxr && xr[r].key == key; r++) ;
+            xr_blank(h); memcpy(h, xr_name(key), strlen(xr_name(key)));
+            if (key >= 0) { struct sym *s = &syms[key]; xr_cols(h, s->len ? s->len : 1, s->defined ? s->val : 0, s->defln); }
+            else memcpy(h + 9, "****UNDEFINED****", 17);
+            xr_entry(h, xr + r0, r - r0, key < 0 || !a_xref_short || r > r0);
+            for (d = 0; d < nxdp; d++) { if (xdp[d].key != key) continue;   /* each later definition, after the references */
+                xr_blank(h); memcpy(h, xr_name(key), strlen(xr_name(key)));
+                xr_cols(h, xdp[d].len, xdp[d].val, xdp[d].stmt);
+                memcpy(h + 31, "****DUPLICATE****", 17); xr_line(h, 1); }
+        }
+    }
+    if (nlxr > 1) qsort(lxr, (size_t)nlxr, sizeof *lxr, xr_bystmt);
+    if (a_nlord) {
+        int *lo = malloc((size_t)a_nlord * sizeof *lo);
+        if (!lo) { fprintf(stderr, "as370: out of memory\n"); exit(2); }
+        memcpy(lo, a_lorder, (size_t)a_nlord * sizeof *lo);
+        if (a_nlord > 1) qsort(lo, (size_t)a_nlord, sizeof *lo, xr_byaddr);
+        xr_start("LITERAL CROSS-REFERENCE");
+        for (k = 0; k < a_nlord; k++) {
+            int key = lo[k], r0; struct lit *l = &lits[key]; int tl = (int)strlen(l->text);
+            for (r = 0; r < nlxr && lxr[r].key < key; r++) ;
+            for (r0 = r; r < nlxr && lxr[r].key == key; r++) ;
+            xr_blank(h);
+            if (tl <= 8) memcpy(h, l->text, (size_t)tl);
+            else {   /* the text alone: 120 columns, then 115 to a line from column 6;
+                      * a last piece of up to 3 stays in columns 6-8 of the LEN line */
+                char ln[128]; int at = tl < 120 ? tl : 120;
+                xr_blank(ln); memcpy(ln, l->text, (size_t)at); xr_line(ln, 1);
+                while (tl - at > 3) { int c = tl - at < 115 ? tl - at : 115;
+                    xr_blank(ln); memcpy(ln + 5, l->text + at, (size_t)c); xr_line(ln, 1); at += c; }
+                if (tl > at) memcpy(h + 5, l->text + at, (size_t)(tl - at));
+            }
+            xr_cols(h, lit_lenattr(l), l->loc, l->stmt);
+            xr_entry(h, lxr + r0, r - r0, 1);
+        }
+        free(lo);
+    }
 }
 static void emit_listing_a(char **lines, int nl) {
     if (!a_on) return;
     alst = alst_fn ? fopen(alst_fn, "w") : stdout;
     if (!alst) { perror(alst_fn); alst = stdout; }
     a_page = 0;
+    a_number(nl);
     if (a_esd) a_esd_section();
     if (a_src) a_src_section(lines, nl);
     if (a_rld) a_rld_section();
+    if (a_xref) a_xref_section(lines, nl);
     if (alst && alst != stdout) fclose(alst);
 }
 
@@ -7243,6 +7591,7 @@ static int emit_sym_export(const char *fn, const char *srcfn) {
     fputs("#columns\tname\tvalue\tlength\ttype\tsect\tsectname\tdsect\tesdid\tdefined\tentry\n", f);
     for (i = 0; i < nsym; i++) {
         struct sym *s = &syms[i];
+        if (s->name[0] == '\2') continue;   /* a duplicate definition's shadow (IFO196): the assembly discarded it */
         int owner = (s->sect > 0 && s->sect < MAXSECT) ? sect_owner[s->sect] : 0;
         sym_name_out(f, s->name);
         fprintf(f, "\t%ld\t%d\t%s\t%d\t", s->val, s->len, sym_type_name(s->type), s->sect);
@@ -7465,13 +7814,15 @@ static void usage(FILE *o) {
 "                     i     produce product information (not yet implemented)\n"
 "                     m     produce macro and copy code source summary (not yet implemented)\n"
 "                     r     produce relocation dictionary\n"
-"                     s     produce ordinary symbol and literal cross-reference (not yet implemented)\n"
+"                     s     produce ordinary symbol and literal cross-reference\n"
 "                     x     produce DSECT cross-reference (not yet implemented)\n"
 "                     =FILE list to FILE (must be last sub-option)\n"
 "  --help             show this message and exit\n"
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
 "  --sym=FILE         write the symbol table to FILE as tab-separated data (- = stdout)\n"
+"  --xref=full|short  the -a cross-reference as IFOX00 XREF(FULL) (default) or\n"
+"                     XREF(SHORT), which leaves out the symbols nothing references\n"
 "  --stmts=FILE       write one record per generated statement to FILE as\n"
 "                     tab-separated data (- = stdout): where it lands, how many\n"
 "                     bytes it emits, whether it RESERVES them or only ALIGNS,\n"
@@ -7559,6 +7910,8 @@ int main(int argc, char **argv) {
         else if (!strncmp(argv[ai], "--usings=", 9) && argv[ai][9]) use_fn = argv[ai] + 9;   /* the USING/DROP/PUSH/POP events as data (#393); usings[] is live state and holds nothing at the end */
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
         else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
+        else if (!strcmp(argv[ai], "--xref=short")) a_xref_short = 1;   /* IFOX PARM=XREF(SHORT) */
+        else if (!strcmp(argv[ai], "--xref=full")) a_xref_short = 0;    /* IFOX PARM=XREF(FULL), the default */
         else if (!strncmp(argv[ai], "--sysparm=", 10)) scopy(g_sysparm, argv[ai] + 10, 95);   /* IFOX PARM=SYSPARM(...); default is the null string */
         else if (!strcmp(argv[ai], "-m") && ai + 1 < argc) ++ai;   /* -m HLASM-option: accepted, not yet implemented */
         else if (!strcmp(argv[ai], "--strict-cont")) strict_cont = 1;   /* a discarded statement becomes severity 8 -- see the RC note below */
@@ -7570,12 +7923,12 @@ int main(int argc, char **argv) {
             for (; *p && *p != '='; p++) { switch (*p) {
                 case 'e': a_esd = 1; sel = 1; break;   /* external symbol dictionary */
                 case 'r': a_rld = 1; sel = 1; break;   /* relocation dictionary */
-                case 's': a_xref = 1; sel = 1; break;  /* ordinary symbol + literal cross-reference (not yet produced) */
+                case 's': a_xref = 1; sel = 1; break;  /* ordinary symbol + literal cross-reference */
                 case 'g': case 'i': case 'm': case 'x': sel = 1; break;   /* GPR xref / product info / macro summary / DSECT xref (not yet produced) */
                 default: break;
             } }
             if (*p == '=' && p[1]) alst_fn = p + 1;        /* =FILE (must be the last sub-option) */
-            if (!sel) { a_esd = a_rld = 1; }               /* bare -a -> LIST(MAX): every section we produce */
+            if (!sel) { a_esd = a_rld = a_xref = 1; }      /* bare -a -> LIST(MAX): every section we produce */
         }
         else if (argv[ai][0] == '-' && argv[ai][1]) {
             fprintf(stderr, "as370: invalid option '%s' - option ignored (IFOX00 IFO258)\n", argv[ai]);

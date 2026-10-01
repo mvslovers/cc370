@@ -49,7 +49,7 @@ def load_env(path):
     return env
 
 
-def build_jcl(env, src, scratch, deck, syslib=None):
+def build_jcl(env, src, scratch, deck, syslib=None, xref="FULL"):
     """One IFOX00 step. PARM matches tests/listref: the listing is column-exact
     to what the committed references were captured with."""
     # SYSLIB is a concatenation: the first DD carries the name, the rest are
@@ -74,7 +74,7 @@ def build_jcl(env, src, scratch, deck, syslib=None):
     return f"""//ASMORCL  JOB (ACCT),'IFOX ORACLE',CLASS={env.get('MBT_JES_JOBCLASS', 'A')},
 //             MSGCLASS={env.get('MBT_JES_MSGCLASS', 'A')},MSGLEVEL=(1,1)
 {predel}//ASM      EXEC PGM=IFOX00,
-//          PARM='{parm},LIST,NOLOAD,XREF(FULL),RENT'
+//          PARM='{parm},LIST,NOLOAD,XREF({xref}),RENT'
 {syslib_dd}
 //SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
 //SYSUT2   DD UNIT=SYSDA,SPACE=(CYL,(1,1))
@@ -113,6 +113,9 @@ def main():
                          "written to provoke a diagnostic assembles at rc 4 or 8 BY "
                          "DESIGN and still punches a deck; without this the deck is "
                          "thrown away and only the listing survives.")
+    ap.add_argument("--xref", choices=("full", "short"), default="full",
+                    help="XREF(FULL) (default, what tests/listref was captured with) or "
+                         "XREF(SHORT), which as370 writes for --xref=short")
     args = ap.parse_args()
 
     envfile = os.environ.get("AS370_MVS_ENV")
@@ -135,7 +138,7 @@ def main():
 
     print(f"submitting to {env['MBT_MVS_HOST']}:{env['MBT_MVS_PORT']} "
           f"as {env['MBT_MVS_USER']}")
-    res = client.submit_jcl(build_jcl(env, src, scratch, bool(args.deck), args.syslib),
+    res = client.submit_jcl(build_jcl(env, src, scratch, bool(args.deck), args.syslib, args.xref.upper()),
                             wait=True, timeout=180)
     print(f"job {res.jobname} {res.jobid}  status={res.status}  rc={res.rc}")
     if args.listing:

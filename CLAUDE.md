@@ -163,7 +163,7 @@ UTF-8.
 - **CLI:** z/OS-`as`-aligned. `--help` usage; RC convention from IFOX `JERMSGCD` (0 clean / 4 warn / 8 error / 12 severe / 16 terminal); silent on success (no noise when called from cc370). Friendly per-statement diagnostic: prints the true source line + `ERROR: Undefined operation code in line N - op`.
 - **Macro path:** `-I <dir>` (repeatable). The ecosystem needs libc370 `maclib` + `sysmac` and SYS1.MACLIB members.
 - **Validation = byte-identity to IFOX00**, the authoritative oracle. 950 ecosystem modules reproduce exactly: libc370 (formerly crent370) 736/736, rexx370 81/81, UFSD 20/20, HTTPD 105/105, 9 samples. The END card's translator IDR (`15741SC103`+date) is IFOX-specific and intentionally not reproduced; "byte-identical" means ESD/TXT/RLD content. The full patched IFOX source is the reference (NOT committed — IBM proprietary; see memory `ifox-source-reference`).
-- **`-a` listing:** ASCII, column-exact to IFOX SYSPRINT for the ESD + SOURCE + RLD sections. Cross-reference / literal-xref / diagnostics / statistics pages not yet produced (see open points).
+- **`-a` listing:** ASCII, column-exact to IFOX SYSPRINT for the ESD + SOURCE + RLD sections and the CROSS-REFERENCE + LITERAL CROSS-REFERENCE pages (#538; `--xref=short` = `XREF(SHORT)`). Diagnostics / statistics pages not yet produced (see open points).
 
 ### cc370 → as370 integration (current: stopgap wrapper)
 
@@ -174,7 +174,7 @@ The GCC driver invokes an assembler literally named `as`, found in its own exec 
 **Goal:** a fully host-native MVS cross-toolchain — compile (cc370) + assemble (as370) + **link (ld, planned)** on the host, so only the final load module touches MVS. Today cc370+as370 are proven end-to-end (ctest links + runs on MVS, RC=0); `ld` is the missing piece.
 
 **as370 remaining work:**
-- **More listing options** — `-a` sub-letters (g/i/m/s/x) are no-ops/provisional; add the CROSS-REFERENCE, LITERAL XREF, DIAGNOSTICS, STATISTICS pages.
+- **More listing options** — `-a` sub-letters g/i/m/x are no-ops/provisional (`s` is the cross-reference, #538); add the DIAGNOSTICS, STATISTICS pages.
 - **Better driver / cc370 integration** — replace the stopgap shell wrapper with a proper `as370`/`as1` split; stop hardcoding the crent370 macro path; give SYS1.MACLIB + crent maclib/sysmac a permanent, configurable home (the `/tmp/sys1mac` dependency must go).
 - **Assembler options from IFOX00 sources** — derive the real `PARM=` option set + RC/severity semantics from the IFOX source (`~/repos/mvs/ifox-src/all/`).
 
