@@ -3474,6 +3474,40 @@ PY2
     [ $? = 0 ] || fail=$((fail + 1))
 fi
 rm -f /tmp/_xa$$.obj /tmp/_xa$$.out
+# ---------------------------------------------------------------- vcononly --
+# cc370#580: `DC V(VONLY)' then `DC A(VONLY)'. A V-con makes an ER but no symbol
+# of the assembly, so IFOX00 answers the A-con with IFO188, assembles it as
+# 00000000 at x'64' and writes NO RLD entry for it. Oracle: MVSTK5-REF JOB00302,
+# tests/xrefcov.s case 6, tests/listref/ifox-listing-xrefcov.txt. The binary
+# before the fix was silent and relocated x'64' against the ER, so the deck
+# linked where IFOX00's would not have been accepted.
+./as370 tests/xrefcov.s -o /tmp/_vo$$.obj >/tmp/_vo$$.out 2>&1
+if [ "$(grep -c 'ERROR.*VONLY' /tmp/_vo$$.out)" != 1 ] || ! grep -q 'Undefined symbol in line 43 - VONLY' /tmp/_vo$$.out; then
+    echo "vcononly: FAIL -- expected one IFO188 on VONLY (statement 43, the A-con)"
+    grep 'ERROR.*VONLY' /tmp/_vo$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_vo$$.obj <<'PY2'
+import sys
+d = open(sys.argv[1], 'rb').read(); img = {}; addrs = []
+for i in range(0, len(d), 80):
+    c = d[i:i+80]; n = int.from_bytes(c[10:12], 'big')
+    if c[1:4] == b"\xe3\xe7\xe3":                                   # TXT
+        a = int.from_bytes(c[5:8], 'big')
+        for k in range(n): img[a + k] = c[16 + k]
+    elif c[1:4] == b"\xd9\xd3\xc4":                                 # RLD: R/P pairs only when the flag says so
+        b = c[16:16 + n]; j = 0; full = True
+        while j < len(b):
+            if full: j += 4
+            f = b[j]; addrs.append(int.from_bytes(b[j+1:j+4], 'big')); j += 4; full = not (f & 1)
+word = bytes(img.get(0x64 + k, 0xFF) for k in range(4))
+if word != b"\0\0\0\0" or 0x64 in addrs:
+    print("vcononly: FAIL -- A(VONLY) = %s, RLD addresses %s (IFOX00: 00000000, none at 000064)"
+          % (word.hex(), [hex(a) for a in addrs])); sys.exit(1)
+print("vcononly: OK (IFO188 on A(VONLY), 0, no RLD entry)")
+PY2
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_vo$$.obj /tmp/_vo$$.out
 
 # ------------------------------------------------------------- litplusterm --
 # cc370#528: a literal combined with another term, `L 2,=F'1'+4'. IFOX00 says
