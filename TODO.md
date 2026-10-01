@@ -1315,9 +1315,9 @@ was found while building a `listref` case, and each is excluded from that case
   for line; aligned SOURCE lines over the 135 references 3,221 -> 3,279, none
   fewer. #370 is the same gap for generated statements, still open.
 
-- **#619** — new 2026-10-01, found with #609: `END` with an operand is listed
-  with LOC blank where IFOX00 prints the entry symbol's value (22 references:
-  `000000` 20 times, `000008` in usingparenpc, `000012` in multi-csect).
+- ~~**#619**~~ — found with #609: `END` with an operand was listed with LOC
+  blank where IFOX00 prints the entry symbol's value. **Fixed** (PR #621,
+  `7ea080a`); `listref` case 10 checks END's LOC in all 128 references.
 
 - **#603** — new 2026-10-01, found with #530: `TITLE` does not start a page,
   its text is not in the heading (column 10), and the statement is listed where
@@ -1498,6 +1498,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #619, MERGED as `7ea080a` (PR #621).** `-a` lists END's entry
+  symbol value in LOC (`000000`, `000008` usingparenpc, `000012` multi-csect).
+  listref case 10: 128 of 128 references equal. MVSBLD gate: 0 decks moved;
+  all 5,528 modules assemble with `-a`, every rc the gate's.
 
 - **2026-10-01 — #609, MERGED as `0745cd2` (PR #618).** `-a` lists a continued
   open-code statement card by card, remarks and column 72 included, and a
