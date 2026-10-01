@@ -1216,7 +1216,8 @@ latter two.
 The rest are loud or diagnostic-only: ~~#526~~ (labelled `ORG` -- closed
 2026-10-01, PR #596), ~~#529~~ / ~~#530~~ / ~~#531~~ (`IFO233`, `IFO104` and `IFO169` all closed
 2026-10-01, PRs #598, #602, #599), and #532–#535
-(`OPSYN`, `AIFB`/`AGOB`, `ICTL`, `PUNCH` missing). Their corpus count is 0.
+(`OPSYN`, ~~`AIFB`/`AGOB`~~ -- #533 closed 2026-10-01, PR #606 --, `ICTL`,
+`PUNCH` missing). Their corpus count is 0.
 
 ## Observability
 
@@ -1301,6 +1302,11 @@ was found while building a `listref` case, and each is excluded from that case
   PRs #200 and #206 each say in their own bodies that they address a part of it,
   and the split the 2026-09-08 comment predicted — a card-layout issue separate
   from an ESD-numbering one — is still on the table rather than made.
+
+- **#609** — new 2026-10-01, found with #607: a continued statement of open
+  code is listed as one joined line (no continuation cards, no remarks); #370 is
+  the same for generated statements. `listref/check.sh` case 9 compares aifcond
+  on statement numbers only until this is fixed.
 
 - **#603** — a sixth, new 2026-10-01, found with #530: `TITLE` does not start a page,
   its text is not in the heading (column 10), and the statement is listed where
@@ -1481,6 +1487,15 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-01 — #533 and #607, MERGED as `a1e0135` (PR #606) and `a5a8ed5`
+  (PR #608).** `AIFB`/`AGOB` are aliases of `AIF`/`AGO`, mapped once in
+  `parse()` (`aifbagob` branches for real); `listref/xref.py` drops `xfdirect`,
+  leaving 1 known divergence. #607: `AIF`/`AGO` of open code are listed and
+  numbered (ALOGIC) and a sequence symbol stays on its card -- collate's `END`
+  42 as in IFOX00, was 35; the rest of the gap in three fixtures is exactly
+  their macro definitions (#150). `listref/check.sh` case 9. MVSBLD and libc370:
+  nothing moved.
 
 - **2026-10-01 — #530, MERGED as `7dc3f2d` (PR #602).** A second named `TITLE`
   is IFO104 (severity 4); the deck id now heads every listing page in columns
