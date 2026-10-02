@@ -6928,7 +6928,12 @@ static void do_pass(int pass, char **lines, int nlines) {
                                   else note_operr("more than 128 values in one DC operand - the rest are dropped", 8, g_curln);
                                   if (!*s) { break; } st = s + 1; } } }
                         if (nv == 0) { vals[0][0] = 0; nv = 1; }   /* A() -> a single zero constant */
-                        if (isvcon && pass == 1 && !in_dsect) { int vj; for (vj = 0; vj < nv; vj++) {   /* register each V-con ER */
+                        /* A V-con with duplication factor zero generates nothing, and
+                         * IFOX00 enters no ER for it: HMASMTMD's `DC 0V(HMASMSCN)',
+                         * `0V(HMASMSUB)' and `0V(HMASMTM4)' are absent from its ESD,
+                         * which as370 carried as three extra entries -- one ESD card
+                         * more, 275 against 274 (#199). */
+                        if (isvcon && pass == 1 && !in_dsect && cnt > 0) { int vj; for (vj = 0; vj < nv; vj++) {   /* register each V-con ER */
                             char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                             if (r[0]) { struct sym *s = sym_get(r); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } } }
                         for (k = 0; k < cnt; k++) { int vj; for (vj = 0; vj < nv; vj++) {
