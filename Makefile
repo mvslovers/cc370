@@ -148,8 +148,13 @@ test-as370:
 test-listref: as370/as370
 	@sh as370/tests/listref/check.sh
 
-test-cc370: compiler
+# helpers.sh checks the runtime-helper interface (#685): which helpers each
+# construct emits (always), and that each links (only with a sysroot -- by
+# default the installed one beside `cc370` on PATH, or SYSROOT=; skipped
+# without one).
+test-cc370: compiler as370/as370 ld370/ld370
 	@sh cc370/tests/run.sh
+	@sh cc370/tests/helpers.sh
 
 test-xmit370: xmit370/xmit370
 	@sh xmit370/tests/run.sh
