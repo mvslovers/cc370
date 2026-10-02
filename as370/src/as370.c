@@ -3515,6 +3515,17 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
         const char *l = in[i];
         if (org) org[no] = i + 1;   /* 1-based input line of this statement's first card */
         if (seqout) { int k, sl = rawlen(l); for (k = 0; k < 8; k++) seqout[no][k] = (72 + k < sl) ? l[72 + k] : ' '; seqout[no][8] = 0; }
+        /* The card REPRO punches is data, never a statement: IFOX00 does not read
+         * its column 72 as a continuation, so the card after it is a statement
+         * of its own. as370 joined them and swallowed the next statement --
+         * reproc72 case B lost its DC C'3' (MVSTK5-REF JOB00318, rc 0, all four
+         * DCs assembled; cc370#140). */
+        if (no > 0 && card_op_is(out[no - 1], "REPRO")) {
+            if (join_logical) join_logical[no] = NULL;
+            if (join_span && org) join_span[no] = 1;
+            out[no++] = strdup(l); i++;
+            continue;
+        }
         if (l[0] == '*' || (l[0] == '.' && l[1] == '*')) {
             /* A comment statement is continued exactly like any other: IFOX00
              * reads it with RALLCNT (ifnx1a.asm:606, PNXT13 "READ ALL VALID

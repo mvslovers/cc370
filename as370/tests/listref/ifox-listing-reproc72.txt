@@ -1,0 +1,38 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.48 10/02/26
+REPROC72  SD  0001 000000 000004
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.48 10/02/26
+                                      1 * REPRO and a punched card with a non-blank column 72 (cc370#140).
+                                      2 * IBCDASDI/IBCDMPRS draw IFO053 on the REPRO after such a card. A:
+                                      3 * col 72 X then REPRO; B: col 72 X then a DC; C: blank col 72.
+000000                                4 REPROC72 CSECT
+000000 F1                             5          DC    C'1'
+                                      6          REPRO
+                                      7 PUNCHED-A WITH A NON-BLANK COLUMN 72                                   X
+                                      8          REPRO
+                                      9 PUNCHED-A2 BLANK COLUMN 72
+000001 F2                            10          DC    C'2'
+                                     11          REPRO
+                                     12 PUNCHED-B WITH A NON-BLANK COLUMN 72                                   X
+000002 F3                            13          DC    C'3'
+                                     14          REPRO
+                                     15 PUNCHED-C BLANK COLUMN 72
+000003 F4                            16          DC    C'4'
+                                     17          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.48 10/02/26
+REPROC72 00001 00000000 00004
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 10.48 10/02/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         17
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                        10
+TOTAL RECORDS PRINTED                        38
