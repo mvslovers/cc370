@@ -7704,8 +7704,29 @@ static void a_padrow(char *ln, long loc, int pad) {
     hex[k] = 0;
     a_locobj(ln, loc, hex); a_src_emit(ln);
 }
+/* IFOX00's print routine clears the left half of the print line after every
+ * statement except its location word, LOCATN (IFNX5P PRN200), and only some
+ * statements store a new one: START/CSECT, ORG, CNOP, CCW, CXD, LTORG, DS/DC
+ * and machine instructions (IFNX5A, IFNX5D, IFNX5M) -- not EQU, USING or
+ * DROP, hidden by PRINT or not. A USING whose operand is rejected never sets
+ * the EQU/ORG/USING bit that blanks LOC, so it lists the LOCATN the last such
+ * statement left: usingreloc's flagged USINGs show 000010, DEFINED DS F's
+ * address, where the location counter already stands at 000014 (#647).
+ * Returns 1 and the LOC that statement lists, or 0 if it stores none. */
+static int a_sets_locatn(int i, const char *op, const char *opnd, long *v) {
+    long loc = lrecs[i].loc;
+    if (op_find(op)) { *v = loc + (loc & 1); return 1; }
+    if (!strcmp(op, "DC") || !strcmp(op, "DS") || !strcmp(op, "CCW")) {
+        int b = a_first_align(op, opnd), pad = b > 1 ? (int)((b - (loc % b)) % b) : 0;
+        *v = (pad && pad <= lrecs[i].len) ? loc + pad : loc; return 1;
+    }
+    if (!strcmp(op, "LTORG")) { *v = align8(loc); return 1; }
+    if (!strcmp(op, "CNOP") || !strcmp(op, "ORG") || !strcmp(op, "CXD") || !strcmp(op, "CSECT")
+        || !strcmp(op, "DSECT") || !strcmp(op, "START") || !strcmp(op, "COM")) { *v = loc; return 1; }
+    return 0;
+}
 static void a_src_section(char **lines, int nl) {
-    char ln[256]; int i, j;
+    char ln[256]; int i, j; long a_locatn = 0;
     a_srcopen = 0; a_srclines = 0;   /* the header goes out with the first row */
     a_pon = 1; a_pgen = 1; a_psp = 0;
     for (i = 0; i < nl; i++) {
@@ -7719,6 +7740,7 @@ static void a_src_section(char **lines, int nl) {
         if (!noasm && !strcmp(op, "PRINT")) a_print_opnd(opnd);
         else if (!noasm && !strcmp(op, "PUSH") && a_has_print(opnd)) { if (a_psp < 16) { a_pstack[a_psp][0] = (unsigned char)a_pon; a_pstack[a_psp][1] = (unsigned char)a_pgen; a_psp++; } }
         else if (!noasm && !strcmp(op, "POP") && a_has_print(opnd)) { if (a_psp > 0) { a_psp--; a_pon = a_pstack[a_psp][0]; a_pgen = a_pstack[a_psp][1]; } }
+        { long v; if (!noasm && a_sets_locatn(i, op, opnd, &v)) a_locatn = v; }
         int listed = (on0 || a_pon) && (!gen || gen0 || a_pgen);
         int shown = listed || ((on0 || a_pon) && stmt_flagged[i]);
         if (!shown) {
@@ -7773,8 +7795,14 @@ static void a_src_section(char **lines, int nl) {
              * ORG and LTORG do move the counter and keep LOC. */
             else if (!strcmp(op, "EQU")) { show_equ = 1; }
             else if (!strcmp(op, "ORG") || !strcmp(op, "LTORG")) { show_loc = 1; }   /* ORG's ADDR2 is set at the statement, above */
+            /* A USING IFOX00 rejects lists a LOC and no ADDR2 -- the LOC of the
+             * last statement that stored one (a_sets_locatn): absundef's
+             * `USING UNDEF,5', usingreloc's undefined, relocatable-times-two
+             * and two-section operands (tests/listref). */
+            else if (!strcmp(op, "USING") && stmt_flagged[i]) { show_loc = 1; }
         }
         long loc = lrecs[i].loc; int len = lrecs[i].len;
+        if (!noasm && !strcmp(op, "USING")) loc = a_locatn;
         /* An alignment pad is listed as a row of its own -- LOC and the pad
          * bytes, nothing else -- ahead of the statement it aligns: a DC or CCW
          * (#627 moved the statement off its pad; #640: len_attr, scale,

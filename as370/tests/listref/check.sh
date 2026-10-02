@@ -499,17 +499,17 @@ done
 # --- case 12: every SOURCE page that matches IFOX00 keeps matching -- #150 --
 # The SOURCE page of each reference named here is IFOX00's line for line:
 # headings, statement numbers and blank lines; *** ERROR *** markers aside.
-# Before #150 listed in-stream macro definitions, 63 of the 135 did. 120 of
+# Before #150 listed in-stream macro definitions, 63 of the 135 did. 121 of
 # 136 do since #626 (NOMCALL), #627 (alignment pads), #24 (no object code on a
 # DS), #370 (a generated statement's continuation cards), #640 (a DC, CCW
-# or CNOP pad on a row of its own), #643 (a comment card not substituted) and
-# #645 (an EQU value wider than five digits), plus tstlist, which needs the
-# libc370 macros and is case 1's. A reference that starts
+# or CNOP pad on a row of its own), #643 (a comment card not substituted),
+# #645 (an EQU value wider than five digits) and #647 (a flagged USING's LOC),
+# plus tstlist, which needs the libc370 macros and is case 1's. A reference that starts
 # matching belongs on this list; one that stops is a regression.
 python3 - <<'PYS' || fail=1
 import re, os, subprocess
 NAMES = """
-absrx absssub absusing actr adcon aifcond aliasext align amp_fold
+absrx absssub absundef absusing actr adcon aifcond aliasext align amp_fold
 amp_selfdef amp_subst attrapos attrapos_remark attrdup attre basereg
 basereg2 bitlen blank_csect brmnem ccwstar cmprule cnop collate contattr
 contparen contrem csect_resume csect_resume2 csect_resume3 dcattr dcvals
