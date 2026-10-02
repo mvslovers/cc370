@@ -773,7 +773,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
          substrcat usingexpr orglen sectlen esdvsect ldentry \
          endstop emptyopnd brmnem subattr genblank selfdup ovlattr repro \
-         litdup pool contsev align blankcont litscale litpz litlist \
+         litdup pool contsev align blankcont litscale litpz litlist reproc72 \
          adcon aliasext attrdup regexpr sconabs fpopc droplist \
          tattr_expr endpool dsectpool blank_csect usingparen usingparenpc \
          rldorg attrundef equtype equtypegen equtypegen2 absssub absrx litdupexpr \
