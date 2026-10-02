@@ -7686,13 +7686,31 @@ static void a_number(int nl) {
     }
     for (k = 0; k < a_nlord && lits[a_lorder[k]].pline == 0; k++) lits[a_lorder[k]].stmt = ++st;
 }
+static char **a_raw0, **a_raw; static int *a_raw_org, a_nraw;   /* the input cards, kept for the listing (#609; see a_rawno) */
+static char **a_lines;           /* a_src_section's lines[], for a literal's writing statement (#657) */
+static int a_rawno(int org, const char *line);
+/* A literal longer than the 56 columns from 16 to 71 is listed over several
+ * rows, as a continued card: the text cut every 56 characters, the
+ * continuation character in column 72 of every row but the last, and each
+ * further row carrying the next eight bytes of object code (tests/listref,
+ * xrefcov statements 114-115; #657). The character is the one in column 72 of
+ * the statement that wrote the literal -- the fixture's is X, so which IFOX00
+ * takes is not measured -- and X when that card is not to be had. */
 static void a_src_lit(const struct lit *l) {
-    char ln[256], hex[40];
-    a_objcode(l->loc, l->size, 0, hex);
-    a_locobj(ln, l->loc, hex);
-    { char sn[12]; int dl = sprintf(sn, "%d", l->stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
-    { int sl = (int)strlen(l->text), x; for (x = 0; x < sl && 55 + x < 255; x++) ln[55 + x] = l->text[x]; }   /* literal text at the operand column (listing col 56) */
-    a_src_emit(ln);
+    char ln[256], hex[40]; int sl = (int)strlen(l->text), off = 0, row = 0;
+    char cc = 'X';
+    { int d = l->defln, rn; if (d >= 0 && d < MAXLINES && a_lines && (rn = a_rawno(line_org[d], a_lines[d])) >= 0 && raw_span[rn] > 1) {
+          const char *c0 = a_raw0[a_raw_org[rn] - 1]; if ((int)strlen(c0) > 71 && c0[71] != ' ') cc = c0[71]; } }
+    do {
+        hex[0] = 0;
+        if (l->size > 8 * row) a_objcode(l->loc + 8 * row, l->size - 8 * row, 0, hex);
+        if (row == 0 || hex[0]) a_locobj(ln, l->loc + 8 * row, hex); else { int j; for (j = 0; j < 255; j++) ln[j] = ' '; ln[255] = 0; }
+        if (row == 0) { char sn[12]; int dl = sprintf(sn, "%d", l->stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
+        { int x; for (x = 0; x < 56 && off + x < sl; x++) ln[55 + x] = l->text[off + x]; }   /* card columns 16-71 (listing col 56) */
+        off += 56;
+        if (off < sl) ln[111] = cc;                                                        /* card column 72 */
+        a_src_emit(ln); row++;
+    } while (off < sl);
     if (l->flagged) a_src_marker();
 }
 /* the literals listed behind statement `pline' (0: the stragglers, last) */
@@ -7712,7 +7730,6 @@ static void a_src_pool(int pline) {
  * the column-72 character included -- where lines[] holds the joined statement.
  * a_raw0 is the deck as read, a_raw the joined statements, a_raw_org the 1-based
  * first card of each; raw_span says how many cards each took. */
-static char **a_raw0, **a_raw; static int *a_raw_org, a_nraw;
 /* The joined statement whose first card is input line `org', when lines[i] is
  * that statement as written -- open code, not a COPY member's line or anything
  * a macro generated under the same line_org. -1 otherwise. */
@@ -7819,6 +7836,7 @@ static int a_sets_locatn(int i, const char *op, const char *opnd, long *v) {
 }
 static void a_src_section(char **lines, int nl) {
     char ln[256]; int i, j; long a_locatn = 0;
+    a_lines = lines;
     a_srcopen = 0; a_srclines = 0;   /* the header goes out with the first row */
     a_pon = 1; a_pgen = 1; a_psp = 0;
     for (i = 0; i < nl; i++) {
