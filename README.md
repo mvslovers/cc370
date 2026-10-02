@@ -48,7 +48,9 @@ make install    # build (if needed) + install everything under $(PREFIX) (defaul
 Knobs: `PREFIX` (default `~/.local`) and `TRIPLE` (default `cc370`). The
 version is not a knob: it comes from the `VERSION` file, which the install
 paths and every binary's `--version` share (`cc370 1.0.0 (<commit>), based on
-GCC 3.4.6`, `as370 1.0.0 (<commit>)`, ...; see `CHANGELOG.md`). After
+GCC 3.4.6`, `as370 1.0.0 (<commit>)`, ...; see `CHANGELOG.md`). Source code
+tests the compiler's version with the predefined `__CC370__`
+(`MAJOR*10000 + MINOR*100 + PATCH`; from 1.1.0, 1.0.0 lacks it). After
 `make install` you get:
 
 ```

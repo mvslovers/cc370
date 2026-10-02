@@ -402,6 +402,15 @@ gcc_version_trigger=@gcc_version_trigger@
 CC370_VERSION_FILE = $(srcdir)/../../VERSION
 CC370_VERSION_H = $(srcdir)/../../common/include/cc370-version.h
 version := $(shell tr -d ' \t\r\n' < $(CC370_VERSION_FILE))
+# The same version as numbers, for the predefined __CC370__ (#704).  Passed to
+# c-cppbuiltin.o ALONE: it is the one file that expands TARGET_OS_CPP_BUILTINS,
+# and a header would put the version into tm.h and recompile all of cc1 on a
+# bump.  A pre-release suffix (1.1.0-dev) is dropped -- the macro orders
+# releases, and 1.1.0-dev builds want the checks 1.1.0 will pass.
+cc370_vparts := $(subst ., ,$(firstword $(subst -, ,$(version))))
+CC370_VERSION_DEFINES = -DCC370_VERSION_MAJOR=$(word 1,$(cc370_vparts)) \
+  -DCC370_VERSION_MINOR=$(word 2,$(cc370_vparts)) \
+  -DCC370_VERSION_PATCH=$(word 3,$(cc370_vparts))
 mainversion=`grep version_string $(srcdir)/version.c | sed -e 's/.*\"\([0-9]*\.[0-9]*\).*/\1/'`
 
 # ------------------------
@@ -1400,7 +1409,9 @@ c-opts.o : c-opts.c $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) $(TREE_H) \
 
 c-cppbuiltin.o : c-cppbuiltin.c $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) \
 	$(TREE_H) $(C_COMMON_H) c-pragma.h flags.h toplev.h langhooks.h \
-	output.h except.h real.h $(TM_P_H)
+	output.h except.h real.h $(TM_P_H) $(CC370_VERSION_FILE)
+	$(CC) -c $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) $(CC370_VERSION_DEFINES) \
+	  $< $(OUTPUT_OPTION)
 
 # A file used by all variants of C and some other languages.
 
