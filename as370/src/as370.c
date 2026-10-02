@@ -117,7 +117,7 @@ static struct esdent esdord[MAXSYM]; static int nesdord;
  * following by position, the clobbered value shifted the whole first card
  * (cc370#199). */
 
-struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; int pline; int stmt; };
+struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; int pline; int stmt; int flagged; };
 /* `pline` is 1 + the lines[] index of the LTORG or END that placed the literal,
  * and `stmt` its statement number in the -a listing: a pool is listed behind the
  * statement that flushed it, so both the SOURCE page and the LITERAL
@@ -555,7 +555,13 @@ static char ovl_sym[128][64]; static int ovl_ln[128]; static int novl;
  * The two are reconciled at report time; see count_flagged_stmts(). */
 static unsigned char stmt_flagged[MAXLINES];   /* lines[] index of a flagged statement */
 static int nstmt_flagged;
+/* A diagnostic raised while a literal is assembled at its pool flags the pool
+ * statement, not the one that wrote it: IFOX00 marks `=A(NOVAL)' under END
+ * (statement 14) and leaves `L 4,=A(NOVAL)' (11) alone (tests/listref,
+ * undefsym; #660). The message still names the writing statement's card. */
+static struct lit *g_curlit;
 static void mark_flagged(int line) {
+    if (g_curlit) { if (!g_curlit->flagged) { g_curlit->flagged = 1; nstmt_flagged++; } return; }
     if (line < 0 || line >= MAXLINES || stmt_flagged[line]) return;
     stmt_flagged[line] = 1; nstmt_flagged++;
 }
@@ -5524,7 +5530,9 @@ static void emit_lit(struct lit *l) {
      * already makes for IFO158 below. */
     int svln = g_curln; g_curln = l->defln;
     int dup = l->dup > 0 ? l->dup : 1, unit = size_unit(l, dup), k;
+    g_curlit = (g_pass == 2) ? l : NULL;   /* what is flagged is the pool statement (#660) */
     for (k = 0; k < dup; k++) emit_lit_one(l, l->loc + (long)k * unit, unit);
+    g_curlit = NULL;
     g_curln = svln;
 }
 
@@ -7665,6 +7673,7 @@ static void a_src_lit(const struct lit *l) {
     { char sn[12]; int dl = sprintf(sn, "%d", l->stmt); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); }
     { int sl = (int)strlen(l->text), x; for (x = 0; x < sl && 55 + x < 255; x++) ln[55 + x] = l->text[x]; }   /* literal text at the operand column (listing col 56) */
     a_src_emit(ln);
+    if (l->flagged) a_src_marker();
 }
 /* the literals listed behind statement `pline' (0: the stragglers, last) */
 static void a_src_pool(int pline) {
