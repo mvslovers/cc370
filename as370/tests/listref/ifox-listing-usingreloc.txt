@@ -1,10 +1,10 @@
                                                EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
-SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 09.12 09/11/26
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 07.41 10/02/26
 A1        SD  0001 000000 000004
 B1        SD  0002 000008 000004
 T         SD  0003 000010 000004
                                                                                                                PAGE    2
-  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 09.12 09/11/26
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 07.41 10/02/26
                                       1 * cc370#362: IFOX00 raises IFO217 on 155 USING statements in the
                                       2 * corpus, and every one of them has BOTH properties at once -- an
                                       3 * undefined operand AND, potentially, a complex one. The corpus
@@ -21,44 +21,58 @@ T         SD  0003 000010 000004
                                      14 *   5 USING *,6           predict SILENT            control
                                      15 *   6 USING 4096,7        predict SILENT            absolute USING
                                      16 *
-                                     17 * What each answer would mean:
-                                     18 *   1 flags and 3 does not -> the 155 are an UNDEFINED-SYMBOL
-                                     19 *     diagnostic wearing IFO217's number, and #363's machinery is the
-                                     20 *     wrong tool for them.
-                                     21 *   1 and 3 both flag -> one relocatability check covers both, and
-                                     22 *     the work is to reach the USING path.
-000000                               23 A1       CSECT
-000000                               24 FLDA     DS    F
-000008                               25 B1       CSECT
-000008                               26 FLDB     DS    F
-000010                               27 T        CSECT
-000010                               28 DEFINED  DS    F
-000010                               29          USING UNDEF,2      1: undefined, otherwise simple
+                                     17 * MEASURED, MVSTK5-REF JOB00036. Three statements flagged, severity 12:
+                                     18 *   1 IFO188 + IFO217        as predicted
+                                     19 *   2 silent                 as predicted
+                                     20 *   3 IFO217, TWICE          predicted once; it flags per base register
+                                     21 *   4 IFO217, not IFO213     PREDICTION WRONG
+                                     22 *   5 silent                 as predicted
+                                     23 *   6 silent                 as predicted
+                                     24 *
+                                     25 * THE ANSWER: case 3 flags, so the 155 corpus sites are NOT merely an
+                                     26 * undefined-symbol diagnostic wearing IFO217's number. The
+                                     27 * relocatability rule applies on the USING path too, and ONE check
+                                     28 * covers both -- the work is to reach that path.
+                                     29 *
+                                     30 * AND A DIFFERENCE BETWEEN THE TWO PATHS, which is the half I got
+                                     31 * wrong: on a USING, IFOX00 answers IFO217 for EVERYTHING, including
+                                     32 * the two-section sum that gives IFO213 in a machine operand
+                                     33 * (tests/relocerr.s). So the message is chosen by the STATEMENT, not
+                                     34 * only by the shape of the expression. A fix that reused #363's
+                                     35 * classifier unchanged would put IFO213 on case 4 and be wrong in
+                                     36 * exactly the way that passes every other check.
+000000                               37 A1       CSECT
+000000                               38 FLDA     DS    F
+000008                               39 B1       CSECT
+000008                               40 FLDB     DS    F
+000010                               41 T        CSECT
+000010                               42 DEFINED  DS    F
+000010                               43          USING UNDEF,2      1: undefined, otherwise simple
          *** ERROR ***
-                            00010    30          USING DEFINED,3    2: defined and simple -- control
-000010                               31          USING DEFINED*2,4  3: defined, relocatable across a multiply
+                            00010    44          USING DEFINED,3    2: defined and simple -- control
+000010                               45          USING DEFINED*2,4  3: defined, relocatable across a multiply
          *** ERROR ***
-000010                               32          USING FLDA+FLDB,5  4: defined, two sections, complex
+000010                               46          USING FLDA+FLDB,5  4: defined, two sections, complex
          *** ERROR ***
-                            00014    33          USING *,6          5: the location counter -- control
-                            01000    34          USING 4096,7       6: absolute -- control
-                                     35          END
+                            00014    47          USING *,6          5: the location counter -- control
+                            01000    48          USING 4096,7       6: absolute -- control
+                                     49          END
                                                   CROSS-REFERENCE                                              PAGE    3
-SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 09.12 09/11/26
-A1       00001 00000000 00023
-B1       00001 00000008 00025
-DEFINED  00004 00000010 00028  00030 00031
-FLDA     00004 00000000 00024  00032
-FLDB     00004 00000008 00026  00032
-T        00001 00000010 00027
-UNDEF    ****UNDEFINED****     00029
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 07.41 10/02/26
+A1       00001 00000000 00037
+B1       00001 00000008 00039
+DEFINED  00004 00000010 00042  00044 00045
+FLDA     00004 00000000 00038  00046
+FLDB     00004 00000008 00040  00046
+T        00001 00000010 00041
+UNDEF    ****UNDEFINED****     00043
                                                   ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
-STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 09.12 09/11/26
-   29  IFO188      UNDEF IS AN UNDEFINED SYMBOL
-   29  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 6
-   31  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
-   31  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
-   32  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 07.41 10/02/26
+   43  IFO188      UNDEF IS AN UNDEFINED SYMBOL
+   43  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 6
+   45  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
+   45  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
+   46  IFO217      RELOCATABILITY ERROR NEAR OPERAND COLUMN 10
 NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     3
 HIGHEST SEVERITY WAS   12
 OPTIONS FOR THIS ASSEMBLY
@@ -66,7 +80,7 @@ OPTIONS FOR THIS ASSEMBLY
   NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
   SYSPARM()
 WORK FILE BUFFER SIZE/NUMBER =32758/ 1
-TOTAL RECORDS READ FROM SYSTEM INPUT         35
+TOTAL RECORDS READ FROM SYSTEM INPUT         49
 TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
 TOTAL RECORDS PUNCHED                         2
-TOTAL RECORDS PRINTED                        72
+TOTAL RECORDS PRINTED                        86
