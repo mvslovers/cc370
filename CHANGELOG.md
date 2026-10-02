@@ -20,6 +20,12 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-03
+
+A packaging release: the prebuilt toolchains are stripped. The compiler, the
+runtime and the macros are unchanged, so nothing changes for libc370 or for
+what compiles and links.
+
 ### Changed
 - **The release binaries are stripped** (#718): `make dist` strips the
   driver, `cc1` and the tools after installing the tree, so the release
