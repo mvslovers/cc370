@@ -1383,11 +1383,12 @@ Filed 2026-09-09/10 out of the macro-language work and never listed here.
 - **#272** — an expression outside conditional assembly is not held to 20 terms;
   IFOX00 raises `IFO168` and zeroes the result. Wants a corpus measurement before
   it is worth doing — a limit nothing reaches costs a check on every expression.
-- **#333** — `T'` of a macro parameter answers from the parameter's *value*;
-  IFOX00 answers from what was written at the call site. **The defect reproduces
-  unchanged and its decision does not stand**: the withdrawal comment rests on a
-  `-70 LOST` measurement, and that figure is now known to be an artefact of the
-  run it came from. Re-derive before quoting it either way.
+- ~~**#333**~~ — `T'` of a parameter whose argument was a SET variable is `U`.
+  **Fixed** (PR #679): re-measured on a post-#340 binary, exactly one module
+  moves (BLSR3270 rc 0 -> 4, IFOX00's). The earlier `-70` was #334's overflow.
+- **Noted, no issue:** `DC B'1,10'` assembles to one byte `06` where each value
+  should be its own byte (`01 02`); the literal path (#680) does the latter. No
+  MVSBLD module writes a B value list -- measure before touching.
 
 ## The five cases — `mvssrc`'s cut, and the smallest is first on purpose
 
@@ -1418,7 +1419,7 @@ evaluator path.
 | 1 | `IFNX2A` | **not a case** — the assembly TIME in the module's own text |
 | 2 | `IFNX4M` | **not a case** — the same |
 | 3 | `IFFAHA16` | **#366**, fixed and merged — RLD order inside an `(R,P)` group |
-| 4 | `BLSR3270` | #140's severity-4 module; its reference is the weakest here |
+| 4 | `BLSR3270` | ~~#140's severity-4 module~~ -- **fixed**: rc 4 by #333's rule (PR #679), deck by binary literals (PR #680); now byte-identical |
 | 5 | `HMASMTMD` | ~~#199's ESD half~~ -- **fixed** (PR #677): `DC 0V(name)` entered an ER IFOX00 does not; now byte-identical |
 
 `IFNX2A` and `IFNX4M` carry an eyecatcher built from `&SYSTIME`, and the gate
@@ -1546,6 +1547,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #333 and #140's BLSR3270, MERGED as `1aa6637`, `1b4df2b`
+  (PRs #679, #680).** `T'` of a SET-variable argument is `U` (rc 0 -> 4 for
+  BLSR3270 only); binary literals sized and valued like their DC (BLSR3270's
+  88 differing cards -> 0). **All five deck cases of the table below are now
+  resolved.** Gate: one module each time, BLSR3270.
 
 - **2026-10-02 — #199, MERGED as `35974e3` (PR #677).** `DC 0V(name)` enters
   no ER: HMASMTMD byte-identical to IFOX00 (only MVSBLD module with `DC 0V(`).
