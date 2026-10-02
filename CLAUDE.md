@@ -170,6 +170,14 @@ UTF-8.
 
 The GCC driver invokes an assembler literally named `as`, found in its own exec dir before PATH. A shell wrapper at `~/.local/libexec/gcc/i370-ibm-mvspdp/3.4.6/as` execs `as370` with the macro `-I` paths, so `cc370 -c x.c` runs cc1 → temp `.s` → as370 → `x.o`. **This is a stopgap:** the crent370 macro path is hardcoded in the wrapper and `/tmp/sys1mac` is ephemeral. The clean design (a real `as1` engine shared by standalone `as370` and the driver, with the macro path passed properly) is an open point.
 
+## Releases and the libc370 contract
+
+**Read [`docs/releasing.md`](docs/releasing.md) before tagging a release, adding
+or renaming a runtime helper, or changing the prologue macros.** It holds who
+owns what between cc370 and libc370, which version needs which, and the
+release checklist (tag only after the coordinating mbt session's go). libc370
+keeps the same file for its side.
+
 ## Goal & Roadmap (Open Points)
 
 **Goal:** a fully host-native MVS cross-toolchain — compile (cc370) + assemble (as370) + **link (ld, planned)** on the host, so only the final load module touches MVS. Today cc370+as370 are proven end-to-end (ctest links + runs on MVS, RC=0); `ld` is the missing piece.

@@ -35,28 +35,47 @@ sysroot — see *Sysroot* below.
 
 ## Install a release
 
-From 1.1.0 every release carries prebuilt toolchains (#523):
+Every release from 1.1.0 carries prebuilt toolchains (#523):
 
 ```sh
 curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
 ```
 
-installs cc370 into `~/.local` (`PREFIX=` to change it) together with the
-newest libc370 whose `metadata.json` accepts it; the checksums in
-`SHA256SUMS` are verified. The release assets themselves:
+installs cc370 into `~/.local` (`PREFIX=` to change it) **and libc370 beside
+it**: the newest libc370 release whose `libc370-<v>-metadata.json` accepts the
+cc370 just installed. Both downloads are checked against their release's
+`SHA256SUMS`. Without a fitting libc370 it installs cc370 alone and says so.
 
-| Platform | Assets |
+| Platform | cc370 assets |
 |---|---|
 | Linux amd64, arm64 | `cc370-<v>-linux-<arch>.tar.gz` (statically linked, any distribution), `cc370_<v>_<arch>.deb`, `cc370-<v>.<x86_64\|aarch64>.rpm` |
-| macOS arm64, Intel | `cc370-<v>-darwin-<arch>.tar.gz` |
-| Windows | use WSL2 and the Linux assets (#698) |
+| macOS arm64, Intel | `cc370-<v>-darwin-<arch>.tar.gz` (macOS 11 / 10.15 and later) |
+| Homebrew | not yet (#699) |
+| Windows | WSL2 and the Linux assets (#698) |
 
-A tarball unpacks into a relocatable tree; libc370's sysroot tarball goes
-into its `cc370/` directory. The `.deb`/`.rpm` install the tree under
-`/usr/lib/cc370` with symlinks in `/usr/bin`, and depend on `libc370-dev` /
-`libc370-devel` (>= 2.1.0). A tarball downloaded with a browser on macOS
-needs `xattr -d com.apple.quarantine` on the unpacked tree; `install.sh`
-does not, curl sets no quarantine flag.
+- **Tarball:** a relocatable tree; unpack it anywhere and use its `bin/`.
+  libc370's `libc370-<v>-sysroot.tar.gz` goes into the tree's `cc370/`
+  directory. A tarball downloaded with a browser on macOS needs
+  `xattr -d com.apple.quarantine` on the unpacked tree; `install.sh` does
+  not, curl sets no quarantine flag.
+- **`.deb` / `.rpm`:** the tree under `/usr/lib/cc370`, symlinks in
+  `/usr/bin` and `/usr/share/man/man1`. cc370 and libc370 depend on each
+  other (below), so install the two packages together, e.g.
+  `apt install ./cc370_1.1.0_amd64.deb ./libc370-dev_2.1.0_all.deb`.
+
+## Compatibility with libc370
+
+cc370 and [libc370](https://github.com/mvslovers/libc370) are versioned
+separately; each states the range of the other it works with.
+
+| | needs |
+|---|---|
+| libc370 2.1.x | cc370 >= 1.1.0, < 2 (every header checks `__CC370__`) |
+| cc370 1.1.x | libc370 >= 2.1.0 (the `.deb` / `.rpm` dependencies) |
+| cc370 1.0.0 | libc370 <= 2.0.x |
+
+Who owns what, why the ranges are what they are, and what a release of
+either project has to do: [docs/releasing.md](docs/releasing.md).
 
 ## Build & install
 
