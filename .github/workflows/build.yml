@@ -94,6 +94,11 @@ jobs:
       - name: prologue macros
         run: make test-macros
 
+      # the compiler runtime's C against the host's native 64-bit arithmetic
+      # (#687); building libcc370rt.a itself needs the compiler, so release.yml
+      - name: runtime host tests
+        run: make test-runtime-host
+
       - name: ld370 suite (byte-identity to the IEWL/IEBCOPY oracles)
         run: sh ld370/tests/run.sh
 

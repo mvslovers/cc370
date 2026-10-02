@@ -398,9 +398,14 @@ struct gcc_target targetm = TARGET_INITIALIZER;
      __paritysi2   __paritydi2     @@PARITY   __builtin_parity[ll]
 
    Give each its own 8-character name.  These are an interface with the
-   library (libc370), so once released they do not change.  Every other
-   collision in the libfunc table is in a mode the i370 never calls a helper
-   for (QI, HI, TI, XF) or in an operation it expands inline.  */
+   runtime library (libcc370rt.a, #687; libc370 before it), so once released
+   they do not change.  Every other collision in the libfunc table is in a
+   mode the i370 never calls a helper for (QI, HI, TI, XF) or in an
+   operation it expands inline.
+
+   __builtin_ffs on an int is the one libcall GCC 3.4 points at libc
+   itself, ffs(), which libc370 does not have.  It calls __ffssi2 (@@FFSSI2)
+   instead, a helper in libcc370rt.a, as later GCC versions do.  */
 
 static void
 i370_init_libfuncs (void)
@@ -413,6 +418,7 @@ i370_init_libfuncs (void)
   set_optab_libfunc (popcount_optab, DImode, "__popcdi");
   set_optab_libfunc (parity_optab, SImode, "__partsi");
   set_optab_libfunc (parity_optab, DImode, "__partdi");
+  set_optab_libfunc (ffs_optab, SImode, "__ffssi2");
 }
 
 /* Set global variables as needed for the options enabled.

@@ -4,7 +4,7 @@
 # The compiler emits calls to helper routines it does not inline -- 64-bit
 # multiply/divide, float <-> long long conversions, popcount/parity/clz/ctz,
 # the -ftrapv checks.  Their external names are an interface with whatever
-# library provides them (libc370 today, libcc370rt.a once #687 lands), and
+# library provides them (libcc370rt.a since #687, libc370 before it), and
 # libc370#190 showed what a silent rename costs.  Two stages:
 #
 #   1. emission -- every case below compiles one construct with cc1 and must
@@ -21,14 +21,16 @@
 #      expected helpers and nothing else.  One that starts to link FAILS
 #      ("XPASS") so the marker is removed in the same change that fixed it.
 #
-# Overrides: CC1=, AS370=, LD370=, SYSROOT=, RTLIBS= (the libraries the link
-# stage searches, default "-lc").
+# Overrides: CC1=, AS370=, LD370=, SYSROOT=, RTDIR= (where libcc370rt.a is
+# looked for first, default the in-tree build), RTLIBS= (the libraries the
+# link stage searches, default "-lcc370rt -lc", the driver's order).
 cd "$(dirname "$0")" || exit 2
 ROOT=../..
 CC1=${CC1:-$ROOT/build/gcc/cc1}
 AS370=${AS370:-$ROOT/as370/as370}
 LD370=${LD370:-$ROOT/ld370/ld370}
-RTLIBS=${RTLIBS:--lc}
+RTDIR=${RTDIR:-$ROOT/build/runtime}
+RTLIBS=${RTLIBS:--lcc370rt -lc}
 if [ ! -x "$CC1" ]; then
     echo "cc1 not found at $CC1 -- run 'make compiler' first (or set CC1=)" >&2
     exit 2
@@ -74,16 +76,25 @@ case_ () {
     # libraries are asked for is the helper.  --warn-shadow names a helper
     # defined twice, which must not happen either.
     "$LD370" --warn-shadow --entry PROBE -o "$WORK/$name.lm" "$WORK/$name.o" \
-        -L "$SYSROOT/lib" $RTLIBS >"$WORK/ld" 2>&1
+        -L "$RTDIR" -L "$SYSROOT/lib" $RTLIBS >"$WORK/ld" 2>&1
     rc=$?
+    # A helper defined twice is a failure -- with one exception, the
+    # transition #687 creates: a libc370 before 2.1 still carries its own
+    # copies in libc.a.  The runtime is searched first and wins, so that
+    # shadow is expected and only noted.  Any other pair, or libc.a winning,
+    # fails.
+    shadow=""
     if grep -q "also defined by" "$WORK/ld"; then
-        echo "$name: FAIL (helper defined twice)"; grep "also defined by" "$WORK/ld" | sed 's/^/    /'; fail=1; return
+        if grep "also defined by" "$WORK/ld" | grep -qv "in [^ ]*libcc370rt\.a; also defined by [^ ]* in [^ ]*/libc\.a "; then
+            echo "$name: FAIL (helper defined twice)"; grep "also defined by" "$WORK/ld" | sed 's/^/    /'; fail=1; return
+        fi
+        shadow="; libc.a's copy shadowed -- libc370 before 2.1"
     fi
     if [ $rc = 0 ]; then
         if [ "$xfail" != - ]; then
             echo "$name: XPASS (links now -- remove the XFAIL for $xfail)"; fail=1
         else
-            echo "$name: OK (emits $got, links)"
+            echo "$name: OK (emits $got, links$shadow)"
         fi
     else
         missing=$(sed -n '/unresolved external reference/,/unresolved external(s)/p' "$WORK/ld" | grep '^    ' | tr -d ' ' | sort -u | tr '\n' ' ' | sed 's/ $//')
@@ -132,15 +143,16 @@ case_ clzdi2 "" "@@CLZDI2" - "$LL int probe(ull x) { return __builtin_clzll(x); 
 case_ ctzsi2 "" "@@CTZSI2" - "int probe(unsigned x) { return __builtin_ctz(x); }"
 case_ ctzdi2 "" "@@CTZDI2" - "$LL int probe(ull x) { return __builtin_ctzll(x); }"
 case_ ffsdi2 "" "@@FFSDI2" - "$LL int probe(ll x) { return __builtin_ffsll(x); }"
-# SImode ffs is GCC's default libfunc: libc's ffs(), which libc370 lacks.
-case_ ffssi "" "FFS" "#687" "int probe(int x) { return __builtin_ffs(x); }"
+# SImode ffs was GCC's default libfunc, libc's ffs(), which libc370 lacks;
+# since #687 it is the runtime's __ffssi2.
+case_ ffssi "" "@@FFSSI2" - "int probe(int x) { return __builtin_ffs(x); }"
 
 # --- -ftrapv: overflow-checking arithmetic; none of these exists yet ---
-case_ addvdi3 "-ftrapv" "@@ADDVDI" "#687" "$LL ll probe(ll a, ll b) { return a + b; }"
-case_ subvdi3 "-ftrapv" "@@SUBVDI" "#687" "$LL ll probe(ll a, ll b) { return a - b; }"
-case_ mulvdi3 "-ftrapv" "@@MULVDI" "#687" "$LL ll probe(ll a, ll b) { return a * b; }"
-case_ mulvsi3 "-ftrapv" "@@MULVSI" "#687" "int probe(int a, int b) { return a * b; }"
-case_ negvdi2 "-ftrapv" "@@NEGVDI" "#687" "$LL ll probe(ll a) { return -a; }"
+case_ addvdi3 "-ftrapv" "@@ADDVDI" - "$LL ll probe(ll a, ll b) { return a + b; }"
+case_ subvdi3 "-ftrapv" "@@SUBVDI" - "$LL ll probe(ll a, ll b) { return a - b; }"
+case_ mulvdi3 "-ftrapv" "@@MULVDI" - "$LL ll probe(ll a, ll b) { return a * b; }"
+case_ mulvsi3 "-ftrapv" "@@MULVSI" - "int probe(int a, int b) { return a * b; }"
+case_ negvdi2 "-ftrapv" "@@NEGVDI" - "$LL ll probe(ll a) { return -a; }"
 
 # --- must stay inline: a helper appearing here is a regression too ---
 case_ inl-shl64 "" - - "$LL ull probe(ull a, int n) { return a << n; }"
