@@ -1386,9 +1386,15 @@ Filed 2026-09-09/10 out of the macro-language work and never listed here.
 - ~~**#333**~~ — `T'` of a parameter whose argument was a SET variable is `U`.
   **Fixed** (PR #679): re-measured on a post-#340 binary, exactly one module
   moves (BLSR3270 rc 0 -> 4, IFOX00's). The earlier `-70` was #334's overflow.
-- **Noted, no issue:** `DC B'1,10'` assembles to one byte `06` where each value
-  should be its own byte (`01 02`); the literal path (#680) does the latter. No
-  MVSBLD module writes a B value list -- measure before touching.
+- **#683** `DC B'1,10'` is one byte where each value should be its own (no
+  MVSBLD use); **#682** an `MNOTE 0` is not counted as flagged; **#684** `PRINT
+  DATA` not acted on. Filed 2026-10-02 from the BLSR3270 work.
+- **#140 re-derived (2026-10-02):** 115 modules where IFOX00 flags and as370 is
+  silent -- 113 are the oracle's macro libraries (IFO092 on an older MODID, 47;
+  private macros the run lacked, 66). The 2 as370-owned (IBCDASDI, IBCDMPRS,
+  IFO053) are binary REPRO text; JOB00318 refuted the column-72 hypothesis and
+  fixed a real REPRO defect on the way (#691: a punched card is never
+  continued). What is left is the binary data's transport, not as370.
 
 ## The five cases — `mvssrc`'s cut, and the smallest is first on purpose
 
@@ -1547,6 +1553,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #691, MERGED as `80a31dc`.** The card REPRO punches is
+  never continued (MVSTK5-REF JOB00318, `tests/reproc72.s`, snapshots
+  1148->1157 unchanged). listref case 12: 134 pages. #140 re-derived and
+  commented; #682-#684 filed.
 
 - **2026-10-02 — #333 and #140's BLSR3270, MERGED as `1aa6637`, `1b4df2b`
   (PRs #679, #680).** `T'` of a SET-variable argument is `U` (rc 0 -> 4 for
