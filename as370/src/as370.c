@@ -4580,7 +4580,7 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
         if (!strcmp(op, "MACRO")) {   /* COPY'd / inline macro definition */
             int from = pc, k;
             char **svc = g_cap_logical; g_cap_logical = (arr == g_main_raw) ? g_main_logical : NULL;
-            capture_macro(arr, n, &pc, arr == g_main_raw ? g_main_seq : NULL);   /* an in-stream model card keeps its 73-80 too */
+            struct macro *dm = capture_macro(arr, n, &pc, arr == g_main_raw ? g_main_seq : NULL);   /* an in-stream model card keeps its 73-80 too */
             g_cap_logical = svc;
             /* IFOX00 lists an in-stream definition where it is written, every
              * card from MACRO to MEND numbered as a statement, `.*' comments
@@ -4592,10 +4592,20 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
              * assembled. A definition read inside an expansion is not listed
              * (NOMLOGIC), nor is a library macro (NOLIBMAC): neither comes
              * through here at generation level 0. */
+            /* A body card that uses a variable symbol nothing has declared yet is
+             * IFO006 here, at the definition, as well as at every expansion:
+             * undeclset flags 46 and 47 and then 59 and 60, undeclset2 39, 45
+             * and 50 and then 60, 62 and 65 (tests/listref, #659). The body is
+             * the cards after the prototype, so body[k] is arr[from + 2 + k]. */
             if (g_genlevel == 0)
                 for (k = from; k <= pc && k < n && *nout < MAXLINES; k++) {
                     lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL;
-                    line_org[*nout] = org ? org[k] : g_curorg; out[*nout] = strdup(arr[k]); (*nout)++;
+                    line_org[*nout] = org ? org[k] : g_curorg; out[*nout] = strdup(arr[k]);
+                    if (dm && dm->undecl && k >= from + 2 && k - from - 2 < dm->nbody && dm->undecl[k - from - 2][0]) {
+                        char m[96]; snprintf(m, sizeof m, "%s is an undefined variable symbol - nothing declares it (IFOX00 IFO006)", dm->undecl[k - from - 2]);
+                        note_operr(m, 8, *nout);
+                    }
+                    (*nout)++;
                 }
             pc++; continue;
         }
