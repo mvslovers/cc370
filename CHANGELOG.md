@@ -20,6 +20,21 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-03
+
+**The compiler takes over its runtime.** The helper routines its code calls
+and the prologue macros its assembler output needs now ship with cc370
+instead of libc370, so cc370 assembles its own output without libc370, and
+the two projects no longer have to release in lockstep when a helper changes.
+libc370 2.1.0 is the matching release: it drops its copies and requires
+`cc370 >= 1.1.0` (checked at compile time through `__CC370__`). From this
+release cc370 is also published prebuilt for Linux and macOS.
+
+**Upgrading:** projects built with mbt need an mbt that links `-lcc370rt`
+(mbt#138) before they move to libc370 2.1. An installed libc370 2.0 keeps
+working with cc370 1.1.0: the runtime is linked first and wins over its
+copies.
+
 ### Added
 - **Prebuilt releases** (#523): `cc370-<v>-{linux-amd64,linux-arm64,
   darwin-arm64,darwin-amd64}.tar.gz` (the Linux ones statically linked
@@ -51,6 +66,10 @@ neither number is mistaken for the other.
   library requires a minimum compiler with
   `#if !defined(__CC370__) || __CC370__ < 10100` (libc370#315). 1.0.0 does not
   define it, so a missing macro means 1.0.0 or older.
+
+### Fixed
+- **ld370 names a missing input object** (#519, #713) instead of ending the
+  link at rc 1 with no message: `ld370: cannot open PATH: <reason>`.
 
 ## [1.0.0] - 2026-10-02
 
