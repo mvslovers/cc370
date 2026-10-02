@@ -1350,11 +1350,18 @@ was found while building a `listref` case, and each is excluded from that case
 - Four stale references (sectlen, dsectpool, usingreloc, extrn_csect)
   **recaptured** on MVSTK5-REF, JOB00314-00317 (PR #653). tests/listref now:
   126 of 136 SOURCE pages identical, cross-reference 130 exact.
-- **#652** — as370 prints **no `*** ERROR ***` row at all** (IFOX00: markers
-  in 38 references). Every listref comparison drops the marker, so the 126
-  are identical *apart from* it. It also moves page breaks (undeclset,
-  undeclset2, xrefcov). Largest listing item left; needs a comparison that
-  keeps the marker.
+- ~~**#652**~~ — as370 printed no `*** ERROR ***` row at all. **Fixed** (PR
+  #663, `8d72908`): after the flagged statement's last card, first on the
+  page a flagged TITLE starts, never under an MNOTE. listref case 12 now
+  compares the markers: 123 pages identical with them (96 before).
+- **Diagnostic gaps the markers exposed:** **#659** IFO006 is not raised at
+  the in-stream definition (undeclset, undeclset2 -- also their page breaks);
+  **#660** an undefined symbol in a literal is charged to the instruction, not
+  the pool statement (undefsym); **#661** IFO158 not raised (ccwstar);
+  **#662** L' in AIF of an EQU/undefined symbol raises nothing (lenattr,
+  IFO120/IFO080). Also seen in the ifox-run IBM listings, not filed yet:
+  IFO092 (keyword parameter not in the definition) is never raised, and IFO117
+  is charged to the macro call instead of the SETC.
 - **#654** — cards a column-72 comment swallows are not listed (cont72,
   contsev). **#655** — the card after REPRO is neither listed nor numbered.
   **#656** — an open-code statement substituted across cards lists only its
@@ -1535,6 +1542,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #652, MERGED as `8d72908` (PR #663).** `*** ERROR ***` rows
+  in the SOURCE listing, compared by listref case 12 from now on: 96 -> 123
+  pages identical with markers; #659-#662 filed for the diagnostics they
+  exposed. MVSBLD gate 0 moved, all 5,528 with `-a` at the gate's rc.
 
 - **2026-10-02 — #643, #645, #647, #650 and four recaptures, MERGED as
   `bbc3bae`, `0e08d6f`+`eee52df`, `6a5079b`, `c8a3474`, `b9e214d` (PRs #644,
