@@ -4313,7 +4313,10 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     int ifo007_in = g_ifo007; g_ifo007 = 0;
     int ifo006_in = g_ifo006; g_ifo006 = 0;
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
-    char sysbuf[STMTSZ]; sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
+    /* A comment card is not substituted: IFOX00 lists `* ... &SYSDATE ...'
+     * as written (tests/listref, remark_sub statement 19). */
+    char sysbuf[STMTSZ];
+    if (line[0] == '*') scopy(sysbuf, line, STMTSZ - 1); else sysvar_sub(line, sysbuf, sizeof sysbuf);   /* resolve &SYSDATE/&SYSTIME up front */
     char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
     scopy(buf, sysbuf, STMTSZ - 1);
     { int sv = g_genstmt; g_genstmt = (g_genlevel > 0 && !g_copyraw); parse(buf, lbl, op, opnd); g_genstmt = sv; }

@@ -499,11 +499,11 @@ done
 # --- case 12: every SOURCE page that matches IFOX00 keeps matching -- #150 --
 # The SOURCE page of each reference named here is IFOX00's line for line:
 # headings, statement numbers and blank lines; *** ERROR *** markers aside.
-# Before #150 listed in-stream macro definitions, 63 of the 135 did. 118 of
+# Before #150 listed in-stream macro definitions, 63 of the 135 did. 119 of
 # 136 do since #626 (NOMCALL), #627 (alignment pads), #24 (no object code on a
-# DS), #370 (a generated statement's continuation cards) and #640 (a DC, CCW
-# or CNOP pad on a row of its own), plus tstlist, which needs the libc370
-# macros and is case 1's. A reference that starts
+# DS), #370 (a generated statement's continuation cards), #640 (a DC, CCW
+# or CNOP pad on a row of its own) and #643 (a comment card not substituted),
+# plus tstlist, which needs the libc370 macros and is case 1's. A reference that starts
 # matching belongs on this list; one that stops is a regression.
 python3 - <<'PYS' || fail=1
 import re, os, subprocess
@@ -517,11 +517,11 @@ equfwd equlen equlist eququote equsect equtype equtypegen2 esdself esdvsect
 fltoracl fpopc genblank gencont kwundef lblorg ldentry len_attr lenattr
 litdup litdupexpr litlist litplusterm litpz litscale logop macbuf
 multi-csect orglen orgnever ovlattr parendepth pool printerr printgen
-regexpr reloc-addr relocerr relop rldlen rldorg rxparen scale sconabs
-selfdup setc_len95 setc_open setc_substr setc_undef setctype spacelines
-spacelist spmrr ssb1 ssomit stmtlen subattr sublist substrcat syslist
-sysparm_substr tattr_expr tattr_literal tattr_selfdef tattr_symbol titlegen
-titlelong titlenamed titlepage undefsym usingexpr usingkey usingmul
+regexpr reloc-addr relocerr relop remark_sub rldlen rldorg rxparen scale
+sconabs selfdup setc_len95 setc_open setc_substr setc_undef setctype
+spacelines spacelist spmrr ssb1 ssomit stmtlen subattr sublist substrcat
+syslist sysparm_substr tattr_expr tattr_literal tattr_selfdef tattr_symbol
+titlegen titlelong titlenamed titlepage undefsym usingexpr usingkey usingmul
 usingparen usingparenpc var_opcode xfdirect xsectrel
 """.split()
 def src(path):
@@ -542,8 +542,13 @@ for t in NAMES:
     s = next(x for x in ("tests/%s.s" % t, "tests/%s.s" % t.replace("-", "_"), "tests/listref/%s.s" % t)
              if os.path.exists(x))
     out = "/tmp/as370-listref-src.%d" % os.getpid()
-    subprocess.run(["./as370", s, "-a=" + out, "-o", "/dev/null"], capture_output=True)
-    if src(out) != src("tests/listref/ifox-listing-%s.txt" % t): bad.append(t)
+    ref = "tests/listref/ifox-listing-%s.txt" % t
+    # &SYSDATE/&SYSTIME as on the day of the capture, read off its heading
+    # (remark_sub lists a DC of &SYSDATE)
+    m = re.search(r" (\d\d\.\d\d) (\d\d/\d\d/\d\d)", open(ref, encoding="latin-1").read())
+    env = dict(os.environ, **({"ASMTIME": m.group(1), "ASMDATE": m.group(2)} if m else {}))
+    subprocess.run(["./as370", s, "-a=" + out, "-o", "/dev/null"], capture_output=True, env=env)
+    if src(out) != src(ref): bad.append(t)
     os.remove(out)
 print("listref source: %d SOURCE pages line for line with IFOX00" % len(NAMES) if not bad
       else "listref source: MISMATCH in %s" % " ".join(bad))
