@@ -4561,6 +4561,18 @@ if [ $rcl != 4 ] || ! grep -q 'IFO120) in line 52 (statement 55)' /tmp/_la$$.out
 else echo "lattrdiag: OK (IFO120 on QL EQ4,1 and IFO080 on QL NODEF,1, rc 4, as IFOX00)"; fi
 rm -f /tmp/_la$$.out
 
+# --- issue #333: T' of a macro parameter follows what was written ----------
+# An argument written as a SET variable -- local or global, SETA or SETC --
+# gives U; a literal or the caller's own parameter keeps its value's N
+# (measured on MVSTK5-REF, the issue's table). Every argument is 6.
+./as370 tests/tattr_setarg.s -o /tmp/_ts$$.obj >/dev/null 2>&1
+tsa=$(python3 -c "
+d=open('/tmp/_ts$$.obj','rb').read()
+print(b''.join(d[i+16:i+16+int.from_bytes(d[i+10:i+12],'big')] for i in range(0,len(d),80) if d[i+1:i+4]==b'\\xe3\\xe7\\xe3').decode('cp037'))")
+if [ "$tsa" = "UNNUUU" ]; then echo "tattr_setarg: OK (U N N U U U, as IFOX00)"
+else echo "tattr_setarg: FAIL -- got '$tsa', IFOX00 has UNNUUU"; fail=1; fi
+rm -f /tmp/_ts$$.obj
+
 # --- issue #199: DC 0V(name) enters no ER -----------------------------------
 # HMASMTMD's three `DC 0V(...)' names are absent from IFOX00's ESD; as370 had
 # them as three extra ER entries, one ESD card more. ONE is the control.

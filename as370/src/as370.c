@@ -1997,6 +1997,16 @@ static int line_sect[MAXLINES];
  * for an ordinary source line, where lines[] is already the verbatim card. */
 static char *gcard[MAXLINES];
 static const char *g_genimg;   /* image for the single line the next mexp_line emits */
+/* T' of a macro parameter follows what was WRITTEN at the call, not the value
+ * (#333, measured on MVSTK5-REF over seven forms): an argument written as a SET
+ * variable -- local or global, SETA or SETC -- gives U; a literal, or the
+ * caller's own parameter passed along, keeps its value's type. The call's
+ * operand reaches the binding already substituted, so a model card's operand
+ * as written travels beside it: mexp_macro -> mexp_line (g_argraw, g_argctx,
+ * the caller's context) -> the nested mexp_macro (g_callraw, g_callctx). */
+static const char *g_argraw, *g_callraw;
+struct ctx;
+static struct ctx *g_argctx, *g_callctx;
 /* The lines[] slot a conditional-assembly diagnostic attaches to, or -1 when no
  * statement is being evaluated. A SETC substring error has no statement of its
  * own to point at otherwise: eval_setc is three calls below the card, and the
@@ -2187,6 +2197,7 @@ struct ctx {
      * innocent. A silent out-of-bounds write is not a latent bug, it is a bug
      * whose symptom is currently somewhere else (cc370#334). */
     char pv[MAXPARM][VALSZ];                  /* parameter values (may be sublists) */
+    unsigned char pu[MAXPARM];                /* the argument was written as a SET variable: T' is U (#333) */
     const char *namepval;
     struct setrow sr[MAXLSET]; int nset;   /* local SET symbols, arrays one row each */
     int sysndx;                            /* &SYSNDX for this macro invocation */
@@ -2969,7 +2980,10 @@ static const char *type_attr(struct ctx *c, const char *p, char *out) {
         while (*p && (isalnum((unsigned char)*p) || *p=='@'||*p=='#'||*p=='$'||*p=='_') && i < 42) ref[i++] = *p++;
         if (*p == '(') { ref[i++] = *p++; int d = 1;
             while (*p && d && i < 42) { if (*p=='(') d++; else if (*p==')') d--; ref[i++] = *p++; } }
-        ref[i] = 0; vref(c, ref, v);
+        ref[i] = 0;
+        if (c && c->m && !strchr(ref, '(')) { int j;      /* an argument written as a SET variable: U (#333) */
+            for (j = 0; j < c->m->nparm; j++) if (c->pu[j] && !strcmp(ref, c->m->pname[j])) { strcpy(out, "U"); return p; } }
+        vref(c, ref, v);
     } else {
         int k = 0;
         if ((*p == 'X' || *p == 'B' || *p == 'C') && p[1] == '\'') {   /* a self-defining term keeps its quotes */
@@ -4081,7 +4095,24 @@ static void mcall_push(const char *name, long stmt, int depth) {
 static void mcall_pop(void) { if (mcall_sp > 0) mcall_sp--; }
 static int mcall_cur(void) { return mcall_sp > 0 ? mcall_stack[mcall_sp - 1] : -1; }
 
+/* An argument written as exactly one SET variable reference, `&NAME', that is
+ * not one of the caller's own parameters nor a system variable (#333). Forms
+ * beyond the seven measured -- a subscript, a concatenation -- are left to the
+ * value, as before. */
+static int arg_is_setref(const char *a, const struct ctx *caller) {
+    const char *p = a; int j;
+    if (!caller || !caller->m || *p != '&' || p[1] == '&') return 0;
+    p++;
+    if (!(isalpha((unsigned char)*p) || *p == '@' || *p == '#' || *p == '$' || *p == '_')) return 0;
+    while (*p && (isalnum((unsigned char)*p) || *p == '@' || *p == '#' || *p == '$' || *p == '_')) p++;
+    if (*p) return 0;
+    if (!strncmp(a, "&SYS", 4)) return 0;
+    if (caller->m->namep[0] && !strcmp(a, caller->m->namep)) return 0;
+    for (j = 0; j < caller->m->nparm; j++) if (!strcmp(a, caller->m->pname[j])) return 0;
+    return 1;
+}
 static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char **out, int *nout, int depth) {
+    const char *craw = g_callraw; struct ctx *cctx = g_callctx; g_callraw = NULL; g_callctx = NULL;   /* #333 */
     g_genlevel++;   /* lines emitted during this expansion are macro-generated */
     /* cc370#411: the CALL, not merely the depth.  `*nout' is the next output
      * line, so the call's own listing statement is the one before it -- a macro
@@ -4114,7 +4145,15 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
     scopy(c->sysect, g_sysect, 8);          /* frozen here, for the whole expansion */
     int k;
     for (k = 0; k < m->nparm; k++) { scopy(c->pv[k], m->pkey[k] ? m->pdef[k] : "", VALSZ - 1); }
+    /* The call's operand as written, split the same way: its fields line up
+     * with args[] only if substitution added or removed none, and only then is
+     * it read (an index mixed between the two is #333's own earlier defect). */
+    char (*rargs)[FLDW] = NULL; int nra = -1;
+    if (craw && cctx && opnd[0]) { char rb[FLDMAX]; scopy(rb, craw, sizeof rb - 1);
+        rargs = malloc((size_t)MAXSYSLIST * FLDW);
+        if (rargs) nra = split_fields(rb, rargs, MAXSYSLIST); }
     if (opnd[0]) { int na = split_fields(opnd, args, MAXSYSLIST), pos = 0;
+        int prov = rargs && nra == na;
         /* IFOX00 IFO042, measured on the guest: 255 characters is clean, 256 and
          * up are flagged at severity 8.  A parameter that long is cut to fit
          * whatever we do -- what must not happen is cutting it in silence. */
@@ -4123,7 +4162,9 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             char *eq = strchr(args[k], '='); int iskw = eq && eq != args[k];
             if (iskw) { char *cc; for (cc = args[k]; cc < eq; cc++) if (!isalnum((unsigned char)*cc) && *cc!='@'&&*cc!='#'&&*cc!='$'&&*cc!='_') { iskw = 0; break; } }
             if (iskw) { *eq = 0; int j, kwhit = 0; char nm[66]; snprintf(nm, sizeof nm, "&%.63s", args[k]);
-                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { scopy(c->pv[j], eq + 1, VALSZ - 1); kwhit = 1; break; }
+                for (j = 0; j < m->nparm; j++) if (!strcmp(nm, m->pname[j])) { scopy(c->pv[j], eq + 1, VALSZ - 1); kwhit = 1;
+                    if (prov) { const char *re = strchr(rargs[k], '='); c->pu[j] = (unsigned char)(re && arg_is_setref(re + 1, cctx)); }
+                    break; }
                 /* A keyword the prototype does not declare is IFOX00 IFO092
                  * KEYWORD PARAMETER <name> UNDEFINED IN MACRO DEFINITION, severity
                  * 8, ONE message per keyword -- and the expansion goes ahead
@@ -4147,7 +4188,9 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
                      * line is what IFOX00 attributes it to, and g_mcall_slot is
                      * kept for exactly that. */
                     note_operr(msg, 8, g_mcall_slot); } }
-            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c->pv[j], args[k], VALSZ - 1); break; } cc2++; }
+            else { int j, cc2 = 0; for (j = 0; j < m->nparm; j++) if (!m->pkey[j]) { if (cc2 == pos) { scopy(c->pv[j], args[k], VALSZ - 1);
+                    if (prov) c->pu[j] = (unsigned char)arg_is_setref(rargs[k], cctx);
+                    break; } cc2++; }
                 if (pos < MAXSYSLIST) { scopy(c->syslist[pos], args[k], VALSZ - 1); }
                 else if (pos == MAXSYSLIST) note_operr("More than 255 positional macro operands - the rest are not addressable through &SYSLIST", 8, g_curln);
                 pos++; c->nsyslist = pos; }
@@ -4254,7 +4297,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
          * The remark is not lost: `ex' is the semantic text and the listing image
          * comes from render_model() below, which is column-preserved and reads the
          * body card whole. Cutting here costs nothing the listing needs. */
-        char ex[STMTSZ];
+        char ex[STMTSZ]; static char argraw[FLDMAX];
         { const char *bc = m->body[pc]; int bl = rawlen(bc);
           int fcol[4]; static char fld[4][FLDMAX];
           split_card(bc, bl, bl, fcol, fld);
@@ -4262,16 +4305,19 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
           char cut[STMTSZ]; if (keep > STMTSZ - 1) keep = STMTSZ - 1;
           memcpy(cut, bc, (size_t)keep); cut[keep] = 0;
           g_ifo007 = 0;                          /* cc370#421: arm for THIS model card */
-          msub(c, cut, ex, sizeof ex); }
+          msub(c, cut, ex, sizeof ex);
+          scopy(argraw, fld[2], sizeof argraw - 1); }   /* the operand as WRITTEN, for a nested call's T' (#333) */
         char gimg[OUTSZ_LOG];   /* column-preserved image for the SOURCE column; a continued model's carries its cards (#370) */
         if (m->bodylog && m->bodylog[pc]) render_model_log(c, m->bodylog[pc], m->bodyseq[pc], gimg, 0);
         else render_model(c, m->body[pc], m->bodyseq[pc], gimg);
         g_genimg = gimg;
+        g_argraw = argraw; g_argctx = c;
         mexp_line(ex, out, nout, depth + 1);
+        g_argraw = NULL; g_argctx = NULL;
         pc++;
     }
     g_genlevel--; mcall_pop(); g_copyraw = savecopyraw; g_copyctx = savecopyctx;
-    set_free(c); free(c); free(seqn); free(seqi); free(args);
+    set_free(c); free(c); free(seqn); free(seqi); free(args); free(rargs);
 }
 /* persistent open-code conditional-assembly context (shared by the top-level
  * pass and every COPY'd block, so a GBLC/SETC in PDPTOP reaches an AIF in
@@ -4367,6 +4413,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     int ifo007_in = g_ifo007; g_ifo007 = 0;
     int ifo006_in = g_ifo006; g_ifo006 = 0;
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
+    const char *argraw = g_argraw; struct ctx *argctx = g_argctx; g_argraw = NULL; g_argctx = NULL;   /* #333 */
     const char *clog = g_curlog, *cseq = g_curseq; g_curlog = g_curseq = NULL;   /* likewise: a continued open-code card's logical text (#656) */
     /* A comment card is not substituted: IFOX00 lists `* ... &SYSDATE ...'
      * as written (tests/listref, remark_sub statement 19). */
@@ -4548,6 +4595,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         if (subst || g_genlevel > 0) { strncpy(aopnd, opnd, sizeof aopnd - 1); aopnd[sizeof aopnd - 1] = 0; }
         else msub(opc, opnd, aopnd, sizeof aopnd);
         int savecall = g_mcall_slot; g_mcall_slot = *nout - 1;   /* the call line just appended */
+        g_callraw = argraw; g_callctx = argctx;                  /* #333: consumed at mexp_macro's entry */
         mexp_macro(m, lbl[0] == '.' ? "" : lbl, aopnd, out, nout, depth);
         g_mcall_slot = savecall; return;
     }
