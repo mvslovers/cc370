@@ -131,10 +131,10 @@ does not compete with them: it orders defects, this orders the release.
 |---|---|---|---|
 | 0 · safeguards | ~~#685~~, #686 | **#685 done** (PR #694, `e245141`); #686 open | — |
 | 1 · versioning | #523 | **done — v1.0.0 released 2026-10-02** (#700, release PR #702, tag on `85aa497`) | — |
-| 2 · runtime (1.1.0) | ~~#687~~, ~~#688~~ | **done** — #708 (`6c32580`, macros without SAVE/RETURN), #709 (`fd83e21`, `libcc370rt.a`); #704 `__CC370__` also in | the 1.1.0 tag (after B, with mbt-4c's go); libc370#313 gated on mbt#138 |
+| 2 · runtime (1.1.0) | ~~#687~~, ~~#688~~ | **released in 1.1.0** — #708 (`6c32580`), #709 (`fd83e21`), #704 `__CC370__` | — |
 | 3 · public macros | #689 | open | Phase 2 |
 | 4 · startup | (libc370, research) | — | — |
-| 5 · prebuilt and pinned | #523 (artifacts), #699, #698 | **cc370's half done** — #712 (`ee8c007`): tarballs ×4, .deb/.rpm ×2, install.sh, SHA256SUMS; package.yml green on all four hosts | the 1.1.0 tag; libc370's assets (libc370#326); #699 the tap token |
+| 5 · prebuilt and pinned | #523 (artifacts), #699, #698, #718 | **cc370's half released with 1.1.0** — 10 assets on v1.1.0 | libc370's assets (libc370#326); #699 the tap token; #718 strip (1.1.1) |
 
 ---
 
@@ -1570,6 +1570,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-03 — cc370 1.1.0 RELEASED** (tag `v1.1.0` on `65a2e15`, PR #717,
+  mbt-4c's go; release.yml 37075058997 green). Ten assets; `curl | sh` from
+  the release installs `cc370 1.1.0 (65a2e15)` and reports no fitting
+  libc370 yet. #718 filed (strip, 1.1.1).
 
 - **2026-10-03 — #523 Phase 5 (cc370's half), MVS run of the runtime, #519.**
   #711 VERSION 1.1.0-dev; #712 (`ee8c007`) release artifacts for every host,
