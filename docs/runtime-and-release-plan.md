@@ -127,7 +127,10 @@ rexx370, 9 in nsf370. That makes every change to them a breaking change.
 ### Phase 5 — prebuilt and pinned
 
 - **cc370 binary releases** with SHA-256 (#523). The installation is already
-  relocatable: cc370 finds everything relative to its own binary.
+  relocatable: cc370 finds everything relative to its own binary — and it
+  resolves symlinks to get there (measured: through a symlink elsewhere or on
+  `PATH` it compiles and links; a *copy* of the driver does not), so the
+  `/usr/bin` and Homebrew symlinks need no wrapper.
 
   | Platform | Channel |
   |---|---|
@@ -142,7 +145,29 @@ rexx370, 9 in nsf370. That makes every change to them a breaking change.
   which sets no quarantine flag.
 - **libc370 sysroot tarball** per release (headers, `libc.a`, `crt*.o`,
   macros), built with a named cc370 and declaring the cc370 range it needs —
-  after Phase 2 that range is wide and rarely moves.
+  after Phase 2 that range is wide and rarely moves. Its content is MVS
+  target code, so it is **one artifact for every host**: `libc370-<v>-sysroot.tar.gz`,
+  `libc370-dev_<v>_all.deb`, `libc370-devel-<v>.noarch.rpm`, plus
+  `libc370-<v>-metadata.json` carrying the cc370 range.
+- **The dependency, per channel** (details in #523). libc370 → cc370 is hard
+  (a range: `>= 1.0.0, < 2` now, `>= 1.1.0, < 2` from libc370 2.1); cc370 →
+  libc370 is soft (which libc370 is the project's choice).
+
+  | Channel | libc370 → cc370 | cc370 → libc370 |
+  |---|---|---|
+  | Debian / RPM | `Depends`/`Requires` with the range | `Recommends` |
+  | tarball + `install.sh` | range from `metadata.json` vs `cc370 --version` | installs a matching libc370 |
+  | Homebrew | no ranges in brew: the formula fixes libc370's version | same formula |
+  | mbt | `[toolchain]` pins, range from the metadata | pinned per project |
+  | every channel | compile time: libc370 `#error`s below its minimum, keyed on `__CC370__` (#704, libc370#315) | — |
+
+  `__CC370__` did not make 1.0.0; it comes with 1.1.0, which is also the
+  first minimum the check needs to enforce.
+- **Trap at 1.1.0:** cc370 then installs the three macro files libc370 2.0
+  still owns at the same paths, which dpkg and rpm refuse. cc370 1.1.0's
+  packages need `Breaks`/`Replaces: libc370-dev (<< 2.1.0)` (RPM:
+  `Conflicts`) — noted on #688. The helpers are not affected: they live
+  inside `libc.a`.
 - **Consumers pin both** through mbt; mbt can build libc370 from its tag with
   the pinned cc370 as a cached fallback, and every published artifact records
   the toolchain it was built with. That half is mbt's, in its design proposal
