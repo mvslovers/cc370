@@ -6521,7 +6521,10 @@ static void do_pass(int pass, char **lines, int nlines) {
                     struct sym *es = (rsym[0] && rsym[0] != '*') ? sym_find(rsym) : NULL;
                     int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255]
                                                    : (es && !dsect_sect[es->sect & 255]);
-                    if (tgtreal) { add_reloc(lc + 1, rsym, 0, 3); } }
+                    if (tgtreal) { add_reloc(lc + 1, rsym, 0, 3); }
+                    /* A DSECT symbol as the data address is IFO158, as in a DC's
+                     * address constant: ccwstar's K4 (tests/listref, #661). */
+                    else if (!in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(rsym, i); }
                 put(lc + 4, nf >= 3 ? expr_val(F[2], 0) & 0xff : 0, 1); put(lc + 5, 0, 1);
                 put(lc + 6, nf >= 4 ? expr_val(F[3], 0) & 0xffff : 0, 2); }
             lc += 8;

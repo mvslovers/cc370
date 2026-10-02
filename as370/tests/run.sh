@@ -202,11 +202,9 @@ rm -f /tmp/_au.$$
 # a DSECT gets NO entry, so a fix that drops the DSECT guard fails there.
 #   main d81edda   RLD at 09, 19
 #   IFOX00, this   RLD at 09, 11, 19
-# The rc differs and the deck does not: IFOX00 returns 8 because it diagnoses K4
-# (IFO158, name in a DSECT used in a relocatable address constant) and as370's
-# CCW path issues no message at all. That message gap is cc370#211, measured
-# separately -- ESD/TXT/RLD are byte-identical either way, which is what this
-# loop compares.
+# IFOX00 returns 8 because it diagnoses K4 (IFO158, name in a DSECT used in a
+# relocatable address constant); since #211 as370 does too, so ccwstar has its
+# own check below the extrn_csect one -- this loop requires rc < 8.
 # xsectrel is the #209 oracle: a difference of symbols in DIFFERENT control
 # sections is not absolute -- it takes a SIGNED PAIR of relocation entries, and
 # as370 emitted none because expr_val_full reports NET relocatability and the two
@@ -769,7 +767,7 @@ for s in sample1 sample2 sample3 sample4 sample5 sample6 sample7 sample8 sample9
          csect_resume csect_resume2 csect_resume3 \
          basereg basereg2 tattr_selfdef amp_subst subst_cont \
          amp_fold amp_selfdef len_attr equsect contparen attrapos rldlen \
-         contattr cmprule absusing equlen esdself ssomit ssb1 entsd ccwstar \
+         contattr cmprule absusing equlen esdself ssomit ssb1 entsd \
          xsectrel dcattr equparen attre cnop aifcond eququote bitlen relop \
          rxparen lenattr contrem spmrr dcvlist scale setctype \
          sublist logop collate usingmul stmtlen macbuf setc_len95 dcvals \
@@ -3167,6 +3165,25 @@ print("chain_pc: OK (private code at 0, the named section chained after it)")
 PY
 [ $? = 0 ] || fail=$((fail + 1))
 rm -f /tmp/_chain$$.s /tmp/_chain$$.obj
+
+# ------------------------------------------------------------------ ccwstar --
+# cc370#210 / #211: the deck (RLD at 09, 11, 19 -- K4's DSECT target gets none)
+# and IFO158 on K4 alone, rc 8, one statement flagged, as IFOX00
+# (tests/listref/ifox-listing-ccwstar.txt).
+./as370 tests/ccwstar.s -o /tmp/_ccw$$.obj >/tmp/_ccw$$.out 2>&1
+rcc=$?
+if [ $rcc != 8 ]; then
+    echo "ccwstar: FAIL -- expected RC 8, got $rcc"; fail=$((fail + 1))
+elif ! grep -q "IFO158) in line 22$" /tmp/_ccw$$.out || ! grep -q "1 Statement Flagged" /tmp/_ccw$$.out; then
+    echo "ccwstar: FAIL -- IFOX00 flags K4 (line 22) alone with IFO158"; cat /tmp/_ccw$$.out; fail=$((fail + 1))
+else
+    n=$(( $(wc -c < tests/ref/ccwstar.obj) / 80 - 1 ))
+    head -c $((n * 80)) /tmp/_ccw$$.obj > /tmp/_ccwa$$; head -c $((n * 80)) tests/ref/ccwstar.obj > /tmp/_ccwb$$
+    if [ $(wc -c < /tmp/_ccw$$.obj) = $(wc -c < tests/ref/ccwstar.obj) ] && cmp -s /tmp/_ccwa$$ /tmp/_ccwb$$; then
+        echo "ccwstar: OK (== IFOX00, IFO158 on K4, rc 8)"
+    else echo "ccwstar: MISMATCH (deck)"; fail=$((fail + 1)); fi
+fi
+rm -f /tmp/_ccw$$.obj /tmp/_ccw$$.out /tmp/_ccwa$$ /tmp/_ccwb$$
 
 # -------------------------------------------------------------- extrn_csect --
 # cc370#290: a name declared EXTRN may not name a control section. IFOX00
