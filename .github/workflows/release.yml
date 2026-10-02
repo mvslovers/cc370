@@ -13,11 +13,11 @@
 # 4. The notes are the tag's CHANGELOG.md section
 #    (.github/scripts/changelog-section.py, libc370's script).  A tag without
 #    a section fails here, so no release goes out without notes.
-# 5. If the release already exists (made by hand, with curated notes), it is
-#    left exactly as it is.
-#
-# No assets yet.  The artifacts and channels decided in #523 (tarballs,
-# .deb/.rpm, Homebrew #699) come in the next step.
+# 5. If the release already exists (made by hand, with curated notes), its
+#    notes are left exactly as they are.
+# 6. The assets (#523): package.yml builds the four tarballs and the .deb and
+#    .rpm per Linux arch, each smoke-tested where it was built; this job adds
+#    install.sh and a SHA256SUMS over all of them and attaches the lot.
 
 name: Release
 
@@ -52,8 +52,11 @@ jobs:
       - name: cc370 suite
         run: make test-cc370
 
+  package:
+    uses: ./.github/workflows/package.yml
+
   release:
-    needs: [build, compiler]
+    needs: [build, compiler, package]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +70,17 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cc370-*
+          path: assets
+          merge-multiple: true
+
+      - name: install.sh and SHA256SUMS
+        run: |
+          cp packaging/install.sh assets/
+          cd assets && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
       - name: Release notes
         run: python3 .github/scripts/changelog-section.py "${GITHUB_REF_NAME#v}" > notes.md
 
@@ -76,7 +90,8 @@ jobs:
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "Release $GITHUB_REF_NAME exists; its notes are left as they are."
+            gh release upload "$GITHUB_REF_NAME" assets/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
-              --title "cc370 $GITHUB_REF_NAME" --notes-file notes.md
+              --title "cc370 $GITHUB_REF_NAME" --notes-file notes.md assets/*
           fi

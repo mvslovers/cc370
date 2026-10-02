@@ -44,6 +44,11 @@ TRIPLE  ?= cc370
 VERSION := $(shell tr -d ' \t\r\n' < VERSION)
 HOSTCC  ?= cc
 CFLAGS  ?= -O2 -Wall -Wextra -Werror
+# Release builds (packaging/, #523): HOST_LDFLAGS reaches every host link --
+# the tools and the GCC build alike, -static for the Linux tarballs -- and
+# CONFIGURE_FLAGS the GCC configure.  Both empty for an ordinary build.
+HOST_LDFLAGS    ?=
+CONFIGURE_FLAGS ?=
 
 BINDIR  := $(PREFIX)/bin
 TGTBIN  := $(PREFIX)/$(TRIPLE)/bin
@@ -79,7 +84,7 @@ CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
         test test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 \
-        test-dasm370 test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
+        test-dasm370 dist test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler runtime man
@@ -91,23 +96,23 @@ FORCE:
 # --- standalone tools (normal single-file C binaries) ---------------------
 tools: $(TOOLS)
 as370/as370: as370/src/as370.c as370/include/opc_table.h $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ as370/src/as370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ as370/src/as370.c $(COMMON) $(HOST_LDFLAGS)
 ld370/ld370: ld370/src/ld370.c $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ld370/src/ld370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ld370/src/ld370.c $(COMMON) $(HOST_LDFLAGS)
 ar370/ar370: ar370/src/ar370.c $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ar370/src/ar370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ar370/src/ar370.c $(COMMON) $(HOST_LDFLAGS)
 file370/file370: file370/src/file370.c $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ file370/src/file370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ file370/src/file370.c $(COMMON) $(HOST_LDFLAGS)
 idrdump370/idrdump370: idrdump370/src/idrdump370.c $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ idrdump370/src/idrdump370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ idrdump370/src/idrdump370.c $(COMMON) $(HOST_LDFLAGS)
 cmplmd370/cmplmd370: cmplmd370/src/cmplmd370.c $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ cmplmd370/src/cmplmd370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ cmplmd370/src/cmplmd370.c $(COMMON) $(HOST_LDFLAGS)
 xmit370/xmit370: xmit370/src/xmit370.c $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ xmit370/src/xmit370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ xmit370/src/xmit370.c $(COMMON) $(HOST_LDFLAGS)
 # dasm370 includes as370's opcode table -- it decodes from the table as370
 # encodes from, which is why -Ias370/include is here and not a mistake (#374).
 dasm370/dasm370: dasm370/src/dasm370.c as370/include/opc_table.h $(COMMON) $(COMMONH) $(VERHDR)
-	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ dasm370/src/dasm370.c $(COMMON)
+	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ dasm370/src/dasm370.c $(COMMON) $(HOST_LDFLAGS)
 
 # --- man pages (one .pod per tool -> pod2man -> .1) -----------------------
 man: $(MAN1)
@@ -132,10 +137,10 @@ test-corpus: as370/as370
 # and propagates to the recursive sub-makes.
 $(BUILD)/config.status:
 	mkdir -p $(BUILD)
-	cd $(BUILD) && CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)" ../cc370/configure \
+	cd $(BUILD) && CFLAGS="$(COMPILER_CF) $(HOST_LDFLAGS)" CFLAGS_FOR_BUILD="$(COMPILER_CF)" ../cc370/configure \
 	    --target=$(TRIPLE) --enable-languages=c --disable-threads --disable-nls \
 	    --disable-shared --without-headers \
-	    --with-gcc-version-trigger=../cc370/gcc/version.c
+	    --with-gcc-version-trigger=../cc370/gcc/version.c $(CONFIGURE_FLAGS)
 
 # --- the compiler runtime, libcc370rt.a (#687) -----------------------------
 # The helpers cc370 itself emits calls to -- 64-bit multiply/divide, float <->
@@ -162,7 +167,7 @@ test-runtime-host:
 	@sh runtime/tests/host/run.sh
 
 compiler: $(BUILD)/config.status $(VERHDR)
-	$(MAKE) -C $(BUILD) all-gcc U= CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
+	$(MAKE) -C $(BUILD) all-gcc U= CFLAGS="$(COMPILER_CF) $(HOST_LDFLAGS)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
 
 # --- tests ----------------------------------------------------------------
 # Host-side regression suites. as370 drives its own (byte-identity to the
@@ -280,6 +285,19 @@ install-man: man
 	@mkdir -p $(MANDIR)
 	@install -m 644 $(MAN1) $(MANDIR)/
 	@echo "installed man pages -> $(MANDIR)"
+
+# --- release tarball (#523) ---------------------------------------------------
+# The whole installation tree, relocatable as `make install' leaves it: unpack
+# it anywhere and bin/cc370 finds its own pieces.  libc370 is not in it; it
+# ships as its own sysroot tarball (libc370#326) and unpacks into cc370/.
+PLATFORM ?= $(shell sh packaging/platform.sh)
+DISTNAME := cc370-$(VERSION)-$(PLATFORM)
+DISTDIR  := dist
+dist: tools compiler runtime man
+	@rm -rf $(DISTDIR)/$(DISTNAME) $(DISTDIR)/$(DISTNAME).tar.gz && mkdir -p $(DISTDIR)
+	@$(MAKE) --no-print-directory install PREFIX=$(abspath $(DISTDIR))/$(DISTNAME) >/dev/null
+	@tar -C $(DISTDIR) -czf $(DISTDIR)/$(DISTNAME).tar.gz $(DISTNAME)
+	@echo "built $(DISTDIR)/$(DISTNAME).tar.gz"
 
 clean:
 	rm -rf $(BUILD)

@@ -1,0 +1,111 @@
+# Release artifacts for every host (#523, Phase 5): the tarballs, the .deb and
+# .rpm, smoke-tested where they were built.  release.yml calls this on a v*
+# tag and attaches the result; a PR that touches the packaging runs it too, so
+# the builds are proved before any tag.
+#
+#   cc370-<v>-linux-amd64.tar.gz    static (musl, Alpine), runs on any distribution
+#   cc370-<v>-linux-arm64.tar.gz    the same on arm64
+#   cc370-<v>-darwin-arm64.tar.gz   macOS 11 and later
+#   cc370-<v>-darwin-amd64.tar.gz   macOS 10.15 and later, built on an Intel runner
+#   cc370_<v>_{amd64,arm64}.deb     /usr/lib/cc370 + /usr/bin symlinks (nfpm)
+#   cc370-<v>.{x86_64,aarch64}.rpm  the same tree
+#
+# The Linux build runs in an Alpine container started by `docker run', not as
+# a container job: GitHub's JavaScript actions need a glibc node, which an
+# Alpine job container does not have -- least of all on arm64.  So the runner
+# checks out and packages, and only the build happens inside Alpine.
+#
+# A macOS binary records the SDK it was built against as its minimum unless
+# MACOSX_DEPLOYMENT_TARGET says otherwise: built on the current macOS it
+# would refuse to start on every older one.
+
+name: Package
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/package.yml'
+      - '.github/workflows/release.yml'
+
+jobs:
+  linux:
+    name: linux-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest,    nfpm: x86_64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, nfpm: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build, check and pack in Alpine (static, musl)
+        run: |
+          docker run --rm -v "$PWD":/src -w /src alpine:3.20 sh -euc '
+            apk add --no-cache build-base perl git tar file flex bison >/dev/null
+            command -v pod2man >/dev/null || apk add --no-cache perl-utils >/dev/null
+            git config --global --add safe.directory /src
+            make tools compiler runtime man HOSTCC=gcc HOST_LDFLAGS=-static
+            make test-version-cc370 HOSTCC=gcc HOST_LDFLAGS=-static
+            make dist HOSTCC=gcc HOST_LDFLAGS=-static
+            sh packaging/smoke.sh dist/cc370-*-linux-${{ matrix.arch }}.tar.gz --static
+            chown -R '"$(id -u):$(id -g)"' .
+          '
+
+      - name: Install nfpm
+        run: |
+          v=2.47.0
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${v}/nfpm_${v}_Linux_${{ matrix.nfpm }}.tar.gz" \
+            | tar -xz -C /usr/local/bin nfpm
+          nfpm --version | tail -1
+
+      - name: .deb and .rpm
+        run: |
+          v=$(tr -d ' \t\r\n' < VERSION)
+          sh packaging/nfpm.sh "dist/cc370-$v-linux-${{ matrix.arch }}" ${{ matrix.arch }} dist
+          dpkg-deb --info dist/cc370_*_${{ matrix.arch }}.deb | sed -n '/Package:/,$p'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc370-linux-${{ matrix.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+
+  macos:
+    name: darwin-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-latest,   target: '11.0' }
+          - { arch: amd64, runner: macos-15-intel, target: '10.15' }
+    env:
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: make tools compiler runtime man
+
+      - name: Every binary reports this version and commit
+        run: make test-version-cc370
+
+      - name: Tarball and smoke test
+        run: |
+          make dist
+          sh packaging/smoke.sh dist/cc370-*-darwin-${{ matrix.arch }}.tar.gz
+          vtool -show-build dist/cc370-*/bin/cc370 | grep -E 'platform|minos'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc370-darwin-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error

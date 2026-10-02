@@ -1,0 +1,123 @@
+#!/bin/sh
+# Install cc370 and a libc370 that fits it (#523):
+#
+#   curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
+#
+# into $PREFIX (default ~/.local), the layout `make install' gives: the
+# binaries in $PREFIX/bin, everything else in $PREFIX/cc370, $PREFIX/libexec
+# and $PREFIX/lib.  The libc370 sysroot (headers, libc.a, crt*.o, macros) goes
+# into $PREFIX/cc370, where cc370 searches.
+#
+# Which libc370: the newest release whose libc370-<v>-metadata.json accepts
+# this cc370 (`requires.cc370', e.g. ">=1.1.0 <2"; libc370#326).  A libc370
+# without that file is not considered.
+#
+# Settings (environment):
+#   PREFIX            install root                      ~/.local
+#   CC370_VERSION     cc370 release to install           the latest
+#   LIBC370_VERSION   libc370 release, skipping the match  the newest that fits
+#   NO_LIBC370=1      install cc370 only
+#   LIBC370_RELEASES  the libc370 versions to consider, newest first (default
+#                     the GitHub release list; for a mirror or a test)
+#   CC370_BASE_URL / LIBC370_BASE_URL   where release assets are fetched
+#                     (default the GitHub releases; a file:// URL works)
+set -eu
+
+PREFIX=${PREFIX:-$HOME/.local}
+GH=https://github.com/mvslovers
+API=https://api.github.com/repos/mvslovers
+CC370_BASE_URL=${CC370_BASE_URL:-$GH/cc370/releases/download}
+LIBC370_BASE_URL=${LIBC370_BASE_URL:-$GH/libc370/releases/download}
+
+say() { echo "install.sh: $*"; }
+die() { echo "install.sh: $*" >&2; exit 1; }
+
+command -v curl >/dev/null || die "curl is required"
+fetch() { curl -fsSL "$1" -o "$2" || die "cannot fetch $1"; }
+
+if command -v sha256sum >/dev/null; then sha() { sha256sum "$1" | cut -d' ' -f1; }
+elif command -v shasum >/dev/null; then sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+else die "sha256sum or shasum is required"; fi
+
+# verify FILE against the SHA256SUMS beside it in the same release
+verify() {
+    want=$(grep "  $(basename "$1")\$" "$2" | cut -d' ' -f1)
+    [ -n "$want" ] || die "$(basename "$1") is not listed in SHA256SUMS"
+    [ "$(sha "$1")" = "$want" ] || die "checksum mismatch: $(basename "$1")"
+}
+
+case $(uname -s) in Linux) os=linux ;; Darwin) os=darwin ;; *) die "unsupported OS $(uname -s)" ;; esac
+case $(uname -m) in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die "unsupported machine $(uname -m)" ;; esac
+
+latest_tag() {    # owner/repo -> its latest release's version
+    curl -fsSL "$API/$1/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -1
+}
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# --- cc370 -------------------------------------------------------------------
+v=${CC370_VERSION:-$(latest_tag cc370)}
+[ -n "$v" ] || die "cannot determine the latest cc370 release"
+tb=cc370-$v-$os-$arch.tar.gz
+say "cc370 $v for $os-$arch"
+fetch "$CC370_BASE_URL/v$v/$tb" "$tmp/$tb"
+fetch "$CC370_BASE_URL/v$v/SHA256SUMS" "$tmp/cc370.sums"
+verify "$tmp/$tb" "$tmp/cc370.sums"
+mkdir -p "$tmp/cc370" "$PREFIX"
+tar -C "$tmp/cc370" -xzf "$tmp/$tb"
+cp -R "$tmp/cc370/cc370-$v-$os-$arch/." "$PREFIX/"
+got=$("$PREFIX/bin/cc370" --version | head -1)
+say "installed: $got"
+
+[ "${NO_LIBC370:-}" = 1 ] && { say "libc370 skipped (NO_LIBC370=1)"; exit 0; }
+
+# --- libc370 -----------------------------------------------------------------
+# a.b.c -> comparable integer; a pre-release suffix is dropped
+num() { echo "${1%%-*}" | awk -F. '{ printf "%d", $1 * 1000000 + $2 * 1000 + $3 }'; }
+# does version $1 satisfy the space-separated range $2 (">=1.1.0 <2")?
+fits() {
+    n=$(num "$1")
+    for c in $2; do
+        op=$(echo "$c" | sed 's/[0-9].*//'); w=$(echo "$c" | sed 's/^[^0-9]*//')
+        case $w in *.*.*) ;; *.*) w=$w.0 ;; *) w=$w.0.0 ;; esac
+        m=$(num "$w")
+        case $op in
+            '>=') [ "$n" -ge "$m" ] || return 1 ;;
+            '>')  [ "$n" -gt "$m" ] || return 1 ;;
+            '<=') [ "$n" -le "$m" ] || return 1 ;;
+            '<')  [ "$n" -lt "$m" ] || return 1 ;;
+            '='|'') [ "$n" -eq "$m" ] || return 1 ;;
+            *) return 1 ;;
+        esac
+    done
+}
+# the requires.cc370 range of a metadata.json
+range_of() { tr -d '\n' < "$1" | sed -n 's/.*"requires"[^}]*"cc370"[ ]*:[ ]*"\([^"]*\)".*/\1/p'; }
+
+if [ -n "${LIBC370_VERSION:-}" ]; then
+    lv=$LIBC370_VERSION
+else
+    lv=""
+    rels=${LIBC370_RELEASES:-$(curl -fsSL "$API/libc370/releases?per_page=50" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')}
+    for t in $rels; do
+        curl -fsSL "$LIBC370_BASE_URL/v$t/libc370-$t-metadata.json" -o "$tmp/meta.json" 2>/dev/null || continue
+        r=$(range_of "$tmp/meta.json")
+        if [ -n "$r" ] && fits "$v" "$r"; then lv=$t; break; fi
+    done
+    [ -n "$lv" ] || { say "no libc370 release declares a range that fits cc370 $v -- installed cc370 only"; exit 0; }
+fi
+say "libc370 $lv"
+st=libc370-$lv-sysroot.tar.gz
+fetch "$LIBC370_BASE_URL/v$lv/$st" "$tmp/$st"
+fetch "$LIBC370_BASE_URL/v$lv/SHA256SUMS" "$tmp/libc370.sums"
+verify "$tmp/$st" "$tmp/libc370.sums"
+mkdir -p "$tmp/libc370"
+tar -C "$tmp/libc370" -xzf "$tmp/$st"
+src=$tmp/libc370
+[ -d "$src/include" ] || src=$(find "$tmp/libc370" -mindepth 1 -maxdepth 1 -type d | head -1)
+[ -d "$src/include" ] && [ -d "$src/lib" ] || die "$st has no include/ and lib/"
+mkdir -p "$PREFIX/cc370"
+cp -R "$src/." "$PREFIX/cc370/"
+say "installed libc370 $lv into $PREFIX/cc370"
+case ":$PATH:" in *":$PREFIX/bin:"*) ;; *) say "add $PREFIX/bin to PATH" ;; esac

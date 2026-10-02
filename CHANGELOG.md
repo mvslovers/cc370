@@ -21,6 +21,14 @@ neither number is mistaken for the other.
 ## [Unreleased]
 
 ### Added
+- **Prebuilt releases** (#523): `cc370-<v>-{linux-amd64,linux-arm64,
+  darwin-arm64,darwin-amd64}.tar.gz` (the Linux ones statically linked
+  against musl), `.deb` and `.rpm` for both Linux arches, `install.sh`
+  (cc370 plus a matching libc370 into `~/.local`) and `SHA256SUMS`, built and
+  smoke-tested by `.github/workflows/package.yml` and attached by
+  `release.yml`. The packages depend on `libc370-dev`/`-devel >= 2.1.0` and
+  break/replace (RPM: conflict with) older ones, whose macro files cc370 now
+  ships (#688). `make dist` builds the tarball for the host.
 - **`libcc370rt.a`, the compiler runtime** (#687): the routines cc370 itself
   emits calls to, as libgcc is to gcc -- 64-bit multiply, divide and negate,
   float <-> long long conversions, the popcount/parity/clz/ctz/ffs builtins.

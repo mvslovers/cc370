@@ -27,3 +27,6 @@ HANDOVER.md
 
 # MVS connection (mbt-style .env) -- credentials, never committed
 .env
+
+# release tarballs (make dist)
+/dist/
