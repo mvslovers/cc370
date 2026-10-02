@@ -36,7 +36,12 @@ PREFIX  ?= $(HOME)/.local
 # cc370 is the toolchain's target name (config.sub aliases it to the real
 # i370-ibm-mvspdp backend); it is what shows up in the install paths.
 TRIPLE  ?= cc370
-VERSION ?= 1.0.0
+# The toolchain's version has ONE source, the VERSION file: the install paths
+# here, the compiler's own libexec/lib paths (cc370/gcc/Makefile.in reads the
+# same file) and what every binary reports (common/mkversion.sh).  It is not a
+# `?=' any more -- a VERSION given on the command line would install into one
+# path while the driver looks in another.
+VERSION := $(shell tr -d ' \t\r\n' < VERSION)
 HOSTCC  ?= cc
 CFLAGS  ?= -O2 -Wall -Wextra -Werror
 
@@ -49,6 +54,9 @@ TOOLS   := as370/as370 ld370/ld370 ar370/ar370 file370/file370 xmit370/xmit370 c
 # shared format primitives (CP037 tables, CKD count field, NETDATA records)
 COMMON  := common/src/mvs370.c common/src/obj370.c
 COMMONH := common/include/mvs370.h common/include/obj370.h
+# version + commit, regenerated on every make but REWRITTEN only when either
+# changes, so a commit rebuilds what prints it and nothing else (mbt#59)
+VERHDR  := common/include/cc370-version.h
 # man pages: one .pod per tool -> pod2man -> .1
 MANPODS := $(wildcard man/*.pod)
 MAN1    := $(MANPODS:.pod=.1)
@@ -66,32 +74,36 @@ BUILD   := build
 DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
-.PHONY: all tools compiler man install install-tools install-compiler install-man \
+.PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
         test test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 \
-        test-dasm370 clean uninstall help
+        test-dasm370 test-version clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler man
 
+$(VERHDR): FORCE
+	@sh common/mkversion.sh $@
+FORCE:
+
 # --- standalone tools (normal single-file C binaries) ---------------------
 tools: $(TOOLS)
-as370/as370: as370/src/as370.c as370/include/opc_table.h $(COMMON) $(COMMONH)
+as370/as370: as370/src/as370.c as370/include/opc_table.h $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ as370/src/as370.c $(COMMON)
-ld370/ld370: ld370/src/ld370.c $(COMMON) $(COMMONH)
+ld370/ld370: ld370/src/ld370.c $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ld370/src/ld370.c $(COMMON)
-ar370/ar370: ar370/src/ar370.c $(COMMON) $(COMMONH)
+ar370/ar370: ar370/src/ar370.c $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ ar370/src/ar370.c $(COMMON)
-file370/file370: file370/src/file370.c $(COMMON) $(COMMONH)
+file370/file370: file370/src/file370.c $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ file370/src/file370.c $(COMMON)
-idrdump370/idrdump370: idrdump370/src/idrdump370.c $(COMMON) $(COMMONH)
+idrdump370/idrdump370: idrdump370/src/idrdump370.c $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ idrdump370/src/idrdump370.c $(COMMON)
-cmplmd370/cmplmd370: cmplmd370/src/cmplmd370.c $(COMMON) $(COMMONH)
+cmplmd370/cmplmd370: cmplmd370/src/cmplmd370.c $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ cmplmd370/src/cmplmd370.c $(COMMON)
-xmit370/xmit370: xmit370/src/xmit370.c $(COMMON) $(COMMONH)
+xmit370/xmit370: xmit370/src/xmit370.c $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Icommon/include -o $@ xmit370/src/xmit370.c $(COMMON)
 # dasm370 includes as370's opcode table -- it decodes from the table as370
 # encodes from, which is why -Ias370/include is here and not a mistake (#374).
-dasm370/dasm370: dasm370/src/dasm370.c as370/include/opc_table.h $(COMMON) $(COMMONH)
+dasm370/dasm370: dasm370/src/dasm370.c as370/include/opc_table.h $(COMMON) $(COMMONH) $(VERHDR)
 	$(HOSTCC) $(CFLAGS) -Ias370/include -Icommon/include -o $@ dasm370/src/dasm370.c $(COMMON)
 
 # --- man pages (one .pod per tool -> pod2man -> .1) -----------------------
@@ -122,7 +134,7 @@ $(BUILD)/config.status:
 	    --disable-shared --without-headers \
 	    --with-gcc-version-trigger=../cc370/gcc/version.c
 
-compiler: $(BUILD)/config.status
+compiler: $(BUILD)/config.status $(VERHDR)
 	$(MAKE) -C $(BUILD) all-gcc U= CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
 
 # --- tests ----------------------------------------------------------------
@@ -134,10 +146,18 @@ compiler: $(BUILD)/config.status
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
+test: test-version test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
 
 test-as370:
 	@$(MAKE) -C as370 test
+
+# Every binary reports the one version, with the commit the tree is at.
+# test-version checks the eight tools; test-version-cc370 adds the driver and
+# needs the GCC build, so it is separate (CI runs it on release tags).
+test-version: tools
+	@sh common/tests/version.sh $(TOOLS)
+test-version-cc370: tools compiler
+	@sh common/tests/version.sh $(TOOLS) $(DRIVER)
 
 # Column-exact comparison of the as370 -a listing against committed IFOX00
 # SYSPRINT references. Separate from test-as370 because it answers a different
@@ -210,7 +230,7 @@ install-man: man
 
 clean:
 	rm -rf $(BUILD)
-	rm -f $(TOOLS) $(MAN1)
+	rm -f $(TOOLS) $(MAN1) $(VERHDR)
 
 uninstall:
 	rm -f $(BINDIR)/cc370 $(BINDIR)/as370 $(BINDIR)/ld370 $(BINDIR)/ar370 $(BINDIR)/file370 \

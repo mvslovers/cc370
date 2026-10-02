@@ -395,7 +395,13 @@ host_hook_obj=@out_host_hook_obj@
 # Be prepared for gcc2 merges.
 gcc_version=@gcc_version@
 gcc_version_trigger=@gcc_version_trigger@
-version=1.0.0
+# cc370's product version, NOT the GCC version (that stays 3.4.6 in version.c).
+# It names the install paths (libexecsubdir, libsubdir) and reaches the driver as
+# DEFAULT_TARGET_VERSION, so it must be the one the top-level Makefile installs
+# into: both read the repository's VERSION file, its one source.
+CC370_VERSION_FILE = $(srcdir)/../../VERSION
+CC370_VERSION_H = $(srcdir)/../../common/include/cc370-version.h
+version := $(shell tr -d ' \t\r\n' < $(CC370_VERSION_FILE))
 mainversion=`grep version_string $(srcdir)/version.c | sed -e 's/.*\"\([0-9]*\.[0-9]*\).*/\1/'`
 
 # ------------------------
@@ -1435,7 +1441,8 @@ DRIVER_DEFINES = \
   `test "X$${SHLIB_MULTILIB}" = "X" || echo "-DNO_SHARED_LIBGCC_MULTILIB"`
 
 gcc.o: gcc.c $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) intl.h multilib.h \
-    Makefile $(lang_specs_files) specs.h prefix.h $(GCC_H)
+    Makefile $(lang_specs_files) specs.h prefix.h $(GCC_H) \
+    $(CC370_VERSION_FILE) $(CC370_VERSION_H)
 	(SHLIB_LINK='$(SHLIB_LINK)' \
 	SHLIB_MULTILIB='$(SHLIB_MULTILIB)'; \
 	$(CC) $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
@@ -1489,7 +1496,7 @@ options.h: $(lang_opt_files) $(srcdir)/opts.sh Makefile
 
 dumpvers: dumpvers.c
 
-version.o: version.c version.h
+version.o: version.c version.h $(CC370_VERSION_H)
 
 gtype-desc.o: gtype-desc.c $(CONFIG_H) $(SYSTEM_H) coretypes.h $(TM_H) varray.h \
 	$(HASHTAB_H) $(TREE_H) $(RTL_H) function.h insn-config.h $(EXPR_H) $(OPTABS_H) \

@@ -380,9 +380,9 @@ and C<TB> exactly B<zero> times. The cut would remove nothing anyone wrote.
 
 Write to I<FILE> instead of standard output.
 
-=item B<-v>, B<--help>
+=item B<-v>, B<--version>, B<--help>
 
-Print the version, or the usage.
+Print the toolchain version and the commit it was built from, or the usage.
 
 =back
 

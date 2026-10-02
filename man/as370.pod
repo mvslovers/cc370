@@ -139,9 +139,10 @@ prefix of it B<490 of 490>, and C<org> is B<never> a line inside the member. The
 false-positive control over 47,534 open-code records gives B<0> with the prefix
 test and B<5> with equality, so it is prefix and not equality.
 
-=item B<-v>
+=item B<-v>, B<--version>
 
-Print the assembler version.
+Print the toolchain version and the commit the assembler was built from,
+e.g. C<as370 1.0.0 (cb7263e)>.
 
 =item B<--help>
 

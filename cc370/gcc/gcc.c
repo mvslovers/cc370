@@ -139,6 +139,7 @@ static int pass_exit_codes;
 
 /* Definition of string containing the arguments given to configure.  */
 #include "configargs.h"
+#include "../../common/include/cc370-version.h"   /* CC370_VERSION, CC370_COMMIT */
 
 /* Flag saying to print the directories gcc will search through looking for
    programs, libraries, etc.  */
@@ -3364,7 +3365,10 @@ process_command (int argc, const char **argv)
       else if (strcmp (argv[i], "-fversion") == 0)
 	{
 	  /* translate_options () has turned --version into -fversion.  */
-	  printf ("cc370 V1.0 - %s\n", __DATE__);   /* cc370 driver identity (matches the *370 tool family) */
+	  /* cc370 driver identity: the toolchain version and commit every *370
+	     tool reports, and the GCC base it is built on, kept apart so that
+	     neither is mistaken for the other.  */
+	  printf ("cc370 %s (%s), based on GCC 3.4.6\n", CC370_VERSION, CC370_COMMIT);
 	  printf ("Copyright %s 2006 Free Software Foundation, Inc.\n",
 		  _("(C)"));
 	  fputs (_("This is free software; see the source for copying conditions.  There is NO\n\
@@ -6300,7 +6304,7 @@ main (int argc, const char **argv)
 
       if (! strncmp (version_string, compiler_version, n)
 	  && compiler_version[n] == 0)
-	notice ("cc370 V1.0 - %s\n", __DATE__);
+	notice ("cc370 %s (%s), based on GCC 3.4.6\n", CC370_VERSION, CC370_COMMIT);   /* the same line as --version */
       else
 	notice ("gcc driver version %s executing gcc version %s\n",
 		version_string, compiler_version);

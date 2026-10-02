@@ -22,7 +22,8 @@
 #include "mvs370.h"
 #include "obj370.h"
 
-#define VERSION_STR "idrdump370 V1.0"
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
+#define VERSION_STR "idrdump370 " CC370_VERSION " (" CC370_COMMIT ")"
 
 /* IDR subtypes -- HEWLFOUT.ASM via docs/load-module-format.md section 10.
  * LASTIDR is OR'd into the subtype byte, so mask before comparing. */

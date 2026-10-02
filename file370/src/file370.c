@@ -24,7 +24,8 @@
 #include "mvs370.h"
 #include "obj370.h"
 
-#define VERSION_STR "file370 V1.0"
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
+#define VERSION_STR "file370 " CC370_VERSION " (" CC370_COMMIT ")"
 
 /* EBCDIC and big-endian primitives come from common/mvs370.  Everything that
  * gets PRINTED goes through mvs_e2a_pr(): the full CP037 inverse with '?' for

@@ -1,0 +1,82 @@
+# Publish a GitHub release for a v* tag (#523), on libc370's pattern.
+#
+# 1. build.yml, unchanged: the tag has to build the tools under both compilers
+#    and -Werror, and pass their suites.
+# 2. The compiler.  build.yml leaves the GCC fork out because `make compiler`
+#    takes minutes and every regression it guards lives in the tools; a
+#    release is the one place that must prove `make compiler` works.  The
+#    cc370 suite runs against it, and every binary -- the driver included --
+#    has to report this version and the tagged commit (`make
+#    test-version-cc370`), so a binary that is not the tag's cannot pass.
+# 3. VERSION has to equal the tag without its "v".  A mismatch means the tag
+#    sits on the wrong commit.
+# 4. The notes are the tag's CHANGELOG.md section
+#    (.github/scripts/changelog-section.py, libc370's script).  A tag without
+#    a section fails here, so no release goes out without notes.
+# 5. If the release already exists (made by hand, with curated notes), it is
+#    left exactly as it is.
+#
+# No assets yet.  The artifacts and channels decided in #523 (tarballs,
+# .deb/.rpm, Homebrew #699) come in the next step.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  compiler:
+    name: compiler + cc370 suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Build the tools and the compiler
+        run: make tools compiler
+
+      - name: Every binary reports this version and the tagged commit
+        run: make test-version-cc370
+
+      - name: cc370 suite
+        run: make test-cc370
+
+  release:
+    needs: [build, compiler]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: VERSION matches the tag
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have="$(tr -d ' \t\r\n' < VERSION)"
+          if [ "$have" != "$want" ]; then
+            echo "::error::VERSION is '$have', the tag says '$want'"
+            exit 1
+          fi
+
+      - name: Release notes
+        run: python3 .github/scripts/changelog-section.py "${GITHUB_REF_NAME#v}" > notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME exists; its notes are left as they are."
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "cc370 $GITHUB_REF_NAME" --notes-file notes.md
+          fi

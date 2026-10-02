@@ -22,7 +22,8 @@ gcc -O2 -Wall -Wextra -Werror -o as370 as370.c
 sh ../ld370/tests/run.sh        # the ld370 regression also drives as370 over the fixtures
 ```
 
-`as370 -v` → `as370 V1.0 - <build date>`; `as370 --help` for the CLI (z/OS-`as`
+`as370 --version` (or `-v`) → `as370 1.0.0 (<commit>)`, the toolchain version
+from `VERSION`; `as370 --help` for the CLI (z/OS-`as`
 aligned). Macro search path via `-I dir` (repeatable: libc370 maclib + sysmac +
 SYS1.MACLIB members).
 

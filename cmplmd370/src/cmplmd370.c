@@ -28,6 +28,7 @@
 
 #include "mvs370.h"
 #include "obj370.h"
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 
 #define MAXSECT 512
 
@@ -667,6 +668,7 @@ static void usage(FILE *f)
       "  --allow-incomplete  compare anyway when the reference's record stream\n"
       "                 could not be walked to its end (default: refuse, exit 2)\n"
       "  -v             report identical sections and list clusters\n"
+      "  --version      print the toolchain version and the commit it was built from\n"
       "\n"
       "Exit 0 ONLY on identity; 1 on any difference; 2 on a usage or format error.\n"
       "A reference whose image is INCOMPLETE is refused rather than compared: the\n"
@@ -695,6 +697,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--allow-incomplete")) allow_incomplete = 1;
         else if (!strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { usage(stdout); return 0; }
+        else if (!strcmp(argv[i], "--version")) { printf("cmplmd370 %s (%s)\n", CC370_VERSION, CC370_COMMIT); return 0; }
         else if (argv[i][0] == '-') { fprintf(stderr, "cmplmd370: unknown option %s\n", argv[i]); usage(stderr); return 2; }
         else if (!fa) fa = argv[i];
         else if (!fb) fb = argv[i];
