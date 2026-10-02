@@ -121,6 +121,23 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
+## The runtime and release plan — the maintainer's order, ahead of the table below
+
+**The plan is `docs/runtime-and-release-plan.md` (PR #690, open); the decisions
+are in #523.** Its phases are a sequence, not a ranking, and the table below
+does not compete with them: it orders defects, this orders the release.
+
+| Phase | Issues | State | Waiting on |
+|---|---|---|---|
+| 0 · safeguards | #685 (PR #694), #686 | #694 reviewed 2026-10-02: one finding (an XFAIL accepts any link failure) | the PR's author |
+| 1 · versioning | #523 | **landed, #700** (`a3ab418`): `VERSION`, `--version` with commit on every binary, `CHANGELOG.md`, `release.yml` | **the maintainer: date the CHANGELOG heading, tag `v1.0.0`** |
+| 2 · runtime (1.1.0) | #687, #688 | open | 1.0.0; libc370#313 and brexx370#292 follow it |
+| 3 · public macros | #689 | open | Phase 2 |
+| 4 · startup | (libc370, research) | — | — |
+| 5 · prebuilt and pinned | #523 (artifacts), #699, #698 | decided in #523, not started | 1.0.0 |
+
+---
+
 ## The order
 
 **⚠️ THIS TABLE RANKS `as370`, `ld370` AND `tests` — NOT THE WHOLE PROJECT.** It
@@ -1553,6 +1570,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #523 Phase 1, MERGED as `a3ab418` (PR #700).** One
+  version for the toolchain: `VERSION` (1.0.0) read by both Makefiles; every
+  binary prints `<tool> 1.0.0 (<commit>)`, the driver adds `based on GCC
+  3.4.6`; `-dirty`/`unknown`; `make test-version`; `CHANGELOG.md`;
+  `release.yml` (no tag, no artifacts yet). #523 stays open for those.
 
 - **2026-10-02 — #140 closed.** No as370-owned residue; the binary-REPRO
   upload is `capture.py`'s (it reads source as UTF-8 and cannot send it).
