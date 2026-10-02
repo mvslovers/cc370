@@ -793,6 +793,19 @@ static void lit_classify(struct lit *l) {
             tot += one > 0 ? one : (haslen ? len : 1);
         }
         l->size = tot > 0 ? tot : 1; l->algn = 1;
+    /* B had no arm either, and fell into the default below: FOUR bytes in the
+     * fullword group, and a value of zero. `=BL1'00001011'' is one byte, X'0B',
+     * in the byte group -- BLSR3270 carries two and came out eight bytes long
+     * in BLSR327A, every literal behind them moved and the private code chained
+     * eight bytes late (cc370#140). Like a DC: a value list, each value as many
+     * bytes as its bits need unless a length is given. */
+    } else if (ty == 'B') {
+        char body[VALSZ]; lit_body(p, body, sizeof body);
+        char vv[64][FLDW]; int nv = split_fields(body, vv, 64), vi, tot = 0;
+        if (nv < 1) { nv = 1; vv[0][0] = 0; }
+        for (vi = 0; vi < nv; vi++) { int nb = 0; const char *b = vv[vi]; while (*b == '0' || *b == '1') { nb++; b++; }
+            tot += haslen ? len : (nb + 7) / 8 > 0 ? (nb + 7) / 8 : 1; }
+        l->size = tot > 0 ? tot : 1; l->algn = 1;
     } else if (ty == 'X') { const char *q = strchr(p, '\''); unsigned char tmp[260]; int nb = q ? hex_to_bytes(q + 1, tmp, 260) : 0; l->size = haslen ? len : nb; l->algn = 1;
     } else if (ty == 'C') { const char *q = strchr(p, '\''); int sl = 0; if (q) { const char *e = q + 1; while (*e) { if (*e == '\'') { if (e[1] == '\'') { sl++; e += 2; continue; } break; }
         if (*e == '&' && e[1] == '&') { sl++; e += 2; continue; }
@@ -5587,6 +5600,19 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
             if (*e == '&' && e[1] == '&') { body[slen++] = '&'; e += 2; continue; }
             body[slen++] = *e++; } }
         int j; for (j = 0; j < size; j++) put(loc + j, j < slen ? src_a2e((unsigned char)body[j]) : 0x40, 1);
+    } else if (ty == 'B') {                                /* binary, possibly a value list (#140) */
+        int blen = 0, hasl = 0; { const char *q = l->text + 1; int d0; q = lit_dup(q, &d0); q++;
+            if (*q == 'L') { hasl = 1; q++; while (isdigit((unsigned char)*q)) blen = blen * 10 + (*q++ - '0'); } }
+        char body[VALSZ]; lit_body(p, body, sizeof body);
+        char vv[64][FLDW]; int nv = split_fields(body, vv, 64), vi, at = 0;
+        if (nv < 1) { nv = 1; vv[0][0] = 0; }
+        for (vi = 0; vi < nv && at < size; vi++) {
+            int nb = 0, j; const char *b = vv[vi]; while (b[nb] == '0' || b[nb] == '1') nb++;
+            int one = hasl ? blen : ((nb + 7) / 8 > 0 ? (nb + 7) / 8 : 1);
+            for (j = 0; j < one && at + j < size; j++) {          /* right-aligned: byte j holds bits ending 8*(one-1-j) from the right */
+                int v = 0, k; for (k = 0; k < 8; k++) { int bit = nb - 1 - (8 * (one - 1 - j) + (7 - k)); v = (v << 1) | (bit >= 0 && b[bit] == '1'); }
+                put(loc + at + j, v, 1); }
+            at += one; }
     } else put(loc, l->val, size);
 }
 static void emit_lit(struct lit *l) {
