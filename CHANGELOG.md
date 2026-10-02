@@ -21,6 +21,12 @@ neither number is mistaken for the other.
 ## [Unreleased]
 
 ### Added
+- **The prologue macros ship with cc370** (#688): `PDPTOP`, `PDPPRLG` and
+  `PDPEPIL`, the members every `.s` the compiler writes depends on, install
+  into `<sysroot>/macros` with the compiler, so its output assembles without
+  libc370. `PDPPRLG` and `PDPEPIL` no longer call the IBM macros `SAVE` and
+  `RETURN`; they write out the same instructions, and no object deck moves
+  (`make test-macros`). libc370 2.1 stops shipping them (libc370#313).
 - **`__CC370__`, the compiler's version as a number** (#704):
   `MAJOR*10000 + MINOR*100 + PATCH`, so 1.1.0 is `10100`, with
   `__CC370_MAJOR__`, `__CC370_MINOR__` and `__CC370_PATCH__` beside it. A
