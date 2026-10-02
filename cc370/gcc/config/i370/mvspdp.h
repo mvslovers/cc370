@@ -95,9 +95,34 @@ Boston, MA 02111-1307, USA.  */
    by TARGET_CPU_CPP_BUILTINS() in i370.h; asserting them again here made cpp
    warn "cpu/machine re-asserted" on every compile, so only system=mvs lives
    here.  */
+/* __CC370__ is cc370's own version as one number, MAJOR*10000 + MINOR*100 +
+   PATCH (1.1.0 -> 10100), so a library can require a minimum compiler with
+   `#if !defined(__CC370__) || __CC370__ < 10100' (#704, libc370#315).  The
+   __GNUC__ family names the GCC base, which never moves, and __VERSION__ is a
+   string the preprocessor cannot compare.  The numbers come from VERSION and
+   reach only c-cppbuiltin.o (gcc/Makefile.in, CC370_VERSION_DEFINES), the one
+   file that expands this macro.  1.0.0 shipped without it.  */
+#ifdef CC370_VERSION_MAJOR
+#if CC370_VERSION_MINOR > 99 || CC370_VERSION_PATCH > 99
+#error "VERSION: MINOR and PATCH must stay below 100 for __CC370__"
+#endif
+#define CC370_CPP_VERSION_BUILTINS()                                         \
+    do {                                                                     \
+       builtin_define_with_int_value ("__CC370__", CC370_VERSION_MAJOR * 10000 \
+                                      + CC370_VERSION_MINOR * 100            \
+                                      + CC370_VERSION_PATCH);                \
+       builtin_define_with_int_value ("__CC370_MAJOR__", CC370_VERSION_MAJOR); \
+       builtin_define_with_int_value ("__CC370_MINOR__", CC370_VERSION_MINOR); \
+       builtin_define_with_int_value ("__CC370_PATCH__", CC370_VERSION_PATCH); \
+    } while (0)
+#else
+#define CC370_CPP_VERSION_BUILTINS() do { } while (0)
+#endif
+
 #define TARGET_OS_CPP_BUILTINS()               \
     do {                                       \
        builtin_define ("__GCC__");             \
        builtin_define ("__MVS__");             \
        builtin_assert ("system=mvs");          \
+       CC370_CPP_VERSION_BUILTINS ();          \
     } while (0)

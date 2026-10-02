@@ -5,6 +5,9 @@
 #   <tool> <VERSION> (<commit>)                       the eight tools
 #   cc370 <VERSION> (<commit>), based on GCC 3.4.6    the driver (build/gcc/xgcc)
 #
+# For the driver it also checks the predefined __CC370__ (#704):
+# MAJOR*10000 + MINOR*100 + PATCH of VERSION, a pre-release suffix dropped.
+#
 # The expectation is derived here, from the VERSION file and git, and NOT from
 # the generated header: a binary built before the last commit still agrees with
 # a stale header, and catching that binary is the point (mvslovers/mbt#59).
@@ -36,5 +39,17 @@ for b in "$@"; do
         echo "version: FAIL $b -- got '$got', want '$want'"
         fail=1
     fi
+    case $name in
+        xgcc|cc370)
+            # the in-tree driver finds cc1 beside it only through -B
+            num=$(echo "${ver%%-*}" | awk -F. '{ print $1 * 10000 + $2 * 100 + $3 }')
+            mac=$("$b" -B"$(dirname "$b")/" -E -dM - </dev/null 2>&1 | sed -n 's/^#define __CC370__ //p')
+            if [ "$mac" = "$num" ]; then
+                echo "version: OK   __CC370__ $mac"
+            else
+                echo "version: FAIL $b -- __CC370__ is '$mac', want '$num'"
+                fail=1
+            fi ;;
+    esac
 done
 exit $fail

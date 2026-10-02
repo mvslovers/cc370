@@ -20,6 +20,14 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Added
+- **`__CC370__`, the compiler's version as a number** (#704):
+  `MAJOR*10000 + MINOR*100 + PATCH`, so 1.1.0 is `10100`, with
+  `__CC370_MAJOR__`, `__CC370_MINOR__` and `__CC370_PATCH__` beside it. A
+  library requires a minimum compiler with
+  `#if !defined(__CC370__) || __CC370__ < 10100` (libc370#315). 1.0.0 does not
+  define it, so a missing macro means 1.0.0 or older.
+
 ## [1.0.0] - 2026-10-02
 
 The first release: the toolchain eleven ecosystem projects already build with,
