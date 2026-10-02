@@ -1340,7 +1340,26 @@ was found while building a `listref` case, and each is excluded from that case
 - **Open, found with #640:** a DC's own object code is read from the final
   text, so a later ORG overlay shows in its row (BLSR3270 statement 3893,
   mvs38src ifox-run). IEAVESC0's listing runs 4 bytes off IFOX00 around `FW0`.
-  sectlen's reference predates a comment edit (#281 -> #282).
+- ~~**#643**~~ — an open-code comment card got &SYSDATE substituted. **Fixed**
+  (PR #644). ~~**#645**~~ — an EQU value wider than five digits was cut to
+  five. **Fixed** (PR #646, corrected by #649 to IFNX5P PRL300's rule: eight
+  digits, up to three leading zeros blanked). ~~**#647**~~ — a flagged USING
+  listed no LOC; IFOX00 lists the last stored LOCATN. **Fixed** (PR #648).
+  ~~**#650**~~ — an empty last continuation card was listed as a blank row.
+  **Fixed** (PR #651).
+- Four stale references (sectlen, dsectpool, usingreloc, extrn_csect)
+  **recaptured** on MVSTK5-REF, JOB00314-00317 (PR #653). tests/listref now:
+  126 of 136 SOURCE pages identical, cross-reference 130 exact.
+- **#652** — as370 prints **no `*** ERROR ***` row at all** (IFOX00: markers
+  in 38 references). Every listref comparison drops the marker, so the 126
+  are identical *apart from* it. It also moves page breaks (undeclset,
+  undeclset2, xrefcov). Largest listing item left; needs a comparison that
+  keeps the marker.
+- **#654** — cards a column-72 comment swallows are not listed (cont72,
+  contsev). **#655** — the card after REPRO is neither listed nor numbered.
+  **#656** — an open-code statement substituted across cards lists only its
+  first card (#370's open-code twin). **#657** — a long literal is not wrapped
+  in the pool (xrefcov).
 
 ## Conditional assembly — three that behave, and one that has to be decided
 
@@ -1516,6 +1535,15 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #643, #645, #647, #650 and four recaptures, MERGED as
+  `bbc3bae`, `0e08d6f`+`eee52df`, `6a5079b`, `c8a3474`, `b9e214d` (PRs #644,
+  #646+#649, #648, #651, #653).** Comment card unsubstituted; EQU value width
+  per PRL300; a flagged USING's LOC; no row for an empty last continuation;
+  sectlen/dsectpool/usingreloc/extrn_csect recaptured (JOB00314-00317,
+  snapshots 0840->0850 unchanged). tests/listref: 119 -> 126 of 136 SOURCE
+  pages identical, none lost. Every code step: MVSBLD gate 0 moved, all 5,528
+  with `-a` at the gate's rc.
 
 - **2026-10-01 — #640, MERGED as `24aa798` (PR #641).** The alignment pad of a
   DC, CCW or CNOP listed on a row of its own (LOC + zeros), as for
