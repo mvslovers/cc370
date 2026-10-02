@@ -4693,6 +4693,13 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
                 repro_line[nrepro] = *nout - 1;
                 nrepro++;
             }
+            /* The punched card is not assembled, but IFOX00 lists and numbers it
+             * as a statement of its own, no LOC (tests/listref, repro: 4, 8 and
+             * 11; #655). A listing-only line, as #150 does for a definition. */
+            if (g_genlevel == 0 && *nout < MAXLINES) {
+                lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL;
+                line_org[*nout] = org ? org[pc + 1] : g_curorg; out[*nout] = strdup(arr[pc + 1]); (*nout)++;
+            }
             pc += 2; continue;                       /* the punched card is not a statement */
         }
         mexp_line(arr[pc], out, nout, depth);
