@@ -131,7 +131,7 @@ does not compete with them: it orders defects, this orders the release.
 |---|---|---|---|
 | 0 · safeguards | ~~#685~~, #686 | **#685 done** (PR #694, `e245141`); #686 open | — |
 | 1 · versioning | #523 | **done — v1.0.0 released 2026-10-02** (#700, release PR #702, tag on `85aa497`) | — |
-| 2 · runtime (1.1.0) | #687, #688 | open | 1.0.0; libc370#313 and brexx370#292 follow it |
+| 2 · runtime (1.1.0) | ~~#687~~, ~~#688~~ | **done** — #708 (`6c32580`, macros without SAVE/RETURN), #709 (`fd83e21`, `libcc370rt.a`); #704 `__CC370__` also in | the 1.1.0 tag (after B, with mbt-4c's go); libc370#313 gated on mbt#138 |
 | 3 · public macros | #689 | open | Phase 2 |
 | 4 · startup | (libc370, research) | — | — |
 | 5 · prebuilt and pinned | #523 (artifacts), #699, #698 | decided in #523, not started | 1.0.0 |
@@ -1570,6 +1570,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-03 — #688 and #687, MERGED as `6c32580` (PR #708) and `fd83e21`
+  (PR #709).** The prologue macros ship with cc370 and no longer call SAVE /
+  RETURN (option c; 1352 ecosystem sources, 0 decks moved). `libcc370rt.a`:
+  22 helpers moved unchanged, plus the -ftrapv helpers and `__ffssi2`; the
+  driver links `-lcc370rt -lc -lcc370rt`; helpers.sh 37/37, no XFAIL.
 
 - **2026-10-02 — #704, MERGED as `b8180b1` (PR #706).** `__CC370__` =
   MAJOR*10000+MINOR*100+PATCH from `VERSION` (+ `_MAJOR__/_MINOR__/_PATCH__`);
