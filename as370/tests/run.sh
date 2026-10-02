@@ -4547,6 +4547,20 @@ else
 fi
 rm -rf "$u8"
 
+# --- issue #662: L' in conditional assembly, IFO120 / IFO080 -----------------
+# IFOX00 (tests/listref/ifox-listing-lenattr.txt) flags two macro calls whose
+# AIF asks L' and gets the default 1: `QL EQ4,1' (EQ4 EQU 4, a defaulted
+# length) with IFO120 at statement 55, `QL NODEF,1' (undefined) with IFO080 at
+# 57 -- severity 4 both, two statements flagged, the branches unchanged.
+./as370 tests/lenattr.s -o /dev/null >/tmp/_la$$.out 2>&1
+rcl=$?
+if [ $rcl != 4 ] || ! grep -q 'IFO120) in line 52 (statement 55)' /tmp/_la$$.out \
+   || ! grep -q 'NODEF (IFOX00 IFO080) in line 53 (statement 57)' /tmp/_la$$.out \
+   || ! grep -q '2 Statements Flagged' /tmp/_la$$.out; then
+    echo "lattrdiag: FAIL -- want rc 4, IFO120 at 55 and IFO080 at 57 (got rc $rcl)"; cat /tmp/_la$$.out; fail=1
+else echo "lattrdiag: OK (IFO120 on QL EQ4,1 and IFO080 on QL NODEF,1, rc 4, as IFOX00)"; fi
+rm -f /tmp/_la$$.out
+
 # --- issue #645: an EQU value in ADDR2 -- eight digits, up to three leading
 # zeros blanked (IFNX5P PRL300). sdtlen5's C'ABCD' is the measured case; the
 # six- and seven-digit widths are the source's rule, which no reference holds.
