@@ -20,7 +20,7 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
-## [1.0.0] - unreleased
+## [1.0.0] - 2026-10-02
 
 The first release: the toolchain eleven ecosystem projects already build with,
 given a version they can name. A libc370 release can now require
@@ -47,6 +47,10 @@ given a version they can name. A libc370 release can now require
   tree had uncommitted changes, and reads `unknown` outside a git checkout.
 - `make test-version` checks that every binary reports the same version and
   the commit the tree is at.
+- `cc370/tests/helpers.sh` (#685), part of `make test-cc370`: every runtime
+  helper the compiler can emit is named as expected and links against the
+  sysroot. The six that do not link yet (`__builtin_ffs` and the five
+  `-ftrapv` helpers) are expected failures against #687.
 - A release workflow: a `v*` tag builds the tools and the compiler, runs the
   suites, checks that `VERSION` matches the tag and publishes the release
   notes from this file.
