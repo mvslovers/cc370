@@ -1554,6 +1554,12 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-10-02 — #693, MERGED as `5da29b0` (PR #695).** IFO195 on an
+  invalid USING or DROP register (MVSTK5-REF JOB00319, `tests/usingreg.s`,
+  snapshots 1519->1534 unchanged). Gate: +8 identical to IFOX00 (IECVXDRS
+  IECVXDRT IECVXMGN IECVXT2S IECVXVRS IECVXVRT IECVXVRU IGG019RO), none lost;
+  IECVXTPT rc only. listref case 12: 135 pages.
+
 - **2026-10-02 — #691, MERGED as `80a31dc`.** The card REPRO punches is
   never continued (MVSTK5-REF JOB00318, `tests/reproc72.s`, snapshots
   1148->1157 unchanged). listref case 12: 134 pages. #140 re-derived and
