@@ -500,7 +500,7 @@ done
 # The SOURCE page of each reference named here is IFOX00's line for line:
 # headings, statement numbers, blank lines and, since #652, the *** ERROR ***
 # rows (all of them since #660; NOMARK below is where an exception would go).
-# Before #150 listed in-stream macro definitions, 63 of the 135 did. 132 of
+# Before #150 listed in-stream macro definitions, 63 of the 135 did. 133 of
 # 136 do since #626 (NOMCALL), #627 (alignment pads), #24 (no object code on a
 # DS), #370 (a generated statement's continuation cards), #640 (a DC, CCW
 # or CNOP pad on a row of its own), #643 (a comment card not substituted),
@@ -529,7 +529,7 @@ spmrr ssb1 ssomit stmtlen subattr sublist subst_cont substrcat syslist
 sysparm_substr tattr_expr tattr_literal tattr_selfdef tattr_symbol titlegen
 titlelong titlenamed titlepage undeclset undeclset2 undefsym usingexpr
 usingkey usingmul usingparen usingparenpc usingreloc var_opcode xfdirect
-xsectrel
+xrefcov xsectrel
 """.split()
 # *** ERROR *** rows are compared too (#652). A page where as370 is missing or
 # misplaces the DIAGNOSTIC itself would go here, with the issue that owns it,
