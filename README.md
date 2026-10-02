@@ -33,6 +33,31 @@ the same TSO TRANSMIT envelope `ld370` ships load modules in. The C library it l
 **[libc370](https://github.com/mvslovers/libc370)**, installed into the cc370
 sysroot — see *Sysroot* below.
 
+## Install a release
+
+From 1.1.0 every release carries prebuilt toolchains (#523):
+
+```sh
+curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
+```
+
+installs cc370 into `~/.local` (`PREFIX=` to change it) together with the
+newest libc370 whose `metadata.json` accepts it; the checksums in
+`SHA256SUMS` are verified. The release assets themselves:
+
+| Platform | Assets |
+|---|---|
+| Linux amd64, arm64 | `cc370-<v>-linux-<arch>.tar.gz` (statically linked, any distribution), `cc370_<v>_<arch>.deb`, `cc370-<v>.<x86_64\|aarch64>.rpm` |
+| macOS arm64, Intel | `cc370-<v>-darwin-<arch>.tar.gz` |
+| Windows | use WSL2 and the Linux assets (#698) |
+
+A tarball unpacks into a relocatable tree; libc370's sysroot tarball goes
+into its `cc370/` directory. The `.deb`/`.rpm` install the tree under
+`/usr/lib/cc370` with symlinks in `/usr/bin`, and depend on `libc370-dev` /
+`libc370-devel` (>= 2.1.0). A tarball downloaded with a browser on macOS
+needs `xattr -d com.apple.quarantine` on the unpacked tree; `install.sh`
+does not, curl sets no quarantine flag.
+
 ## Build & install
 
 GCC 3.4.6 is old K&R-ish C; a modern clang/gcc host must be told not to error on
