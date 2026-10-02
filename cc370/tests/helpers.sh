@@ -10,13 +10,16 @@
 #   1. emission -- every case below compiles one construct with cc1 and must
 #      reference exactly the helpers listed for it.  A helper that appears,
 #      disappears or is renamed fails here.  Needs only cc1, so it always runs.
+#      It sees =V(...) literals only, which is how cc370 calls a helper today;
+#      a helper reached through DC V(...) or an EXTRN would be invisible to it.
 #
 #   2. link -- every case is assembled and linked against the runtime, and
 #      must leave nothing unresolved.  Needs a sysroot (macros for as370,
 #      libraries for ld370); without one the stage is skipped, not failed.
 #      Cases known to fail carry an XFAIL naming their issue: they report but
-#      do not fail the suite, and one that starts to link FAILS ("XPASS") so
-#      the marker is removed in the same change that fixed it.
+#      do not fail the suite -- as long as the link fails exactly on the
+#      expected helpers and nothing else.  One that starts to link FAILS
+#      ("XPASS") so the marker is removed in the same change that fixed it.
 #
 # Overrides: CC1=, AS370=, LD370=, SYSROOT=, RTLIBS= (the libraries the link
 # stage searches, default "-lc").
@@ -83,11 +86,15 @@ case_ () {
             echo "$name: OK (emits $got, links)"
         fi
     else
-        missing=$(sed -n '/unresolved external reference/,/unresolved external(s)/p' "$WORK/ld" | grep '^    ' | tr -d ' ' | tr '\n' ' ' | sed 's/ $//')
-        if [ "$xfail" != - ]; then
+        missing=$(sed -n '/unresolved external reference/,/unresolved external(s)/p' "$WORK/ld" | grep '^    ' | tr -d ' ' | sort -u | tr '\n' ' ' | sed 's/ $//')
+        # An XFAIL covers exactly the helpers it was written for: a link that
+        # also misses something else, or fails for another reason (nothing
+        # unresolved at all), is a real failure.
+        if [ "$xfail" != - ] && [ "$missing" = "$want" ]; then
             echo "$name: XFAIL $xfail (unresolved: $missing)"
         else
-            echo "$name: FAIL (unresolved: $missing)"; fail=1
+            echo "$name: FAIL (unresolved: ${missing:-none -- ld370 failed otherwise})"
+            sed 's/^/    /' "$WORK/ld" | head -5; fail=1
         fi
     fi
 }
