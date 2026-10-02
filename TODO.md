@@ -123,14 +123,14 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ## The runtime and release plan — the maintainer's order, ahead of the table below
 
-**The plan is `docs/runtime-and-release-plan.md` (PR #690, open); the decisions
+**The plan is `docs/runtime-and-release-plan.md` (PR #690, merged); the decisions
 are in #523.** Its phases are a sequence, not a ranking, and the table below
 does not compete with them: it orders defects, this orders the release.
 
 | Phase | Issues | State | Waiting on |
 |---|---|---|---|
-| 0 · safeguards | #685 (PR #694), #686 | #694 reviewed 2026-10-02: one finding (an XFAIL accepts any link failure) | the PR's author |
-| 1 · versioning | #523 | **landed, #700** (`a3ab418`): `VERSION`, `--version` with commit on every binary, `CHANGELOG.md`, `release.yml` | **the maintainer: date the CHANGELOG heading, tag `v1.0.0`** |
+| 0 · safeguards | ~~#685~~, #686 | **#685 done** (PR #694, `e245141`); #686 open | — |
+| 1 · versioning | #523 | **done — v1.0.0 released 2026-10-02** (#700, release PR #702, tag on `85aa497`) | — |
 | 2 · runtime (1.1.0) | #687, #688 | open | 1.0.0; libc370#313 and brexx370#292 follow it |
 | 3 · public macros | #689 | open | Phase 2 |
 | 4 · startup | (libc370, research) | — | — |
@@ -1570,6 +1570,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — cc370 1.0.0 RELEASED** (tag `v1.0.0` on `85aa497`, PR #702;
+  release.yml run 37062575926 green: compiler built, nine binaries report
+  `1.0.0 (85aa497)`). Also merged: #694 (#685's helpers test) and #690 (the
+  plan, with Phase 0/1 marked done).
 
 - **2026-10-02 — #523 Phase 1, MERGED as `a3ab418` (PR #700).** One
   version for the toolchain: `VERSION` (1.0.0) read by both Makefiles; every
