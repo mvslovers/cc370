@@ -1358,8 +1358,9 @@ was found while building a `listref` case, and each is excluded from that case
   definition -- **fixed** (PR #666); ~~**#211**~~ IFO158 for a CCW (filed again
   as #661, closed as its duplicate) -- **fixed** (PR #665); ~~**#662**~~ L' in
   conditional assembly, IFO120/IFO080 -- **fixed** (PR #668; 0 raised across
-  MVSBLD). Open: **#660** an undefined symbol in a literal is charged to the
-  instruction, not the pool statement (undefsym). Also seen in the ifox-run IBM listings, not filed yet:
+  MVSBLD); ~~**#660**~~ a literal's diagnostic flags its pool statement --
+  **fixed** (PR #670). listref case 12 now compares all 128 pages with their
+  markers. Also seen in the ifox-run IBM listings, not filed yet:
   IFO092 (keyword parameter not in the definition) is never raised, and IFO117
   is charged to the macro call instead of the SETC.
 - **#654** — cards a column-72 comment swallows are not listed (cont72,
@@ -1542,6 +1543,10 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #660, MERGED (PR #670).** A diagnostic raised at the pool
+  flags the literal's pool statement, as IFOX00; case 12's NOMARK is empty.
+  MVSBLD gate 0 moved.
 
 - **2026-10-02 — #662, MERGED as `6d4c93c` (PR #668).** L' in conditional
   assembly raises IFO120 (defaulted length, self-defining term) and IFO080
