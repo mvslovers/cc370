@@ -290,12 +290,21 @@ install-man: man
 # The whole installation tree, relocatable as `make install' leaves it: unpack
 # it anywhere and bin/cc370 finds its own pieces.  libc370 is not in it; it
 # ships as its own sysroot tarball (libc370#326) and unpacks into cc370/.
+# The release binaries are stripped (#718): the build keeps -g for development,
+# and `make install' leaves it in; a release tree carries no debug info.  Only
+# the host executables -- the driver, cc1 and the real tool binaries; bin/ and
+# the tooldir hold symlinks to them -- and never libcc370rt.a, an archive of
+# S/370 object decks the host strip does not understand.
 PLATFORM ?= $(shell sh packaging/platform.sh)
 DISTNAME := cc370-$(VERSION)-$(PLATFORM)
 DISTDIR  := dist
+STRIP    ?= strip
 dist: tools compiler runtime man
 	@rm -rf $(DISTDIR)/$(DISTNAME) $(DISTDIR)/$(DISTNAME).tar.gz && mkdir -p $(DISTDIR)
 	@$(MAKE) --no-print-directory install PREFIX=$(abspath $(DISTDIR))/$(DISTNAME) >/dev/null
+	@$(STRIP) $(DISTDIR)/$(DISTNAME)/bin/cc370 \
+	    $(DISTDIR)/$(DISTNAME)/libexec/$(TRIPLE)/$(VERSION)/cc1 \
+	    $(addprefix $(DISTDIR)/$(DISTNAME)/$(TRIPLE)/bin/,$(notdir $(TOOLS)))
 	@tar -C $(DISTDIR) -czf $(DISTDIR)/$(DISTNAME).tar.gz $(DISTNAME)
 	@echo "built $(DISTDIR)/$(DISTNAME).tar.gz"
 

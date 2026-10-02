@@ -7,7 +7,8 @@
 #   - cc370 compiles and assembles a C file with nothing but the tarball: the
 #     prologue macros ship with it (#688), libc370 is not needed for -c
 #   - the runtime is where mbt looks for it (<sysroot>/lib/libcc370rt.a)
-#   - with --static, no binary is dynamically linked (the Linux tarballs)
+#   - with --static, no binary is dynamically linked (the Linux tarballs),
+#     and none carries a symbol table or debug info (#718)
 set -u
 tarball=$1; static=${2:-}
 ver=$(tr -d ' \t\r\n' < "$(dirname "$0")/../VERSION")
@@ -41,5 +42,11 @@ if [ "$static" = --static ]; then
     done)
     [ -z "$dyn" ] && ok "every ELF binary is statically linked" \
         || bad "dynamically linked: $(echo $dyn | sed "s|$root/||g")"
+    uns=$(find "$root" -type f -perm -u+x | while read -r f; do
+        file "$f" | grep -q 'ELF' || continue
+        file "$f" | grep -q 'not stripped' && echo "$f"
+    done)
+    [ -z "$uns" ] && ok "every ELF binary is stripped" \
+        || bad "not stripped: $(echo $uns | sed "s|$root/||g")"
 fi
 exit $fail

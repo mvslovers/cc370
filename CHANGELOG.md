@@ -20,6 +20,13 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Changed
+- **The release binaries are stripped** (#718): `make dist` strips the
+  driver, `cc1` and the tools after installing the tree, so the release
+  tarballs and packages carry no symbol tables or debug info; the Linux smoke
+  test fails on an ELF binary that is not stripped. `make install` is
+  unchanged and keeps them for development.
+
 ## [1.1.0] - 2026-10-03
 
 **The compiler takes over its runtime.** The helper routines its code calls
