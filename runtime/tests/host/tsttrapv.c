@@ -23,10 +23,15 @@
 
 static jmp_buf trap;
 static void test_abort(void) { longjmp(trap, 1); }
+/* The asm("@@NAME") labels are the S/370 names; an ELF assembler rejects
+   '@' in a symbol it is handed as an operand, which taking a helper's
+   address (call_ll below) does.  The host test calls the C names. */
+#define asm(name)
 #define abort test_abort
 #include "../../src/@@trapv.c"
 #undef abort
 #include "../../src/@@ffssi2.c"
+#undef asm
 
 static long checks, failures;
 
