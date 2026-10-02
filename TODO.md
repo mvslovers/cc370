@@ -1131,7 +1131,7 @@ afterwards.
   that for `TPROT`. Either drop the two rows or give them RSI; do not leave them
   encoding as something else.
 
-- **#229** — `COM` gets no `CM` entry in the ESD and does not reset the location
+- **#229** *(deferred, 2026-10-02 -- no use in MVSBLD or the ecosystem, cc370 never emits COM; see the issue's comment for what a fix needs)* — `COM` gets no `CM` entry in the ESD and does not reset the location
   counter, so a common section is neither declared nor addressed. Adjacent to
   #76's `DXD`/`COM` message-class note and worth doing with it.
 - **#297** — a macro prototype may take a machine mnemonic's name and as370
@@ -1419,7 +1419,7 @@ evaluator path.
 | 2 | `IFNX4M` | **not a case** — the same |
 | 3 | `IFFAHA16` | **#366**, fixed and merged — RLD order inside an `(R,P)` group |
 | 4 | `BLSR3270` | #140's severity-4 module; its reference is the weakest here |
-| 5 | `HMASMTMD` | #199's ESD half, already open and named in that issue |
+| 5 | `HMASMTMD` | ~~#199's ESD half~~ -- **fixed** (PR #677): `DC 0V(name)` entered an ER IFOX00 does not; now byte-identical |
 
 `IFNX2A` and `IFNX4M` carry an eyecatcher built from `&SYSTIME`, and the gate
 pins one `ASMTIME` for all 5,528 while IFOX00's runs had real clock times. Give
@@ -1546,6 +1546,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #199, MERGED as `35974e3` (PR #677).** `DC 0V(name)` enters
+  no ER: HMASMTMD byte-identical to IFOX00 (only MVSBLD module with `DC 0V(`).
+  Gate: exactly that deck moved. #199 closed -- IFFAHA16 identical (#366),
+  IBCDMPRS is #140's. #229 (COM) labelled `deferred`: zero reach.
 
 - **2026-10-02 — #655, #654, #656, #657, MERGED as `19fb6d3`, `4e98337`,
   `a91e309`, `b7fb6ca` (PRs #672-#675).** REPRO's card listed and numbered;
