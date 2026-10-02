@@ -1363,11 +1363,14 @@ was found while building a `listref` case, and each is excluded from that case
   markers. Also seen in the ifox-run IBM listings, not filed yet:
   IFO092 (keyword parameter not in the definition) is never raised, and IFO117
   is charged to the macro call instead of the SETC.
-- **#654** — cards a column-72 comment swallows are not listed (cont72,
-  contsev). **#655** — the card after REPRO is neither listed nor numbered.
-  **#656** — an open-code statement substituted across cards lists only its
-  first card (#370's open-code twin). **#657** — a long literal is not wrapped
-  in the pool (xrefcov).
+- ~~**#654**~~ cards a column-72 comment swallows -- **fixed** (PR #673);
+  ~~**#655**~~ the card after REPRO -- **fixed** (PR #672); ~~**#656**~~ an
+  open-code substitution across cards -- **fixed** (PR #674); ~~**#657**~~ a
+  long literal wrapped in the pool -- **fixed** (PR #675). tests/listref: 133
+  of 135 comparable SOURCE pages identical to IFOX00, markers included; the
+  two left are equparen (known) and orglist (COM, #229). Not measured, taken
+  as predictions in the code: a comment swallowing more than one surplus card
+  (#654), the literal's continuation character (#657).
 
 ## Conditional assembly — three that behave, and one that has to be decided
 
@@ -1543,6 +1546,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #655, #654, #656, #657, MERGED as `19fb6d3`, `4e98337`,
+  `a91e309`, `b7fb6ca` (PRs #672-#675).** REPRO's card listed and numbered;
+  a comment's swallowed cards listed; an open-code substitution cut into cards;
+  long literals wrapped. tests/listref: 128 -> 133 SOURCE pages identical with
+  markers. MVSBLD gate 0 moved at every step.
 
 - **2026-10-02 — #660, MERGED (PR #670).** A diagnostic raised at the pool
   flags the literal's pool statement, as IFOX00; case 12's NOMARK is empty.
