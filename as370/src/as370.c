@@ -7817,7 +7817,15 @@ static void a_src_section(char **lines, int nl) {
          * definition lives under its shadow name, as for the cross-reference. */
         if (show_equ && lbl[0]) { char sh[16]; if (lflags[i] & LF_DUPDEF) snprintf(sh, sizeof sh, "\2%05X", (unsigned)i & 0xfffffu);
             struct sym *s = sym_find((lflags[i] & LF_DUPDEF) ? sh : lbl);
-            if (s && s->defined) { char b[16]; sprintf(b, "%05lX", s->val & 0xfffffL); memcpy(ln + 28, b, 5); } }
+            /* A value that does not fit five digits is printed in eight, ending
+             * where ADDR2 ends: sdtlen5's `B EQU C'ABCD'' lists C1C2C3C4 from
+             * column 26 (tests/listref). That value has the sign bit set, so a
+             * negative one (EQU -1) prints FFFFFFFF the same way. Six- and
+             * seven-digit values are taken to print in eight too -- not
+             * measured. */
+            if (s && s->defined) { char b[16]; unsigned long v = (unsigned long)s->val & 0xffffffffUL;
+                if (v > 0xfffffUL) { sprintf(b, "%08lX", v); memcpy(ln + 25, b, 8); }
+                else { sprintf(b, "%05lX", v); memcpy(ln + 28, b, 5); } } }
         { char sn[12]; int dl = sprintf(sn, "%d", a_lstmt[i]); if (dl > 6) dl = 6; memcpy(ln + 39 - dl, sn, (size_t)dl); if (gen) ln[39] = '+'; }
         int rn = (gen || gcard[i]) ? -1 : a_rawno(line_org[i], lines[i]);
         int span = rn >= 0 && raw_span[rn] > 1 ? raw_span[rn] : 1, c;
