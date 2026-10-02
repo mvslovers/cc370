@@ -119,9 +119,20 @@ rexx370, 9 in nsf370. That makes every change to them a breaking change.
 
 ### Phase 5 — prebuilt and pinned
 
-- **cc370 binary releases** per host (linux/darwin × amd64/arm64) with
-  SHA-256 (#523). The installation is already relocatable: cc370 finds
-  everything relative to its own binary.
+- **cc370 binary releases** with SHA-256 (#523). The installation is already
+  relocatable: cc370 finds everything relative to its own binary.
+
+  | Platform | Channel |
+  |---|---|
+  | Linux amd64, arm64 | `.deb` and `.rpm` (nFPM), a statically linked tarball, `install.sh` |
+  | macOS arm64, amd64 | two separate tarballs |
+  | macOS and Linux | Homebrew tap: `brew install mvslovers/tap/cc370` (#699) |
+  | Windows | WSL2 officially; native builds are research (#698) |
+
+  Debian: the tree under `/usr/lib/cc370/`, symlinks in `/usr/bin/`;
+  libc370 as `libc370-dev` with `Depends: cc370 (>= …)`. macOS binaries are
+  not signed for now — Homebrew, `install.sh` and mbt download with curl,
+  which sets no quarantine flag.
 - **libc370 sysroot tarball** per release (headers, `libc.a`, `crt*.o`,
   macros), built with a named cc370 and declaring the cc370 range it needs —
   after Phase 2 that range is wide and rarely moves.
@@ -131,6 +142,12 @@ rexx370, 9 in nsf370. That makes every change to them a breaking change.
   (mvslovers/mbt#136, section 8).
 
 ## Open
+
+- **Where libc370 lives outside cc370's own tree** — the question three
+  channels share: Homebrew installs each formula into its own keg, the
+  Debian package and mbt want to replace or pin libc370 independently. All
+  need cc370 to accept an explicit sysroot; until then the Homebrew formula
+  carries libc370 inside cc370's keg (#699).
 
 - Whether the GCC 3.4.6 driver supports `--sysroot`, or mbt passes
   `-nostdinc`/`-isystem`/`-L` itself; as370 needs a switch for its macro
