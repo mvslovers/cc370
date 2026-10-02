@@ -48,6 +48,10 @@
 #include <stdio.h>
 
 /* each TU carries its own dw_t and shift helpers; rename so they coexist */
+/* The asm("@@NAME") labels are the S/370 names; an ELF assembler rejects
+   the '@' (cc370 CI runs on Linux, libc370 ran these on macOS only).  The
+   host test calls the C names. */
+#define asm(name)
 #include "../../src/@@cmpdi2.c"
 #define dw_t dw_bit_t
 #include "../../src/@@bitops.c"
@@ -70,6 +74,7 @@
 #undef dw_t
 #undef dbl_t
 #undef flt_t
+#undef asm
 
 #include "../mvs/tstcnvkat.h"
 

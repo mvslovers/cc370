@@ -48,6 +48,10 @@
 #include <limits.h>
 
 /* each TU carries its own dw_t; rename two of them so the three coexist */
+/* The asm("@@NAME") labels are the S/370 names; an ELF assembler rejects
+   the '@' (cc370 CI runs on Linux, libc370 ran these on macOS only).  The
+   host test calls the C names. */
+#define asm(name)
 #include "../../src/@@muldi3.c"
 #define dw_t dw_div_t
 #include "../../src/@@divdi3.c"
@@ -55,6 +59,7 @@
 #define dw_t dw_neg_t
 #include "../../src/@@negdi2.c"
 #undef dw_t
+#undef asm
 
 typedef long long ll;
 typedef unsigned long long ull;
