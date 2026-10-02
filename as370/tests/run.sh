@@ -4530,5 +4530,18 @@ else
 fi
 rm -rf "$u8"
 
+# --- issue #645: an EQU value in ADDR2 -- eight digits, up to three leading
+# zeros blanked (IFNX5P PRL300). sdtlen5's C'ABCD' is the measured case; the
+# six- and seven-digit widths are the source's rule, which no reference holds.
+ew=/tmp/_eqw.$$
+printf 'T        CSECT\nA        EQU   5\nB        EQU   X%s\nC        EQU   X%s\nD        EQU   -1\n         END\n' \
+    "'123456'" "'1234567'" > $ew.s
+./as370 $ew.s -a=$ew.lst -o /dev/null >/dev/null 2>&1
+got=$(grep ' EQU ' $ew.lst | cut -c1-33 | tr ' ' '.')
+want=$(printf '%s\n' '............................00005' '...........................123456' '..........................1234567' '.........................FFFFFFFF')
+if [ "$got" = "$want" ]; then echo "equwidth: OK (ADDR2 of an EQU five to eight digits, as PRL300)"
+else echo "equwidth: MISMATCH"; printf '%s\n' "$got"; fail=1; fi
+rm -f $ew.s $ew.lst
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
