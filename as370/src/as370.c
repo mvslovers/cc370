@@ -3650,6 +3650,7 @@ static int macro_extent(char **in, int n) {
 }
 static char **g_lib_logical;   /* lib_load's join_logical, aligned with its buffer (#370) */
 static char **g_main_raw, **g_main_logical;   /* the source's joined statements and their logical texts */
+static const char *g_curlog, *g_curseq;    /* the open-code card mexp_line is handed: its logical text and 73-80, or NULL (#656) */
 static char (*g_main_seq)[12];                  /* ... and their first cards' columns 73-80 */
 static char **g_cap_logical;   /* the logical texts aligned with capture_macro's `in', or NULL */
 static int lib_readlines(const char *name, char *buf[], int max, char (*seqbuf)[12], int as_macro) {
@@ -4027,7 +4028,7 @@ static void render_model(struct ctx *c, const char *model, const char *seq, char
  * The cards are separated by '\n'; a_src_section prints each after the first
  * as an unnumbered `+' row. `out' must hold OUTSZ_LOG bytes. */
 #define OUTSZ_LOG 512
-static void render_model_log(struct ctx *c, const char *log, const char *seq, char *out) {
+static void render_model_log(struct ctx *c, const char *log, const char *seq, char *out, int keepunres) {
     char ln[OUTSZ_LOG]; int i, cur = 0, n;
     const char *text = log + 1; char cc = log[0];
     const char *cseq = strchr(text, '\1');           /* the continuation cards' sequence fields */
@@ -4042,7 +4043,7 @@ static void render_model_log(struct ctx *c, const char *log, const char *seq, ch
     for (i = 0; i < 4; i++) {
         if (!fld[i][0]) continue;
         char sub[FLDMAX * 2];
-        msub_ex(c, fld[i], sub, sizeof sub, 0);
+        msub_ex(c, fld[i], sub, sizeof sub, keepunres);
         int col = fcol[i]; if (col < cur) col = cur;
         int sl = (int)strlen(sub), j; for (j = 0; j < sl && col + j < OUTSZ_LOG - 1; j++) ln[col + j] = sub[j];
         cur = col + sl + 1;
@@ -4263,7 +4264,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
           g_ifo007 = 0;                          /* cc370#421: arm for THIS model card */
           msub(c, cut, ex, sizeof ex); }
         char gimg[OUTSZ_LOG];   /* column-preserved image for the SOURCE column; a continued model's carries its cards (#370) */
-        if (m->bodylog && m->bodylog[pc]) render_model_log(c, m->bodylog[pc], m->bodyseq[pc], gimg);
+        if (m->bodylog && m->bodylog[pc]) render_model_log(c, m->bodylog[pc], m->bodyseq[pc], gimg, 0);
         else render_model(c, m->body[pc], m->bodyseq[pc], gimg);
         g_genimg = gimg;
         mexp_line(ex, out, nout, depth + 1);
@@ -4366,6 +4367,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     int ifo007_in = g_ifo007; g_ifo007 = 0;
     int ifo006_in = g_ifo006; g_ifo006 = 0;
     const char *img = g_genimg; g_genimg = NULL;   /* the SOURCE-column image for the one line this call emits (cleared so recursion does not inherit it) */
+    const char *clog = g_curlog, *cseq = g_curseq; g_curlog = g_curseq = NULL;   /* likewise: a continued open-code card's logical text (#656) */
     /* A comment card is not substituted: IFOX00 lists `* ... &SYSDATE ...'
      * as written (tests/listref, remark_sub statement 19). */
     char sysbuf[STMTSZ];
@@ -4483,6 +4485,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * substituted once already, and a second pass would resolve a reference the
      * first one deliberately left alone. */
     char genimg[256]; int subst = 0, opsubst = 0;
+    char genlog[OUTSZ_LOG]; const char *genimg_p = genimg;   /* genimg, or the card-by-card image of a continued card */
     /* A comment card is not a model statement. IFOX00 substitutes nothing in one
      * -- there is no field to substitute, the whole card is text -- and treating
      * it as one turns every '&' in a comment into a generated statement pair.
@@ -4498,6 +4501,10 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         msub_ex(opc, fld[2], odf, sizeof odf, 1);
         opsubst = strcmp(fld[1], opf) != 0;
         render_model_ex(opc, sysbuf, NULL, genimg, 0x7, 1);   /* listing image: fields 0-2, remarks verbatim */
+        /* A CONTINUED open-code card is generated card by card, as #370 does for a
+         * macro's model: subst_cont lists 19+ on two cards, the second with the
+         * next eight bytes of object code (tests/listref; #656). */
+        if (clog) { render_model_log(opc, clog, cseq, genlog, 1); genimg_p = genlog; }
         /* The assembled card is built plainly rather than from the listing image:
          * the image is bounded by the 72-column card it is drawn on, and a
          * substituted operand can be far longer than the model it came from. */
@@ -4530,7 +4537,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
             lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
             out[*nout] = strdup(line); (*nout)++;
         }
-        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0) | (g_genlevel > 0 ? LF_NOLIST : 0)); line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = subst ? strdup(genimg) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
+        if (*nout < MAXLINES) { lflags[*nout] = (unsigned char)((g_genlevel > 0 || subst ? LF_GEN | LF_NOASM : LF_NOASM) | (subst || (g_genlevel > 0 && !g_copyraw) ? LF_SUBST : 0) | (g_genlevel > 0 ? LF_NOLIST : 0)); line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = subst ? strdup(genimg_p) : (img ? strdup(img) : NULL); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf); (*nout)++; }
         /* HLASM substitutes the caller's variable symbols in a macro's arguments
          * in the caller's context. At open-code level resolve them from g_opc, so
          * e.g. `DCB MACRF=P&OUTM.M` binds &MACRF='PMM' (not the literal 'P&OUTM.M',
@@ -4551,7 +4558,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     if (subst && *nout + 1 < MAXLINES) {
         lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
         out[*nout] = strdup(line); (*nout)++;
-        img = genimg;
+        img = genimg_p;
     }
     if (*nout >= MAXLINES) return;
     /* Track the section on EMISSION, not on input: a CSECT a macro generates is
@@ -4706,7 +4713,9 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
             }
             pc += 2; continue;                       /* the punched card is not a statement */
         }
+        if (arr == g_main_raw && g_main_logical && g_genlevel == 0) { g_curlog = g_main_logical[pc]; g_curseq = g_main_seq ? g_main_seq[pc] : NULL; }
         mexp_line(arr[pc], out, nout, depth);
+        g_curlog = g_curseq = NULL;
         pc++;
     }
     free(seqn); free(seqi); free(oun);
