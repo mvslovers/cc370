@@ -7555,6 +7555,12 @@ static void a_src_space(int n) {
     for (k = 0; k < (total + 2) / 3; k++) a_line("");
     a_srclines += total;
 }
+/* `*** ERROR ***' under a flagged statement, after its last card (#652).
+ * Measured over the 116 markers in tests/listref: 103 follow the statement's
+ * row, 7 its last continuation card; a flagged TITLE, which is not listed,
+ * puts its marker first on the page it starts. A marker is a printed line and
+ * counts toward the page like any other (undeclset). */
+static void a_src_marker(void) { a_src_emit("         *** ERROR ***"); }
 /* place 6-hex LOC at col 1 and the object code at col 8 in a blank 256-col line */
 static void a_locobj(char *ln, long loc, const char *hex) {
     int j; for (j = 0; j < 255; j++) { ln[j] = ' '; } ln[255] = 0;
@@ -7770,6 +7776,7 @@ static void a_src_section(char **lines, int nl) {
         if (!noasm && (!strcmp(op, "TITLE") || !strcmp(op, "EJECT"))) {
             if (op[0] == 'T') title_text(opnd, a_title);
             a_src_newpage();
+            if (stmt_flagged[i]) a_src_marker();   /* first row of the page it starts: titlelong, titlenamed */
             a_src_pool(i + 1);
             continue;
         }
@@ -7889,6 +7896,13 @@ static void a_src_section(char **lines, int nl) {
             for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j];
             a_src_emit(ln);
         }
+        /* An MNOTE is not marked -- it is reported (IFO197) but never gets the
+         * row, at any severity (printerr, tattr_expr); one whose severity is
+         * bad (IFO178, no image) is. A continuation-card diagnostic (IFO026,
+         * IFO069) marks the statement it belongs to (blankcont). */
+        { int mn = !strcmp(op, "MNOTE") && gcard[i];   /* LF_NOASM, like every MNOTE row */
+          int cm = rn >= 0 && a_raw_org[rn] < MAXLINES && (cont_mark[a_raw_org[rn]] & CM_PRI);
+          if (!mn && (stmt_flagged[i] || cm)) a_src_marker(); }
         a_src_pool(i + 1);
     }
     a_src_pool(0);   /* a literal no LTORG or END placed (none should be left) */

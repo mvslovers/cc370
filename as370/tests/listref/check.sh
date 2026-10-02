@@ -498,7 +498,8 @@ done
 
 # --- case 12: every SOURCE page that matches IFOX00 keeps matching -- #150 --
 # The SOURCE page of each reference named here is IFOX00's line for line:
-# headings, statement numbers and blank lines; *** ERROR *** markers aside.
+# headings, statement numbers, blank lines and, since #652, the *** ERROR ***
+# rows (NOMARK below lists the three pages compared without them).
 # Before #150 listed in-stream macro definitions, 63 of the 135 did. 126 of
 # 136 do since #626 (NOMCALL), #627 (alignment pads), #24 (no object code on a
 # DS), #370 (a generated statement's continuation cards), #640 (a DC, CCW
@@ -529,7 +530,11 @@ tattr_literal tattr_selfdef tattr_symbol titlegen titlelong titlenamed
 titlepage undefsym usingexpr usingkey usingmul usingparen usingparenpc
 usingreloc var_opcode xfdirect xsectrel
 """.split()
-def src(path):
+# *** ERROR *** rows are compared too (#652), except where as370 is missing or
+# misplaces the DIAGNOSTIC itself -- the page matches once the marker is set
+# aside, and the issue named here owns the difference:
+NOMARK = {"undefsym": 660, "ccwstar": 661, "lenattr": 662}
+def src(path, keep=True):
     out, on = [], False
     for l in open(path, encoding="latin-1").read().split("\n"):
         l = l.replace("\f", "").rstrip()
@@ -538,7 +543,7 @@ def src(path):
                 if on: break
                 continue
             on = True; out.append("HEAD|" + l[:110].rstrip()); continue
-        if not on or "SOURCE STATEMENT" in l or l.strip() == "*** ERROR ***": continue
+        if not on or "SOURCE STATEMENT" in l or (l.strip() == "*** ERROR ***" and not keep): continue
         out.append(l)
     while out and out[-1] == "": out.pop()
     return out
@@ -553,7 +558,8 @@ for t in NAMES:
     m = re.search(r" (\d\d\.\d\d) (\d\d/\d\d/\d\d)", open(ref, encoding="latin-1").read())
     env = dict(os.environ, **({"ASMTIME": m.group(1), "ASMDATE": m.group(2)} if m else {}))
     subprocess.run(["./as370", s, "-a=" + out, "-o", "/dev/null"], capture_output=True, env=env)
-    if src(out) != src(ref): bad.append(t)
+    k = t not in NOMARK
+    if src(out, k) != src(ref, k): bad.append(t)
     os.remove(out)
 print("listref source: %d SOURCE pages line for line with IFOX00" % len(NAMES) if not bad
       else "listref source: MISMATCH in %s" % " ".join(bad))
