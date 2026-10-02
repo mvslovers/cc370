@@ -4561,6 +4561,16 @@ if [ $rcl != 4 ] || ! grep -q 'IFO120) in line 52 (statement 55)' /tmp/_la$$.out
 else echo "lattrdiag: OK (IFO120 on QL EQ4,1 and IFO080 on QL NODEF,1, rc 4, as IFOX00)"; fi
 rm -f /tmp/_la$$.out
 
+# --- issue #140: a binary literal is sized and valued like its DC ----------
+# The pool holds, in its byte-or-halfword groups, exactly the bytes of the four
+# DCs (0B, 0005, 01FF, FF) -- as370 had four bytes of zero per literal.
+./as370 tests/binlit.s -a -o /tmp/_bl$$.obj > /tmp/_bl$$.lst 2>&1
+blp=$(awk '/[0-9]+ {16}=B/ {print $2}' /tmp/_bl$$.lst | sort | tr '\n' ' ')
+bld=$(awk '/ DC +B/ {print $2}' /tmp/_bl$$.lst | sort | tr '\n' ' ')
+if [ -n "$bld" ] && [ "$blp" = "$bld" ] && [ "$bld" = "0005 01FF 0B FF " ]; then echo "binlit: OK (=B literals == their DCs: $bld)"
+else echo "binlit: FAIL -- pool '$blp', DCs '$bld'"; fail=1; fi
+rm -f /tmp/_bl$$.obj /tmp/_bl$$.lst
+
 # --- issue #333: T' of a macro parameter follows what was written ----------
 # An argument written as a SET variable -- local or global, SETA or SETC --
 # gives U; a literal or the caller's own parameter keeps its value's N
