@@ -76,7 +76,7 @@ CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
         test test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 \
-        test-dasm370 test-version clean uninstall help
+        test-dasm370 test-version test-macros install-macros clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler man
@@ -146,7 +146,7 @@ compiler: $(BUILD)/config.status $(VERHDR)
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-version test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
+test: test-version test-macros test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
 
 test-as370:
 	@$(MAKE) -C as370 test
@@ -165,6 +165,12 @@ test-version-cc370: tools compiler
 # defect moves no bytes. It went unrun for months on that reasoning and caught a
 # real regression the first time it was pointed at #141's change.
 # Case 1 needs the libc370 checkout and skips without it, so this is CI-safe.
+# cc370's PDPPRLG/PDPEPIL write out what SAVE/RETURN generated (#688): every
+# source that uses them, assembled with libc370's members and with cc370's,
+# must give the same deck.  Needs the libc370 checkout beside this one.
+test-macros: as370/as370
+	@sh macros/tests/check.sh
+
 test-listref: as370/as370
 	@sh as370/tests/listref/check.sh
 
@@ -192,7 +198,7 @@ test-file370: file370/file370
 	@sh file370/tests/run.sh
 
 # --- install --------------------------------------------------------------
-install: install-tools install-compiler install-man
+install: install-tools install-compiler install-macros install-man
 
 # Real tool binaries -> $(TGTBIN) (the sysroot bin); $(BINDIR) gets PATH symlinks
 # and $(LIBEXEC) gets the driver's tooldir symlinks (both relative -> relocatable).
@@ -228,6 +234,15 @@ install-compiler: compiler
 	@install -m 755 $(DRIVER) $(BINDIR)/cc370
 	@echo "installed cc370 -> $(BINDIR)/cc370 ; cc1 -> $(LIBEXEC)/cc1"
 
+# The compiler's own macros (#688): every .s cc370 writes COPYs PDPTOP and
+# wraps each function in PDPPRLG/PDPEPIL.  They go where as370 searches by
+# default (<exedir>/../macros), so cc370 output assembles without libc370.
+MACROS  := macros/pdptop.copy macros/pdpprlg.macro macros/pdpepil.macro
+install-macros:
+	@mkdir -p $(PREFIX)/$(TRIPLE)/macros
+	@install -m 644 $(MACROS) $(PREFIX)/$(TRIPLE)/macros/
+	@echo "installed macros -> $(PREFIX)/$(TRIPLE)/macros"
+
 install-man: man
 	@mkdir -p $(MANDIR)
 	@install -m 644 $(MAN1) $(MANDIR)/
@@ -243,6 +258,7 @@ uninstall:
 	      $(TGTBIN)/as370 $(TGTBIN)/ld370 $(TGTBIN)/ar370 $(TGTBIN)/file370 $(TGTBIN)/xmit370 \
 	      $(TGTBIN)/cmplmd370 $(TGTBIN)/dasm370 $(TGTBIN)/idrdump370 \
 	      $(LIBEXEC)/as $(LIBEXEC)/ld $(LIBEXEC)/ar $(LIBEXEC)/cc1 \
+	      $(addprefix $(PREFIX)/$(TRIPLE)/macros/,$(notdir $(MACROS))) \
 	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1 \
 	      $(MANDIR)/file370.1 $(MANDIR)/xmit370.1 $(MANDIR)/dasm370.1
 
