@@ -3334,6 +3334,37 @@ PY
 fi
 rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
 
+# ---------------------------------------------------------------- usingreg --
+# cc370#693: IFO195 on a USING or DROP register. Oracle: MVSTK5-REF JOB00319,
+# tests/listref/ifox-listing-usingreg.txt: 10 statements flagged, severity 12,
+# nine IFO195 and one IFO209. The deck pins what each path leaves live: the
+# register after a bad one in a USING is not entered (FLD+8192 is IFO209),
+# `DROP 9,6' with 9 unused keeps 6 (base 6), `DROP UNDEFR,6' drops it (base 5).
+# The binary before the fix gave rc 8, 2 flagged, no IFO195 and other bases.
+./as370 tests/usingreg.s -o /tmp/_ug$$.obj >/tmp/_ug$$.out 2>&1
+rcg=$?
+if [ $rcg != 12 ]; then
+    echo "usingreg: FAIL -- expected RC 12, got $rcg"; fail=$((fail + 1))
+elif ! grep -q "10 Statements Flagged" /tmp/_ug$$.out; then
+    echo "usingreg: FAIL -- ten statements are flagged"
+    grep -i flagged /tmp/_ug$$.out; fail=$((fail + 1))
+elif [ "$(grep -c 'IFO195' /tmp/_ug$$.out)" != 9 ]; then
+    echo "usingreg: FAIL -- expected 9x IFO195"
+    grep IFO195 /tmp/_ug$$.out; fail=$((fail + 1))
+else
+    python3 - /tmp/_ug$$.obj tests/ref/usingreg.obj <<'PY'
+import sys
+def body(p):
+    d = open(p, 'rb').read()
+    return [d[i:i+72] for i in range(0, len(d), 80) if d[i+1:i+4] != b"\xc5\xd5\xc4"]
+if body(sys.argv[1]) != body(sys.argv[2]):
+    print("usingreg: FAIL -- deck differs from IFOX00"); sys.exit(1)
+print("usingreg: OK (9x IFO195 on USING and DROP, what stays live, deck == IFOX00)")
+PY
+    [ $? = 0 ] || fail=$((fail + 1))
+fi
+rm -f /tmp/_ug$$.obj /tmp/_ug$$.out
+
 # ------------------------------------------------------------------ equfwd --
 # cc370#556: a name defined twice is IFO196 and the FIRST definition stands --
 # `DUP EQU 1' / `DUP EQU 2' leaves A(DUP) = 1. Oracle: MVSTK5-REF JOB00297,
@@ -4383,8 +4414,11 @@ rcu=$?
 ./as370 tests/useexp.s -o /dev/null --usings=- 2>/dev/null | head -1 > /tmp/_ue3$$.out
 ./as370 tests/useexp.s -o /dev/null --usings=/nonexistent$$/x.tsv >/dev/null 2>&1
 rcu2=$?
-if [ $rcu != 0 ] || [ -s /tmp/_ue$$.out ]; then
-    echo "useexp: FAIL -- --usings must be silent at RC 0, got $rcu"
+# `DROP 6' names a register that was never based, and since cc370#693 that is
+# IFO195 at severity 12, as in IFOX00 (tests/usingreg.s case 7, JOB00319): the
+# one message the run may print. The noop record is still written.
+if [ $rcu != 12 ] || [ "$(grep -c . /tmp/_ue$$.out)" != 3 ] || ! grep -q 'IFO195) - 6 in line 35' /tmp/_ue$$.out; then
+    echo "useexp: FAIL -- --usings must print only DROP 6's IFO195, RC 12, got $rcu"
     cat /tmp/_ue$$.out; fail=$((fail + 1))
 elif ! cmp -s /tmp/_ue$$.obj /tmp/_ue2$$.obj; then
     echo "useexp: FAIL -- the deck moved with --usings; the export is output only"

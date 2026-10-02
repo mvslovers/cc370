@@ -1,0 +1,85 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 14.20 10/02/26
+T         SD  0001 000000 000014
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 14.20 10/02/26
+                                      1 * IFO195 INVALID USING OR DROP STATEMENT (severity 12). IFOX00
+                                      2 * raises it on two paths in IFNX5A, and as370 had neither:
+                                      3 *
+                                      4 *   USING  a base register that is not absolute, is undefined, is
+                                      5 *          above 15, or is 0 anywhere but as the only register
+                                      6 *          (USI700). Registers named BEFORE the bad one are entered,
+                                      7 *          the bad one and every later one are not.
+                                      8 *   DROP   a register that holds no domain (DRP500) -- and the
+                                      9 *          statement stops there, later registers stay live -- or
+                                     10 *          an invalid register (DRP700), after which it goes on.
+                                     11 *
+                                     12 * Predictions, from the IFOX source, written before the capture:
+                                     13 *   1  IFO188 + IFO195         2  IFO195        3  IFO195
+                                     14 *   4  IFO195, 5 is entered    5  silent (control)
+                                     15 *   6  IFO195, 6 entered, 7 not: the L after it is IFO209
+                                     16 *   7  IFO195
+                                     17 *   8  IFO195, 6 NOT dropped: the L after it uses base 6
+                                     18 *   9  IFO188 + IFO195, 6 IS dropped: the L after it uses base 5
+                                     19 *  10  IFO195                 11  silent (control)
+                                     20 * Ten statements flagged, highest severity 12.
+000000                               21 T        CSECT
+000000 05C0                          22          BALR  12,0
+                            00002    23          USING *,12
+000004                               24 FLD      DS    F
+                            00004    25          USING FLD,UNDEFR       1: undefined register symbol
+         *** ERROR ***
+                            00004    26          USING FLD,16           2: register out of range
+         *** ERROR ***
+                            00004    27          USING FLD,FLD          3: relocatable register
+         *** ERROR ***
+                            00004    28          USING FLD,5,0          4: register 0 not first
+         *** ERROR ***
+                            00004    29          USING FLD,0            5: register 0 alone -- control
+                                     30          DROP  0                   control
+                            00004    31          USING FLD,6,17,7       6: bad middle register
+         *** ERROR ***
+000008 0000 0000      00000          32          L     1,FLD+8192          base 7 if entered
+         *** ERROR ***
+                                     33          DROP  9                7: register never in use
+         *** ERROR ***
+                                     34          DROP  9,6              8: unused first, then 6
+         *** ERROR ***
+00000C 5810 6000      00004          35          L     1,FLD               base 6 if 6 still live
+                                     36          DROP  UNDEFR,6         9: undefined first, then 6
+         *** ERROR ***
+000010 5810 5000      00004          37          L     1,FLD               base 5 if 6 was dropped
+                                     38          DROP  16              10: out of range
+         *** ERROR ***
+                                     39          DROP  12              11: control
+                                     40          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 14.20 10/02/26
+FLD      00004 00000004 00024  00025 00026 00027 00027 00028 00029 00031 00032 00035 00037
+T        00001 00000000 00021
+UNDEFR   ****UNDEFINED****     00025 00036
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 14.20 10/02/26
+   25  IFO188      UNDEFR IS AN UNDEFINED SYMBOL
+   25  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 11
+   26  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 7
+   27  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 8
+   28  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 8
+   31  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 9
+   32  IFO209      ADDRESSABILITY ERROR- BASE AND DISPLACEMENT CANNOT BE RESOLVED AND ARE SET TO 0
+   33  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 2
+   34  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 2
+   36  IFO188      UNDEFR IS AN UNDEFINED SYMBOL
+   36  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 7
+   38  IFO195      INVALID USING OR DROP STATEMENT NEAR OPERAND COLUMN 3
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =    10
+HIGHEST SEVERITY WAS   12
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         40
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        85

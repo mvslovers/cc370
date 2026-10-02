@@ -923,8 +923,11 @@ static int xsect_[64], xscnt_[64], xnsect_, xovf_;
  * reads as simply relocatable. That is the whole of cc370#362's first half.
  * `xmulrel_' records that a product or quotient had a relocatable operand --
  * IFO217 -- and xrl_class() separates absolute from simply from complexly
- * relocatable, the last being IFO213. */
-static int xterms_, xmulrel_;
+ * relocatable, the last being IFO213.
+ * `xundef_' records that a term named no symbol of this assembly. nundef_seen
+ * cannot answer that for one evaluation: note_undefsym counts a (statement,
+ * symbol) pair once, so a second look at the same operand reads as defined. */
+static int xterms_, xmulrel_, xundef_;
 /* 1 if every section's relocatable terms cancelled -- i.e. genuinely absolute
  * rather than merely net-zero across different sections. */
 static void xsect_tally(int sect, int sign) {
@@ -1052,6 +1055,7 @@ static long x_factor(int sign) {
          * cannot disagree there. */
         if (!sym_known(s)) {
             if (g_pass == 2 && nm[0]) note_undefsym(nm, g_curln);
+            if (nm[0]) xundef_ = 1;
             return 0;
         }
         return s->len ? s->len : 1;
@@ -1081,6 +1085,7 @@ static long x_factor(int sign) {
      * matters: the implicit private-code section is entered under "" (sym_get("")
      * in do_pass), and a factor position holding no symbol at all yields "". */
     if (g_pass == 2 && nm[0] && (!sym_known(s))) note_undefsym(nm, g_curln);
+    if (nm[0] && !sym_known(s)) xundef_ = 1;
     if (s && s->type == S_ER && !sym_known(s)) s = NULL;   /* known only from V(): no symbol, so 0 and not relocatable (#580) */
     if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) {
                  xrl_ += sign;
@@ -1135,7 +1140,7 @@ static long x_add(void) {
 }
 static long expr_val(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xundef_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
     while (*xp_ == ' ') xp_++;
     if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; }   /* leading '(' = subscript with no displacement prefix */
     else { v = x_add(); if (reloc) *reloc = xrl_; }
@@ -1157,7 +1162,7 @@ static long expr_val(const char *e, int *reloc) {
  * which it would silently value at 0.  Same evaluator, without that guard. */
 static long expr_val_full(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
+    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xundef_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
     while (*xp_ == ' ') xp_++;
     if (*xp_) { v = x_add(); if (reloc) *reloc = xrl_; }
     else if (reloc) *reloc = 0;
@@ -1184,6 +1189,16 @@ static long eval_reg(const char *s) {
      * same evaluator without the guard, and it already values the fully
      * enclosing form the same way the branch above does. */
     return expr_val_full(s, NULL);
+}
+/* A USING or DROP register operand, judged as IFOX00 judges it (IFNX5A USI110,
+ * DRP100): the value must come out of EVAL absolute and without error, and lie
+ * in 0..15 -- `CL R11,=A(HIREG)' is a LOGICAL compare, so a negative value is
+ * out of range too. Undefined, relocatable or out of range is IFO195. Returns
+ * the register, or -1 for an operand IFOX00 rejects. */
+static int using_reg(const char *e) {
+    long v = expr_val_full(e, NULL);
+    if (xundef_ || xmulrel_ || xdeep_ || xbadsdt_ || xrl_class() != 0 || v < 0 || v > 15) return -1;
+    return (int)v;
 }
 static void put(long at, long v, int n) {
     if (in_dsect) return;                       /* a DSECT generates no object text */
@@ -6462,7 +6477,21 @@ static void do_pass(int pass, char **lines, int nlines) {
                   for (j = 1; !uerr && j < nf; j++) {
                       int reg, slot = -1, q;
                       if (!F[j][0]) continue;          /* an omitted register leaves ITS range uncovered, and the next one still advances */
-                      reg = (int)expr_val(F[j], 0);
+                      /* IFO195 (USI700): a register that is undefined,
+                       * relocatable or outside 0..15, or register 0 anywhere
+                       * but as the first -- USI500 lets 0 through only when it
+                       * is the second operand. IFOX00 leaves the statement at
+                       * the bad register: those before it are entered, it and
+                       * every later one are not. as370 entered all of them,
+                       * an undefined symbol as register 0 and 16 as a base
+                       * that overflowed into the index field. */
+                      reg = using_reg(F[j]);
+                      if (reg < 0 || (reg == 0 && j != 1)) {
+                          char m[112];
+                          snprintf(m, sizeof m, "Invalid USING or DROP statement (IFOX00 IFO195) - %.24s", F[j]);
+                          note_operr(m, 12, i);
+                          break;
+                      }
                       for (q = 0; q < nusing; q++) if (usings[q].reg == reg) { slot = q; break; }
                       if (slot < 0) { if (nusing >= 32) break; slot = nusing++; }
                       usings[slot].reg = reg; usings[slot].base = base + 4096L * (j - 1);
@@ -6514,7 +6543,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                                 usings[k].sect, is_dsect_id(usings[k].sect), usings[k].isabs, UEB_STMT);
                     nusing = 0;
                 }
-                else for (j = 0; j < nf; j++) { int r = (int)expr_val(F[j], 0), hit = 0;
+                else for (j = 0; j < nf; j++) { int r = using_reg(F[j]), hit = 0;
+                    /* IFO195 on both of IFOX00's paths, which differ in what
+                     * follows. An operand that is no valid register (DRP700)
+                     * is flagged and the scan goes on to the next one. */
+                    if (r < 0) { char m[112];
+                        snprintf(m, sizeof m, "Invalid USING or DROP statement (IFOX00 IFO195) - %.24s", F[j]);
+                        note_operr(m, 12, i); continue; }
                     for (k = 0; k < nusing; ) { if (usings[k].reg == r) {
                             uev_add(i + 1, UEV_DROP, cur_sect_id, lc, r, usings[k].base,
                                     usings[k].sect, is_dsect_id(usings[k].sect), usings[k].isabs, UEB_STMT);
@@ -6525,7 +6560,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                      * The source-text control compares statements against the
                      * log, and a statement with no records at all is a hole in
                      * it that looks like agreement. */
-                    if (!hit) uev_add(i + 1, UEV_DROP, cur_sect_id, lc, r, 0, 0, 0, 0, UEB_NOOP); } }
+                    if (!hit) uev_add(i + 1, UEV_DROP, cur_sect_id, lc, r, 0, 0, 0, 0, UEB_NOOP);
+                    /* A valid register that holds no domain (DRP500) is IFO195
+                     * too, and there IFOX00 leaves the statement: `DROP 9,6'
+                     * with 9 unused keeps 6 live. */
+                    if (!hit) { char m[112];
+                        snprintf(m, sizeof m, "Invalid USING or DROP statement (IFOX00 IFO195) - %.24s", F[j]);
+                        note_operr(m, 12, i); break; } } }
         } else if (!strcmp(op, "PUNCH")) {
             /* PUNCH writes its operand -- a quoted string, '' and && standing for
              * one character each -- as an 80-column card into the object deck,
@@ -7999,8 +8040,11 @@ static void a_src_section(char **lines, int nl) {
             /* A USING IFOX00 rejects lists a LOC and no ADDR2 -- the LOC of the
              * last statement that stored one (a_sets_locatn): absundef's
              * `USING UNDEF,5', usingreloc's undefined, relocatable-times-two
-             * and two-section operands (tests/listref). */
-            else if (!strcmp(op, "USING") && stmt_flagged[i]) { show_loc = 1; }
+             * and two-section operands (tests/listref).
+             * Only a USING rejected BEFORE its base was stored, though: USI085
+             * stores ADDR2 and sets EOUBIT (no LOC) in one step, so an IFO195 on
+             * a register lists like a clean USING (tests/usingreg.s, JOB00319). */
+            else if (!strcmp(op, "USING") && stmt_flagged[i] && !lrecs[i].hasa2) { show_loc = 1; }
         }
         long loc = lrecs[i].loc; int len = lrecs[i].len;
         if (!noasm && !strcmp(op, "USING")) loc = a_locatn;

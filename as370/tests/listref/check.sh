@@ -500,12 +500,13 @@ done
 # The SOURCE page of each reference named here is IFOX00's line for line:
 # headings, statement numbers, blank lines and, since #652, the *** ERROR ***
 # rows (all of them since #660; NOMARK below is where an exception would go).
-# Before #150 listed in-stream macro definitions, 63 of the 135 did. 134 of
-# 137 do since #626 (NOMCALL), #627 (alignment pads), #24 (no object code on a
+# Before #150 listed in-stream macro definitions, 63 of the 135 did. 135 of
+# 138 do since #626 (NOMCALL), #627 (alignment pads), #24 (no object code on a
 # DS), #370 (a generated statement's continuation cards), #640 (a DC, CCW
 # or CNOP pad on a row of its own), #643 (a comment card not substituted),
 # #645 (an EQU value wider than five digits), #647 (a flagged USING's LOC) and
-# #650 (an empty last continuation card unlisted), plus tstlist, which needs
+# #650 (an empty last continuation card unlisted) -- and usingreg, new
+# with #693, which narrowed #647 to a USING whose base was never stored -- plus tstlist, which needs
 # the libc370 macros and is case 1's. sectlen, dsectpool, usingreloc and
 # extrn_csect were recaptured on MVSTK5-REF (JOB00314-JOB00317): their
 # fixtures had been edited after the first capture. A reference that starts matching belongs
@@ -528,7 +529,7 @@ sectlen selfdup setc_len95 setc_open setc_substr setc_undef setctype
 spacelines spacelist spmrr ssb1 ssomit stmtlen subattr sublist subst_cont
 substrcat syslist sysparm_substr tattr_expr tattr_literal tattr_selfdef
 tattr_symbol titlegen titlelong titlenamed titlepage undeclset undeclset2
-undefsym usingexpr usingkey usingmul usingparen usingparenpc usingreloc
+undefsym usingexpr usingkey usingmul usingparen usingparenpc usingreg usingreloc
 var_opcode xfdirect xrefcov xsectrel
 """.split()
 # *** ERROR *** rows are compared too (#652). A page where as370 is missing or
