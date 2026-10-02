@@ -4561,6 +4561,28 @@ if [ $rcl != 4 ] || ! grep -q 'IFO120) in line 52 (statement 55)' /tmp/_la$$.out
 else echo "lattrdiag: OK (IFO120 on QL EQ4,1 and IFO080 on QL NODEF,1, rc 4, as IFOX00)"; fi
 rm -f /tmp/_la$$.out
 
+# --- issue #199: DC 0V(name) enters no ER -----------------------------------
+# HMASMTMD's three `DC 0V(...)' names are absent from IFOX00's ESD; as370 had
+# them as three extra ER entries, one ESD card more. ONE is the control.
+./as370 tests/zerovcon.s -o /tmp/_zv$$.obj >/dev/null 2>&1
+zv=$(python3 - /tmp/_zv$$.obj <<'PY'
+import sys
+d = open(sys.argv[1], 'rb').read()
+names = []
+for i in range(0, len(d), 80):
+    c = d[i:i+80]
+    if c[1:4] != b'\xc5\xe2\xc4': continue
+    n = int.from_bytes(c[10:12], 'big')
+    for k in range(n // 16):
+        e = c[16 + 16*k:32 + 16*k]
+        if e[8] == 2: names.append(e[:8].decode('cp037').rstrip())
+print(' '.join(names))
+PY
+)
+if [ "$zv" = "ONE" ]; then echo "zerovcon: OK (no ER for DC 0V(ZERO), one for DC V(ONE))"
+else echo "zerovcon: FAIL -- ER entries: '$zv', want 'ONE'"; fail=1; fi
+rm -f /tmp/_zv$$.obj
+
 # --- issue #645: an EQU value in ADDR2 -- eight digits, up to three leading
 # zeros blanked (IFNX5P PRL300). sdtlen5's C'ABCD' is the measured case; the
 # six- and seven-digit widths are the source's rule, which no reference holds.
