@@ -3891,21 +3891,20 @@ rm -f /tmp/_lp$$.obj /tmp/_lp$$.out
 # -- and it checks the dictionary at DEFINITION time as well as in the
 # expansion (tests/ref/undeclset.obj, tests/listref/ifox-listing-undeclset.txt).
 #
-# The deck is IFOX00's. The flagged count is not, and the difference is exactly
-# the definition-time pair: IFOX00 flags SIX statements, as370 FOUR -- the two
-# statements of the expansion and the two in open code. as370 does not list an
-# in-stream macro definition at all, so there is no statement to attach the
-# other two to. Listing only; no byte depends on it.
+# The deck is IFOX00's, and since #659 so is the flagged count: SIX statements --
+# the definition-time pair (the definition is listed since #150), the two of the
+# expansion and the two in open code.
 ./as370 tests/undeclset.s -o /tmp/_us$$.obj >/tmp/_us$$.out 2>&1
 rcu=$?
 if [ $rcu != 8 ]; then
     echo "undeclset: FAIL -- expected RC 8, got $rcu"; fail=$((fail + 1))
-elif ! grep -q "4 Statements Flagged" /tmp/_us$$.out; then
-    echo "undeclset: FAIL -- expected 4 flagged (IFOX00's 6 less the definition-time pair)"
+elif ! grep -q "6 Statements Flagged" /tmp/_us$$.out; then
+    echo "undeclset: FAIL -- expected 6 flagged, as IFOX00 (the definition-time pair included)"
     grep -i flagged /tmp/_us$$.out; fail=$((fail + 1))
-elif [ "$(grep -c '&LOOSE is an undefined variable symbol' /tmp/_us$$.out)" != 2 ] \
+elif [ "$(grep -c '&LOOSE is an undefined variable symbol' /tmp/_us$$.out)" != 4 ] \
      || [ "$(grep -c '&OSET is an undefined variable symbol' /tmp/_us$$.out)" != 2 ]; then
-    echo "undeclset: FAIL -- expected IFO006 twice on &LOOSE (macro) and twice on &OSET (open code)"
+    echo "undeclset: FAIL -- expected IFO006 four times on &LOOSE (definition and expansion, 46 47 59 60)"
+    echo "           and twice on &OSET (open code), as IFOX00"
     grep 'IFO006' /tmp/_us$$.out; fail=$((fail + 1))
 elif ! deck_eq /tmp/_us$$.obj tests/ref/undeclset.obj; then
     echo "undeclset: FAIL -- deck differs from IFOX00 (12 bytes: /TIGHT/ /P/ //)"; fail=$((fail + 1))
@@ -3922,14 +3921,14 @@ rm -f /tmp/_us$$.obj /tmp/_us$$.out
 #   B   a reference on the card BEFORE its LCLC is IFO006 -- text order
 #   C/F a SETC using an undeclared symbol assigns nothing: C'CC', C'FF'
 #   D/G an AIF using one does not branch: C'D1', C'G1'
-# IFOX00 flags EIGHT statements; as370 flags the FIVE outside the definitions,
-# for the reason given at undeclset above.
+# IFOX00 flags EIGHT statements, three of them in the definitions; so does
+# as370 since #659.
 ./as370 tests/undeclset2.s -o /tmp/_u2$$.obj >/tmp/_u2$$.out 2>&1
 rcu2=$?
 if [ $rcu2 != 8 ]; then
     echo "undeclset2: FAIL -- expected RC 8, got $rcu2"; fail=$((fail + 1))
-elif ! grep -q "5 Statements Flagged" /tmp/_u2$$.out; then
-    echo "undeclset2: FAIL -- expected 5 flagged (IFOX00's 8 less three at definition time)"
+elif ! grep -q "8 Statements Flagged" /tmp/_u2$$.out; then
+    echo "undeclset2: FAIL -- expected 8 flagged, as IFOX00 (three at definition time)"
     grep -i flagged /tmp/_u2$$.out; fail=$((fail + 1))
 elif grep -qE '&SKIP|&OSKIP|&T3 is|&OT is' /tmp/_u2$$.out; then
     echo "undeclset2: FAIL -- a symbol declared by a skipped LCLC was flagged (the dictionary is static)"
@@ -4178,9 +4177,10 @@ elif ! grep -q 'Usage of &C is inconsistent' /tmp/_i7$$.err; then
     echo "ifo007: FAIL -- the message must name the symbol, and in full"; cat /tmp/_i7$$.err
     fail=$((fail + 1))
 elif grep 'IFO007' /tmp/_i7$$.err | grep -qE '&A|&Z' || grep -q '&A is an undefined' /tmp/_i7$$.err \
-     || [ "$(grep -c '&Z is an undefined variable symbol' /tmp/_i7$$.err)" != 1 ]; then
+     || [ "$(grep -c '&Z is an undefined variable symbol' /tmp/_i7$$.err)" != 2 ]; then
     echo "ifo007: FAIL -- &A(1) is a correct subscripted use and stays silent;"
-    echo "        &Z(1) is the UNDECLARED case and draws IFO006, never IFO007"; cat /tmp/_i7$$.err
+    echo "        &Z(1) is the UNDECLARED case and draws IFO006 -- at the definition"
+    echo "        and at the expansion (#659) -- never IFO007"; cat /tmp/_i7$$.err
     fail=$((fail + 1))
 # THE HALF THAT MOVES BYTES: the flagged statement generates nothing, so the
 # location counter does not advance. Without it the diagnostic is cosmetic and
