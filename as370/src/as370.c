@@ -2534,6 +2534,7 @@ static long selfdef(const char *s) {
     } else v = atol(s);
     return neg ? -v : v;
 }
+static long ca_lenattr_default(const char *v);   /* #662, below the look-ahead tables */
 static long e_prim(void) {
     e_sp();
     if (*ep_ == '(') { ep_++; long v = e_expr(); e_sp(); if (*ep_ == ')') ep_++; return v; }
@@ -2564,7 +2565,7 @@ static long e_prim(void) {
          * L' is the LENGTH ATTRIBUTE OF THE SYMBOL the value names, which is a
          * different question and needs the pre-scan above (#244). An unknown
          * symbol answers 1, as IFOX00 does for one it cannot resolve. */
-        if (kind == 'L') { int pl = prelen_of(v); return pl ? pl : 1; }
+        if (kind == 'L') { int pl = prelen_of(v); return pl ? pl : ca_lenattr_default(v); }
         return (kind == 'N') ? sub_count(v) : (long)strlen(v);
     }
     if ((*ep_ == 'X' || *ep_ == 'B' || *ep_ == 'C') && ep_[1] == '\'') {   /* self-defining term */
@@ -2810,6 +2811,46 @@ static char styp_find(const char *nm) {
     int i; for (i = 0; i < nstypes; i++) if (!strcmp(stypes[i].name, nm)) return stypes[i].t;
     return 0;
 }
+/* For L' in conditional assembly (#662). An open-code `SYM EQU <self-defining
+ * term>' with no length operand has a DEFAULTED length attribute, and labels a
+ * macro has already generated are defined by the time a later L' asks -- IFOX00
+ * interleaves generation and assembly, the look-ahead table above sees open
+ * code only. Both are names, appended without deduplication: they are only
+ * searched when an L' found no length. */
+static char (*equdef)[9]; static int nequdef, capequdef;
+static char (*genlbl)[9]; static int ngenlbl, capgenlbl;
+static void name_push(char (**t)[9], int *n, int *cap, const char *nm) {
+    if (!nm[0]) return;
+    if (*n >= *cap) { int nc = *cap ? *cap * 2 : 256; char (*g)[9] = realloc(*t, (size_t)nc * sizeof **t);
+        if (!g) { fprintf(stderr, "as370: out of memory for a name table\n"); exit(2); } *t = g; *cap = nc; }
+    strncpy((*t)[*n], nm, 8); (*t)[*n][8] = 0; (*n)++;
+}
+static int name_has(char (*t)[9], int n, const char *nm) {
+    int i; for (i = 0; i < n; i++) if (!strncmp(t[i], nm, 8)) return 1;
+    return 0;
+}
+/* L' that the pre-scan could not answer: 1, as IFOX00 gives -- and its
+ * diagnostic where IFNX3A EVALLAT raises one. A self-defining term (type N) and
+ * a symbol whose length was defaulted are IFO120; an undefined symbol is IFO080;
+ * both severity 4 (JERMSGCD SEV120, SEV80). Measured: lenattr's `QL EQ4,1'
+ * (EQ4 EQU 4) and `QL NODEF,1', flagged on the call (tests/listref). Only the
+ * defaulted length the pre-scan can name is diagnosed -- an open-code EQU of a
+ * self-defining term with no length operand; any other L' it cannot answer
+ * stays 1 and silent. A name is undefined only when neither open code nor an
+ * expansion so far defines it. */
+static long ca_lenattr_default(const char *v) {
+    const char *e = v; int n = 0;
+    if (is_selfdef(v)) { note_operr("illegal length attribute reference (IFOX00 IFO120)", 4, g_ca_slot); return 1; }
+    if (!(isalpha((unsigned char)*e) || *e == '@' || *e == '#' || *e == '$')) return 1;
+    while (*e && (isalnum((unsigned char)*e) || *e == '@' || *e == '#' || *e == '$')) { e++; n++; }
+    if (*e || n > 8) return 1;
+    if (name_has(equdef, nequdef, v)) { note_operr("illegal length attribute reference - the length of an EQU symbol is defaulted (IFOX00 IFO120)", 4, g_ca_slot); return 1; }
+    if (!styp_find(v) && !name_has(genlbl, ngenlbl, v)) {
+        char m[96]; snprintf(m, sizeof m, "attribute reference to undefined symbol %s (IFOX00 IFO080)", v);
+        note_operr(m, 4, g_ca_slot);
+    }
+    return 1;
+}
 /* The type letter of a DS/DC operand: skip the duplication factor -- digits, or
  * a parenthesised expression -- and take the character that follows. DS 0H is
  * still 'H', which is why the factor is skipped rather than rejected. */
@@ -2843,7 +2884,7 @@ static void srcmac_add(const char *nm) {
 }
 /* `nest' bounds COPY-within-COPY; the caller passes 0 and clears the table. */
 static void prescan_cards(char **in, int n, int nest);
-static void prescan_symtypes(char **in, int n) { nstypes = 0; nsrcmac = 0; prescan_cards(in, n, 0); }
+static void prescan_symtypes(char **in, int n) { nstypes = 0; nsrcmac = 0; nequdef = 0; ngenlbl = 0; prescan_cards(in, n, 0); }
 static void prescan_cards(char **in, int n, int nest) {
     int i, depth = 0, proto = 0;
     for (i = 0; i < n; i++) {
@@ -2897,6 +2938,7 @@ static void prescan_cards(char **in, int n, int nest) {
             if (nf >= 3 && toupper((unsigned char)F[2][0]) == 'C' && F[2][1] == '\''
                 && F[2][2] && F[2][3] == '\'' && !F[2][4]) t = F[2][2];
             styp_add(lbl, t);
+            if ((nf < 2 || !F[1][0]) && is_selfdef(F[0])) name_push(&equdef, &nequdef, &capequdef, lbl);
         }
         else if (op_find(op)) styp_add(lbl, 'I');
         else if (lbl[0] != '.' && lbl[0] != '&' && strcmp(op, "OPSYN") && !known_op(op)) {
@@ -4177,7 +4219,8 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
           int isca = set_stmt(c, bl, bo, bod); g_ca_slot = -1;
           if (isca) { pc++; continue; } }                     /* GBLx/LCLx/SETA/SETB/SETC/ANOP */
         if (!strcmp(bo, "AIF")) { char cond[512], seq[20]; aif_split(bod, cond, sizeof cond, seq, sizeof seq);
-            if (eval_cond(c, cond)) {
+            g_ca_slot = g_mcall_slot; int tk = eval_cond(c, cond); g_ca_slot = -1;   /* an attribute error points at the call (lenattr) */
+            if (tk) {
                 if (--actr < 0) { note_operr("The ACTR limit has been exceeded - conditional assembly terminated (IFOX00 IFO118)", 8, g_mcall_slot); break; }
                 int j, t = -1; for (j = 0; j < nseq; j++) if (!strcmp(seqn[j], seq)) { t = seqi[j]; break; } if (t >= 0) { pc = t; continue; } }
             pc++; continue; }
@@ -4520,6 +4563,7 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
         ifo007_line[*nout] = 1;
         g_ifo007 = 0;
     }
+    if (g_genlevel > 0 && lbl[0] && lbl[0] != '.' && lbl[0] != '&') name_push(&genlbl, &ngenlbl, &capgenlbl, lbl);   /* #662 */
     if (lbl[0] == '.') { char r[STMTSZ + 32]; snprintf(r, sizeof r, "         %s %s", op, opnd);
         /* The sequence symbol goes from the statement the core assembles, not
          * from the listing: IFOX00 prints `.A       DC    C'Y1'' as written

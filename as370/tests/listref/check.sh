@@ -533,7 +533,7 @@ usingparen usingparenpc usingreloc var_opcode xfdirect xsectrel
 # *** ERROR *** rows are compared too (#652), except where as370 is missing or
 # misplaces the DIAGNOSTIC itself -- the page matches once the marker is set
 # aside, and the issue named here owns the difference:
-NOMARK = {"undefsym": 660, "lenattr": 662}
+NOMARK = {"undefsym": 660}
 def src(path, keep=True):
     out, on = [], False
     for l in open(path, encoding="latin-1").read().split("\n"):
