@@ -1188,6 +1188,15 @@ if [ $xok = 1 ]; then
 fi
 if [ $xok = 1 ]; then echo "  OK: xref text, rows == member RLD + adcons, member unchanged, needs --map"; else fails=$((fails + 1)); fi
 
+# #519/#713: a missing input object ended the link at rc 1 with no message.
+echo "== missing input object names itself (#519, #713)"
+"$LD" -e MA -o "$TMP/missing.lm" "$TMP/no-such-object.o" 2>"$TMP/missing.err"; r=$?
+if [ "$r" = 1 ] && grep -q "cannot open $TMP/no-such-object.o: " "$TMP/missing.err"; then
+    echo "  OK: rc 1, '$(sed "s#$TMP/##" "$TMP/missing.err")'"
+else
+    echo "  FAIL: rc $r, stderr '$(cat "$TMP/missing.err")'"; fails=$((fails + 1))
+fi
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"

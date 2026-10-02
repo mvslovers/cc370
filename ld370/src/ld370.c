@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <time.h>
 
 #include "mvs370.h"
@@ -419,7 +420,7 @@ static int load_archive(const char *path)
     long n, p; unsigned char *a; struct archive *ar;
     if (nAR >= MAXAR) { fprintf(stderr, "ld370: too many archives\n"); return 1; }
     a = mvs_read_file(path, &n);
-    if (!a) return 1;
+    if (!a) { fprintf(stderr, "ld370: cannot open %s: %s\n", path, strerror(errno)); return 1; }
     if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ld370: %s: not an archive\n", path); free(a); return 1; }
     ar = &AR[nAR]; ar->data = a; ar->size = n;
     ar->path = strdup(path);
@@ -2178,7 +2179,10 @@ int main(int argc, char **argv)
     for (i = 0; i < nobjf; i++) {
         long n; unsigned char *b = mvs_read_file(objfiles[i], &n);
         trace("- object: %s", objfiles[i]);
-        if (!b) return 1;
+        /* mvs_read_file says nothing on failure, and this used to end the
+           link at rc 1 without a word (#519, #713) -- a missing crt0.o or an
+           object not yet built looked like a linker that had silently died. */
+        if (!b) { fprintf(stderr, "ld370: cannot open %s: %s\n", objfiles[i], strerror(errno)); return 1; }
         O = grow_arr(O, &Ocap, nO + 1, sizeof *O);
         parse_object(b, n, &O[nO]);
         O[nO].src_kind = SRC_EXPLICIT; O[nO].src_path = objfiles[i];
