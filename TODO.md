@@ -1354,12 +1354,12 @@ was found while building a `listref` case, and each is excluded from that case
   #663, `8d72908`): after the flagged statement's last card, first on the
   page a flagged TITLE starts, never under an MNOTE. listref case 12 now
   compares the markers: 123 pages identical with them (96 before).
-- **Diagnostic gaps the markers exposed:** **#659** IFO006 is not raised at
-  the in-stream definition (undeclset, undeclset2 -- also their page breaks);
-  **#660** an undefined symbol in a literal is charged to the instruction, not
-  the pool statement (undefsym); **#661** IFO158 not raised (ccwstar);
-  **#662** L' in AIF of an EQU/undefined symbol raises nothing (lenattr,
-  IFO120/IFO080). Also seen in the ifox-run IBM listings, not filed yet:
+- **Diagnostic gaps the markers exposed:** ~~**#659**~~ IFO006 at the in-stream
+  definition -- **fixed** (PR #666); ~~**#211**~~ IFO158 for a CCW (filed again
+  as #661, closed as its duplicate) -- **fixed** (PR #665). Open: **#660** an
+  undefined symbol in a literal is charged to the instruction, not the pool
+  statement (undefsym); **#662** L' in AIF of an EQU/undefined symbol raises
+  nothing (lenattr, IFO120/IFO080). Also seen in the ifox-run IBM listings, not filed yet:
   IFO092 (keyword parameter not in the definition) is never raised, and IFO117
   is charged to the macro call instead of the SETC.
 - **#654** — cards a column-72 comment swallows are not listed (cont72,
@@ -1542,6 +1542,11 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #211 and #659, MERGED as `56bc9b8`, `ee8f2f1` (PRs #665,
+  #666).** IFO158 for a CCW's DSECT data address; IFO006 at the in-stream
+  definition as well as the expansion. listref case 12: 128 pages, markers
+  included. MVSBLD gate 0 moved both times.
 
 - **2026-10-02 — #652, MERGED as `8d72908` (PR #663).** `*** ERROR ***` rows
   in the SOURCE listing, compared by listref case 12 from now on: 96 -> 123
