@@ -1571,6 +1571,11 @@ at the cost of one more dimension in which two objects can disagree.
 
 Pointers only. The reasoning lives in the issues and their PRs.
 
+- **2026-10-02 — #704, MERGED as `b8180b1` (PR #706).** `__CC370__` =
+  MAJOR*10000+MINOR*100+PATCH from `VERSION` (+ `_MAJOR__/_MINOR__/_PATCH__`);
+  not in v1.0.0, ships with the next release. Counterpart: libc370#315. Also
+  merged: #705 (plan Phase 5: packages per channel, the libc370 dependency).
+
 - **2026-10-02 — cc370 1.0.0 RELEASED** (tag `v1.0.0` on `85aa497`, PR #702;
   release.yml run 37062575926 green: compiler built, nine binaries report
   `1.0.0 (85aa497)`). Also merged: #694 (#685's helpers test) and #690 (the
