@@ -39,11 +39,15 @@ optimisation level, every external reference collected and link-tested.
 
 ### Phase 0 — safeguards, nothing moves
 
-- **#685** A regression test: every helper the compiler can emit must link.
-  Red today for `__builtin_ffs` and `-ftrapv`, on purpose.
-- **#687 (first step)** Check that ld370 resolves `-lc -lcc370rt` in that
-  order: `libc.a` members use `long long` themselves and will reference the
-  helpers once they live in the runtime library.
+- **#685** A regression test: every helper the compiler can emit must link
+  (PR #694). The six links that fail today — `__builtin_ffs` and the five
+  `-ftrapv` helpers — are XFAIL against #687.
+- **#687 (first step) — done, measured:** ld370 resolves iteratively, like
+  IEWL autocall, so the order of `-lc` and `-lcc370rt` does not matter for
+  resolution; where a name is defined twice, the first archive in `-l` order
+  wins silently (`--warn-shadow` names it). A real split of libc370's objects
+  into `libc.a` and `libcc370rt.a` links. libc370 itself references none of
+  the helpers outside the helper files.
 - **#686** Nested functions whose address is taken do not assemble
   (`@@LTRAMP0` is 9 characters) and call `bcopy`. Independent of the rest.
 
@@ -67,19 +71,27 @@ Before the first release:
   prove `make compiler` works.
 - **Release notes from `CHANGELOG.md`,** as libc370 does (its D6).
 
-The first release number is settled in #523; the issues use **v1.1.0** as a
-placeholder.
+**Decided (#523):** the first release is **1.0.0**, with today's code, as soon
+as the points above are done — from then on libc370 can name `cc370 >= 1.0.0`
+instead of a commit, and mbt can pin it. The runtime move in Phase 2 is an
+addition and ships as **1.1.0**; the first incompatible change to generated
+code or the ABI is 2.0.0. Not 2.0.0 to match libc370: equal numbers would
+suggest a bundled pair, and the two are versioned separately with a range.
+`--version` reports the toolchain version and its GCC base separately, e.g.
+`cc370 1.0.0 (957adbb), based on GCC 3.4.6`.
 
 ### Phase 2 — the compiler takes over its runtime
 
 - **#687** `libcc370rt.a`: the 22 helpers move from libc370 with their tests;
   the missing `-ftrapv` helpers and a `__ffssi2` are added. The driver links it
-  automatically after `-lc`. External names stay exactly as they are.
+  automatically, **before** `-lc`: resolution does not depend on the order,
+  but where a name is defined twice the first archive wins, and that should be
+  the compiler's own runtime. External names stay exactly as they are.
 - **#688** `PDPTOP`, `PDPPRLG`, `PDPEPIL` move to cc370, installed into the
   macro directory as370 searches. Content unchanged.
-- **#523** First release, carrying both.
+- **cc370 1.1.0** carries both.
 - **libc370#313** libc370 drops its copies in its next minor release and
-  requires that cc370. No header declares either, so it is not an API change.
+  requires `cc370 >= 1.1.0`. No header declares either, so it is not an API change.
   In between, both archives carry identical code — harmless.
 - **brexx370#292** brexx370 deletes its own copy of five helpers
   (`compat/libgcc64.c`) when it pins that cc370.
