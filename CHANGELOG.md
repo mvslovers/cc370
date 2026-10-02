@@ -21,6 +21,16 @@ neither number is mistaken for the other.
 ## [Unreleased]
 
 ### Added
+- **`libcc370rt.a`, the compiler runtime** (#687): the routines cc370 itself
+  emits calls to, as libgcc is to gcc -- 64-bit multiply, divide and negate,
+  float <-> long long conversions, the popcount/parity/clz/ctz/ffs builtins.
+  Moved from libc370 unchanged, same external names. New in it: the
+  `-ftrapv` helpers (`@@ADDVDI @@SUBVDI @@MULVDI @@MULVSI @@NEGVDI`, which
+  abort on overflow) and `__ffssi2` (`@@FFSSI2`), which `__builtin_ffs(int)`
+  now calls instead of libc's `ffs()`. Installed as `<sysroot>/lib/libcc370rt.a`;
+  the driver links `-lcc370rt` ahead of `-lc`, so it wins over the copies
+  libc370 before 2.1 still carries. mbt links it when the file exists
+  (mbt#138).
 - **The prologue macros ship with cc370** (#688): `PDPTOP`, `PDPPRLG` and
   `PDPEPIL`, the members every `.s` the compiler writes depends on, install
   into `<sysroot>/macros` with the compiler, so its output assembles without

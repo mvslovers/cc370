@@ -36,13 +36,18 @@ Boston, MA 02111-1307, USA.  */
 
 /* One-shot link (cc370 foo.c -o foo.lm): the driver invokes ld370 (the target
    `ld`).  Pull the crt0 startup as the first object (so the @@CRT0 startup is at
-   module offset 0), set the entry to @@CRT0, and emit no -lgcc -- the crent libc
-   (libc.a) carries the compiler-support routines, so there is no separate
-   libgcc.  crt0.o / libc.a live in the sysroot lib, found via the -L paths the
-   driver already passes.  */
+   module offset 0) and set the entry to @@CRT0.  crt0.o and libc.a live in the
+   sysroot lib, found via the -L paths the driver already passes.
+
+   The compiler-support routines are libcc370rt.a (#687), cc370's libgcc, in the
+   same directory.  The link line becomes -lcc370rt -lc -lcc370rt: LIBGCC_SPEC
+   is emitted on both sides of LIB_SPEC.  ld370 resolves iteratively, so order
+   decides only which copy of a name defined twice wins, and the first archive
+   does -- the compiler's runtime, ahead of the copies libc370 2.0 still
+   carries (measured on #687).  */
 #define STARTFILE_SPEC "crt0.o%s"
 #undef  LIBGCC_SPEC
-#define LIBGCC_SPEC ""
+#define LIBGCC_SPEC "-lcc370rt"
 #undef  LINK_SPEC
 /* -flinker-output=TYPE picks the MVS transport wrapper ld370 ALSO emits beside the
    load-module member: xmit (TSO TRANSMIT/NETDATA) -> OUT.xmit, iebcopy (unloaded

@@ -57,6 +57,9 @@ COMMONH := common/include/mvs370.h common/include/obj370.h
 # version + commit, regenerated on every make but REWRITTEN only when either
 # changes, so a commit rebuilds what prints it and nothing else (mbt#59)
 VERHDR  := common/include/cc370-version.h
+# the compiler's own macros (#688), installed by install-macros and used to
+# assemble the runtime
+MACROS  := macros/pdptop.copy macros/pdpprlg.macro macros/pdpepil.macro
 # man pages: one .pod per tool -> pod2man -> .1
 MANPODS := $(wildcard man/*.pod)
 MAN1    := $(MANPODS:.pod=.1)
@@ -76,10 +79,10 @@ CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
         test test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 \
-        test-dasm370 test-version test-macros install-macros clean uninstall help
+        test-dasm370 test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
-all: tools compiler man
+all: tools compiler runtime man
 
 $(VERHDR): FORCE
 	@sh common/mkversion.sh $@
@@ -134,6 +137,30 @@ $(BUILD)/config.status:
 	    --disable-shared --without-headers \
 	    --with-gcc-version-trigger=../cc370/gcc/version.c
 
+# --- the compiler runtime, libcc370rt.a (#687) -----------------------------
+# The helpers cc370 itself emits calls to -- 64-bit multiply/divide, float <->
+# long long, the bit builtins, the -ftrapv checks, __ffssi2 -- the way libgcc
+# serves gcc.  Built with the in-tree cc1, as370 and this repository's own
+# macros (#688), so it needs nothing from libc370.  -O1 is what libc370
+# built them with.
+RT_SRC  := $(wildcard runtime/src/*.c)
+RTDIR   := $(BUILD)/runtime
+RUNTIME := $(RTDIR)/libcc370rt.a
+runtime: compiler as370/as370 ar370/ar370
+	@$(MAKE) --no-print-directory $(RUNTIME)
+$(RUNTIME): $(RT_SRC) $(MACROS) $(CC1) as370/as370 ar370/ar370
+	@rm -rf $(RTDIR) && mkdir -p $(RTDIR)
+	@set -e; for c in $(RT_SRC); do n=$$(basename "$$c" .c); \
+	    $(CC1) -quiet -O1 -std=gnu99 "$$c" -o "$(RTDIR)/$$n.s"; \
+	    as370/as370 -I macros -o "$(RTDIR)/$$n.o" "$(RTDIR)/$$n.s"; done
+	@ar370/ar370 rc $@ $(RTDIR)/*.o
+	@echo "built $@ ($(words $(RT_SRC)) members)"
+
+# Host tests of the runtime's C: the arithmetic, checked against the host's
+# native 64-bit operations.  Need no compiler build, so they run in CI.
+test-runtime-host:
+	@sh runtime/tests/host/run.sh
+
 compiler: $(BUILD)/config.status $(VERHDR)
 	$(MAKE) -C $(BUILD) all-gcc U= CFLAGS="$(COMPILER_CF)" CFLAGS_FOR_BUILD="$(COMPILER_CF)"
 
@@ -146,7 +173,7 @@ compiler: $(BUILD)/config.status $(VERHDR)
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-version test-macros test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
+test: test-version test-macros test-runtime-host test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
 
 test-as370:
 	@$(MAKE) -C as370 test
@@ -178,7 +205,7 @@ test-listref: as370/as370
 # construct emits (always), and that each links (only with a sysroot -- by
 # default the installed one beside `cc370` on PATH, or SYSROOT=; skipped
 # without one).
-test-cc370: compiler as370/as370 ld370/ld370
+test-cc370: compiler runtime as370/as370 ld370/ld370
 	@sh cc370/tests/run.sh
 	@sh cc370/tests/helpers.sh
 
@@ -198,7 +225,7 @@ test-file370: file370/file370
 	@sh file370/tests/run.sh
 
 # --- install --------------------------------------------------------------
-install: install-tools install-compiler install-macros install-man
+install: install-tools install-compiler install-macros install-runtime install-man
 
 # Real tool binaries -> $(TGTBIN) (the sysroot bin); $(BINDIR) gets PATH symlinks
 # and $(LIBEXEC) gets the driver's tooldir symlinks (both relative -> relocatable).
@@ -237,11 +264,17 @@ install-compiler: compiler
 # The compiler's own macros (#688): every .s cc370 writes COPYs PDPTOP and
 # wraps each function in PDPPRLG/PDPEPIL.  They go where as370 searches by
 # default (<exedir>/../macros), so cc370 output assembles without libc370.
-MACROS  := macros/pdptop.copy macros/pdpprlg.macro macros/pdpepil.macro
 install-macros:
 	@mkdir -p $(PREFIX)/$(TRIPLE)/macros
 	@install -m 644 $(MACROS) $(PREFIX)/$(TRIPLE)/macros/
 	@echo "installed macros -> $(PREFIX)/$(TRIPLE)/macros"
+
+# Beside libc.a, under exactly this name: mbt links -lcc370rt when it finds
+# <sysroot>/lib/libcc370rt.a (mbt#138).
+install-runtime: runtime
+	@mkdir -p $(PREFIX)/$(TRIPLE)/lib
+	@install -m 644 $(RUNTIME) $(PREFIX)/$(TRIPLE)/lib/libcc370rt.a
+	@echo "installed runtime -> $(PREFIX)/$(TRIPLE)/lib/libcc370rt.a"
 
 install-man: man
 	@mkdir -p $(MANDIR)
@@ -259,6 +292,7 @@ uninstall:
 	      $(TGTBIN)/cmplmd370 $(TGTBIN)/dasm370 $(TGTBIN)/idrdump370 \
 	      $(LIBEXEC)/as $(LIBEXEC)/ld $(LIBEXEC)/ar $(LIBEXEC)/cc1 \
 	      $(addprefix $(PREFIX)/$(TRIPLE)/macros/,$(notdir $(MACROS))) \
+	      $(PREFIX)/$(TRIPLE)/lib/libcc370rt.a \
 	      $(MANDIR)/cc370.1 $(MANDIR)/as370.1 $(MANDIR)/ld370.1 $(MANDIR)/ar370.1 \
 	      $(MANDIR)/file370.1 $(MANDIR)/xmit370.1 $(MANDIR)/dasm370.1
 
