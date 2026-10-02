@@ -1356,10 +1356,10 @@ was found while building a `listref` case, and each is excluded from that case
   compares the markers: 123 pages identical with them (96 before).
 - **Diagnostic gaps the markers exposed:** ~~**#659**~~ IFO006 at the in-stream
   definition -- **fixed** (PR #666); ~~**#211**~~ IFO158 for a CCW (filed again
-  as #661, closed as its duplicate) -- **fixed** (PR #665). Open: **#660** an
-  undefined symbol in a literal is charged to the instruction, not the pool
-  statement (undefsym); **#662** L' in AIF of an EQU/undefined symbol raises
-  nothing (lenattr, IFO120/IFO080). Also seen in the ifox-run IBM listings, not filed yet:
+  as #661, closed as its duplicate) -- **fixed** (PR #665); ~~**#662**~~ L' in
+  conditional assembly, IFO120/IFO080 -- **fixed** (PR #668; 0 raised across
+  MVSBLD). Open: **#660** an undefined symbol in a literal is charged to the
+  instruction, not the pool statement (undefsym). Also seen in the ifox-run IBM listings, not filed yet:
   IFO092 (keyword parameter not in the definition) is never raised, and IFO117
   is charged to the macro call instead of the SETC.
 - **#654** — cards a column-72 comment swallows are not listed (cont72,
@@ -1542,6 +1542,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-02 — #662, MERGED as `6d4c93c` (PR #668).** L' in conditional
+  assembly raises IFO120 (defaulted length, self-defining term) and IFO080
+  (undefined), as IFNX3A EVALLAT; generated labels now recorded for it.
+  listref case 12: 128, only undefsym (#660) compared without markers. MVSBLD
+  gate 0 moved, 0 new diagnostics.
 
 - **2026-10-02 — #211 and #659, MERGED as `56bc9b8`, `ee8f2f1` (PRs #665,
   #666).** IFO158 for a CCW's DSECT data address; IFO006 at the in-stream
