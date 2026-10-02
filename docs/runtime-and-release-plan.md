@@ -39,8 +39,9 @@ optimisation level, every external reference collected and link-tested.
 
 ### Phase 0 — safeguards, nothing moves
 
-- **#685** A regression test: every helper the compiler can emit must link
-  (PR #694). The six links that fail today — `__builtin_ffs` and the five
+- **#685 — done (PR #694, `e245141`).** A regression test: every helper the
+  compiler can emit must link (`cc370/tests/helpers.sh`, part of
+  `make test-cc370`). The six links that fail today — `__builtin_ffs` and the five
   `-ftrapv` helpers — are XFAIL against #687.
 - **#687 (first step) — done, measured:** ld370 resolves iteratively, like
   IEWL autocall, so the order of `-lc` and `-lcc370rt` does not matter for
@@ -53,7 +54,13 @@ optimisation level, every external reference collected and link-tested.
 
 ### Phase 1 — versioning (#523)
 
-cc370 has no tags and no releases, and its version names no build:
+**Done (PR #700, `a3ab418`); the first release, v1.0.0, is tagged from the
+release commit of PR #702.** `VERSION` is the one source, every binary prints
+`<tool> 1.0.0 (<commit>)` (the driver adds `based on GCC 3.4.6`), `CHANGELOG.md`
+holds the notes and `release.yml` builds the compiler on `v*` tags. #523 stays
+open for the artifacts of Phase 5. What follows is the plan as it was written.
+
+cc370 had no tags and no releases, and its version names no build:
 `cc370 --version` prints a date, `version.c` says 2.0, the tools a fixed V1.0.
 Before the first release:
 
