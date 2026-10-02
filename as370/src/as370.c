@@ -7877,6 +7877,15 @@ static void a_src_section(char **lines, int nl) {
                 if (c && gen) ln[39] = '+';                  /* a generated statement's continuation row keeps the `+' */
             } else { s = lines[i]; sl = (int)strlen(s); }
             while (sl > 0 && (s[sl-1] == '\n' || s[sl-1] == '\r')) sl--;
+            /* A last continuation card blank through column 71 -- the empty
+             * continuation IFO026 flags -- is not listed when its row carries
+             * no object code: blankcont case 1 (tests/listref). A blank card
+             * in the middle of a continuation is (case 3). */
+            if (c && c == span - 1 && rn >= 0 && ln[0] == ' ') {
+                int k, blank = 1;
+                for (k = 0; k < sl && k < 71; k++) if (s[k] != ' ' && s[k] != '\t') { blank = 0; break; }
+                if (blank) continue;
+            }
             for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j];
             a_src_emit(ln);
         }
