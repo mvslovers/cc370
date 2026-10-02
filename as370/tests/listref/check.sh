@@ -499,7 +499,7 @@ done
 # --- case 12: every SOURCE page that matches IFOX00 keeps matching -- #150 --
 # The SOURCE page of each reference named here is IFOX00's line for line:
 # headings, statement numbers, blank lines and, since #652, the *** ERROR ***
-# rows (NOMARK below lists the pages compared without them).
+# rows (all of them since #660; NOMARK below is where an exception would go).
 # Before #150 listed in-stream macro definitions, 63 of the 135 did. 128 of
 # 136 do since #626 (NOMCALL), #627 (alignment pads), #24 (no object code on a
 # DS), #370 (a generated statement's continuation cards), #640 (a DC, CCW
@@ -530,10 +530,10 @@ tattr_literal tattr_selfdef tattr_symbol titlegen titlelong titlenamed
 titlepage undeclset undeclset2 undefsym usingexpr usingkey usingmul
 usingparen usingparenpc usingreloc var_opcode xfdirect xsectrel
 """.split()
-# *** ERROR *** rows are compared too (#652), except where as370 is missing or
-# misplaces the DIAGNOSTIC itself -- the page matches once the marker is set
-# aside, and the issue named here owns the difference:
-NOMARK = {"undefsym": 660}
+# *** ERROR *** rows are compared too (#652). A page where as370 is missing or
+# misplaces the DIAGNOSTIC itself would go here, with the issue that owns it,
+# and be compared without them; none is left since #660.
+NOMARK = {}
 def src(path, keep=True):
     out, on = [], False
     for l in open(path, encoding="latin-1").read().split("\n"):
