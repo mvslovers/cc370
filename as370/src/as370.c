@@ -567,6 +567,7 @@ static void mark_flagged(int line) {
 }
 #define CM_PRI 1
 #define CM_LIB 2
+#define CM_IFOX 4   /* a diagnostic IFOX00 itself raises (err != 0) -- what the listing marks */
 static unsigned char cont_mark[MAXLINES];      /* card number of a statement with a continuation diagnostic */
 static int ncont_pri, ncont_lib;
 static void mark_cont_stmt(int card, int inlib) {
@@ -3345,6 +3346,7 @@ static const char *g_joinsrc;         /* library member being joined; NULL = the
 static void note_cont(int err, int card, const char *text, int len, int stmt, int lost) {
     ncontd_seen++; if (lost) ncontd_lost++; if (err) ncontd_ifox++;
     mark_cont_stmt(stmt, g_joinsrc != NULL);   /* the STATEMENT's first card, not this continuation card */
+    if (err && !g_joinsrc && stmt >= 0 && stmt < MAXLINES) cont_mark[stmt] |= CM_IFOX;   /* primary source only, like CM_PRI */
     if (ncontd >= MAXCONTD) return;
     contd[ncontd].stmt = stmt; contd[ncontd].lost = lost;
     scopy(contd[ncontd].src, g_joinsrc ? g_joinsrc : "", sizeof contd[0].src - 1);
@@ -3513,6 +3515,8 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
                 if (++ncont == 2 && nxt) note_cont(69, i + 1, c, cl, stmt, 0);   /* card 3 of 3 still continues */
                 cont = nxt; i++;
             }
+            /* The cards it swallowed are listed under it (#654): the span. */
+            if (join_span && org) join_span[no - 1] = i - (org[no - 1] - 1);
             continue;
         }
         int stmt_card = i + 1;                       /* this statement's first card, for the flagged-statement count */
@@ -7968,13 +7972,19 @@ static void a_src_section(char **lines, int nl) {
             }
             for (j = 0; j < sl && 40 + j < 255; j++) ln[40 + j] = s[j];
             a_src_emit(ln);
+            /* A comment that swallowed more than the two continuation cards a
+             * statement may have: IFOX00 lists the statement's three cards, the
+             * marker, then the surplus card and a marker of its own (cont72 case
+             * C; #654). Past one surplus card it is not measured. */
+            if (c == 2 && span > 3 && (lines[i][0] == '*' || (lines[i][0] == '.' && lines[i][1] == '*'))
+                && rn >= 0 && a_raw_org[rn] < MAXLINES && (cont_mark[a_raw_org[rn]] & CM_IFOX)) a_src_marker();
         }
         /* An MNOTE is not marked -- it is reported (IFO197) but never gets the
          * row, at any severity (printerr, tattr_expr); one whose severity is
          * bad (IFO178, no image) is. A continuation-card diagnostic (IFO026,
          * IFO069) marks the statement it belongs to (blankcont). */
         { int mn = !strcmp(op, "MNOTE") && gcard[i];   /* LF_NOASM, like every MNOTE row */
-          int cm = rn >= 0 && a_raw_org[rn] < MAXLINES && (cont_mark[a_raw_org[rn]] & CM_PRI);
+          int cm = rn >= 0 && a_raw_org[rn] < MAXLINES && (cont_mark[a_raw_org[rn]] & CM_PRI) && (cont_mark[a_raw_org[rn]] & CM_IFOX);   /* not as370's own err-0 note: contsev */
           if (!mn && (stmt_flagged[i] || cm)) a_src_marker(); }
         a_src_pool(i + 1);
     }
