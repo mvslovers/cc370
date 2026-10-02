@@ -134,7 +134,7 @@ does not compete with them: it orders defects, this orders the release.
 | 2 · runtime (1.1.0) | ~~#687~~, ~~#688~~ | **done** — #708 (`6c32580`, macros without SAVE/RETURN), #709 (`fd83e21`, `libcc370rt.a`); #704 `__CC370__` also in | the 1.1.0 tag (after B, with mbt-4c's go); libc370#313 gated on mbt#138 |
 | 3 · public macros | #689 | open | Phase 2 |
 | 4 · startup | (libc370, research) | — | — |
-| 5 · prebuilt and pinned | #523 (artifacts), #699, #698 | decided in #523, not started | 1.0.0 |
+| 5 · prebuilt and pinned | #523 (artifacts), #699, #698 | **cc370's half done** — #712 (`ee8c007`): tarballs ×4, .deb/.rpm ×2, install.sh, SHA256SUMS; package.yml green on all four hosts | the 1.1.0 tag; libc370's assets (libc370#326); #699 the tap token |
 
 ---
 
@@ -1570,6 +1570,14 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-03 — #523 Phase 5 (cc370's half), MVS run of the runtime, #519.**
+  #711 VERSION 1.1.0-dev; #712 (`ee8c007`) release artifacts for every host,
+  package.yml 37074006474 green (Linux static/musl, macOS minos 11.0 / 10.15,
+  Intel built natively); #714 (`28cf083`) ld370 names a missing object (#519,
+  #713 dup); #715 (`3f50505`) runtime on MVS, mvsdev JOB01185: 29/29,
+  565/565, 1138/1138, overflow = CC 0012 via abort(). Next: the v1.1.0 tag,
+  after mbt-4c's go.
 
 - **2026-10-03 — #688 and #687, MERGED as `6c32580` (PR #708) and `fd83e21`
   (PR #709).** The prologue macros ship with cc370 and no longer call SAVE /
