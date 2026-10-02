@@ -45,8 +45,11 @@ make compiler   # just the driver (cc370) + the compiler proper (cc1), out-of-tr
 make install    # build (if needed) + install everything under $(PREFIX) (default ~/.local)
 ```
 
-Knobs: `PREFIX` (default `~/.local`), `TRIPLE` (default `cc370`),
-`VERSION` (default `1.0.0`). After `make install` you get:
+Knobs: `PREFIX` (default `~/.local`) and `TRIPLE` (default `cc370`). The
+version is not a knob: it comes from the `VERSION` file, which the install
+paths and every binary's `--version` share (`cc370 1.0.0 (<commit>), based on
+GCC 3.4.6`, `as370 1.0.0 (<commit>)`, ...; see `CHANGELOG.md`). After
+`make install` you get:
 
 ```
 <prefix>/bin/cc370                          the driver

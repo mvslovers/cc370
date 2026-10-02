@@ -56,8 +56,9 @@ lives in one `cc370/` tree; only the user-facing binaries sit on PATH.
 The target name is **`cc370`** — a `config.sub` alias (added near the `mvs)` arm)
 that canonicalizes to the real `i370-ibm-mvspdp` backend, so `config.gcc` is
 unchanged but `target_noncanonical` (hence every install path and `-dumpmachine`)
-is the clean `cc370`. The path version (`1.0.0`, from `gcc/Makefile.in`'s
-`version=`) is a product version, decoupled from the GCC version (still 3.4.6, in
+is the clean `cc370`. The path version (`1.0.0`, read from the repository's
+`VERSION` file by both the top-level `Makefile` and `gcc/Makefile.in`'s
+`version :=`) is a product version, decoupled from the GCC version (still 3.4.6, in
 `version.c`); it is not an ABI gate. The `gcc/` path level is dropped in
 `Makefile.in` (`libsubdir`/`libexecsubdir`/`STANDARD_*_PREFIX`, `unlibsubdir=../..`).
 The compiler is a GCC 3.4.6 fork (old K&R-ish C); `make compiler` passes the
@@ -158,7 +159,7 @@ UTF-8.
 
 `as370/src/as370.c` is a single-file (~1900 lines) host-native MVS **Assembler-XF (IFOX00)** clone: macro preprocessor + two-pass core + OS/360 OBJ writer (80-byte EBCDIC ESD/TXT/RLD/END cards). It runs on macOS/Linux and produces object decks **byte-identical to IFOX00**.
 
-- **Identity:** tool name `as370`, product id `ASM370`, version `V1.0`. `as370 -v` → `as370 V1.0 - <build date>`.
+- **Identity:** tool name `as370`, product id `ASM370`. `as370 --version` (or `-v`) → `as370 1.0.0 (<commit>)` -- the toolchain version from `VERSION`, as every tool reports it (#523).
 - **Build:** `gcc -O2 -Wall -Wextra -Werror -Ias370/include -o as370/as370 as370/src/as370.c` (warning-clean under gcc-14 + clang).
 - **CLI:** z/OS-`as`-aligned. `--help` usage; RC convention from IFOX `JERMSGCD` (0 clean / 4 warn / 8 error / 12 severe / 16 terminal); silent on success (no noise when called from cc370). Friendly per-statement diagnostic: prints the true source line + `ERROR: Undefined operation code in line N - op`.
 - **Macro path:** `-I <dir>` (repeatable). The ecosystem needs libc370 `maclib` + `sysmac` and SYS1.MACLIB members.
@@ -180,7 +181,7 @@ The GCC driver invokes an assembler literally named `as`, found in its own exec 
 
 **cc370 / packaging work:**
 - **Done:** carved into its own `mvslovers/cc370` repo (this one); the top-level `Makefile` builds the driver as **`cc370`** and installs as370/ld370/ar370 as ordinary tools; `c2asm370` v1.x is frozen as the fallback.
-- **cc370 cosmetics** — banners say `cc370 V1.0`; still open: the doubled `cpu`/`machine` `#assert` warnings (`cc370/gcc/config/i370/mvspdp.h:84-85` re-assert what `i370.h:34-35` already does → harmless "re-asserted" cpp warnings); align `-v`/`--help` wording with as370.
+- **cc370 cosmetics** — banners say `cc370 1.0.0 (<commit>), based on GCC 3.4.6` (#523); still open: the doubled `cpu`/`machine` `#assert` warnings (`cc370/gcc/config/i370/mvspdp.h:84-85` re-assert what `i370.h:34-35` already does → harmless "re-asserted" cpp warnings); align `-v`/`--help` wording with as370.
 
 **Cross-cutting (additions):**
 - **Host-side regression harness** — fold the 950-module IFOX byte-identity corpus check into `as370/tests/` + CI so codegen/assembler changes can't silently regress (today it's ad-hoc `/tmp` scripts).

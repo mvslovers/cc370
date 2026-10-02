@@ -15,6 +15,10 @@
 /cc370/gcc/*.o
 /cc370/libiberty/*.o
 
+# generated version header (common/mkversion.sh) -- the commit it names is
+# the tree's own, so a committed copy would always be one commit behind
+/common/include/cc370-version.h
+
 # generated man pages (pod2man) -- sources are man/*.pod
 /man/*.1
 

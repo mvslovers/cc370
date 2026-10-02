@@ -25,7 +25,8 @@
 #                itself is no longer the obstacle -- since #48 it is differential
 #                and green; wiring it in for the 27 would also need fetch-depth 0
 #                so the baseline revision is present.
-#   test-cc370   needs the GCC fork (`make compiler`)
+#   test-cc370   needs the GCC fork (`make compiler`); release.yml builds it
+#                and runs this suite on every v* tag
 #
 # The `bookworm` job below exists because the matrix above covers two
 # COMPILERS but one VERSION each, which is the same blind spot one level
@@ -42,6 +43,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:     # release.yml runs this first on a v* tag
 
 jobs:
   tools:
@@ -77,6 +79,10 @@ jobs:
       # The -Werror build is the point of this job.
       - name: Build the standalone tools
         run: make tools HOSTCC=${{ matrix.cc }}
+
+      # Every tool reports VERSION and the commit checked out (#523).
+      - name: Tool versions
+        run: make test-version
 
       - name: as370 suite (byte-identity to the IFOX00 reference decks)
         run: make test-as370

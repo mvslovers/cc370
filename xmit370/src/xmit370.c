@@ -35,7 +35,8 @@
 
 #include "mvs370.h"
 
-#define VERSION_STR "xmit370 V1.0"
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
+#define VERSION_STR "xmit370 " CC370_VERSION " (" CC370_COMMIT ")"
 
 /* ---- IEBCOPY unload geometry ------------------------------------------------
  * Identical to ld370's, deliberately: this model (contiguous packing costed in

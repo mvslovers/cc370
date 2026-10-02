@@ -41,7 +41,7 @@
 #include "opc_table.h"
 
 #define DASM_NAME "dasm370"
-#define DASM_VER  "V1.0"
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 
 #define MAXSECT_BYTES (1024L * 1024L)
 #define MAXRLD 8192
@@ -4304,7 +4304,7 @@ static void usage(FILE *o)
 "                     numbers in 73-80 and column 72 left blank\n"
 "  -o FILE            write to FILE instead of standard output\n"
 "  --help             show this message and exit\n"
-"  -v                 print the version\n"
+"  -v, --version      print the toolchain version and the commit it was built from\n"
 "\n"
 "The decoder is as370's own opcode table, inverted (cc370#374): one table, and\n"
 "the disassembler agrees with the assembler by construction.  Every instruction\n"
@@ -4334,7 +4334,7 @@ int main(int argc, char **argv)
     if (argc == 1) { usage(stdout); return 0; }
     for (ai = 1; ai < argc; ai++) {
         if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
-        else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", DASM_NAME, DASM_VER, __DATE__); return 0; }
+        else if (!strcmp(argv[ai], "-v") || !strcmp(argv[ai], "--version")) { printf("%s %s (%s)\n", DASM_NAME, CC370_VERSION, CC370_COMMIT); return 0; }
         else if (!strcmp(argv[ai], "--csect") && ai + 1 < argc) want = argv[++ai];
         else if (!strcmp(argv[ai], "--allow-incomplete")) allow_incomplete = 1;
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];

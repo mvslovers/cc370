@@ -36,6 +36,7 @@
 
 #include "mvs370.h"
 #include "obj370.h"
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 
 /* big-endian access, CP037 and the NETDATA layer come from common/mvs370. */
 static long roundup8(long v) { return (v + 7) & ~7L; }
@@ -1926,7 +1927,8 @@ int main(int argc, char **argv)
     FILE *f;
 
     for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-o") && i + 1 < argc) outfile = argv[++i];
+        if (!strcmp(argv[i], "--version")) { printf("ld370 %s (%s)\n", CC370_VERSION, CC370_COMMIT); return 0; }
+        else if (!strcmp(argv[i], "-o") && i + 1 < argc) outfile = argv[++i];
         else if (!strcmp(argv[i], "-iebcopy")) want_unload = 1;   /* also emit OUT.iebcopy (unloaded PDS) */
         else if (!strcmp(argv[i], "-xmit")) want_xmit = 1;        /* also emit OUT.xmit (TSO TRANSMIT) */
         /* NB: no -lmod flag -- it would collide with -l (link libmod.a); the
@@ -2131,6 +2133,8 @@ int main(int argc, char **argv)
                 "             [--sparse-text] [--warn-shadow] [--map FILE [--xref]] OBJ...\n"
                 "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
                 "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
+                "       ld370 --version\n"
+                "         print the toolchain version and the commit it was built from.\n"
                 "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
                 "             [--ac N] [--norent] [--noreus] [--blocksize N]\n"
                 "         pack pre-built member(s) into OUT.xmit / OUT.iebcopy (no linking);\n"

@@ -472,7 +472,7 @@ static char g_sysparm[VALSZ] = "";
  * product is "ASM370". Used in three places: -v, the listing header, and the
  * END-record IDR. */
 #define AS370_NAME     "as370"          /* CLI tool name (-v) */
-#define AS370_VER_H    "V1.0"           /* human-readable version (-v) */
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 #define AS370_IDR_PROD "ASM370"         /* 10-char EBCDIC product id, left-justified (listing header + END-record IDR) */
 #define AS370_IDR_VER  "0100"           /* 4-char version = 01.00 (listing header + IDR) */
 /* "MM/DD/YY" -> Julian "YYDDD" for the END-record IDR date. */
@@ -8776,7 +8776,7 @@ static void usage(FILE *o) {
 "                     register, each carrying its own section and location\n"
 "                     counter, so a base register's lifetime is readable without\n"
 "                     inference\n"
-"  -v                 print as utility version\n"
+"  -v, --version      print the toolchain version and the commit it was built from\n"
 "\n"
 "macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros\n"
 "  the last is a built-in relocatable default -- the installed sysroot macro\n"
@@ -8846,7 +8846,7 @@ int main(int argc, char **argv) {
     int optsev = 0;
     for (ai = 1; ai < argc; ai++) {
         if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
-        else if (!strcmp(argv[ai], "-v")) { printf("%s %s - %s\n", AS370_NAME, AS370_VER_H, __DATE__); return 0; }
+        else if (!strcmp(argv[ai], "-v") || !strcmp(argv[ai], "--version")) { printf("%s %s (%s)\n", AS370_NAME, CC370_VERSION, CC370_COMMIT); return 0; }
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strncmp(argv[ai], "--sym=", 6) && argv[ai][6]) sym_fn = argv[ai] + 6;   /* the symbol table as data; -a's `s'/`x' remain the human cross-reference pages */
         else if (!strncmp(argv[ai], "--stmts=", 8) && argv[ai][8]) stmt_fn = argv[ai] + 8;   /* one record per generated statement (#411) */

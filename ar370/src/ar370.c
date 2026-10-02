@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "mvs370.h"
+#include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 
 #define MAXOBJ 2048
 #define MAXSYM 16384
@@ -161,9 +162,11 @@ static int list(const char *arch)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--version")) { printf("ar370 %s (%s)\n", CC370_VERSION, CC370_COMMIT); return 0; }
     if (argc < 3) {
         fprintf(stderr, "usage: ar370 rc ARCHIVE.a OBJ...   (create with symbol table)\n"
-                        "       ar370 t  ARCHIVE.a           (list members + symbols)\n");
+                        "       ar370 t  ARCHIVE.a           (list members + symbols)\n"
+                        "       ar370 --version              (toolchain version + commit)\n");
         return 2;
     }
     if (strchr(argv[1], 't')) return list(argv[2]);

@@ -66,7 +66,7 @@ Print usage and exit.
 
 =item B<--version>
 
-Print the version and exit.
+Print the toolchain version and the commit it was built from, and exit.
 
 =back
 
