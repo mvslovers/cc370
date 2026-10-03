@@ -107,6 +107,8 @@ tests the compiler's version with the predefined `__CC370__`
 <prefix>/libexec/cc370/1.0.0/{as,ld,ar}     symlinks beside cc1; the driver's tooldir
 <prefix>/cc370/bin/{as370,ld370,ar370}      the real tool binaries
 <prefix>/cc370/{include,lib,macros}         the libc370 sysroot (headers, libc.a, crt*.o, macros)
+<prefix>/cc370/libc370/{include,lib,macros} optional: a libc370 kept in its own tree and
+                                            linked in here (Homebrew), searched after the above
 <prefix>/lib/cc370/1.0.0/                    empty: GCC's libsubdir, but required (see below)
 ```
 

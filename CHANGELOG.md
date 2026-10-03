@@ -21,6 +21,13 @@ neither number is mistaken for the other.
 ## [Unreleased]
 
 ### Added
+- **A second sysroot** (#726): besides its own `cc370/{include,lib,macros}`,
+  cc370 searches `cc370/libc370/{include,lib,macros}` -- headers in cc1,
+  `crt0.o` and `-lc` through the driver, macros in as370 -- after the tree's
+  own. A libc370 kept in its own tree can be linked in with one symlink;
+  the Homebrew formula moves to that with this release, so a file a later
+  libc370 adds no longer needs `brew reinstall cc370`. `make test-sysroot`
+  (part of `make test-cc370`) checks all four with a stand-in libc370.
 - **Homebrew** (#699): `brew trust mvslovers/tap`, then
   `brew install mvslovers/tap/cc370` from the tap `mvslovers/homebrew-tap`,
   on macOS and Linux (Homebrew 7 refuses a dependency from an untrusted

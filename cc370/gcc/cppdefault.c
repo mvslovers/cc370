@@ -77,6 +77,15 @@ const struct default_include cpp_include_defaults[]
     /* Another place the target system's headers might be.  */
     { TOOL_INCLUDE_DIR, "BINUTILS", 0, 1, 0 },
 #endif
+#ifdef CC370_LIBC370_INCLUDE_DIR
+    /* cc370 (#726): a libc370 installed in its own tree and linked in as
+       <tooldir>/libc370 -- the Homebrew keg layout.  After the tree's own
+       include/, and relocated through -iprefix like it, since it begins
+       with the same prefix.  Its own macro rather than TOOL_INCLUDE_DIR
+       "/../libc370/include": that path walks through <tooldir>/include,
+       which a tree without a libc370 of its own does not have.  */
+    { CC370_LIBC370_INCLUDE_DIR, "BINUTILS", 0, 1, 0 },
+#endif
 #ifdef SYSTEM_INCLUDE_DIR
     /* Some systems have an extra dir of include files.  */
     { SYSTEM_INCLUDE_DIR, 0, 0, 0, 1 },

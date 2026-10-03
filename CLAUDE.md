@@ -47,6 +47,11 @@ lives in one `cc370/` tree; only the user-facing binaries sit on PATH.
   `make -C ../libc370 install`): cc370 finds `<stdio.h>` with no `-I`, ld370 `-lc`
   pulls `libc.a`, and as370 (real in `cc370/bin`) finds the macros via its
   `<exedir>/../macros` default.
+- `cc370/libc370/{include,lib,macros}` — optional **second sysroot** (#726): a
+  libc370 kept in its own tree and linked in here (the Homebrew keg layout).
+  Searched after the tree's own `include/`, `lib/`, `macros/` -- by cc1
+  (`CC370_LIBC370_INCLUDE_DIR`), the driver's startfile prefixes (crt0.o, `-L`)
+  and as370's default macro path. `make test-sysroot` checks all four.
 - `lib/cc370/1.0.0/` — GCC's **libsubdir**. **Empty but required — intentional,
   not a bug.** It would hold libgcc; we ship none, so it stays empty. The driver
   locates the whole `cc370/` sysroot (headers AND `-lc`) via a path relative to
