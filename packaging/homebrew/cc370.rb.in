@@ -34,6 +34,10 @@ class Cc370 < Formula
     # The release tree is relocatable; the driver finds its pieces relative to
     # itself, through the bin/ symlinks Homebrew adds.
     prefix.install Dir["*"]
+    # lib/cc370/<version> is empty but required: the driver finds its whole
+    # sysroot through a path relative to it, and Homebrew prunes empty
+    # directories from a keg -- without it no header and no -lc is found.
+    (lib/"cc370"/version.to_s/".keepme").write ""
 
     # cc370 searches its sysroot only in its own tree (cc370/), so libc370's
     # files are linked in from its stable opt path: include/ whole, lib/ and
@@ -50,6 +54,8 @@ class Cc370 < Formula
   end
 
   test do
+    # Host header paths in the environment would shadow libc370's headers.
+    %w[CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH].each { |v| ENV.delete(v) }
     assert_match "cc370 @VERSION@ ", shell_output("#{bin}/cc370 --version")
     (testpath/"t.c").write <<~C
       #include <stdio.h>
