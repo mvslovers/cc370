@@ -143,7 +143,7 @@ as370 order inside it.**
 | ~~8~~ | ~~#272~~ **landed, PR #747** | as370 | the 20-term limit (IFO168) — measure the reach first |
 | ~~9~~ | ~~#117~~ **landed, PR #748** (MVS: JOB01316) | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
 | ~~10~~ | ~~#107~~ **landed, PR #751** | ld370 | `--entry` seeds automatic library call (ld370 half) |
-| 11 | #439 | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
+| ~~11~~ | ~~#439~~ **landed, PR #753** | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
 | 12 | #102 + #103 | ld370 | duplicate CSECT / COMMON per IEWL — the plan is decided, its #521 hold is closed |
 
 **Waiting on the maintainer:** #100 (RENT+REUS default — to be talked
@@ -679,7 +679,7 @@ the decision.
 | — | #99 | **done, 2026-09-04** — have weak externals right first; the whole direction rests on them |
 | 1 | #8 | warn when autocall resolves a symbol several members define — the cheap half, and it catches the exact httpd failure at link time. **IEWL measured and design settled 2026-09-30** (issue comment, PR #517): same-archive definers warn by default, cross-archive stays silent (IEWL parity, `--warn-shadow` names them), a pulled member re-defining an entry warns like `IEW0241`. **Merged 2026-09-30 (#520, `823be66`), warnings at rc 0.** IEWL's RC 4 is #518 — ld370's errors to ≥ 8, the driver (`MIN_FATAL_STATUS` covers cc1) and mbt's link tolerance, landing together. Side finding: #519, a missing input object fails silently |
 | 2 | `libc370#159` | collapse `@@crt0`/`@@crt1` with a weak `CTHREAD` reference — the pattern the same file already uses for `@@STKLEN` |
-| 3 | #107 | `--entry` seeds autocall, so the CRT moves inside `libc.a` and mbt's four near-identical link recipes collapse |
+| ~~3~~ | ~~#107~~ **merged 2026-10-03 (PR #751)** -- `--entry` seeds autocall, so the CRT moves inside `libc.a` and mbt's four near-identical link recipes collapse |
 | 4 | #10 | the weak `__premain()` hook in libc370; then this issue closes |
 
 Steps 2 and 3 are independent of each other and of 4. The prerequisite 4 really
@@ -1637,7 +1637,12 @@ Pointers only. The reasoning lives in the issues and their PRs.
   still undefined after the fixpoint is pulled by name, then the fixpoint runs
   again. Seeded after, not before, so no previous link changes (ufsd's 8
   outputs byte-identical, LDDATE/LDTIME pinned). Unblocks libc370#159 (CRT in
-  libc.a) and mbt's LINK_CRT* collapse once released. Next: #439.
+  libc.a) and mbt's LINK_CRT* collapse once released.
+
+- **2026-10-03 — #439 MERGED (PR #753).** dasm370 names every section of a
+  multi-section deck on stderr; stdout and rc unchanged on all 5,538 obj_ctrl
+  decks (640 noted, 344 with an unnamed first section). rc for the zero-byte
+  case left open for Mike. Next: #102 + #103.
 
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
