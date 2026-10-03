@@ -1701,5 +1701,25 @@ fi
 [ $? = 16 ] && pass "an --isa value that is not one of the four is refused" \
              || fail "an --isa value that is not one of the four is refused"
 
+# ---- a deck with more than one section (#439) ------------------------------
+# Without --csect the first section is taken; when that is the empty unnamed PC
+# in front of the real CSECT the output was `CSECT' / `END' at rc 0 and nothing
+# said there was more.  stderr now names the count and every section.
+printf '         CSECT\nREAL     CSECT\n         SR    15,15\n         BR    14\n         END\n' > "$T/ms.s"
+"$A" "$T/ms.s" -o "$T/ms.obj" >/dev/null 2>&1
+"$D" "$T/ms.obj" -o /dev/null 2>"$T/ms.err"; r=$?
+if [ $r = 0 ] && grep -q 'has 2 control sections; disassembling the first, (unnamed) (0 bytes)' "$T/ms.err" \
+   && grep -q '^dasm370:   REAL     4 bytes$' "$T/ms.err"; then
+    pass "a two-section deck names both sections on stderr, the empty first one included"
+else
+    fail "a two-section deck names both sections on stderr (rc $r: $(cat "$T/ms.err"))"
+fi
+"$D" --csect REAL "$T/ms.obj" -o /dev/null 2>"$T/ms2.err"
+[ ! -s "$T/ms2.err" ] && pass "with --csect the section note is not printed" \
+                     || fail "with --csect the section note is not printed ($(cat "$T/ms2.err"))"
+"$D" "$T/a.obj" -o /dev/null 2>"$T/ms3.err"
+[ ! -s "$T/ms3.err" ] && pass "a one-section deck prints no section note" \
+                     || fail "a one-section deck prints no section note ($(cat "$T/ms3.err"))"
+
 [ $fails = 0 ] && echo "dasm370: all checks passed" || echo "dasm370: $fails FAILURE(S)"
 exit $fails
