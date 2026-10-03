@@ -3334,6 +3334,19 @@ PY
 fi
 rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
 
+# --------------------------------------------------------------- mnotezero --
+# cc370#682: a written severity is flagged even when it is 0. IFOX00 counts
+# `MNOTE 0,text' among the flagged statements (BLSR3270 stmt 1881: 20 flagged,
+# as370 said 19); `MNOTE *,' and the bare form stay unflagged (#39). So the
+# four forms flag two statements, and severity 0 adds nothing to the rc.
+./as370 tests/mnotezero.s -o /dev/null >/tmp/_mz$$.out 2>&1; r=$?
+if [ "$r" = 4 ] && grep -q ' 2 Statements Flagged /   4 was Highest' /tmp/_mz$$.out; then
+    echo "mnotezero: OK (MNOTE 0 and 4 flagged, * and bare not; rc 4)"
+else
+    echo "mnotezero: FAIL -- rc $r, $(tail -1 /tmp/_mz$$.out)"; fail=$((fail + 1))
+fi
+rm -f /tmp/_mz$$.out
+
 # ----------------------------------------------------------------- diagcap --
 # cc370#86: past 128 diagnostics of one kind the printed list is cut, and the
 # return code must not be. Operand errors and MNOTEs differ in severity per

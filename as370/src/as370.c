@@ -2054,8 +2054,8 @@ static int g_ca_slot = -1;
 static int g_mcall_slot = -1;  /* the macro CALL line's slot, for a diagnostic raised inside the body */
 static void note_operr(const char *msg, int sev, int line);   /* fwd: eval_setc raises IFO115/116/117 */
 static int prelen_of(const char *nm);                         /* fwd: L' in conditional assembly (#244) */
-static void note_mnote(int sev, const char *text, int line);  /* fwd: the macro expander raises MNOTE */
-static int mnote_split(const char *opnd, char *text, int textsz, char *image, int imagesz, int *comment);
+static void note_mnote(int sev, int explicit_sev, const char *text, int line);  /* fwd: the macro expander raises MNOTE */
+static int mnote_split(const char *opnd, char *text, int textsz, char *image, int imagesz, int *comment, int *explicit_sev);
 /* source-file line number each expanded line derives from (for diagnostics): an
  * open-code statement -> its own line; a macro/COPY-generated line -> the line of
  * the call/COPY in the input file. g_curorg is the line currently being expanded. */
@@ -4295,8 +4295,8 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
             char mex[STMTSZ]; msub(c, m->body[pc], mex, sizeof mex);
             char mb[STMTSZ], ml[32], mo[16], mod[STMTSZ];
             scopy(mb, mex, STMTSZ - 1); parse(mb, ml, mo, mod);
-            char mtext[256], mimg[256]; int mcom = 0;
-            int msev = mnote_split(mod, mtext, sizeof mtext, mimg, sizeof mimg, &mcom);
+            char mtext[256], mimg[256]; int mcom = 0, mexp = 0;
+            int msev = mnote_split(mod, mtext, sizeof mtext, mimg, sizeof mimg, &mcom, &mexp);
             if (*nout < MAXLINES) {
                 /* lines[] keeps the SUBSTITUTED MNOTE statement so the stderr
                  * card print shows what the macro actually wrote; gcard carries
@@ -4304,7 +4304,7 @@ static void mexp_macro(struct macro *m, const char *lbl, const char *opnd, char 
                 lflags[*nout] = LF_GEN | LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = msev < 0 ? NULL : strdup(mimg);   /* IFO178: listed as written, no MNOTE image */
                 line_org[*nout] = g_curorg; out[*nout] = strdup(mex);
                 if (msev < 0) note_operr("Syntax error in the MNOTE severity (IFOX00 IFO178)", 8, *nout);
-                else note_mnote(msev, mtext, *nout);
+                else note_mnote(msev, mexp, mtext, *nout);
                 (*nout)++;
             }
             pc++; continue;
@@ -4498,13 +4498,13 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
      * a generated card. IFOX00 numbers it and flags it exactly as it does one
      * from a macro body (cc370#39). */
     if (op[0] && !strcmp(op, "MNOTE")) {
-        char mtext[256], mimg[256]; int mcom = 0;
-        int msev = mnote_split(opnd, mtext, sizeof mtext, mimg, sizeof mimg, &mcom);
+        char mtext[256], mimg[256]; int mcom = 0, mexp = 0;
+        int msev = mnote_split(opnd, mtext, sizeof mtext, mimg, sizeof mimg, &mcom, &mexp);
         if (*nout < MAXLINES) {
             lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); line_mcall[*nout] = mcall_cur() + 1;
             gcard[*nout] = msev < 0 ? NULL : strdup(mimg); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf);   /* IFO178: listed as written */
             if (msev < 0) note_operr("Syntax error in the MNOTE severity (IFOX00 IFO178)", 8, *nout);
-            else note_mnote(msev, mtext, *nout);
+            else note_mnote(msev, mexp, mtext, *nout);
             (*nout)++;
         }
         return;
@@ -5015,9 +5015,13 @@ static void note_operr(const char *msg, int sev, int line) {
  * (IFO197) and the return code; the other two are printed and cost nothing. */
 static char mnote_txt[128][80]; static int mnote_ln[128]; static int mnote_sev[128];
 static int nmnote, nmnote_seen;
-static void note_mnote(int sev, const char *text, int line) {
+static void note_mnote(int sev, int explicit_sev, const char *text, int line) {
     if (line < 0) return;
-    if (sev > 0) mark_flagged(line);          /* `*' and the bare form are not flagged */
+    /* A written severity is flagged even when it is 0: IFOX00 counts
+     * `MNOTE 0,text' among the flagged statements and lists it as IFO197
+     * (BLSR3270 stmt 1881, 20 flagged where as370 said 19; #682). `*' and
+     * the bare form stay unflagged.  Severity 0 still costs no return code. */
+    if (sev > 0 || explicit_sev) mark_flagged(line);
     nmnote_seen++;
     if (sev > mnote_maxsev) mnote_maxsev = sev;   /* before the cap: 131 MNOTEs ending in 12 returned 4 (#86) */
     if (nmnote < 128) { scopy(mnote_txt[nmnote], text, 79); mnote_sev[nmnote] = sev; mnote_ln[nmnote] = line; nmnote++; }
@@ -5026,9 +5030,9 @@ static void note_mnote(int sev, const char *text, int line) {
  * Returns the severity; *comment is set for the `*' form. The text loses its
  * surrounding apostrophes and a doubled '' becomes one, exactly as IFOX00
  * prints it. */
-static int mnote_split(const char *opnd, char *text, int textsz, char *image, int imagesz, int *comment) {
+static int mnote_split(const char *opnd, char *text, int textsz, char *image, int imagesz, int *comment, int *explicit_sev) {
     const char *p = opnd; int sev = 0, hassev = 0;
-    *comment = 0;
+    *comment = 0; *explicit_sev = 0;
     while (*p == ' ') p++;
     if (*p == '*' && (p[1] == ',' || p[1] == 0)) { *comment = 1; p += p[1] ? 2 : 1; }
     else if (isdigit((unsigned char)*p)) {
@@ -5058,6 +5062,7 @@ static int mnote_split(const char *opnd, char *text, int textsz, char *image, in
     if (*comment)      snprintf(image, (size_t)imagesz, "*,%s", text);
     else if (hassev)   snprintf(image, (size_t)imagesz, "    %d,%s", sev, text);
     else               snprintf(image, (size_t)imagesz, "%s", text);
+    *explicit_sev = hassev && !*comment;
     return *comment ? 0 : sev;
 }
 /* IFOX00 IFO158 (severity 8, jermsgcd.asm SEV158): a symbol defined in a DSECT
