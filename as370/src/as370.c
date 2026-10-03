@@ -3919,8 +3919,30 @@ static struct macro *capture_macro(char **in, int nin, int *ip, char (*inseq)[12
     macro_dict(m);
     *ip = i; return m;
 }
+/* A library member that exists but whose first statement is not MACRO -- a
+ * PL/S-only mapping (IHASHDR), a bi-lingual one opening with `%GOTO' in column
+ * 10 (IKJOCMTB), or comment cards and nothing else (IHASPCT). IFOX00 does not
+ * expand it and does not call it undefined either: IFNX1A SSEQ45/MEND25 set
+ * SNOSMCRO, IFNX1J MACREND stores return code 12 in the macro's directory
+ * entry, and every call then gets IFO085 MACRO HEADER MISSING, MACRO NOT
+ * EXPANDABLE at severity 8 (IFNX3A LOGERR85, jermsgcd SEV85). 15 MVSBLD
+ * modules carry it under IFOX00 (#427). */
+static char (*hdrmiss)[12]; static int nhdrmiss, hdrmisscap;
+static int hdr_missing(const char *name) {
+    int i; for (i = 0; i < nhdrmiss; i++) if (!strcmp(hdrmiss[i], name)) return 1;
+    return 0;
+}
+static void note_hdr_missing(const char *name) {
+    if (hdr_missing(name)) return;
+    if (nhdrmiss >= hdrmisscap) { int nc = hdrmisscap ? hdrmisscap * 2 : 16;
+        char (*nb)[12] = realloc(hdrmiss, (size_t)nc * sizeof *nb);
+        if (!nb) { fprintf(stderr, "as370: out of memory for the macro directory\n"); exit(2); }
+        hdrmiss = nb; hdrmisscap = nc; }
+    scopy(hdrmiss[nhdrmiss++], name, 11);
+}
 static struct macro *lib_load(const char *name) {
     struct macro *m = mac_find(name); if (m) return m;
+    if (hdr_missing(name)) return NULL;
     /* LIBMAX bounds the STATEMENTS a library macro may hold. At 4,096 it cut
      * NETSOL (6,881 cards) in the reader, before capture_macro ever saw it, so
      * raising only the body array would have moved the cut and not removed it.
@@ -3935,9 +3957,9 @@ static struct macro *lib_load(const char *name) {
     if (n >= LIBMAX) fprintf(stderr, "as370: macro %s is longer than %d statements and was cut\n", name, LIBMAX);
     int i = 0; for (; i < n; i++) { char b[STMTSZ], l[32], o[16], od[STMTSZ]; scopy(b, buf[i], STMTSZ - 1);
         if (!parse(b, l, o, od) || !o[0]) continue;
-        if (strcmp(o, "MACRO")) return NULL;
+        if (strcmp(o, "MACRO")) { note_hdr_missing(name); return NULL; }
         break; }
-    if (i >= n) return NULL;
+    if (i >= n) { note_hdr_missing(name); return NULL; }
     char **svc = g_cap_logical; g_cap_logical = g_lib_logical;
     struct macro *mm = capture_macro(buf, n, &i, seqbuf);
     g_cap_logical = svc;
@@ -5000,6 +5022,7 @@ static void note_unknown(const char *o, int line) {
         "AIF","AGO","ANOP","MNOTE","MEXIT","PRINT","SPACE","EJECT","TITLE","DSECT","ORG","COPY","MACRO","MEND","ACTR",
         "EXTRN","WXTRN", NULL };
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
+    if (hdr_missing(o)) { note_operr("Macro header missing, macro not expandable (IFOX00 IFO085)", 8, line); return; }
     mark_flagged(line);
     if (nunk < 128) { scopy(unkops[nunk], o, 11); unkln[nunk] = line; nunk++; } else nunk_lost++;   /* one record per flagged statement */
 }
