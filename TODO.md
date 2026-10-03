@@ -139,9 +139,9 @@ as370 order inside it.**
 | ~~4~~ | ~~#297~~ **landed, PR #739** | as370 | a macro named after a machine mnemonic: no IFO043 |
 | ~~5~~ | ~~#441~~ **landed, PR #741** | as370 | END's second operand: no IFO254 |
 | ~~6~~ | ~~#427~~ **landed, PR #743** | as370 | a library member with cards before MACRO is rejected -- IFOX00 rejects it too, with IFO085 (see the issue) |
-| 7 | #258 | as370 | `S'` / `I'` evaluate to 0 |
-| 8 | #272 | as370 | the 20-term limit (IFO168) — measure the reach first |
-| 9 | #117 | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
+| ~~7~~ | ~~#258~~ **landed, PR #746** | as370 | `S'` / `I'` evaluate to 0 |
+| ~~8~~ | ~~#272~~ **landed, PR #747** | as370 | the 20-term limit (IFO168) — measure the reach first |
+| 9 | #117 **PR #748, held for one MVS RECEIVE** | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
 | 10 | #107 | ld370 | `--entry` seeds automatic library call (ld370 half) |
 | 11 | #439 | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
 | 12 | #102 + #103 | ld370 | duplicate CSECT / COMMON per IEWL — the plan is decided, its #521 hold is closed |
@@ -1620,7 +1620,14 @@ Pointers only. The reasoning lives in the issues and their PRs.
   MACRO header either, it raises IFO085 on every call. as370 now does the
   same, in exactly IFOX00's 15 MVSBLD modules. `make test-corpus` had been
   broken since #523 (generated version header) and #688 (baseline could not
-  find `macros/`); CI does not run it. Next: #258.
+  find `macros/`); CI does not run it.
+
+- **2026-10-03 — #258 and #272 MERGED (PRs #746, #747); #117 open as PR #748.**
+  #258: S'/I' evaluated (only FS3 is oracle-measured, the rest follows
+  IFNX2A/IFNX3A). #272: IFO168 past 20 terms; reach measured with as370's
+  own lexer -- none over 20 in MVSBLD or libc370. #117: xmit370's INMR02 #2
+  INMRECFM 4800 -> 4802, as all four real transmissions carry; waits for an
+  MVS RECEIVE. Next: #107.
 
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
