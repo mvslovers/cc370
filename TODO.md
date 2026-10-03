@@ -134,7 +134,7 @@ does not compete with them: it orders defects, this orders the release.
 | 2 · runtime (1.1.0) | ~~#687~~, ~~#688~~ | **released in 1.1.0** — #708 (`6c32580`), #709 (`fd83e21`), #704 `__CC370__` | — |
 | 3 · public macros | #689 | open | Phase 2 |
 | 4 · startup | (libc370, research) | — | — |
-| 5 · prebuilt and pinned | #523 (artifacts), #699, #698 | **released** — 1.1.0 assets, 1.1.1 stripped; libc370 2.1.0 assets out, pair test green | #699 the tap token |
+| 5 · prebuilt and pinned | #523, ~~#699~~, #698, #726 | **released** — 1.1.0 assets, 1.1.1 stripped, Homebrew live (#727); libc370 2.1.0 assets out, pair test green | #726 (second sysroot, 1.2.0) |
 
 ---
 
@@ -1570,6 +1570,13 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-03 — #699 Homebrew live, MERGED as `909ba32` (PR #727).**
+  `brew trust mvslovers/tap` + `brew install mvslovers/tap/cc370` (pulls
+  libc370); tap deploy keys per project in the `release` environment (v*
+  tags only); homebrew.yml green on 4 hosts. Findings: Homebrew 7 needs a
+  trusted tap for dependencies; brew prunes the empty lib/cc370/<ver>
+  (.keepme). #726 filed (second sysroot, 1.2.0). Also #725 VERSION 1.1.2-dev.
 
 - **2026-10-03 — cc370 1.1.1 RELEASED** (tag `v1.1.1` on `98d9ab0`, PR #723;
   release.yml 37077763660 green): stripped release binaries (#718, PR #722;
