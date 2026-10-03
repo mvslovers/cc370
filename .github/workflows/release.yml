@@ -18,6 +18,10 @@
 # 6. The assets (#523): package.yml builds the four tarballs and the .deb and
 #    .rpm per Linux arch, each smoke-tested where it was built; this job adds
 #    install.sh and a SHA256SUMS over all of them and attaches the lot.
+# 7. Homebrew (#699): the formula is rendered from the release's SHA256SUMS
+#    and pushed to mvslovers/homebrew-tap with the tap's deploy key, which
+#    lives in the `release' environment and is handed only to v* tags.  Then
+#    homebrew.yml installs it from the tap on every host.
 
 name: Release
 
@@ -95,3 +99,43 @@ jobs:
             gh release create "$GITHUB_REF_NAME" \
               --title "cc370 $GITHUB_REF_NAME" --notes-file notes.md assets/*
           fi
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render Formula/cc370.rb
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" -p SHA256SUMS -O sums
+          sh packaging/homebrew/render.sh "${GITHUB_REF_NAME#v}" sums > cc370.rb
+
+      - name: Push it to mvslovers/homebrew-tap
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$TAP_KEY" > ~/.ssh/tap && chmod 600 ~/.ssh/tap
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap -o IdentitiesOnly=yes"
+          git clone -q git@github.com:mvslovers/homebrew-tap.git tap
+          cp cc370.rb tap/Formula/cc370.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/cc370.rb
+          if git diff --cached --quiet; then
+            echo "Formula/cc370.rb already at ${GITHUB_REF_NAME#v}"
+          else
+            git commit -qm "cc370 ${GITHUB_REF_NAME#v}"
+            git push -q origin HEAD:main
+          fi
+          rm -f ~/.ssh/tap
+
+  homebrew-check:
+    needs: homebrew
+    uses: ./.github/workflows/homebrew.yml

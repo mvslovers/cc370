@@ -1,0 +1,67 @@
+# Rendered by packaging/homebrew/render.sh for mvslovers/homebrew-tap (#699).
+# Edit the template in mvslovers/cc370, not this file: the next release
+# overwrites it.
+class Cc370 < Formula
+  desc "Host-native cross-toolchain for MVS 3.8j: C compiler, assembler, linker"
+  homepage "https://github.com/mvslovers/cc370"
+  version "@VERSION@"
+  license "GPL-2.0-or-later"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/mvslovers/cc370/releases/download/v@VERSION@/cc370-@VERSION@-darwin-arm64.tar.gz"
+      sha256 "@SHA_DARWIN_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/mvslovers/cc370/releases/download/v@VERSION@/cc370-@VERSION@-darwin-amd64.tar.gz"
+      sha256 "@SHA_DARWIN_AMD64@"
+    end
+  end
+  on_linux do
+    on_arm do
+      url "https://github.com/mvslovers/cc370/releases/download/v@VERSION@/cc370-@VERSION@-linux-arm64.tar.gz"
+      sha256 "@SHA_LINUX_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/mvslovers/cc370/releases/download/v@VERSION@/cc370-@VERSION@-linux-amd64.tar.gz"
+      sha256 "@SHA_LINUX_AMD64@"
+    end
+  end
+
+  depends_on "mvslovers/tap/libc370"
+
+  def install
+    # The release tree is relocatable; the driver finds its pieces relative to
+    # itself, through the bin/ symlinks Homebrew adds.
+    prefix.install Dir["*"]
+    # lib/cc370/<version> is empty but required: the driver finds its whole
+    # sysroot through a path relative to it, and Homebrew prunes empty
+    # directories from a keg -- without it no header and no -lc is found.
+    (lib/"cc370"/version.to_s/".keepme").write ""
+
+    # cc370 searches its sysroot only in its own tree (cc370/), so libc370's
+    # files are linked in from its stable opt path: include/ whole, lib/ and
+    # macros/ file by file beside cc370's own libcc370rt.a and prologue
+    # macros. A file a later libc370 adds is seen after `brew reinstall cc370`
+    # (cc370#726 removes the need).
+    libc = Formula["mvslovers/tap/libc370"].opt_libexec
+    sysroot = prefix/"cc370"
+    sysroot.install_symlink libc/"include"
+    Dir[libc/"lib/*", libc/"macros/*"].each do |f|
+      dir = sysroot/File.basename(File.dirname(f))
+      dir.install_symlink f unless (dir/File.basename(f)).exist?
+    end
+  end
+
+  test do
+    # Host header paths in the environment would shadow libc370's headers.
+    %w[CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH].each { |v| ENV.delete(v) }
+    assert_match "cc370 @VERSION@ ", shell_output("#{bin}/cc370 --version")
+    (testpath/"t.c").write <<~C
+      #include <stdio.h>
+      int main(int argc, char **argv) { printf("%lld\\n", argc * 1000000007LL / 3); return 0; }
+    C
+    system bin/"cc370", "-O1", "t.c", "-o", "t"
+    assert_predicate testpath/"t", :exist?
+  end
+end
