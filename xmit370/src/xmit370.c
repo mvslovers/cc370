@@ -566,7 +566,7 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     mvs_tui(r, &rp, INM_LRECL, opt_blksize + 20 - 4, 4);
     mvs_tui(r, &rp, INM_DSORG, MVS_DSORG_PS, 2);
     mvs_tui(r, &rp, INM_BLKSZ, opt_blksize + 20, 4);
-    mvs_tui(r, &rp, INM_RECFM, MVS_RECFM_VS << 8, 2);
+    mvs_tui(r, &rp, INM_RECFM, MVS_INMRECFM_INMCOPY, 2);   /* 4802, as every real transmission (#117) */
     mvs_netdata_seg(o, &p, r, rp, 1);
 
     rp = mvs_inmr_hdr(r, 3);

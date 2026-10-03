@@ -97,6 +97,15 @@ def check(host_path, unload_path):
         print("  FAIL: INMSIZE %d != member-data %d B -> RECEIVE would mis-size the "
               "target (SB37 on a large pack)" % (inmsize, member_data)); ok = False
 
+    # INMRECFM, both bytes (#117): c002 on the IEBCOPY record and 4802 on the
+    # INMCOPY one, as TSO TRANSMIT's own e2e.iewl.xmit carries them.  A check of
+    # the high byte alone is what let xmit370 drop the 02 unnoticed.
+    for n, (rec, want) in enumerate(zip(inmr02, (0xc002, 0x4802)), 1):
+        got = tu_int(rec, 0x0049)
+        if got != want:
+            print("  FAIL: INMR02 #%d INMRECFM %s, expected %04x" %
+                  (n, "missing" if got is None else "%04x" % got, want)); ok = False
+
     # transport guard: IEBCOPY LOAD reads SYSUT1 one VS logical record at a time;
     # a member's data packed BEHIND another member's DL=0 EOF in the same logical
     # record is lost on reload (every 2-member layout abended IEB183I this way,

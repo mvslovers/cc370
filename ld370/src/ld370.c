@@ -1564,9 +1564,9 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     mvs_tui(r, &rp, INM_SIZE, data_size, 4);
     mvs_tui(r, &rp, INM_DIR, inmdir, 3);
     mvs_tui(r, &rp, INM_LRECL, 0, 4);
-    mvs_tui(r, &rp, INM_DSORG, 0x0200, 2);                   /* PO */
+    mvs_tui(r, &rp, INM_DSORG, MVS_DSORG_PO, 2);
     mvs_tui(r, &rp, INM_BLKSZ, UNLOAD_SRC_BLKSIZE, 4);       /* source load-library BLKSIZE */
-    mvs_tui(r, &rp, INM_RECFM, 0xc002, 2);                   /* U */
+    mvs_tui(r, &rp, INM_RECFM, (MVS_RECFM_U << 8) | MVS_INMRECFM_X02, 2);   /* as e2e.iewl.xmit (#117) */
     mvs_tu_dsname(r, &rp, dsn);
     mvs_netdata_seg(o, &p, r, rp, 1);
 
@@ -1577,9 +1577,9 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     mvs_tus(r, &rp, INM_UTILN, "INMCOPY");
     mvs_tui(r, &rp, INM_SIZE, unl_size, 4);
     mvs_tui(r, &rp, INM_LRECL, UNLOAD_BLKSIZE - 4, 4);       /* VS: max logical record = BLKSIZE-4 */
-    mvs_tui(r, &rp, INM_DSORG, 0x4000, 2);                   /* PS */
+    mvs_tui(r, &rp, INM_DSORG, MVS_DSORG_PS, 2);
     mvs_tui(r, &rp, INM_BLKSZ, UNLOAD_BLKSIZE, 4);           /* = IEBCOPY MINBLK; must hold one record unspanned */
-    mvs_tui(r, &rp, INM_RECFM, 0x4802, 2);                   /* VS */
+    mvs_tui(r, &rp, INM_RECFM, MVS_INMRECFM_INMCOPY, 2);
     mvs_netdata_seg(o, &p, r, rp, 1);
 
     /* INMR03 -- data record descriptor.  INM_SIZE mirrors INMR02#1 (the IEBCOPY

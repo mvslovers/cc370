@@ -136,6 +136,17 @@ enum { MVS_DSORG_PO = 0x0200, MVS_DSORG_PS = 0x4000 };
 enum { MVS_RECFM_U = 0xc0, MVS_RECFM_F = 0x80, MVS_RECFM_FB = 0x90,
        MVS_RECFM_V = 0x40, MVS_RECFM_VS = 0x48 };
 
+/* INMRECFM is two bytes: the RECFM above in the high byte, and a low byte the
+ * RECFM does not carry.  On the INMCOPY record (the unloaded form, RECFM=VS)
+ * every real transmission measured has X'02' there -- 4802 in TSO TRANSMIT's
+ * e2e.iewl.xmit (ld370/tests/fixtures), in CBT571's XFASM.xmi and LOADLIB.xmi,
+ * and in HTTPD330.XMIT, an FB80 source library -- so both tools write it
+ * (#117).  On the IEBCOPY record it varies between real ones (c002 in
+ * e2e.iewl.xmit, c000 in the two CBT571 load libraries, 9000 for HTTPD330), so
+ * there each tool keeps the value its own oracle carries. */
+enum { MVS_INMRECFM_X02 = 0x02 };
+#define MVS_INMRECFM_INMCOPY ((MVS_RECFM_VS << 8) | MVS_INMRECFM_X02)
+
 /* one text unit: key(2) + count(2) + length(2) + value */
 void mvs_tu(unsigned char *b, long *p, int key, const unsigned char *val, int len);
 void mvs_tui(unsigned char *b, long *p, int key, long v, int n);   /* integer value */
