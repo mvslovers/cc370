@@ -3339,6 +3339,20 @@ PY
 fi
 rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
 
+# ------------------------------------------------------------------ end254 --
+# cc370#441: END's second operand is checked by position (IFNX5A END200-
+# END240). `END TESTA,(C'PLS1911',0701)' -- two fields, not three -- is
+# IFO254 at rc 4 under IFOX00 (MVSTK5-REF, with #435's END forms); the
+# three-field form and a bare END are clean. The binary before gave rc 0.
+e254=0
+for c in "TESTA,(C'PLS1911',0701):4" "TESTA,(C'PLS1911',0701,78177):0" "TESTA:0"; do
+    printf 'TESTA    CSECT\n         BR    14\n         END   %s\n' "${c%:*}" > /tmp/_e2$$.s
+    ./as370 /tmp/_e2$$.s -o /dev/null >/tmp/_e2$$.out 2>&1; r=$?
+    if [ "$r" != "${c##*:}" ]; then echo "end254: FAIL -- END ${c%:*} gave rc $r, want ${c##*:}"; e254=1; fi
+done
+if [ $e254 = 0 ]; then echo "end254: OK (two-field second operand IFO254 rc 4; three-field and bare END clean)"; else fail=$((fail + 1)); fi
+rm -f /tmp/_e2$$.s /tmp/_e2$$.out
+
 # --------------------------------------------------------------- protomnem --
 # cc370#297: a macro may not be named after an operation IFOX00 owns. The
 # prototype `M &A,&B' is IFO043 (severity 8, IFNX1A PUTOC25 -> BDPTO) and the
