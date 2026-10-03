@@ -2718,7 +2718,12 @@ done
 { echo 'SEQT     CSECT'; echo '         ISEQ  73,80'; echo '         BR    14'
   echo '         ISEQ'; echo '         END'; } > /tmp/_iq.s
 { echo 'SEQT     CSECT'; echo '         BR    14'; echo '         END'; } > /tmp/_nq.s
-if ! ./as370 /tmp/_iq.s -o /tmp/_iq.obj >/dev/null 2>&1; then
+# rc 4 is allowed: these cards carry no sequence numbers, and since #128 the
+# blank field after the first is "not greater" -- IFO025 at severity 4,
+# derived from IFNX1A RSEQCHK (not measured on the oracle). What this checks
+# is that ISEQ emits nothing.
+./as370 /tmp/_iq.s -o /tmp/_iq.obj >/dev/null 2>&1
+if [ $? -gt 4 ]; then
     echo "iseq: ASSEMBLE FAILED"; startfail=1
 elif ./as370 /tmp/_nq.s -o /tmp/_nq.obj >/dev/null 2>&1 && ! cmp -s /tmp/_iq.obj /tmp/_nq.obj; then
     echo "iseq: FAIL (ISEQ changed the object; it must emit nothing)"; startfail=1
@@ -3333,6 +3338,21 @@ PY
     [ $? = 0 ] || fail=$((fail + 1))
 fi
 rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
+
+# -------------------------------------------------------------------- iseq --
+# cc370#128: ISEQ 73,80 sequence-checks every card read; a card whose field is
+# not greater than the previous one is IFO025 (severity 4) and still assembled
+# (IFOX00, measured in the issue: the out-of-order BR 14 lands at 000004).
+# A bare ISEQ stops the checking, so the out-of-order cards after it are not
+# flagged. One statement flagged, rc 4; the binary before gave rc 0. The 26
+# MVSBLD modules carrying ISEQ raise no IFO025 here, as under IFOX00.
+./as370 tests/iseq.s -o /tmp/_is$$.obj >/tmp/_is$$.out 2>&1; r=$?
+if [ "$r" = 4 ] && [ "$(grep -c IFO025 /tmp/_is$$.out)" = 1 ] && grep -q ' 1 Statement Flagged' /tmp/_is$$.out; then
+    echo "iseq: OK (one IFO025, rc 4, checking off after a bare ISEQ)"
+else
+    echo "iseq: FAIL -- rc $r, $(grep -c IFO025 /tmp/_is$$.out) x IFO025"; fail=$((fail + 1))
+fi
+rm -f /tmp/_is$$.obj /tmp/_is$$.out
 
 # --------------------------------------------------------------- mnotezero --
 # cc370#682: a written severity is flagged even when it is 0. IFOX00 counts

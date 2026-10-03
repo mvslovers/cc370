@@ -3674,6 +3674,51 @@ static int join_cont(char **in, int n, char **out, int maxout, char (*seqout)[12
 }
 /* the operation field of a raw card, compared case-insensitively (the joiner
  * runs before parse() has ever seen the statement) */
+/* ISEQ (cc370#128): IFOX00 checks the sequence field of every card it READS
+ * from the primary input once ISEQ l,r is in force (IFNX1A RSEQCHK): columns
+ * l..r, translated back to EBCDIC (JTRTABLE), must be greater than the
+ * previous card's, compared as bytes; equal is out of sequence too, so two
+ * blank fields in a row are. Either way the new field becomes the one to beat
+ * (SEQSAVE), and the card's statement is still assembled -- IFO025 is a
+ * severity-4 warning. ISEQ with no operand stops the checking; a malformed
+ * one stops it too (IFOX00 says IFO019 then, which is not reproduced here).
+ * The new setting starts with the card after the ISEQ statement.
+ *
+ * seqerr[o] is set for o = org[] of a statement one of whose cards broke the
+ * order -- the 1-based line of its first card, which is what line_org[]
+ * carries for its lines, and where
+ * the diagnostic is attached once the statements exist. */
+static unsigned char seqerr[MAXLINES];
+static void iseq_scan(char **cards, int ncards, char **stmts, int nstmts, const int *org) {
+    int on = 0, l = 0, r = 0, k = 0, c;
+    unsigned char prev[80] = { 0 };
+    for (c = 0; c < ncards; c++) {
+        while (k + 1 < nstmts && org[k + 1] - 1 <= c) {    /* the statement this card belongs to; org[] is 1-based */
+            /* the statement before is complete: an ISEQ takes effect now */
+            if (card_op_is(stmts[k], "ISEQ")) {
+                char t[256], lab[64], op[16], opnd[STMTSZ]; int a, b;
+                scopy(t, stmts[k], sizeof t - 1);
+                if (strlen(t) > 71) t[71] = 0;              /* the sequence field is not an operand */
+                parse(t, lab, op, opnd);
+                if (sscanf(opnd, "%d,%d", &a, &b) == 2 && a > 0 && b >= a && b <= 80) {
+                    on = 1; l = a; r = b; memset(prev, 0, sizeof prev);
+                } else on = 0;
+            }
+            if (card_op_is(stmts[k], "END")) return;     /* cards after END are not read */
+            k++;
+        }
+        if (!on) continue;
+        {   unsigned char cur[80]; int j, len = r - l + 1; const char *p = cards[c];
+            int plen = (int)strlen(p);
+            for (j = 0; j < len; j++) {
+                int col = l - 1 + j;
+                cur[j] = mvs_a2e(col < plen && p[col] != '\n' && p[col] != '\r' ? (unsigned char)p[col] : ' ');
+            }
+            if (memcmp(cur, prev, (size_t)len) <= 0 && org[k] < MAXLINES) seqerr[org[k]] = 1;
+            memcpy(prev, cur, (size_t)len);
+        }
+    }
+}
 static int card_op_is(const char *l, const char *op) {
     int i = 0, len = rawlen(l), s, k, nt, ol = (int)strlen(op);
     if (len > 71) len = 71;
@@ -6295,8 +6340,8 @@ static void do_pass(int pass, char **lines, int nlines) {
              * diagnostic, not a rejection (the offending BR 14 appeared at
              * 000004 with the section two bytes longer).  So recognising the
              * statement is provably object-neutral, and what is not yet
-             * reproduced is the IFO025 diagnostic itself. */
-            /* nothing to do */
+             * reproduced is the IFO025 diagnostic itself.  The checking is
+             * done on the cards as read, before the passes -- iseq_scan(). */
         } else if (!strcmp(op, "TITLE")) {
             if (pass == 1 && lbl[0] && !deck_id[0]) { scopy(deck_id, lbl, 8); deck_id_ln = i; }   /* first named TITLE -> deck id */
             /* Only one TITLE may carry a name: a second is IFO104 MORE THAN ONE
@@ -8957,6 +9002,7 @@ int main(int argc, char **argv) {
     join_span = raw_span; join_logical = raw_logical;
     int n = join_cont(raw0, nr, raw, MAXLINES, raw_seq, raw_org);
     join_span = NULL; join_logical = NULL;
+    iseq_scan(raw0, nr, raw, n, raw_org);   /* ISEQ: sequence-check the cards as read (#128) */
     g_main_raw = raw; g_main_logical = raw_logical; g_main_seq = raw_seq;   /* fold column-72 continuations; raw_org = input line per statement */
     a_raw0 = raw0; a_raw = raw; a_raw_org = raw_org; a_nraw = n;   /* the listing lists a continued statement card by card (#609) */
 
@@ -8977,6 +9023,15 @@ int main(int argc, char **argv) {
      * loop would have to be repeated in three places and kept in step. */
     { int k; for (k = 0; k < nl; k++) if (card_op_is(lines[k], "END")) { nl = k + 1; break; } }
 
+    /* IFO025 (#128), once per statement whose cards broke the ISEQ order --
+     * on the open-code line that carries it, comment and macro-call cards
+     * included, which the passes skip. */
+    { int k; for (k = 0; k < nl; k++) {
+        int o = line_org[k];
+        if ((lflags[k] & LF_GEN) || o < 0 || o >= MAXLINES || !seqerr[o]) continue;
+        seqerr[o] = 0;
+        note_operr("Statement out of sequence (IFOX00 IFO025)", 4, k);
+    } }
     prescan_literals(lines, nl);   /* the END pool has to be known before pass 1 lays the first control section out (#68) */
     do_pass(1, lines, nl);
     { int k, id = 0; for (k = 0; k < nesdord; k++) {         /* SD/PC sections and ER refs get an ESDID; LD entries do not */
