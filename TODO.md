@@ -133,11 +133,11 @@ as370 order inside it.**
 
 | | Issue | Tool | What |
 |---|---|---|---|
-| 1 | #86 | as370 | past 128 diagnostics the severity comes from the kept entries only: 130 operand errors report 8 where it is 12 — a wrong rc |
-| 2 | #682 | as370 | `MNOTE 0,` not counted as flagged |
-| 3 | #128 | as370 | ISEQ accepted, IFO025 never raised |
-| 4 | #297 | as370 | a macro named after a machine mnemonic: no IFO043 |
-| 5 | #441 | as370 | END's second operand: no IFO254 |
+| ~~1~~ | ~~#86~~ **landed, PR #736** | as370 | past 128 diagnostics the severity comes from the kept entries only: 130 operand errors report 8 where it is 12 — a wrong rc |
+| ~~2~~ | ~~#682~~ **landed, PR #737** | as370 | `MNOTE 0,` not counted as flagged |
+| ~~3~~ | ~~#128~~ **landed, PR #738** | as370 | ISEQ accepted, IFO025 never raised |
+| ~~4~~ | ~~#297~~ **landed, PR #739** | as370 | a macro named after a machine mnemonic: no IFO043 |
+| ~~5~~ | ~~#441~~ **landed, PR #741** | as370 | END's second operand: no IFO254 |
 | 6 | #427 | as370 | a library member with cards before MACRO is rejected |
 | 7 | #258 | as370 | `S'` / `I'` evaluate to 0 |
 | 8 | #272 | as370 | the 20-term limit (IFO168) — measure the reach first |
@@ -188,7 +188,6 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 | | Issue | Tool | Kind | Waiting on |
 |---|---|---|---|---|
 | 1 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
-| 2 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
 | 4 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
 | 5 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 | 6 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
@@ -480,6 +479,9 @@ it, it is silent corruption. **Measure that before flipping anything** — it is
 about an hour, and it is the only input the decision is still short of.
 
 ### 2 · #86 — the diagnostic recorders drop everything past 128 entries
+
+**Landed 2026-10-03 (PR #736):** every recorder counts what it drops, the
+severity is kept before the cap, and a cut list says how many it left out.
 
 200 undefined opcodes in one module report 128 and state the truncated number as
 fact. #85 already fixed this for the continuation recorder after nsf370 hit it and
@@ -1188,13 +1190,13 @@ afterwards.
 - **#229** *(deferred, 2026-10-02 -- no use in MVSBLD or the ecosystem, cc370 never emits COM; see the issue's comment for what a fix needs)* — `COM` gets no `CM` entry in the ESD and does not reset the location
   counter, so a common section is neither declared nor addressed. Adjacent to
   #76's `DXD`/`COM` message-class note and worth doing with it.
-- **#297** — a macro prototype may take a machine mnemonic's name and as370
+- ~~**#297**~~ **Fixed** (PR #739, IFO043 at the prototype) — a macro prototype may take a machine mnemonic's name and as370
   assembles it in silence; IFOX00 answers `IFO043` at rc 12. Loud on the oracle
   side, absent on ours.
 - **#211** — a CCW whose data address names a DSECT symbol draws no `IFO158`,
   though the `DC` path already does. The check exists; one call site does not
   make it.
-- **#128** — `ISEQ` is recognised and does nothing. **Read the title with care: it
+- ~~**#128**~~ **Fixed** (PR #738, IFO025 per out-of-sequence card) — `ISEQ` is recognised and does nothing. **Read the title with care: it
   says "not implemented (25 modules)" and that is no longer what is open.** PR
   #129 landed the operand parse, the column range and the disable form and its own
   body says what it did *not* do — raise `IFO025` on an out-of-sequence card. So
@@ -1607,6 +1609,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-03 — the triage block, items 1-5, MERGED** (PRs #736-#739, #741).
+  #86 the recorders count what they drop, the rc no longer depends on the
+  128-entry lists; #682 `MNOTE 0` is flagged; #128 ISEQ raises IFO025;
+  #297 IFO043 for a prototype named after an operation; #441 IFO254 for a
+  two-field END second operand. Tree gate 0 moves for each. Next: #427.
 
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
