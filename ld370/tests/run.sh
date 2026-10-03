@@ -1197,6 +1197,39 @@ else
     echo "  FAIL: rc $r, stderr '$(cat "$TMP/missing.err")'"; fails=$((fails + 1))
 fi
 
+echo "== --entry seeds automatic library call (#107)"
+# Nothing calls @@CRT0, so an entry living only in an archive was never pulled:
+# `--entry symbol '@@CRT0' not found'.  Now it is autocalled by name, and what it
+# references (@@START, here, and through it MAIN) joins the ordinary closure.
+printf '@@CRT0   CSECT\n         USING *,15\n         L     15,=V(@@START)\n         BR    15\n         LTORG\n         END\n' > "$TMP/e107crt.s"
+printf '@@START  CSECT\n         USING *,15\n         L     15,=V(MAIN)\n         BR    15\n         LTORG\n         END\n' > "$TMP/e107st.s"
+printf 'MAIN     CSECT\n         SR    15,15\n         BR    14\n         END\n' > "$TMP/e107pg.s"
+"$AS" "$TMP/e107crt.s" -o "$TMP/e107crt.o" && "$AS" "$TMP/e107st.s" -o "$TMP/e107st.o" && "$AS" "$TMP/e107pg.s" -o "$TMP/e107pg.o"
+rm -f "$TMP/libe107.a"; "$AR" rc "$TMP/libe107.a" "$TMP/e107crt.o" "$TMP/e107st.o" >/dev/null
+"$LD" -e @@CRT0 -o "$TMP/e107.lm" --name E107 "$TMP/e107pg.o" -L"$TMP" -le107 --map "$TMP/e107.map" 2>"$TMP/e107.err"; r=$?
+if [ "$r" = 0 ] && grep -q '^LD370 MAP  E107  ENTRY @@CRT0 000008' "$TMP/e107.map" \
+   && grep -q '^@@CRT0 .*libe107.a(e107crt.o) autocall' "$TMP/e107.map" \
+   && grep -q '^@@START .*libe107.a(e107st.o) autocall' "$TMP/e107.map"; then
+    echo "  OK: @@CRT0 and, through it, @@START pulled from the archive; entry 000008"
+else
+    echo "  FAIL: rc $r, $(cat "$TMP/e107.err")"; cat "$TMP/e107.map" 2>/dev/null; fails=$((fails + 1))
+fi
+# named explicitly, the entry object is not looked up in the archive at all
+"$LD" -e @@CRT0 -o "$TMP/e107x.lm" --name E107 "$TMP/e107crt.o" "$TMP/e107pg.o" -L"$TMP" -le107 --map "$TMP/e107x.map"; r=$?
+if [ "$r" = 0 ] && grep -q "^@@CRT0 .*e107crt.o\$" "$TMP/e107x.map"; then
+    echo "  OK: an explicit entry object is used as given"
+else
+    echo "  FAIL: rc $r, explicit @@CRT0 not taken from the command line"; fails=$((fails + 1))
+fi
+# and an entry nothing defines fails as it always did
+"$LD" -e NOSUCH -o "$TMP/e107n.lm" "$TMP/e107pg.o" -L"$TMP" -le107 2>"$TMP/e107n.err"; r=$?
+if [ "$r" = 1 ] && grep -q "^ld370: --entry symbol 'NOSUCH' not found or unresolved\$" "$TMP/e107n.err"; then
+    echo "  OK: an undefined entry is still rc 1 with the old message"
+else
+    echo "  FAIL: rc $r, '$(cat "$TMP/e107n.err")'"; fails=$((fails + 1))
+fi
+rm -f "$TMP"/e107* "$TMP/libe107.a"
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"
