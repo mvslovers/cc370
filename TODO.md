@@ -144,7 +144,7 @@ as370 order inside it.**
 | ~~9~~ | ~~#117~~ **landed, PR #748** (MVS: JOB01316) | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
 | ~~10~~ | ~~#107~~ **landed, PR #751** | ld370 | `--entry` seeds automatic library call (ld370 half) |
 | ~~11~~ | ~~#439~~ **landed, PR #753** | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
-| 12 | #102 + #103 | ld370 | duplicate CSECT / COMMON per IEWL — the plan is decided, its #521 hold is closed |
+| ~~12~~ | ~~#102~~ **landed, PR #755**; #103 split off (CM placement first) | ld370 | duplicate CSECT / COMMON per IEWL |
 
 **Waiting on the maintainer:** #100 (RENT+REUS default — to be talked
 through), #110 and #193 (proposed: close), #36 (proposed: close as decided),
@@ -1227,7 +1227,7 @@ afterwards.
   check. Latent (the largest module in the corpus is ~241 KB) but it is literally
   the pattern that has produced four production failures in that one file. One
   guard, or grow it like `out[]`.
-- **#102 / #103** — duplicate CSECT and duplicate COMMON, where ld370 takes the
+- **#102 / #103** *(#102 fixed 2026-10-03, PR #755; #103 open: ld370 places a CM inside its object, IEWL at the module end -- placement first, then the max rule)* — duplicate CSECT and duplicate COMMON, where ld370 takes the
   last and IEWL takes the first / the maximum. **#102 is reproduced** in the
   autocall variant (2026-09-30, JOB01408, test TC2 of
   `ld370/tests/run_iewl_autocall_oracle.py`): IEWL keeps the first `QQ`, silently,
@@ -1642,7 +1642,13 @@ Pointers only. The reasoning lives in the issues and their PRs.
 - **2026-10-03 — #439 MERGED (PR #753).** dasm370 names every section of a
   multi-section deck on stderr; stdout and rc unchanged on all 5,538 obj_ctrl
   decks (640 noted, 344 with an unnamed first section). rc for the zero-byte
-  case left open for Mike. Next: #102 + #103.
+  case left open for Mike.
+
+- **2026-10-03 — #102 MERGED (PR #755); the pre-1.2.0 block is done.** A
+  duplicate CSECT keeps the first definition and is compacted out, as IEWL
+  (JOB01409 layouts in run.sh). 35 of 36 ecosystem links byte-identical; brexx370
+  IRXVTOC drops four PCLMAIN copies. Open from its plan: an IEWL link of IRXVTOC
+  on MVS (needs an OK). #103 split off: CM placement must come first.
 
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
