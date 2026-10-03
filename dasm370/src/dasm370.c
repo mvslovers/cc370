@@ -1725,6 +1725,29 @@ static void section_reset(void)
  * cannot skip what follows it, so that trap is gone rather than documented.
  *
  * 0 = loaded, 2 = no such section, 16 = could not read it. */
+/* A DECK WITH MORE THAN ONE SECTION (#439).  Without --csect the first SD or
+ * PC is taken, and when that one is the unnamed, zero-length PC an assembler
+ * leaves in front of the real CSECT, the whole output was `CSECT' / `END' at
+ * rc 0 -- and it reassembles.  Measured over the 5,538 MVSBLD decks in
+ * mvs38src/obj_ctrl: 640 have more than one section, 344 of them an unnamed
+ * one first, the largest omission 32,431 bytes (IDCCDDE, 10 sections).  So say
+ * how many there are, and which, so the reader can tell what --csect to ask
+ * for.  Only stderr changes: stdout and rc are identical on all 5,538. */
+enum { MAXSECS_NOTED = 64 };
+static struct { char name[9]; long len; } secs[MAXSECS_NOTED];
+static int nsecs;
+static void note_sections(const char *src)
+{
+    int i;
+    fprintf(stderr, "dasm370: %s has %d control sections; disassembling the first, %s (%ld bytes) -- "
+            "choose another with --csect NAME:\n", src, nsecs,
+            sect_name[0] ? sect_name : "(unnamed)", sect_len);
+    for (i = 0; i < nsecs && i < MAXSECS_NOTED; i++)
+        fprintf(stderr, "dasm370:   %-8s %ld bytes\n", secs[i].name[0] ? secs[i].name : "(unnamed)", secs[i].len);
+    if (nsecs > MAXSECS_NOTED)
+        fprintf(stderr, "dasm370:   ... and %d more\n", nsecs - MAXSECS_NOTED);
+}
+
 /* A REFUSAL THAT NAMES WHAT IT DID FIND.  By the time this runs the CESD walk
  * has already stored every LD/LR entry and every ESD name, so at the moment the
  * tool said "no section named AHLDMPMD" it knew that AHLDMPMD is an ENTRY POINT
@@ -1819,6 +1842,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
 
     /* Pass 1: the ESD.  Sections first, because the RLD and the TXT are keyed
      * on the ESDIDs it assigns. */
+    nsecs = 0;
     for (c = 0; c < ncards; c++) {
         struct esd_collect cc;
         int k;
@@ -1837,6 +1861,10 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
                 ld[nld].owner = (int)e->len;
                 nld++;
             }
+            if (obj_is_section(e->type)) {   /* every section, for the note below (#439) */
+                if (nsecs < MAXSECS_NOTED) { memcpy(secs[nsecs].name, e->name, 9); secs[nsecs].len = e->len; }
+                nsecs++;
+            }
             if (obj_is_section(e->type) && !sect_esdid
                 && (!want || !strcmp(e->name, want))) {
                 sect_esdid = e->id;
@@ -1851,6 +1879,7 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
         free(deck);
         return 2;
     }
+    if (!want && nsecs > 1) note_sections(src);
     if (sect_len > MAXSECT_BYTES) {
         fprintf(stderr, "dasm370: %s is %ld bytes, over the %ld this build holds\n",
                 sect_name, sect_len, MAXSECT_BYTES);
@@ -4237,7 +4266,8 @@ static void usage(FILE *o)
     fputs(
 "Usage: dasm370 [options...] deck.obj\n"
 " Options:\n"
-"  --csect NAME       disassemble this control section (default: the only one)\n"
+"  --csect NAME       disassemble this control section (default: the first;\n"
+"                     a deck with several lists them on stderr)\n"
 "  --derive-hints SRC assemble SRC with as370 and write out what it found as a\n"
 "                     hint file: its labels, and its base registers with the\n"
 "                     lifetimes the assembly gave them.  Takes -I, and records\n"
