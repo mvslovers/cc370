@@ -70,9 +70,21 @@ if git -C "$ROOT" diff --quiet "$BASE" -- as370/src as370/include common 2>/dev/
     exit 0
 fi
 
-git -C "$ROOT" archive "$BASE" as370 common | tar -x -C "$TMP" || exit 2
+#
+# macros/ and VERSION go with it when BASE has them. as370 finds cc370's own
+# prologue macros (PDPPRLG/PDPEPIL, #688) at <its directory>/../macros, so the
+# baseline is built INTO $TMP/as370/ beside an exported $TMP/macros -- the same
+# layout as the tree. Built as $TMP/as370.base it found none and failed every
+# module that uses them, which reads as 750 modules "newly assembling". And
+# cc370-version.h is generated, never committed (#523): mkversion.sh writes it
+# from the exported VERSION, or the baseline does not compile at all.
+extra=$(git -C "$ROOT" ls-tree --name-only "$BASE" -- macros VERSION)
+git -C "$ROOT" archive "$BASE" as370 common $extra | tar -x -C "$TMP" || exit 2
+if [ -f "$TMP/common/mkversion.sh" ]; then
+    sh "$TMP/common/mkversion.sh" "$TMP/common/include/cc370-version.h" || exit 2
+fi
 cc -O2 -w -I"$TMP/as370/include" -I"$TMP/common/include" \
-    -o "$TMP/as370.base" "$TMP/as370/src/as370.c" "$TMP/common/src"/*.c \
+    -o "$TMP/as370/as370.base" "$TMP/as370/src/as370.c" "$TMP/common/src"/*.c \
     || { echo "corpus: baseline as370 ($BASE) does not build"; exit 2; }
 
 # every committed .asm/.s under libc370 except the work-in-progress tree
@@ -85,7 +97,7 @@ MAC="-I $LIBC370/maclib -I $LIBC370/sysmac"
 moved=0; checked=0; base_only=0; head_only=0
 for rel in $(modules); do
     checked=$((checked + 1))
-    "$TMP/as370.base" "$LIBC370/$rel" $MAC -o "$TMP/base.obj" >/dev/null 2>&1; brc=$?
+    "$TMP/as370/as370.base" "$LIBC370/$rel" $MAC -o "$TMP/base.obj" >/dev/null 2>&1; brc=$?
     ./as370             "$LIBC370/$rel" $MAC -o "$TMP/head.obj" >/dev/null 2>&1; hrc=$?
     # a module that assembles on one side and not the other is the loudest
     # possible result: report it as its own category rather than as a byte diff.
