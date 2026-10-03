@@ -7475,6 +7475,27 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * rejects with IFO254 and still stamps correctly. */
                 char ent[64]; size_t ei = 0;   /* not `k': the outer one is the literal loop's */
                 while (opnd[ei] && opnd[ei] != ',' && ei < sizeof ent - 1) { ent[ei] = opnd[ei]; ei++; }
+                /* The second operand's FORMAT, by position as IFNX5A END200-END240
+                 * checks it (#441): after the first operand comes the end, `,'
+                 * plus blank (omitted), or `,(' -- then up to 10 characters to a
+                 * comma, and exactly eleven positions on, the closing `)': the
+                 * `,vvmm,yyddd)' tail. Anything else is IFO254 at severity 4
+                 * (jermsgcd SEV254); the END card is written either way.
+                 * `END TESTA,(C'PLS1911',0701)' is the measured case. */
+                if (pass == 2) {
+                    const char *r = opnd + ei; int bad = 0;
+                    if (*r == ',' && r[1] && r[1] != ' ') {
+                        if (r[1] != '(') bad = 1;
+                        else {
+                            const char *q = r + 2; int nch = 0;
+                            while (*q && *q != ',' && nch <= 10) { q++; nch++; }
+                            if (*q != ',' || nch > 10) bad = 1;
+                            else { int t; for (t = 1; t <= 11; t++) if (!q[t]) break;
+                                   if (t <= 11 || q[11] != ')') bad = 1; }
+                        }
+                    }
+                    if (bad) note_operr("Illegal format of second operand of END statement (IFOX00 IFO254)", 4, i);
+                }
                 while (ei && ent[ei - 1] == ' ') ei--;
                 ent[ei] = '\0';
                 if (ent[0]) {
