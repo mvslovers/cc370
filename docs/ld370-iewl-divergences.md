@@ -14,13 +14,15 @@ reproducer and the code citation:
 | [#99](https://github.com/mvslovers/cc370/issues/99) | a WX parsed before an ER leaves a hard unresolved reference unreported | **fixed**, `62e4f1a` |
 | [#100](https://github.com/mvslovers/cc370/issues/100) | every linked module is marked RENT+REUS; IEWL defaults to neither | read from both sources |
 | [#101](https://github.com/mvslovers/cc370/issues/101) | the module image buffer is a fixed 1 MB static with no bounds check | latent, not active |
-| [#102](https://github.com/mvslovers/cc370/issues/102) | a duplicate CSECT keeps the last definition; IEWL keeps the first | derived, needs a fixture |
+| [#102](https://github.com/mvslovers/cc370/issues/102) | a duplicate CSECT keeps the last definition; IEWL keeps the first | **fixed**: IEWL measured (JOB01408, JOB01409), ld370 drops the later copy and compacts as IEWL does |
 | [#103](https://github.com/mvslovers/cc370/issues/103) | a second COMMON takes the last length; IEWL takes the maximum | derived, needs a fixture |
 
-#99 is the only one that was ever reproduced, and it is now fixed — `g_intern`
+#99 and #102 were reproduced and are fixed. #99 — `g_intern`
 promotes a `WX` matched by anything but another `WX` to `ER`, the way `HEWLFESD`
-does. #102 and #103 name the input that would trigger them and nothing more —
-that is what their fixtures are for.
+does. #102 follows the measured IEWL layout (`tests/run_iewl_dupcsect_oracle.py`,
+`run.sh`). #103 names the input that would trigger it and nothing more — and
+ld370 also places a COMMON inside its object, where IEWL puts it at the end of
+the module, so the length rule is not the whole of it.
 
 It is worth recording what shape #99 turned out to be, because it is **not** the
 buffer shape below. Nothing overflowed and nothing was truncated: two tests
@@ -202,7 +204,8 @@ defines the name it resolved (cc370#8). Across archives it follows IEWL: the
 first one searched wins, silently (test TA), and `--warn-shadow` names the
 others. An autocalled member that defines an entry again is reported like
 `IEW0241` (test TC). A duplicate CSECT is not reported; IEWL does not report it
-either (test TC2), and ld370 keeps the wrong one of the two — cc370#102.
+either (test TC2), and since cc370#102 ld370 keeps the first of the two, as IEWL
+does, dropping the later copy's text, space and RLDs.
 
 ## Reference sources
 

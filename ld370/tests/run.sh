@@ -1230,6 +1230,53 @@ else
 fi
 rm -f "$TMP"/e107* "$TMP/libe107.a"
 
+echo "== a duplicate CSECT: the first definition is kept, as IEWL does (#102)"
+# The objects of tests/run_iewl_dupcsect_oracle.py, and IEWL's own answer for
+# them (MVSCE-LAB JOB01409): OB defines QQ again, in the middle of the object.
+# IEWL drops the later QQ -- text, space, the RLDs inside it, its ENTRY QE --
+# compacts OC up behind OB, and binds every reference to the first QQ.
+# ld370 used to keep the LAST copy and both copies' text.
+printf 'OA       CSECT\n         DC    A(QQ)\n         DC    A(OA)\nQQ       CSECT\n         DC    CL4%sQQ1%s\n         END\n' "'" "'" > "$TMP/d102a.s"
+printf 'OB       CSECT\n         DC    A(QQ)\n         DC    A(OC)\nQQ       CSECT\n         ENTRY QE\n         DC    A(OB)\n         DC    A(QQ)\nQE       DC    CL8%sQQ2%s\n         DC    4F%s0%s\nOC       CSECT\n         DC    CL4%sOC%s\n         DC    A(QE)\n         END\n' "'" "'" "'" "'" "'" "'" > "$TMP/d102b.s"
+printf 'OD       CSECT\n         DC    V(QE)\n         DC    V(OC)\n         END\n' > "$TMP/d102d.s"
+for x in a b d; do "$AS" "$TMP/d102$x.s" -o "$TMP/d102$x.o" || echo "  assemble d102$x failed"; done
+d102words() {   # the module's text as offset:word pairs
+    python3 - "$1" "$FI" <<'PY'
+import sys, subprocess, re
+v = subprocess.run([sys.argv[2], "-v", sys.argv[1]], capture_output=True, text=True).stdout
+off, n = [(int(a, 16), int(b)) for a, b in re.findall(r"@([0-9A-F]+)\s+text\s+(\d+) bytes", v)][0]
+d = open(sys.argv[1], "rb").read()[off:off + n]
+print(" ".join("%02X:%08X" % (a, int.from_bytes(d[a:a + 4], "big")) for a in range(0, n, 4)))
+PY
+}
+# TE: OA, OB, OD.  QE goes with the dropped QQ, so OD's V(QE) is unresolved.
+"$LD" -o "$TMP/d102te.lm" --name TE "$TMP/d102a.o" "$TMP/d102b.o" "$TMP/d102d.o" \
+      --allow-unresolved --map "$TMP/d102te.map" 2>"$TMP/d102te.err"; r=$?
+want="OA:000000:000008 QQ:000008:000004 OB:000010:000008 OC:000018:000008 OD:000020:000008"
+got=$(awk '$2=="SD"{printf "%s%s:%s:%s", s, $1, $3, $4; s=" "}' "$TMP/d102te.map")
+w=$(d102words "$TMP/d102te.lm")
+if [ "$r" = 0 ] && [ "$got" = "$want" ] && grep -q 'LENGTH 000028' "$TMP/d102te.map" \
+   && echo "$w" | grep -q '10:00000008 14:00000018 18:D6C34040 1C:00000010 20:00000000' \
+   && grep -q 'adcon at 00001C points +8 bytes into CSECT .QQ.' "$TMP/d102te.err" \
+   && [ "$(grep -c 'warning: adcon' "$TMP/d102te.err")" = 1 ]; then
+    echo "  OK: TE = IEWL's layout (x28); OB's A(QQ)=08, OC's A(QE)=10 and warned, V(QE) unresolved"
+else
+    echo "  FAIL: TE rc $r layout '$got' text '$w'"; cat "$TMP/d102te.err"; fails=$((fails + 1))
+fi
+# TE2: OB, OA, OD.  Now OA's QQ, at the end of its object, is the one dropped.
+"$LD" -o "$TMP/d102t2.lm" --name TE2 "$TMP/d102b.o" "$TMP/d102a.o" "$TMP/d102d.o" \
+      --map "$TMP/d102t2.map" 2>"$TMP/d102t2.err"; r=$?
+want="OB:000000:000008 QQ:000008:000020 OC:000028:000008 OA:000030:000008 OD:000038:000008"
+got=$(awk '$2=="SD"{printf "%s%s:%s:%s", s, $1, $3, $4; s=" "}' "$TMP/d102t2.map")
+w=$(d102words "$TMP/d102t2.lm")
+if [ "$r" = 0 ] && [ "$got" = "$want" ] && grep -q 'LENGTH 000040' "$TMP/d102t2.map" \
+   && echo "$w" | grep -q '30:00000008 34:00000030 38:00000010 3C:00000028' && [ ! -s "$TMP/d102t2.err" ]; then
+    echo "  OK: TE2 = IEWL's layout (x40); OA's A(QQ)=08, OD's V(QE)=10, nothing to warn"
+else
+    echo "  FAIL: TE2 rc $r layout '$got' text '$w'"; cat "$TMP/d102t2.err"; fails=$((fails + 1))
+fi
+rm -f "$TMP"/d102*
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"

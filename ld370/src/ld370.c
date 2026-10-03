@@ -211,7 +211,10 @@ static int g_intern(const unsigned char *name, int type)
 }
 
 /* per input object (each is single-CSECT in the cc370/as370 case) */
-struct lent { int used; unsigned char name[8]; int type; long addr, len; };
+struct lent { int used; unsigned char name[8]; int type; long addr, len;
+              int dropped;    /* a later duplicate of an SD defined before: IEWL keeps the first (#102) */
+              long newaddr;   /* origin within the object once dropped sections are compacted out */
+};
 struct orld { int R, P, flag; long addr; };
 struct ldent { unsigned char name[8]; long addr; int owner_local; };   /* label def (entry) */
 struct obj {
@@ -238,6 +241,7 @@ struct obj {
     struct ldent *ld; long ldcap;     /* label defs (entries) */
     int nld;
     long object_base;                 /* assigned base address of this object's section(s) */
+    int has_drop;                     /* one of its sections is a dropped duplicate (#102) */
     int has_entry, entry_id; long entry_off;   /* END-card entry: section local ESDID + offset */
     int autocalled; int ac_ar; long ac_off;    /* pulled by autocall: archive + member offset */
     /* Where the object came from, for --map: a path given on the command line,
@@ -334,6 +338,7 @@ static void parse_object(const unsigned char *buf, long len, struct obj *o)
                 memcpy(o->loc[id].name, e, 8);
                 o->loc[id].type = ty;
                 o->loc[id].addr = mvs_be24(e + 9);
+                o->loc[id].newaddr = o->loc[id].addr;
                 o->loc[id].len = mvs_be24(e + 13);
                 if (is_sect_type(ty) && o->sect_local < 0) o->sect_local = id;
                 trace("  ESD id=%d  %-8s  %s  len=%06lX", id, mvs_nm(o->loc[id].name),
@@ -1819,6 +1824,19 @@ static int map_xref_cmp(const void *a, const void *b)
     if (x->off != y->off) return x->off < y->off ? -1 : 1;
     return memcmp(x->name, y->name, 8);
 }
+/* An RLD item located inside a dropped duplicate section goes with it, and
+ * one located in a kept section moves with that section's compaction (#102). */
+static int rld_dropped(const struct obj *o, int j)
+{
+    int P = o->rld[j].P;
+    return P >= 1 && P < MAXESD && o->loc[P].used && o->loc[P].dropped;
+}
+static long rld_modaddr(const struct obj *o, int j)
+{
+    int P = o->rld[j].P; long a = o->rld[j].addr;
+    if (P >= 1 && P < MAXESD && o->loc[P].used) a += o->loc[P].newaddr - o->loc[P].addr;
+    return o->object_base + a;
+}
 static struct xref *collect_xrefs(int *nx)
 {
     struct xref *x = NULL; long cap = 0; int n = 0, i, j;
@@ -1826,6 +1844,7 @@ static struct xref *collect_xrefs(int *nx)
         struct obj *o = &O[i];
         for (j = 0; j < o->nrld; j++) {
             int R = o->rld[j].R, P = o->rld[j].P, Pg, Rg;
+            if (rld_dropped(o, j)) continue;
             if (R < 1 || R >= MAXESD || !o->loc[R].used) continue;
             if (o->loc[R].type != T_ER && o->loc[R].type != T_WX) continue;   /* a reference inside the object */
             Pg = local_to_g(o, P); Rg = local_to_g(o, R);
@@ -2237,14 +2256,30 @@ int main(int argc, char **argv)
              * name is blank -- give it a fresh gsym; named SD/CM/ER merge. */
             gi = (t == T_PC) ? g_new(o->loc[j].name) : g_intern(o->loc[j].name, t);
             o->loc_g[j] = gi;
-            if (is_sect_type(t)) {                    /* a section definition */
+            /* A CSECT name an earlier object already defined: IEWL keeps the FIRST
+             * definition and deletes the later one -- its text, its space and the
+             * RLD items located in it -- without a message, and every reference
+             * to the name binds to the first (HEWLFESD ESD14/ESD15/DELCHN; MVSCE-LAB
+             * JOB01409, tests/run_iewl_dupcsect_oracle.py; #102).  ld370 used to
+             * overwrite the definition, so the LAST copy won and both copies'
+             * text stayed in the module. */
+            if (t == T_SD && G[gi].is_sect && G[gi].type == T_SD) {
+                o->loc[j].dropped = 1; o->has_drop = 1;
+                trace("  duplicate CSECT '%s' in object %d dropped (first definition kept)",
+                      mvs_nm(o->loc[j].name), i);
+            } else if (is_sect_type(t)) {             /* a section definition */
                 G[gi].is_sect = 1; G[gi].type = t; G[gi].len = o->loc[j].len;
                 G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
             }
         }
         for (j = 0; j < o->nld; j++) {            /* label defs (entries) -> composite LR (type 03) */
-            int gi = g_intern(o->ld[j].name, T_LD);
-            int ol = o->ld[j].owner_local;
+            int gi, ol = o->ld[j].owner_local;
+            if (ol >= 1 && ol < MAXESD && o->loc[ol].used && o->loc[ol].dropped) {
+                /* an ENTRY of a dropped duplicate goes with it (JOB01409: QE) */
+                trace("  entry '%s' dropped with its section", mvs_nm(o->ld[j].name));
+                continue;
+            }
+            gi = g_intern(o->ld[j].name, T_LD);
             /* FIRST definition wins (IEWL semantics).  Every cc370 C program
              * defines @@MAIN; a library file that also carries a main() (jespr,
              * jesst) must NOT, when autocalled for a helper, overwrite the app's
@@ -2302,10 +2337,39 @@ int main(int argc, char **argv)
     for (i = 0; i < nO; i++) {
         struct obj *o = &O[i];
         long osize = 0; int jj;
+        /* Compact a dropped duplicate out of its object: every section after
+         * it moves down by the span it occupied (to the next section's origin),
+         * which is IEWL's layout -- OC moved up to the doubleword after OB
+         * (JOB01409).  An object with nothing dropped keeps its layout. */
+        if (o->has_drop) {
+            long removed = 0, last = -1;
+            for (;;) {                                 /* sections in origin order */
+                int nx = -1;
+                for (jj = 1; jj < MAXESD; jj++)
+                    if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && o->loc[jj].addr > last
+                        && (nx < 0 || o->loc[jj].addr < o->loc[nx].addr)) nx = jj;
+                if (nx < 0) break;
+                last = o->loc[nx].addr;
+                for (jj = 1; jj < MAXESD; jj++)        /* every section at this origin */
+                    if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && o->loc[jj].addr == last)
+                        o->loc[jj].newaddr = last - removed;
+                if (o->loc[nx].dropped) {
+                    long next = -1;
+                    for (jj = 1; jj < MAXESD; jj++)
+                        if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && o->loc[jj].addr > last
+                            && (next < 0 || o->loc[jj].addr < next)) next = o->loc[jj].addr;
+                    removed += (next >= 0 ? next : last + o->loc[nx].len) - last;
+                }
+            }
+            for (jj = 1; jj < MAXESD; jj++)
+                if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && !o->loc[jj].dropped
+                    && G[o->loc_g[jj]].def_obj == i)
+                    G[o->loc_g[jj]].in_addr = o->loc[jj].newaddr;
+        }
         for (jj = 1; jj < MAXESD; jj++)
-            if (o->loc[jj].used && is_sect_type(o->loc[jj].type)
-                && o->loc[jj].addr + o->loc[jj].len > osize)
-                osize = o->loc[jj].addr + o->loc[jj].len;
+            if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && !o->loc[jj].dropped
+                && o->loc[jj].newaddr + o->loc[jj].len > osize)
+                osize = o->loc[jj].newaddr + o->loc[jj].len;
         o->object_base = running;
         running += roundup8(osize);
     }
@@ -2366,17 +2430,47 @@ int main(int argc, char **argv)
     memset(mod, 0, modlen);
     memset(moddef, 0, modlen);
     for (i = 0; i < nO; i++) if (O[i].textlen) {
-        memcpy(mod + O[i].object_base, O[i].text, O[i].textlen);
-        memcpy(moddef + O[i].object_base, O[i].defn, O[i].textlen);
+        struct obj *o = &O[i]; int jj;
+        if (!o->has_drop) {
+            memcpy(mod + o->object_base, o->text, o->textlen);
+            memcpy(moddef + o->object_base, o->defn, o->textlen);
+            continue;
+        }
+        for (jj = 1; jj < MAXESD; jj++) {             /* kept sections only, each at its new origin */
+            long a = o->loc[jj].addr, n = o->loc[jj].len;
+            if (!o->loc[jj].used || !is_sect_type(o->loc[jj].type) || o->loc[jj].dropped) continue;
+            if (a >= o->textlen) continue;
+            if (a + n > o->textlen) n = o->textlen - a;
+            memcpy(mod + o->object_base + o->loc[jj].newaddr, o->text + a, n);
+            memcpy(moddef + o->object_base + o->loc[jj].newaddr, o->defn + a, n);
+        }
     }
     trace("=== relocate address constants ===");
     for (i = 0; i < nO; i++) {
         struct obj *o = &O[i];
         for (j = 0; j < o->nrld; j++) {
-            int Rg = local_to_g(o, o->rld[j].R);
-            long loc = o->object_base + o->rld[j].addr;
+            int Rg = local_to_g(o, o->rld[j].R), R = o->rld[j].R;
+            long loc = rld_modaddr(o, j);
             int len = ((o->rld[j].flag >> 2) & 3) + 1;
             long base = -1;                           /* resolved final target address */
+            if (rld_dropped(o, j)) continue;          /* located in a dropped duplicate: gone */
+            /* Relative to a dropped duplicate, an adcon keeps its offset and is
+             * relocated against the KEPT copy, as IEWL does (OC's A(QE) -> x10,
+             * JOB01409).  At offset 0 that is the kept section's start; past it,
+             * the kept copy need not hold the same thing there -- in JOB01409 it
+             * pointed into another section -- and IEWL says nothing.  Say so. */
+            if (R >= 1 && R < MAXESD && o->loc[R].used && o->loc[R].dropped) {
+                long off = mvs_rdval(mod + loc, len) - o->loc[R].addr;
+                if (off != 0) {
+                    fprintf(stderr, "ld370: warning: adcon at %06lX points %+ld bytes into CSECT '%s' of "
+                                    "%s, a duplicate that was dropped (the first definition is kept); "
+                                    "it now points into the kept copy, which may hold something else there\n",
+                            loc, off, mvs_nm(o->loc[R].name),
+                            o->src_path ? o->src_path : o->src_kind == SRC_AUTOCALL ? "an autocalled member"
+                                                                                  : "an included member");
+                    nwarn++;
+                }
+            }
             if (Rg >= 0 && G[Rg].is_sect)
                 base = G[Rg].org;                     /* section: its final origin */
             else if (Rg >= 0 && G[Rg].type == 0x03 && G[Rg].owner >= 0 && G[G[Rg].owner].is_sect)
@@ -2441,7 +2535,7 @@ int main(int argc, char **argv)
     emit_lked_idr();
 
     int total_rld = 0;
-    for (i = 0; i < nO; i++) total_rld += O[i].nrld;
+    for (i = 0; i < nO; i++) for (j = 0; j < O[i].nrld; j++) if (!rld_dropped(&O[i], j)) total_rld++;
     int have_rld = total_rld > 0;
 
     /* --- control + text records: split the module text into <= MAXTEXT-byte
@@ -2532,10 +2626,12 @@ int main(int argc, char **argv)
         for (i = 0; i < nO; i++) {
             struct obj *o = &O[i];
             for (j = 0; j < o->nrld; j++) {
-                int Rg = local_to_g(o, o->rld[j].R);
-                int Pg = local_to_g(o, o->rld[j].P);
+                int Rg, Pg;
+                if (rld_dropped(o, j)) continue;
+                Rg = local_to_g(o, o->rld[j].R);
+                Pg = local_to_g(o, o->rld[j].P);
                 int Pgid = (Pg >= 0) ? G[Pg].gid : 0;
-                long addr = o->object_base + o->rld[j].addr;
+                long addr = rld_modaddr(o, j);
                 int flag = o->rld[j].flag & ~0x01, Rgid = 0, resolved = 0, same, isize;
                 if (Rg >= 0 && G[Rg].is_sect) { Rgid = G[Rg].gid; resolved = 1; }
                 else if (Rg >= 0 && G[Rg].type == 0x03 && G[Rg].owner >= 0 && G[G[Rg].owner].is_sect) {
