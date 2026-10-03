@@ -142,7 +142,7 @@ as370 order inside it.**
 | ~~7~~ | ~~#258~~ **landed, PR #746** | as370 | `S'` / `I'` evaluate to 0 |
 | ~~8~~ | ~~#272~~ **landed, PR #747** | as370 | the 20-term limit (IFO168) — measure the reach first |
 | ~~9~~ | ~~#117~~ **landed, PR #748** (MVS: JOB01316) | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
-| 10 | #107 | ld370 | `--entry` seeds automatic library call (ld370 half) |
+| ~~10~~ | ~~#107~~ **landed, PR #751** | ld370 | `--entry` seeds automatic library call (ld370 half) |
 | 11 | #439 | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
 | 12 | #102 + #103 | ld370 | duplicate CSECT / COMMON per IEWL — the plan is decided, its #521 hold is closed |
 
@@ -1631,7 +1631,13 @@ Pointers only. The reasoning lives in the issues and their PRs.
 
 - **2026-10-03 — #117 MERGED (PR #748).** RECEIVE of an xmit370 FB80 library
   with 4802 on mvsdev (JOB01316): IEB154I x3, allocated PO/FB/80/3120 from the
-  transmission, contents identical. Next: #107.
+  transmission, contents identical.
+
+- **2026-10-03 — #107 MERGED (PR #751).** `--entry` seeds autocall: an entry
+  still undefined after the fixpoint is pulled by name, then the fixpoint runs
+  again. Seeded after, not before, so no previous link changes (ufsd's 8
+  outputs byte-identical, LDDATE/LDTIME pinned). Unblocks libc370#159 (CRT in
+  libc.a) and mbt's LINK_CRT* collapse once released. Next: #439.
 
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
