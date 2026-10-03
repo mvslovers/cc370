@@ -3376,6 +3376,25 @@ else
 fi
 rm -rf "$h85"
 
+# ---------------------------------------------------------------- scaleint --
+# cc370#258: S' and I' were 0 for every symbol. See tests/scaleint.s for the
+# rules and which value is measured; the binary before gave AL1(0),AL1(0)
+# throughout and no diagnostic.
+./as370 tests/scaleint.s -a -o /dev/null >/tmp/_si$$.out 2>&1; r=$?
+si_bad=""
+for v in "3),AL1(28" "0),AL1(15" "2),AL1(12" "0),AL1(16" "2),AL1(3" "1),AL1(6" "1),AL1(2"; do
+    grep -q "DC    AL1($v)" /tmp/_si$$.out || si_bad="$si_bad AL1($v)"
+done
+[ "$(grep -c 'WARNING.*IFO123' /tmp/_si$$.out)" = 1 ] || si_bad="$si_bad IFO123"
+[ "$(grep -c 'WARNING.*IFO124' /tmp/_si$$.out)" = 1 ] || si_bad="$si_bad IFO124"
+[ "$(grep -c 'WARNING.*IFO080' /tmp/_si$$.out)" = 2 ] || si_bad="$si_bad IFO080x2"
+if [ "$r" = 4 ] && [ -z "$si_bad" ]; then
+    echo "scaleint: OK (S'/I' per type; IFO123/IFO124/IFO080 at sev 4)"
+else
+    echo "scaleint: FAIL -- rc $r, missing:$si_bad"; fail=$((fail + 1))
+fi
+rm -f /tmp/_si$$.out
+
 # --------------------------------------------------------------- protomnem --
 # cc370#297: a macro may not be named after an operation IFOX00 owns. The
 # prototype `M &A,&B' is IFO043 (severity 8, IFNX1A PUTOC25 -> BDPTO) and the

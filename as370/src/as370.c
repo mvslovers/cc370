@@ -2590,9 +2590,17 @@ static long selfdef(const char *s) {
     return neg ? -v : v;
 }
 static long ca_lenattr_default(const char *v);   /* #662, below the look-ahead tables */
+static long ca_scale_int(int kind, const char *v);   /* #258, likewise */
 static long e_prim(void) {
     e_sp();
     if (*ep_ == '(') { ep_++; long v = e_expr(); e_sp(); if (*ep_ == ')') ep_++; return v; }
+    if ((*ep_ == 'S' || *ep_ == 'I') && ep_[1] == '\'') {   /* scale and integer attributes (#258) */
+        int kind = *ep_; ep_ += 2; char ref[44], v[VALSZ]; int ln = 0;
+        if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); }
+        else { while (*ep_ && !strchr("+-*/(), ", *ep_) && ln < VALSZ - 1) v[ln++] = *ep_++;
+               v[ln] = 0; }
+        return ca_scale_int(kind, v);
+    }
     if ((*ep_ == 'N' || *ep_ == 'K' || *ep_ == 'L') && ep_[1] == '\'') {
         int kind = *ep_; ep_ += 2; char ref[44], v[VALSZ];
         if (*ep_ == '&') { e_readref(ref); vref(ec_, ref, v); }
@@ -4964,8 +4972,128 @@ static int dc_len_attr(const char *opnd) {
     default: return 0;
     }
 }
+/* S' and I' in conditional assembly (#258). IFOX00 collects a scale attribute
+ * only for the types that have one -- F H (fixed), E D L (floating), P Z
+ * (decimal) -- in the same look-ahead pass that collects the length (IFNX2A
+ * DCSCAN). For F to L it is the scale modifier, 0 when there is none; for P
+ * and Z it is the number of digits after the decimal point of the first
+ * nominal value, and a scale modifier there is an error. Every other symbol
+ * has a DEFAULTED scale, and so has one whose operand failed the scan.
+ *
+ * Read back by IFNX3A EVALSAT/EVALIAT: a defaulted scale is IFO123, a type
+ * without an integer attribute IFO124, a defaulted length IFO120 (then taken
+ * as 1), an undefined symbol IFO080 -- all severity 4, value 0. I' is
+ *   F H    8*L' - 1 - S'
+ *   E D L  2*(L'-1) - S', or 2*(L'-2) - S' when L' > 8
+ *   P      2*L' - 1 - S'
+ *   Z      L' - S'
+ * (the code, not its block comment, which gives P as (L'-2)-1-S'). The table
+ * sees open code only, as the length one does; a symbol an expansion defines
+ * answers 0 and stays silent. */
+struct prescale { char name[9]; char ty; int len, ldef, scale, sdef; };
+static struct prescale *prescales; static int nprescale, capprescale;
+static const struct prescale *prescale_of(const char *nm) {
+    int i; for (i = 0; i < nprescale; i++) if (!strcmp(prescales[i].name, nm)) return &prescales[i];
+    return NULL;
+}
+static int dc_scale_attr(const char *opnd, int is_ds, struct prescale *a) {
+    const char *p = opnd; int n, flt, fix, dec, lenmax, scamax, explicit = 0, deflenl = 0;
+    while (*p == ' ') p++;
+    while (isdigit((unsigned char)*p)) p++;                 /* duplication factor */
+    if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } }
+    a->ty = *p ? (char)toupper((unsigned char)*p++) : 0;
+    if (!a->ty || !strchr("FHEDLPZ", a->ty)) return 0;
+    fix = a->ty == 'F' || a->ty == 'H'; flt = a->ty == 'E' || a->ty == 'D' || a->ty == 'L'; dec = !fix && !flt;
+    a->len = a->ty == 'F' || a->ty == 'E' ? 4 : a->ty == 'H' ? 2 : a->ty == 'D' ? 8 : a->ty == 'L' ? 16 : 1;
+    lenmax = a->ty == 'L' || dec ? 16 : 8;
+    scamax = fix ? 346 : a->ty == 'L' ? 28 : flt ? 14 : a->ty == 'P' ? 31 : 16;
+    a->ldef = a->sdef = 0; a->scale = 0;
+    if (*p == 'L') { p++;
+        if (*p == '.') { p++; n = 0; while (isdigit((unsigned char)*p)) n = n * 10 + (*p++ - '0');
+            if (!n) goto deflt2;
+            a->len = (n + 7) / 8; explicit = 1; }
+        else if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; }
+            if (d) goto deflt2;
+            a->len = 1; a->ldef = 1; deflenl = 1; }       /* IFNX2A DC8: an expression length is not evaluated here */
+        else { n = 0; while (isdigit((unsigned char)*p)) n = n * 10 + (*p++ - '0');
+            if (!n || n > lenmax) goto deflt2;
+            a->len = n; explicit = 1; }
+        if (flt && !deflenl) { int m = 2 * a->len - 2; if (m > 16) m -= 2; scamax = m; }
+    }
+    if (*p == 'S') { int neg = 0; p++;
+        if (!fix && !flt) goto deflt3;
+        if (*p == '+') p++;
+        else if (*p == '-') { if (!fix) goto deflt3; neg = 1; p++; }
+        if (!isdigit((unsigned char)*p)) goto deflt3;
+        n = 0; while (isdigit((unsigned char)*p)) n = n * 10 + (*p++ - '0');
+        if (neg) { n = -n; if (n < -187) goto deflt3; }
+        if (n > scamax) goto deflt3;
+        a->scale = n;
+    }
+    if (*p == 'E') { if (fix || flt) return 1; goto deflt2; }   /* exponent modifier */
+    if (*p == '\'') {
+        if (!dec) return 1;
+        { int digits = 0, sc = 0, pt = 0, sign = 0; p++;
+          for (; *p && *p != '\'' && *p != ','; p++) {
+              if (isdigit((unsigned char)*p)) { digits++; if (pt) sc++; sign = 1; }
+              else if (*p == '+' || *p == '-') { if (sign) goto deflt2; sign = 1; }
+              else if (*p == '.') { if (pt) goto deflt2; pt = 1; sign = 1; }
+              else goto deflt2; }
+          if (!*p) goto deflt2;
+          a->scale = sc;
+          if (!explicit) { int l = a->ty == 'P' ? (digits + 2) >> 1 : digits;
+              if (l <= 0 || l > lenmax) goto deflt2;
+              a->len = l; } }
+        return 1;
+    }
+    if (*p == '(') goto deflt2;
+    if ((*p == ' ' || *p == ',' || !*p) && is_ds) return 1;
+deflt2:
+    a->len = 1; a->ldef = 1;
+deflt3:
+    a->scale = 0; a->sdef = 1;
+    return 1;
+}
+static void prescale_add(const char *nm, const char *opnd, int is_ds) {
+    struct prescale a; memset(&a, 0, sizeof a);
+    if (prescale_of(nm) || !dc_scale_attr(opnd, is_ds, &a)) return;
+    if (nprescale >= capprescale) { int nc = capprescale ? capprescale * 2 : 256;
+        struct prescale *g = realloc(prescales, (size_t)nc * sizeof *g);
+        if (!g) { fprintf(stderr, "as370: out of memory for the scale attribute table\n"); exit(2); }
+        prescales = g; capprescale = nc; }
+    scopy(a.name, nm, 8); prescales[nprescale++] = a;
+}
+static long ca_scale_int(int kind, const char *v) {
+    const struct prescale *a = prescale_of(v); long len, sc;
+    const char *what = kind == 'S' ? "scale" : "integer";
+    if (!a) {
+        const char *e = v; int n = 0; char m[112];
+        while (*e && (isalnum((unsigned char)*e) || *e == '@' || *e == '#' || *e == '$')) { e++; n++; }
+        int sym = !*e && n && n <= 8 && !isdigit((unsigned char)*v);
+        if (sym && !styp_find(v) && !name_has(genlbl, ngenlbl, v)) {
+            snprintf(m, sizeof m, "attribute reference to undefined symbol %.8s (IFOX00 IFO080)", v);   /* sym: at most 8 */
+            note_operr(m, 4, g_ca_slot); }
+        else if (!sym || styp_find(v)) {   /* defined without a scale, or a self-defining term */
+            snprintf(m, sizeof m, "illegal %s attribute reference (IFOX00 %s)", what, kind == 'S' ? "IFO123" : "IFO124");
+            note_operr(m, 4, g_ca_slot); }
+        return 0;
+    }
+    if (kind == 'S') {
+        if (a->sdef) { note_operr("illegal scale attribute reference (IFOX00 IFO123)", 4, g_ca_slot); return 0; }
+        return a->scale;
+    }
+    len = a->len; sc = a->scale;
+    if (a->ldef) { note_operr("illegal length attribute reference (IFOX00 IFO120)", 4, g_ca_slot); len = 1; }
+    if (a->sdef) { note_operr("illegal scale attribute reference (IFOX00 IFO123)", 4, g_ca_slot); sc = 0; }
+    switch (a->ty) {
+    case 'F': case 'H': return len * 8 - 1 - sc;
+    case 'E': case 'D': case 'L': return (len - 1 > 7 ? len - 2 : len - 1) * 2 - sc;
+    case 'P': return len * 2 - 1 - sc;
+    default:  return len - sc;   /* Z */
+    }
+}
 static void prescan_lengths(char **in, int nin) {
-    int i; nprelen = 0;
+    int i; nprelen = 0; nprescale = 0;
     for (i = 0; i < nin && nprelen < 8192; i++) {
         char buf[STMTSZ], lbl[32], op[16], opnd[STMTSZ];
         scopy(buf, in[i], STMTSZ - 1);
@@ -4973,6 +5101,7 @@ static void prescan_lengths(char **in, int nin) {
         if (!lbl[0] || !op[0]) continue;
         if (strcmp(op, "DC") && strcmp(op, "DS") && strcmp(op, "DXD")) continue;
         if (strlen(lbl) > 8) continue;
+        if (strcmp(op, "DXD")) prescale_add(lbl, opnd, !strcmp(op, "DS"));
         int L = dc_len_attr(opnd);
         if (L <= 0) continue;
         if (prelen_of(lbl)) continue;                       /* the FIRST definition wins, as the assembler's would */
