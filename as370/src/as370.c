@@ -1012,13 +1012,23 @@ static int xbadsdt_;
  * only, so the statement is remembered there and the message raised when pass
  * 2 reaches it (expr_err_stmt); a statement evaluated in pass 2 reports
  * directly. Once per statement and error either way. */
-enum { XE_DEPTH, XE_SDT, XE_N };
+enum { XE_DEPTH, XE_SDT, XE_TERMS, XE_N };
 static const char *const xe_msg[XE_N] = {
     "More than 6 levels of parentheses (IFOX00 IFO233)",
-    "Invalid self-defining term (IFOX00 IFO169)" };
+    "Invalid self-defining term (IFOX00 IFO169)",
+    "An arithmetic expression not used in conditional assembly contains more than 20 terms (IFOX00 IFO168)" };
+/* IFO168: xeval gives every term -- symbol, self-defining term, location
+ * counter -- one RLIST slot, twenty of them (EVALWORK MAXTERM=20), and the
+ * twenty-first is SYNERR9: severity 8, the expression abandoned. Measured: a
+ * 50-term DC A(1+1+...) is IFO168 and zero under IFOX00 (#272), and IGG0CLB9's
+ * 20-term expression assembles clean. A character that cannot start a term
+ * stops the count, because xeval stops there with a syntax error of its own
+ * before a twenty-first term is reached. Conditional assembly evaluates its
+ * expressions elsewhere and is not bounded this way. */
+static int xleaf_, xsyn_;
 static int xe_ln[256], xe_code[256], nxe;
 static void note_expr_err(int code) {
-    static int last[XE_N] = { -1, -1 };
+    static int last[XE_N] = { -1, -1, -1 };
     if (g_pass == 1) {
         int k; for (k = nxe - 1; k >= 0 && xe_ln[k] == g_curln; k--) if (xe_code[k] == code) return;
         if (nxe < 256) { xe_ln[nxe] = g_curln; xe_code[nxe] = code; nxe++; }
@@ -1043,9 +1053,10 @@ static long x_factor(int sign) {
         while (*xp_ == ' ') { xp_++; } if (*xp_ == ')') xp_++;
         return v;
     }
-    if (*xp_ == '*') { xp_++; xrl_ += sign; xterms_++; xsect_tally(cur_sect_id, sign); return lc; }   /* location counter: relocatable, and it belongs to the CURRENT section -- without that (*-HERE) would not pair and the valid case would be rejected */
+    if (*xp_ == '*') { if (!xsyn_) xleaf_++; xp_++; xrl_ += sign; xterms_++; xsect_tally(cur_sect_id, sign); return lc; }   /* location counter: relocatable, and it belongs to the CURRENT section -- without that (*-HERE) would not pair and the valid case would be rejected */
     if (*xp_ == '-') { xp_++; return -x_factor(-sign); }
     if (*xp_ == '+') { xp_++; return x_factor(sign); }
+    if (!xsyn_) { if (isalnum((unsigned char)*xp_) || *xp_ == '@' || *xp_ == '#' || *xp_ == '$' || *xp_ == '=') xleaf_++; else xsyn_ = 1; }
     if (isdigit((unsigned char)*xp_)) { char *end; long v = strtol(xp_, (char **)&end, 10); xp_ = end; return v; }
     if (*xp_ == 'L' && xp_[1] == '\'') {                  /* L' length attribute in a machine-instruction operand */
         xp_ += 2;
@@ -1149,13 +1160,14 @@ static long x_add(void) {
 }
 static long expr_val(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xundef_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
+    xleaf_ = xsyn_ = 0; xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xundef_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
     while (*xp_ == ' ') xp_++;
     if (!*xp_ || *xp_ == '(' || *xp_ == ',') { if (reloc) *reloc = 0; }   /* leading '(' = subscript with no displacement prefix */
     else { v = x_add(); if (reloc) *reloc = xrl_; }
-    if (xdeep_ || xbadsdt_) { v = 0; if (reloc) *reloc = 0;
+    if (xdeep_ || xbadsdt_ || (xleaf_ > 20 && !xsyn_)) { v = 0; if (reloc) *reloc = 0;
         if (xdeep_) note_expr_err(XE_DEPTH);
-        if (xbadsdt_) note_expr_err(XE_SDT); }
+        if (xbadsdt_) note_expr_err(XE_SDT);
+        if (xleaf_ > 20 && !xsyn_) note_expr_err(XE_TERMS); }
     /* Drop the cursor before returning.  Callers hand us stack buffers, so
      * leaving this file-static pointing at one that has just gone out of scope
      * is a dangling store -- harmless today because nothing outside this
@@ -1171,13 +1183,14 @@ static long expr_val(const char *e, int *reloc) {
  * which it would silently value at 0.  Same evaluator, without that guard. */
 static long expr_val_full(const char *e, int *reloc) {
     long v = 0;
-    xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xundef_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
+    xleaf_ = xsyn_ = 0; xp_ = e; xrl_ = 0; xnsect_ = 0; xovf_ = 0; xterms_ = 0; xmulrel_ = 0; xundef_ = 0; xdepth_ = xdeep_ = xbadsdt_ = 0;
     while (*xp_ == ' ') xp_++;
     if (*xp_) { v = x_add(); if (reloc) *reloc = xrl_; }
     else if (reloc) *reloc = 0;
-    if (xdeep_ || xbadsdt_) { v = 0; if (reloc) *reloc = 0;
+    if (xdeep_ || xbadsdt_ || (xleaf_ > 20 && !xsyn_)) { v = 0; if (reloc) *reloc = 0;
         if (xdeep_) note_expr_err(XE_DEPTH);
-        if (xbadsdt_) note_expr_err(XE_SDT); }
+        if (xbadsdt_) note_expr_err(XE_SDT);
+        if (xleaf_ > 20 && !xsyn_) note_expr_err(XE_TERMS); }
     xp_ = NULL;   /* see expr_val: never leave this pointing at a caller's stack buffer */
     return v;
 }
