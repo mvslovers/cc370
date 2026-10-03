@@ -50,7 +50,7 @@ cc370 just installed. Both downloads are checked against their release's
 |---|---|
 | Linux amd64, arm64 | `cc370-<v>-linux-<arch>.tar.gz` (statically linked, any distribution), `cc370_<v>_<arch>.deb`, `cc370-<v>.<x86_64\|aarch64>.rpm` |
 | macOS arm64, Intel | `cc370-<v>-darwin-<arch>.tar.gz` (macOS 11 / 10.15 and later) |
-| Homebrew (macOS, Linux) | `brew install mvslovers/tap/cc370` -- pulls `mvslovers/tap/libc370` with it; `brew install mvslovers/tap/libc370` alone works too |
+| Homebrew (macOS, Linux) | `brew trust mvslovers/tap`, then `brew install mvslovers/tap/cc370` -- pulls `mvslovers/tap/libc370` with it; `brew install mvslovers/tap/libc370` alone works too |
 | Windows | WSL2 and the Linux assets (#698) |
 
 - **Tarball:** a relocatable tree; unpack it anywhere and use its `bin/`.
@@ -58,6 +58,9 @@ cc370 just installed. Both downloads are checked against their release's
   directory. A tarball downloaded with a browser on macOS needs
   `xattr -d com.apple.quarantine` on the unpacked tree; `install.sh` does
   not, curl sets no quarantine flag.
+- **Homebrew:** Homebrew 7 loads a formula's dependencies only from a tap
+  you trust, so `brew trust mvslovers/tap` comes first; without it, the
+  install stops at libc370 ("untrusted tap").
 - **`.deb` / `.rpm`:** the tree under `/usr/lib/cc370`, symlinks in
   `/usr/bin` and `/usr/share/man/man1`. cc370 and libc370 depend on each
   other (below), so install the two packages together, e.g.

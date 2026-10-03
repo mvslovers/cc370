@@ -21,8 +21,10 @@ neither number is mistaken for the other.
 ## [Unreleased]
 
 ### Added
-- **Homebrew** (#699): `brew install mvslovers/tap/cc370` from the tap
-  `mvslovers/homebrew-tap`, on macOS and Linux; it depends on
+- **Homebrew** (#699): `brew trust mvslovers/tap`, then
+  `brew install mvslovers/tap/cc370` from the tap `mvslovers/homebrew-tap`,
+  on macOS and Linux (Homebrew 7 refuses a dependency from an untrusted
+  tap); it depends on
   `mvslovers/tap/libc370` and links libc370's sysroot into its own tree.
   `release.yml` renders the formula (`packaging/homebrew/`) and pushes it to
   the tap with a deploy key held in the `release` environment (v* tags

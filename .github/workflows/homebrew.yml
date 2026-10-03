@@ -1,5 +1,7 @@
 # Install cc370 from the tap the way a user does and check it works (#699):
 #
+#   brew trust mvslovers/tap             -> a tap's dependencies load only
+#                                           from a trusted tap (Homebrew 7)
 #   brew install mvslovers/tap/cc370     -> pulls mvslovers/tap/libc370 too
 #   brew test mvslovers/tap/cc370        -> --version, compile + link a C program
 #
@@ -40,12 +42,17 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
           brew tap mvslovers/tap
+          # Without it Homebrew 7 trusts the formula named on the command
+          # line and refuses its dependency from the same tap ("Refusing to
+          # load formula mvslovers/tap/libc370 from untrusted tap").
+          brew trust mvslovers/tap
           brew install mvslovers/tap/cc370
           brew list --versions cc370 libc370
 
       - name: brew test, and the toolchain from PATH
         run: |
           brew test mvslovers/tap/cc370
+          brew test mvslovers/tap/libc370
           cc370 --version
           as370 --version
           printf '#include <stdio.h>\nint main(void) { printf("%%lld\\n", 10LL / 3); return 0; }\n' > t.c
