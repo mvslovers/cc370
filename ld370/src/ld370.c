@@ -597,54 +597,58 @@ static void report_definers(const char *want, int pick_ai, long pick_off, int nc
     }
 }
 
+/* pull, from the archives, the member that defines `want' -- preferring one
+ * that does not re-define an already-resolved strong symbol, and falling back
+ * to the first definer only if every candidate conflicts.  All of them are
+ * gathered first, so the ones passed over can be named.  Returns 1 when a
+ * member was pulled, 0 when no archive defines `want', -1 on error. */
+static int pull_definer(const char *want)
+{
+    int a, s, k, pick_ai = -1, conflicting = 0, fb_ai = -1, nc = 0;
+    long pick_off = -1, fb_off = -1;
+    for (a = 0; a < nAR; a++)
+        for (s = 0; s < AR[a].nsym; s++)
+            if (!strcmp(AR[a].sym[s].name, want)) {
+                long off = AR[a].sym[s].off; int pk, dup = 0;
+                for (pk = 0; pk < npulled; pk++)
+                    if (pulled[pk].ar == a && pulled[pk].off == off) { dup = 1; break; }
+                if (dup) continue;                 /* this definer already pulled; try others */
+                cand = grow_arr(cand, &candcap, nc + 1, sizeof *cand);
+                cand[nc].ar = a; cand[nc].off = off; nc++;
+            }
+    for (k = 0; k < nc; k++) {
+        if (fb_off < 0) { fb_ai = cand[k].ar; fb_off = cand[k].off; }
+        if (!member_conflicts(cand[k].ar, cand[k].off)) {
+            pick_ai = cand[k].ar; pick_off = cand[k].off; break;
+        }
+    }
+    if (pick_off < 0 && fb_off >= 0) { pick_ai = fb_ai; pick_off = fb_off; conflicting = 1; }
+    if (pick_off < 0) return 0;
+    trace("  autocall: '%s' -> archive %d member @%ld%s", want, pick_ai, pick_off,
+          conflicting ? " [no clean definer; took first]" : "");
+    report_definers(want, pick_ai, pick_off, nc);
+    if (pull_member(pick_ai, pick_off)) return -1;
+    O[nO - 1].autocalled = 1;
+    O[nO - 1].ac_ar = pick_ai; O[nO - 1].ac_off = pick_off;
+    O[nO - 1].src_kind = SRC_AUTOCALL;
+    return 1;
+}
+
 /* resolve unresolved ERs from the archives, to a fixpoint */
 static int autocall(void)
 {
     int changed = 1;
     while (changed) {
-        int i, j, a, s, cur = nO;
+        int i, j, cur = nO;
         changed = 0;
         for (i = 0; i < cur; i++) {
             for (j = 1; j < MAXESD; j++) {
-                const char *want;
+                int r;
                 if (!O[i].loc[j].used || O[i].loc[j].type != T_ER) continue;
                 if (is_defined(O[i].loc[j].name)) continue;       /* already satisfied */
-                want = mvs_nm(O[i].loc[j].name);
-                /* among ALL definers of `want`, prefer one that does not also
-                 * re-define an already-resolved strong symbol; fall back to the
-                 * first definer only if every candidate conflicts.  All of them
-                 * are gathered first, so the ones passed over can be named. */
-                {
-                    int pick_ai = -1, conflicting = 0, fb_ai = -1, nc = 0, k;
-                    long pick_off = -1, fb_off = -1;
-                    for (a = 0; a < nAR; a++)
-                        for (s = 0; s < AR[a].nsym; s++)
-                            if (!strcmp(AR[a].sym[s].name, want)) {
-                                long off = AR[a].sym[s].off; int pk, dup = 0;
-                                for (pk = 0; pk < npulled; pk++)
-                                    if (pulled[pk].ar == a && pulled[pk].off == off) { dup = 1; break; }
-                                if (dup) continue;                 /* this definer already pulled; try others */
-                                cand = grow_arr(cand, &candcap, nc + 1, sizeof *cand);
-                                cand[nc].ar = a; cand[nc].off = off; nc++;
-                            }
-                    for (k = 0; k < nc; k++) {
-                        if (fb_off < 0) { fb_ai = cand[k].ar; fb_off = cand[k].off; }
-                        if (!member_conflicts(cand[k].ar, cand[k].off)) {
-                            pick_ai = cand[k].ar; pick_off = cand[k].off; break;
-                        }
-                    }
-                    if (pick_off < 0 && fb_off >= 0) { pick_ai = fb_ai; pick_off = fb_off; conflicting = 1; }
-                    if (pick_off >= 0) {
-                        trace("  autocall: '%s' -> archive %d member @%ld%s", want, pick_ai, pick_off,
-                              conflicting ? " [no clean definer; took first]" : "");
-                        report_definers(want, pick_ai, pick_off, nc);
-                        if (pull_member(pick_ai, pick_off)) return 1;
-                        O[nO - 1].autocalled = 1;
-                        O[nO - 1].ac_ar = pick_ai; O[nO - 1].ac_off = pick_off;
-                        O[nO - 1].src_kind = SRC_AUTOCALL;
-                        changed = 1;
-                    }
-                }
+                r = pull_definer(mvs_nm(O[i].loc[j].name));
+                if (r < 0) return 1;
+                if (r > 0) changed = 1;
             }
         }
     }
@@ -2198,6 +2202,26 @@ int main(int argc, char **argv)
     if (nAR) {
         trace("=== autocall: %d archive(s) ===", nAR);
         if (autocall()) return 1;
+        /* The entry point is a reference too (#107): nothing calls @@CRT0, so
+         * autocall alone has nothing to search for and the CRT could not live
+         * inside libc.a.  An entry still undefined after the fixpoint is
+         * pulled by name and the fixpoint run again, so the member feeds the
+         * ordinary closure (@@START, @@EXIT, ...).  It is seeded AFTER the
+         * fixpoint rather than before it so that no link which resolved its
+         * entry before changes: one whose entry member some ER pulled anyway
+         * keeps that member where it was, byte for byte.  An entry nothing
+         * defines still fails below, with the message it always had. */
+        if (entryname) {
+            unsigned char en[8];
+            member_name(en, entryname);
+            if (!is_defined(en)) {
+                int r;
+                trace("  --entry %s still undefined: autocall by name", entryname);
+                r = pull_definer(mvs_nm(en));
+                if (r < 0) return 1;
+                if (r > 0 && autocall()) return 1;
+            }
+        }
         if (nO > nobjf) trace("  pulled %d member(s); %d object(s) total", nO - nobjf, nO);
     }
 
