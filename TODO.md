@@ -121,6 +121,44 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
+## Triage of 2026-10-03 — the next block, before 1.2.0
+
+All 51 open issues were checked against `main` (`9ec6101`). Three were closed
+as already fixed, each re-checked before closing: #97 (repro gives IFOX00's
+8 / sev 8 / length 0), #101 (`mod_reserve()`, #444) and #523 (every point
+landed). **This list leads; the defect table further down still holds for the
+as370 order inside it.**
+
+**The block before 1.2.0, in order** — small, reproduced, code only:
+
+| | Issue | Tool | What |
+|---|---|---|---|
+| 1 | #86 | as370 | past 128 diagnostics the severity comes from the kept entries only: 130 operand errors report 8 where it is 12 — a wrong rc |
+| 2 | #682 | as370 | `MNOTE 0,` not counted as flagged |
+| 3 | #128 | as370 | ISEQ accepted, IFO025 never raised |
+| 4 | #297 | as370 | a macro named after a machine mnemonic: no IFO043 |
+| 5 | #441 | as370 | END's second operand: no IFO254 |
+| 6 | #427 | as370 | a library member with cards before MACRO is rejected |
+| 7 | #258 | as370 | `S'` / `I'` evaluate to 0 |
+| 8 | #272 | as370 | the 20-term limit (IFO168) — measure the reach first |
+| 9 | #117 | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
+| 10 | #107 | ld370 | `--entry` seeds automatic library call (ld370 half) |
+| 11 | #439 | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
+| 12 | #102 + #103 | ld370 | duplicate CSECT / COMMON per IEWL — the plan is decided, its #521 hold is closed |
+
+**Waiting on the maintainer:** #100 (RENT+REUS default — to be talked
+through), #110 and #193 (proposed: close), #36 (proposed: close as decided),
+#160 / #241 / #23 (do rc-12 IFOX00 decks count as an oracle, and where do
+reference decks come from), #56 (the BRX* rows), #686 (fix the trampoline or
+reject it), #118 (refuse or raise the declared size), #478 (needs one MVS
+oracle link).
+
+**After 1.2.0:** #518 (with the driver and mbt), #106, #78, #684, #345, #113,
+#601, #109; research and design #76, #229 (parked), #386, #112, #383, #698,
+#111, #91, #472, #482, #689, #418, #440.
+
+---
+
 ## The runtime and release plan — the maintainer's order, ahead of the table below
 
 **The plan is `docs/runtime-and-release-plan.md` (PR #690, merged); the decisions
@@ -151,7 +189,6 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 |---|---|---|---|---|
 | 1 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 2 | #86 | as370 | silent under-reporting, ×11 recorders | nothing |
-| 3 | #97 | as370 | silent under-reporting — **code effect landed (#543)**; left: the definition-time flag, so a never-called macro ends rc 0 where XF gives 8 | **in-stream definitions in the listing** — there is no statement to attach it to |
 | 4 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
 | 5 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
 | 6 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
