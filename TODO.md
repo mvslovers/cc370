@@ -138,7 +138,7 @@ as370 order inside it.**
 | ~~3~~ | ~~#128~~ **landed, PR #738** | as370 | ISEQ accepted, IFO025 never raised |
 | ~~4~~ | ~~#297~~ **landed, PR #739** | as370 | a macro named after a machine mnemonic: no IFO043 |
 | ~~5~~ | ~~#441~~ **landed, PR #741** | as370 | END's second operand: no IFO254 |
-| 6 | #427 | as370 | a library member with cards before MACRO is rejected |
+| ~~6~~ | ~~#427~~ **landed, PR #743** | as370 | a library member with cards before MACRO is rejected -- IFOX00 rejects it too, with IFO085 (see the issue) |
 | 7 | #258 | as370 | `S'` / `I'` evaluate to 0 |
 | 8 | #272 | as370 | the 20-term limit (IFO168) — measure the reach first |
 | 9 | #117 | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
@@ -190,7 +190,6 @@ item waiting on nothing gets passed over. Say which list you are reading from.
 | 1 | #100 | ld370 | silent — inverted attribute default; **the REFR half landed** | **a decision** — the survey is done |
 | 4 | #241 | as370 | silent — **33** modules, all but one now `IFC` | the four EREP macros; see the issue's 2026-09-17 comment |
 | 5 | #23 | tests | the gate that would have caught most of this | **a decision** (where decks come from) |
-| 6 | #427 | as370 | fidelity — a macro member rejected where IFOX00 accepts it | nothing; one caller, moves no verdict |
 
 **#342 left the table on 2026-09-30** (PR #545), and its title had the wrong
 cause. No macro generates a DSECT in `IEDQWIE`: PL/S emitted the fields as
@@ -1614,7 +1613,14 @@ Pointers only. The reasoning lives in the issues and their PRs.
   #86 the recorders count what they drop, the rc no longer depends on the
   128-entry lists; #682 `MNOTE 0` is flagged; #128 ISEQ raises IFO025;
   #297 IFO043 for a prototype named after an operation; #441 IFO254 for a
-  two-field END second operand. Tree gate 0 moves for each. Next: #427.
+  two-field END second operand. Tree gate 0 moves for each.
+
+- **2026-10-03 — #427 MERGED (PR #743), and the corpus gate repaired (PR #744).**
+  The issue's premise was wrong: IFOX00 does not expand a member without a
+  MACRO header either, it raises IFO085 on every call. as370 now does the
+  same, in exactly IFOX00's 15 MVSBLD modules. `make test-corpus` had been
+  broken since #523 (generated version header) and #688 (baseline could not
+  find `macros/`); CI does not run it. Next: #258.
 
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
