@@ -3339,6 +3339,20 @@ PY
 fi
 rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
 
+# --------------------------------------------------------------- protomnem --
+# cc370#297: a macro may not be named after an operation IFOX00 owns. The
+# prototype `M &A,&B' is IFO043 (severity 8, IFNX1A PUTOC25 -> BDPTO) and the
+# definition is dropped, so the call assembles as Multiply. Measured on the
+# oracle in the issue; the binary before said nothing. (IFOX00 then also
+# raises IFO218/IFO220 on `M 1,2' -- a separate gap, not checked here.)
+./as370 tests/protomnem.s -o /dev/null >/tmp/_pm$$.out 2>&1; r=$?
+if [ "$r" = 8 ] && [ "$(grep -c IFO043 /tmp/_pm$$.out)" = 1 ] && ! grep -q "MACRO M CALLED" /tmp/_pm$$.out; then
+    echo "protomnem: OK (IFO043 on the prototype, the call is the instruction)"
+else
+    echo "protomnem: FAIL -- rc $r, $(grep -c IFO043 /tmp/_pm$$.out) x IFO043"; fail=$((fail + 1))
+fi
+rm -f /tmp/_pm$$.out
+
 # -------------------------------------------------------------------- iseq --
 # cc370#128: ISEQ 73,80 sequence-checks every card read; a card whose field is
 # not greater than the previous one is IFO025 (severity 4) and still assembled
