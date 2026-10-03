@@ -5071,7 +5071,7 @@ static long ca_scale_int(int kind, const char *v) {
         while (*e && (isalnum((unsigned char)*e) || *e == '@' || *e == '#' || *e == '$')) { e++; n++; }
         int sym = !*e && n && n <= 8 && !isdigit((unsigned char)*v);
         if (sym && !styp_find(v) && !name_has(genlbl, ngenlbl, v)) {
-            snprintf(m, sizeof m, "attribute reference to undefined symbol %s (IFOX00 IFO080)", v);
+            snprintf(m, sizeof m, "attribute reference to undefined symbol %.8s (IFOX00 IFO080)", v);   /* sym: at most 8 */
             note_operr(m, 4, g_ca_slot); }
         else if (!sym || styp_find(v)) {   /* defined without a scale, or a self-defining term */
             snprintf(m, sizeof m, "illegal %s attribute reference (IFOX00 %s)", what, kind == 'S' ? "IFO123" : "IFO124");
