@@ -55,7 +55,8 @@ jobs:
           brew test mvslovers/tap/libc370
           cc370 --version
           as370 --version
-          printf '#include <stdio.h>\nint main(void) { printf("%%lld\\n", 10LL / 3); return 0; }\n' > t.c
+          # a runtime operand, so the divide is a call to @@DIVDI3, not folded
+          printf '#include <stdio.h>\nint main(int argc, char **argv) { printf("%%lld\\n", argc * 10LL / 3); return 0; }\n' > t.c
           cc370 -O1 t.c -o t -Wl,--map,t.map
           grep -q 'libcc370rt.a(@@divdi3.o)' t.map
           echo "linked; @@DIVDI3 from libcc370rt.a"
