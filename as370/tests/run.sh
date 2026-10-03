@@ -3395,6 +3395,20 @@ else
 fi
 rm -f /tmp/_si$$.out
 
+# ---------------------------------------------------------------- terms168 --
+# cc370#272: an expression outside conditional assembly is held to 20 terms
+# (IFO168, severity 8, value 0); a SETA is not. See tests/terms168.s. The
+# binary before assembled all of them at rc 0.
+./as370 tests/terms168.s -a -o /dev/null >/tmp/_t168$$.out 2>&1; r=$?
+t168=$(grep -c 'ERROR:.*IFO168' /tmp/_t168$$.out)
+if [ "$r" = 8 ] && [ "$t168" = 3 ] && grep -q '00000014 .* T20 ' /tmp/_t168$$.out \
+   && grep -q '00000000 .* T21 ' /tmp/_t168$$.out && grep -q '00000032 .*TN ' /tmp/_t168$$.out; then
+    echo "terms168: OK (21+ terms IFO168 and zero; 20 terms and a 50-term SETA clean)"
+else
+    echo "terms168: FAIL -- rc $r, IFO168 x$t168 (want 3)"; fail=$((fail + 1))
+fi
+rm -f /tmp/_t168$$.out
+
 # --------------------------------------------------------------- protomnem --
 # cc370#297: a macro may not be named after an operation IFOX00 owns. The
 # prototype `M &A,&B' is IFO043 (severity 8, IFNX1A PUTOC25 -> BDPTO) and the
