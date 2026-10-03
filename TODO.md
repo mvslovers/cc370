@@ -141,7 +141,7 @@ as370 order inside it.**
 | ~~6~~ | ~~#427~~ **landed, PR #743** | as370 | a library member with cards before MACRO is rejected -- IFOX00 rejects it too, with IFO085 (see the issue) |
 | ~~7~~ | ~~#258~~ **landed, PR #746** | as370 | `S'` / `I'` evaluate to 0 |
 | ~~8~~ | ~~#272~~ **landed, PR #747** | as370 | the 20-term limit (IFO168) — measure the reach first |
-| 9 | #117 **PR #748, held for one MVS RECEIVE** | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
+| ~~9~~ | ~~#117~~ **landed, PR #748** (MVS: JOB01316) | ld370 / xmit370 | the INMRECFM low byte, one shared helper |
 | 10 | #107 | ld370 | `--entry` seeds automatic library call (ld370 half) |
 | 11 | #439 | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
 | 12 | #102 + #103 | ld370 | duplicate CSECT / COMMON per IEWL — the plan is decided, its #521 hold is closed |
@@ -1628,6 +1628,10 @@ Pointers only. The reasoning lives in the issues and their PRs.
   own lexer -- none over 20 in MVSBLD or libc370. #117: xmit370's INMR02 #2
   INMRECFM 4800 -> 4802, as all four real transmissions carry; waits for an
   MVS RECEIVE. Next: #107.
+
+- **2026-10-03 — #117 MERGED (PR #748).** RECEIVE of an xmit370 FB80 library
+  with 4802 on mvsdev (JOB01316): IEB154I x3, allocated PO/FB/80/3120 from the
+  transmission, contents identical. Next: #107.
 
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
