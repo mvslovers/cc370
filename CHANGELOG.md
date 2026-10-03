@@ -20,6 +20,16 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Added
+- **Homebrew** (#699): `brew install mvslovers/tap/cc370` from the tap
+  `mvslovers/homebrew-tap`, on macOS and Linux; it depends on
+  `mvslovers/tap/libc370` and links libc370's sysroot into its own tree.
+  `release.yml` renders the formula (`packaging/homebrew/`) and pushes it to
+  the tap with a deploy key held in the `release` environment (v* tags
+  only); `homebrew.yml` then installs it from the tap on all four hosts. A
+  file a later libc370 adds is seen after `brew reinstall cc370` until cc370
+  searches a second sysroot (#726).
+
 ## [1.1.1] - 2026-10-03
 
 A packaging release: the prebuilt toolchains are stripped. The compiler, the

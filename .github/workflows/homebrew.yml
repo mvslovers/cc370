@@ -1,0 +1,70 @@
+# Install cc370 from the tap the way a user does and check it works (#699):
+#
+#   brew install mvslovers/tap/cc370     -> pulls mvslovers/tap/libc370 too
+#   brew test mvslovers/tap/cc370        -> --version, compile + link a C program
+#
+# on every host the release builds for.  It checks what is PUBLISHED in
+# mvslovers/homebrew-tap, so release.yml calls it after pushing a formula; a PR
+# touching packaging/homebrew runs it as well, and there it also renders the
+# template for the latest release and requires it to equal the tap's formula,
+# so the template and what users install cannot drift apart.
+
+name: Homebrew
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/homebrew/**'
+      - '.github/workflows/homebrew.yml'
+
+jobs:
+  install:
+    name: brew ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - name: Homebrew on PATH (the Linux runners carry it unlinked)
+        run: |
+          if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+            echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+          fi
+
+      - name: Install from the tap
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
+        run: |
+          brew tap mvslovers/tap
+          brew install mvslovers/tap/cc370
+          brew list --versions cc370 libc370
+
+      - name: brew test, and the toolchain from PATH
+        run: |
+          brew test mvslovers/tap/cc370
+          cc370 --version
+          as370 --version
+          printf '#include <stdio.h>\nint main(void) { printf("%%lld\\n", 10LL / 3); return 0; }\n' > t.c
+          cc370 -O1 t.c -o t -Wl,--map,t.map
+          grep -q 'libcc370rt.a(@@divdi3.o)' t.map
+          echo "linked; @@DIVDI3 from libcc370rt.a"
+
+  template:
+    name: template == tap formula
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render for the latest release and compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(gh release view --json tagName -q .tagName | sed 's/^v//')
+          gh release download "v$v" -p SHA256SUMS -O sums
+          sh packaging/homebrew/render.sh "$v" sums > cc370.rb
+          curl -fsSL https://raw.githubusercontent.com/mvslovers/homebrew-tap/main/Formula/cc370.rb -o tap.rb
+          diff -u tap.rb cc370.rb

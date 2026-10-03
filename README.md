@@ -50,7 +50,7 @@ cc370 just installed. Both downloads are checked against their release's
 |---|---|
 | Linux amd64, arm64 | `cc370-<v>-linux-<arch>.tar.gz` (statically linked, any distribution), `cc370_<v>_<arch>.deb`, `cc370-<v>.<x86_64\|aarch64>.rpm` |
 | macOS arm64, Intel | `cc370-<v>-darwin-<arch>.tar.gz` (macOS 11 / 10.15 and later) |
-| Homebrew | not yet (#699) |
+| Homebrew (macOS, Linux) | `brew install mvslovers/tap/cc370` -- pulls `mvslovers/tap/libc370` with it; `brew install mvslovers/tap/libc370` alone works too |
 | Windows | WSL2 and the Linux assets (#698) |
 
 - **Tarball:** a relocatable tree; unpack it anywhere and use its `bin/`.
