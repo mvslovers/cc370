@@ -3944,6 +3944,20 @@ static struct macro *lib_load(const char *name) {
     { int k; for (k = 0; k < n; k++) { free(g_lib_logical[k]); g_lib_logical[k] = NULL; } }
     return mm;
 }
+/* An operation IFOX00 already owns, so no macro may be named after it: a
+ * prototype whose operation is one is IFO043 (IFNX1A PUTOC25 -> BDPTO,
+ * severity 8, jermsgcd SEV43) and the definition is dropped -- the call then
+ * assembles as the instruction (#297). known_op() plus the conditional-
+ * assembly and remaining Assembler XF instructions it does not list. */
+static int known_op(const char *o);
+static int ifox_owns_op(const char *o) {
+    static const char *const x[] = { "AIF", "AGO", "ANOP", "ACTR", "SETA", "SETB", "SETC", "GBLA", "GBLB", "GBLC",
+                                     "LCLA", "LCLB", "LCLC", "MNOTE", "MEXIT", "COM", "ICTL", "PUNCH", "DXD", "CXD", NULL };
+    int i;
+    if (known_op(o)) return 1;
+    for (i = 0; x[i]; i++) if (!strcmp(o, x[i])) return 1;
+    return 0;
+}
 static int known_op(const char *o) {
     if (op_find(o)) return 1;
     const char *d[] = { "CSECT", "START", "ENTRY", "EXTRN", "WXTRN", "USING", "DROP", "DS", "DC", "EQU", "LTORG", "END",
@@ -4803,6 +4817,14 @@ static void mexp_block(char **arr, int n, char **out, int *nout, int depth, int 
                 for (k = from; k <= pc && k < n && *nout < MAXLINES; k++) {
                     lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL;
                     line_org[*nout] = org ? org[k] : g_curorg; out[*nout] = strdup(arr[k]);
+                    if (k == from + 1) {   /* the prototype */
+                        char pb[STMTSZ], pl[64], po[16], pa[STMTSZ];
+                        scopy(pb, arr[k], STMTSZ - 1); parse(pb, pl, po, pa);
+                        if (po[0] && ifox_owns_op(po)) {
+                            char m[96]; snprintf(m, sizeof m, "Macro prototype statement has invalid op code (IFOX00 IFO043) - %.8s", po);
+                            note_operr(m, 8, *nout);
+                        }
+                    }
                     if (dm && dm->undecl && k >= from + 2 && k - from - 2 < dm->nbody && dm->undecl[k - from - 2][0]) {
                         char m[96]; snprintf(m, sizeof m, "%s is an undefined variable symbol - nothing declares it (IFOX00 IFO006)", dm->undecl[k - from - 2]);
                         note_operr(m, 8, *nout);
