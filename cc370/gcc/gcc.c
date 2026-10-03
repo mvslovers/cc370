@@ -3806,6 +3806,10 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
 		      concat (gcc_exec_tooldir_prefix, "lib",
 			      dir_separator_str, NULL),
 		      NULL, PREFIX_PRIORITY_LAST, 0, NULL, 1);
+	  add_prefix (&startfile_prefixes,	/* cc370 #726, see below */
+		      concat (gcc_exec_tooldir_prefix, "libc370",
+			      dir_separator_str, "lib", dir_separator_str, NULL),
+		      NULL, PREFIX_PRIORITY_LAST, 0, NULL, 1);
 	}
 
       tooldir_prefix = concat (standard_exec_prefix, spec_machine,
@@ -3818,6 +3822,14 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
 	      "BINUTILS", PREFIX_PRIORITY_LAST, 0, NULL, 0);
   add_prefix (&startfile_prefixes,
 	      concat (tooldir_prefix, "lib", dir_separator_str, NULL),
+	      "BINUTILS", PREFIX_PRIORITY_LAST, 0, NULL, 1);
+  /* cc370 (#726): a second sysroot, <tooldir>/libc370/, for a libc370
+     installed in its own tree and linked in -- the Homebrew keg layout.
+     After the tree's own lib/, so crt0.o and -lc come from there only when
+     the tree itself has none, and libcc370rt.a always from the tree.  */
+  add_prefix (&startfile_prefixes,
+	      concat (tooldir_prefix, "libc370", dir_separator_str,
+		      "lib", dir_separator_str, NULL),
 	      "BINUTILS", PREFIX_PRIORITY_LAST, 0, NULL, 1);
 
 #if defined(TARGET_SYSTEM_ROOT_RELOCATABLE) && !defined(VMS)

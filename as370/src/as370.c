@@ -8778,7 +8778,8 @@ static void usage(FILE *o) {
 "                     inference\n"
 "  -v, --version      print the toolchain version and the commit it was built from\n"
 "\n"
-"macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros\n"
+"macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros ;\n"
+"  <exedir>/../libc370/macros (a libc370 linked in as <sysroot>/libc370, #726)\n"
 "  the last is a built-in relocatable default -- the installed sysroot macro\n"
 "  library found from this executable's own path, so an installed as370\n"
 "  (<prefix>/<triple>/bin/as370) assembles with no -I and no environment.\n"
@@ -8906,10 +8907,18 @@ int main(int argc, char **argv) {
         }
     }
     if (nmaclib < MAXMACLIB) {
-        char exedir[PATH_MAX]; char macdir[PATH_MAX + 16];
+        char exedir[PATH_MAX]; char macdir[PATH_MAX + 32];
         self_exe_dir(argv[0], exedir, sizeof exedir);
         snprintf(macdir, sizeof macdir, "%s/../macros", exedir);
         maclib_dirs[nmaclib++] = strdup(macdir);
+        /* 4. <exedir>/../libc370/macros: a libc370 installed in its own tree
+         *    and linked into the sysroot as libc370/ (#726, the Homebrew
+         *    layout).  After the sysroot's own macros, so cc370's prologue
+         *    macros win over any copy. */
+        if (nmaclib < MAXMACLIB) {
+            snprintf(macdir, sizeof macdir, "%s/../libc370/macros", exedir);
+            maclib_dirs[nmaclib++] = strdup(macdir);
+        }
     }
     if (!src) { usage(stderr); return 16; }                /* options given but no input file */
     init_sysvars();
