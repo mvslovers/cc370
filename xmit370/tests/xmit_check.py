@@ -121,7 +121,11 @@ def main():
     if tu1 is None:
         fail("no IEBCOPY INMR02 record")
     else:
-        recfm_bits = rdval(tu1[INMRECFM][0]) >> 8
+        recfm_full = rdval(tu1[INMRECFM][0])
+        if recfm_full & 0xFF:
+            fail("INMR02#1 INMRECFM is %04x, its low byte should be 00 (9000 in a real "
+                 "TSO TRANSMIT of an FB80 library, #117)" % recfm_full)
+        recfm_bits = recfm_full >> 8
         got = ("U" if recfm_bits & 0xC0 == 0xC0 else "F" if recfm_bits & 0x80 else "V")
         if recfm_bits & 0x10:
             got += "B"
@@ -133,6 +137,20 @@ def main():
             fail("INMR02#1 BLKSIZE is %d, expected %d" % (rdval(tu1[INMBLKSZ][0]), want["blocksize"]))
         if rdval(tu1[INMDSORG][0]) != 0x0200:
             fail("INMR02#1 DSORG is not PO")
+
+    # 3b. INMR02 #2 -- INMCOPY, the unloaded RECFM=VS form -- carries 4802, both
+    # bytes, in every real transmission measured (#117); this tool once wrote 4800.
+    tu2 = None
+    for r in ctl:
+        if bytes(r[:6]).decode("cp037") == "INMR02":
+            t = textunits(r)
+            if t.get(INMUTILN) and t[INMUTILN][0].decode("cp037").strip() == "INMCOPY":
+                tu2 = t
+                break
+    if tu2 is None:
+        fail("no INMCOPY INMR02 record")
+    elif rdval(tu2[INMRECFM][0]) != 0x4802:
+        fail("INMR02#2 INMRECFM is %04x, expected 4802" % rdval(tu2[INMRECFM][0]))
 
     # 4. payload = the unloaded image
     u = b"".join(data)

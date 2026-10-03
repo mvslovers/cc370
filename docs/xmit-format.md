@@ -71,14 +71,17 @@ emit them; `inmr_hdr()` writes the eye-catcher.
 | Record | Text units (key) |
 |--------|------------------|
 | **INMR01** | INMLRECL=80, INMFNODE, INMFUID, INMTNODE, INMTUID, **INMFTIME** (timestamp), INMNUMF=1 |
-| **INMR02 #1** | file#=1, INMUTILN=`IEBCOPY`, INMSIZE, INMDIR, INMLRECL=0, INMDSORG=PO, INMBLKSZ=`src_blksize`, INMRECFM=U, **INMDSNAM** (target dsn qualifiers) |
-| **INMR02 #2** | file#=1, INMUTILN=`INMCOPY`, INMSIZE, INMLRECL=`UNLOAD_BLKSIZE`−4, INMDSORG=PS, INMBLKSZ=`UNLOAD_BLKSIZE`, INMRECFM=VS |
+| **INMR02 #1** | file#=1, INMUTILN=`IEBCOPY`, INMSIZE, INMDIR, INMLRECL=0, INMDSORG=PO, INMBLKSZ=`src_blksize`, INMRECFM=U (`c002`), **INMDSNAM** (target dsn qualifiers) |
+| **INMR02 #2** | file#=1, INMUTILN=`INMCOPY`, INMSIZE, INMLRECL=`UNLOAD_BLKSIZE`−4, INMDSORG=PS, INMBLKSZ=`UNLOAD_BLKSIZE`, INMRECFM=VS (`4802`) |
 | **INMR03** | INMSIZE, INMLRECL=80, INMDSORG=PS, INMRECFM |
 | **INMR06** | (none — trailer) |
 
 Field classes: `INMDSNAM` is a **parameter** (`--dsn`, the install target);
 `INMFTIME` is **computed** (current time — the byte-identity carve-out);
 `INMRECFM`/`INMDSORG`/`INMLRECL=0` (the U-PO library) are **echoed** constants.
+`INMRECFM` is two bytes, and the low one is not part of the RECFM: every real
+transmission measured carries `4802` on the INMCOPY record, xmit370's included
+since #117 (`MVS_INMRECFM_INMCOPY`, `common/include/mvs370.h`).
 `INMBLKSZ` is **derived** from `--blocksize` (default 15040): INMR02#1 carries the
 library BLKSIZE `src_blksize`, INMR02#2 the unloaded-PS BLKSIZE `UNLOAD_BLKSIZE`
 (= `src_blksize`+20). `INMSIZE`/`INMDIR` are **computed** from the packed image —
