@@ -3353,6 +3353,29 @@ done
 if [ $e254 = 0 ]; then echo "end254: OK (two-field second operand IFO254 rc 4; three-field and bare END clean)"; else fail=$((fail + 1)); fi
 rm -f /tmp/_e2$$.s /tmp/_e2$$.out
 
+# ------------------------------------------------------------------ hdr085 --
+# cc370#427: a library member whose first statement is not MACRO is not
+# expanded, and IFOX00 does not call it undefined either: every call gets
+# IFO085 MACRO HEADER MISSING at severity 8 (IFNX1A SSEQ45/MEND25, IFNX1J
+# MACREND code 12, IFNX3A LOGERR85). Four members: `%GOTO' on card 1 (the
+# bi-lingual IKJOCMTB shape), a comment card first (must still expand),
+# comment cards only (IHASPCT), and none at all (still undefined, IFO078).
+# The binary before reported all of them as undefined operation codes.
+h85=/tmp/_h85.$$
+mkdir -p "$h85"
+printf '         %%GOTO SKIP;  /* BI-LINGUAL\n         MACRO\n         PCTM\n         DC    F%s1%s\n         MEND\n' "'" "'" > "$h85/pctm.macro"
+printf '*        A COMMENT CARD\n         MACRO\n         CMTM\n         DC    F%s2%s\n         MEND\n' "'" "'" > "$h85/cmtm.macro"
+printf '*        COMMENTS ONLY\n*        NOTHING ELSE\n' > "$h85/onlyc.macro"
+printf 'T        CSECT\n         PCTM\n         CMTM\n         ONLYC\n         NOSUCH\n         PCTM\n         BR    14\n         END\n' > "$h85/a.s"
+./as370 "$h85/a.s" -I "$h85" -o /dev/null >"$h85/a.out" 2>&1; r=$?
+n85=$(grep -c 'IFO085' "$h85/a.out"); nun=$(grep -c 'Undefined operation code.*NOSUCH' "$h85/a.out"); ncm=$(grep -c 'CMTM' "$h85/a.out")
+if [ "$r" = 8 ] && [ "$n85" = 3 ] && [ "$nun" = 1 ] && [ "$ncm" = 0 ] && grep -q ' 4 Statements Flagged' "$h85/a.out"; then
+    echo "hdr085: OK (IFO085 on each call of a header-missing member; comment-first member expands; missing member undefined)"
+else
+    echo "hdr085: FAIL -- rc $r, IFO085 x$n85 (want 3), NOSUCH undefined x$nun (want 1), CMTM mentioned x$ncm (want 0)"; fail=$((fail + 1))
+fi
+rm -rf "$h85"
+
 # --------------------------------------------------------------- protomnem --
 # cc370#297: a macro may not be named after an operation IFOX00 owns. The
 # prototype `M &A,&B' is IFO043 (severity 8, IFNX1A PUTOC25 -> BDPTO) and the
