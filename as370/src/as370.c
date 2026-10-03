@@ -577,10 +577,19 @@ static void mark_cont_stmt(int card, int inlib) {
     cont_mark[card] |= (unsigned char)bit;
     if (inlib) ncont_lib++; else ncont_pri++;
 }
+/* Every capped recorder below keeps at most 128 entries for the printed list,
+ * and counts what it drops (#86): the list ends with "... and N further",
+ * so a cut list says it was cut.  The return code never depends on the cap --
+ * a single-severity class needs one kept entry, and the two classes whose
+ * entries differ in severity (operand errors, MNOTE) keep their maximum as
+ * they record. */
+static int novl_lost, nunk_lost, nbadfmt_lost, nbadty_lost, nnyi_lost, noperr_lost,
+           nreld_lost, naddr_lost, novldef_lost, novlref_lost;
+static int operr_maxsev, mnote_maxsev;
 static void note_overlong(const char *n) {
     mark_flagged(g_curln);
     int i; for (i = 0; i < novl; i++) if (!strcmp(ovl_sym[i], n)) return;   /* one report per distinct symbol -- an over-length name re-creates on every lookup (never matches sym_find) and again in pass 2 */
-    if (novl < 128) { scopy(ovl_sym[novl], n, 63); ovl_ln[novl] = g_curln; novl++; }
+    if (novl < 128) { scopy(ovl_sym[novl], n, 63); ovl_ln[novl] = g_curln; novl++; } else novl_lost++;
 }
 /* A symbol term that names nothing: not defined in this module and not declared
  * external.  IFOX00 rejects it with IFO188 <symbol> IS AN UNDEFINED SYMBOL
@@ -4925,7 +4934,7 @@ static void note_unknown(const char *o, int line) {
         "EXTRN","WXTRN", NULL };
     int i; for (i = 0; skip[i]; i++) if (!strcmp(o, skip[i])) return;
     mark_flagged(line);
-    if (nunk < 128) { scopy(unkops[nunk], o, 11); unkln[nunk] = line; nunk++; }   /* one record per flagged statement */
+    if (nunk < 128) { scopy(unkops[nunk], o, 11); unkln[nunk] = line; nunk++; } else nunk_lost++;   /* one record per flagged statement */
 }
 /* an RS/SI/S storage operand carrying an index/length subscript -- D2(,B2) or
  * D2(X2,B2) -- has two subscripts where only a base is allowed. IFOX00 rejects
@@ -4935,7 +4944,7 @@ static void note_unknown(const char *o, int line) {
 static char badfmt_op[128][12]; static int badfmt_ln[128]; static int nbadfmt;
 static void note_badfmt(const char *o, int line) {
     mark_flagged(line);
-    if (nbadfmt < 128) { scopy(badfmt_op[nbadfmt], o, 11); badfmt_ln[nbadfmt] = line; nbadfmt++; }
+    if (nbadfmt < 128) { scopy(badfmt_op[nbadfmt], o, 11); badfmt_ln[nbadfmt] = line; nbadfmt++; } else nbadfmt_lost++;
 }
 
 /* A DC/DS constant, or a directive, that reserves no storage.
@@ -4959,12 +4968,12 @@ static void note_badfmt(const char *o, int line) {
 static char badty_ch[128]; static int badty_ln[128]; static int nbadty;
 static void note_badtype(int ty, int line) {
     mark_flagged(line);
-    if (nbadty < 128) { badty_ch[nbadty] = (char)(ty ? ty : '?'); badty_ln[nbadty] = line; nbadty++; }
+    if (nbadty < 128) { badty_ch[nbadty] = (char)(ty ? ty : '?'); badty_ln[nbadty] = line; nbadty++; } else nbadty_lost++;
 }
 static char nyi_what[128][24]; static int nyi_ln[128]; static int nnyi;
 static void note_notimpl(const char *what, int line) {
     mark_flagged(line);
-    if (nnyi < 128) { scopy(nyi_what[nnyi], what, 23); nyi_ln[nnyi] = line; nnyi++; }
+    if (nnyi < 128) { scopy(nyi_what[nnyi], what, 23); nyi_ln[nnyi] = line; nnyi++; } else nnyi_lost++;
 }
 /* An operand a statement's own rules reject -- a DC/DS nominal value, an SRP
  * rounding digit. The reason text is written at the call site and names the
@@ -4987,7 +4996,8 @@ static void note_operr(const char *msg, int sev, int line) {
      * SILENTLY at a width nothing chose.  The longest message this file writes is
      * 91 characters, so no existing diagnostic changes; what changes is that the
      * next one over 95 says what it meant (cc370#421 wrote the first). */
-    if (noperr < 128) { scopy(operr_msg[noperr], msg, VALSZ - 1); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; }
+    if (sev > operr_maxsev) operr_maxsev = sev;   /* before the cap: the RC never depends on it (#86) */
+    if (noperr < 128) { scopy(operr_msg[noperr], msg, VALSZ - 1); operr_sev[noperr] = sev; operr_ln[noperr] = line; noperr++; } else noperr_lost++;
 }
 /* MNOTE: the macro writer's own diagnostic, and the only one a macro can raise
  * about its caller. as370 skipped the statement outright -- no listing line, no
@@ -5009,6 +5019,7 @@ static void note_mnote(int sev, const char *text, int line) {
     if (line < 0) return;
     if (sev > 0) mark_flagged(line);          /* `*' and the bare form are not flagged */
     nmnote_seen++;
+    if (sev > mnote_maxsev) mnote_maxsev = sev;   /* before the cap: 131 MNOTEs ending in 12 returned 4 (#86) */
     if (nmnote < 128) { scopy(mnote_txt[nmnote], text, 79); mnote_sev[nmnote] = sev; mnote_ln[nmnote] = line; nmnote++; }
 }
 /* Split an MNOTE operand into severity and text, and render the listing image.
@@ -5146,7 +5157,7 @@ static int emit_decimal(const char *txt, int packed, long at, int want, int emit
 static char reld_op[128][12]; static int reld_ln[128]; static int nreld;
 static void note_relocdisp(const char *o, int line) {
     mark_flagged(line);
-    if (nreld < 128) { scopy(reld_op[nreld], o, 11); reld_ln[nreld] = line; nreld++; }
+    if (nreld < 128) { scopy(reld_op[nreld], o, 11); reld_ln[nreld] = line; nreld++; } else nreld_lost++;
 }
 /* A relocatable operand addressed implicitly (base chosen from a USING) whose
  * OWN section has no USING in range.  IFOX00 rejects this with IFO209
@@ -5156,7 +5167,7 @@ static void note_relocdisp(const char *o, int line) {
 static char addr_op[128][12]; static int addr_ln[128]; static int naddr;
 static void note_addrerr(const char *o, int line) {
     mark_flagged(line);
-    if (naddr < 128) { scopy(addr_op[naddr], o, 11); addr_ln[naddr] = line; naddr++; }
+    if (naddr < 128) { scopy(addr_op[naddr], o, 11); addr_ln[naddr] = line; naddr++; } else naddr_lost++;
 }
 /* An over-length ordinary symbol in the NAME FIELD (a local label or EQU name,
  * >8 characters).  IFOX00 rejects the name field (IFO016 ILLEGAL OR INVALID
@@ -5166,7 +5177,7 @@ static void note_addrerr(const char *o, int line) {
 static char ovldef_sym[128][64]; static int ovldef_ln[128]; static int novldef;
 static void note_ovldef(const char *n, int line) {
     mark_flagged(line);
-    if (novldef < 128) { scopy(ovldef_sym[novldef], n, 63); ovldef_ln[novldef] = line; novldef++; }
+    if (novldef < 128) { scopy(ovldef_sym[novldef], n, 63); ovldef_ln[novldef] = line; novldef++; } else novldef_lost++;
 }
 /* An over-length symbol TERM in an operand expression (>8 characters).  IFOX00
  * rejects it (IFO236 ILLEGAL CHARACTER IN EXPRESSION, severity 8) and zeroes the
@@ -5176,7 +5187,7 @@ static void note_ovldef(const char *n, int line) {
 static char ovlref_op[128][12]; static int ovlref_ln[128]; static int novlref;
 static void note_ovlref(const char *o, int line) {
     mark_flagged(line);
-    if (novlref < 128) { scopy(ovlref_op[novlref], o, 11); ovlref_ln[novlref] = line; novlref++; }
+    if (novlref < 128) { scopy(ovlref_op[novlref], o, 11); ovlref_ln[novlref] = line; novlref++; } else novlref_lost++;
 }
 /* True if OPND carries a symbol term longer than 8 characters (outside string
  * literals).  Purely LEXICAL -- fires on term length alone, before any symbol
@@ -9133,6 +9144,22 @@ int main(int argc, char **argv) {
         }
         if (nundef_seen > nundef)
             fprintf(stderr, " ... and %d further undefined-symbol diagnostics\n", nundef_seen - nundef);
+        /* The other capped lists (#86): what each dropped, so a cut list says so. */
+        {   static const struct { const int *n; const char *what; } cut[] = {
+                { &nunk_lost,    "undefined-operation-code" }, { &nbadfmt_lost, "illegal-operand-format" },
+                { &nbadty_lost,  "invalid-constant-type" },    { &nnyi_lost,    "not-implemented" },
+                { &noperr_lost,  "operand" },                  { &nreld_lost,   "relocatable-displacement" },
+                { &naddr_lost,   "addressability" },           { &novl_lost,    "over-length-symbol" },
+                { &novldef_lost, "over-length-name" },         { &novlref_lost, "over-length-operand" } };
+            unsigned k;
+            for (k = 0; k < sizeof cut / sizeof *cut; k++)
+                if (*cut[k].n)
+                    fprintf(stderr, " ... and %d further %s diagnostic%s (not listed; each statement is still counted)\n",
+                            *cut[k].n, cut[k].what, *cut[k].n == 1 ? "" : "s");
+            if (nmnote_seen > nmnote)
+                fprintf(stderr, " ... and %d further MNOTE%s (not listed; their severities still count)\n",
+                        nmnote_seen - nmnote, nmnote_seen - nmnote == 1 ? "" : "s");
+        }
     }
     /* Severities, unchanged and per category: they do not depend on print order,
      * and the operand-error floor is per entry rather than shared because
@@ -9149,12 +9176,12 @@ int main(int argc, char **argv) {
     if (novldef  && max_sev <  8) max_sev = 8;
     if (novlref  && max_sev <  8) max_sev = 8;
     if (nundef_seen && max_sev < 8) max_sev = 8;
-    { int j2; for (j2 = 0; j2 < noperr; j2++) if (max_sev < operr_sev[j2]) max_sev = operr_sev[j2]; }
+    if (max_sev < operr_maxsev) max_sev = operr_maxsev;   /* over every operand error, not the 128 kept (#86) */
     /* An MNOTE severity is the macro writer's judgement and goes straight into
      * the return code -- which is the whole point of #39: the IBM convention is
      * MNOTE 8/12 followed by MEXIT, so the severity is the ONLY trace the error
      * leaves. Per entry, like the operand errors, because they differ. */
-    { int j2; for (j2 = 0; j2 < nmnote; j2++) if (max_sev < mnote_sev[j2]) max_sev = mnote_sev[j2]; }
+    if (max_sev < mnote_maxsev) max_sev = mnote_maxsev;   /* over every MNOTE, not the 128 kept (#86) */
 
     if (objfn) {
         FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 16; }

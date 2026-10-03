@@ -3334,6 +3334,25 @@ PY
 fi
 rm -f /tmp/_ur$$.obj /tmp/_ur$$.out
 
+# ----------------------------------------------------------------- diagcap --
+# cc370#86: past 128 diagnostics of one kind the printed list is cut, and the
+# return code must not be. Operand errors and MNOTEs differ in severity per
+# entry, and their maximum came from the 128 kept entries only:
+#   130 x DC P'1.2.3' (8) + SRP (12)     gave rc 8,  is 12
+#   131 MNOTEs, the last one severity 12  gave rc 4,  is 12 -- a passing build
+# and a cut list said nothing (200 unknown opcodes listed 128, silently).
+for c in operr:12 mnote:12 unk:8; do f=${c%%:*}; want=${c#*:}
+    ./as370 tests/diagcap_$f.s -o /dev/null >/tmp/_dc$$.out 2>&1; r=$?
+    if [ "$r" != "$want" ]; then
+        echo "diagcap $f: FAIL -- rc $r, want $want"; fail=$((fail + 1))
+    elif ! grep -q ' further ' /tmp/_dc$$.out; then
+        echo "diagcap $f: FAIL -- the cut list does not say it was cut"; fail=$((fail + 1))
+    else
+        echo "diagcap $f: OK (rc $r, $(grep ' further ' /tmp/_dc$$.out | sed 's/^ *//'))"
+    fi
+done
+rm -f /tmp/_dc$$.out
+
 # ---------------------------------------------------------------- usingreg --
 # cc370#693: IFO195 on a USING or DROP register. Oracle: MVSTK5-REF JOB00319,
 # tests/listref/ifox-listing-usingreg.txt: 10 statements flagged, severity 12,
