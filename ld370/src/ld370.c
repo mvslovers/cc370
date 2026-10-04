@@ -736,8 +736,10 @@ static void emitb(int b) { out = grow_arr(out, &ocap, olen + 1, 1); out[olen++] 
  * tests.  Example: LDDATE=26223 LDTIME=220517.
  */
 #define LD370_IDR_PROD "LD370"
-#define LD370_IDR_VV   1
-#define LD370_IDR_MM   0
+/* The LKED IDR's version and modification level are the toolchain's own, from
+ * VERSION -- they were a fixed 01 / 00, which a 1.2 tool still claimed (#807). */
+static int idr_vv(void) { int v = 0; sscanf(CC370_VERSION, "%d", &v); return v % 100; }
+static int idr_mm(void) { int v = 0, m = 0; sscanf(CC370_VERSION, "%d.%d", &v, &m); return m % 100; }
 
 static int decfield(const char *s, int n)
 {
@@ -806,10 +808,8 @@ static void emit_lked_idr(void)
     for (i = 0; i < 10; i++) {
       r[3 + i] = (i < (int)prodlen) ? mvs_a2e(LD370_IDR_PROD[i]) : 0x40;
     }
-    r[13] = (unsigned char)(((LD370_IDR_VV / 10) << 4)
-                      |  (LD370_IDR_VV % 10));
-    r[14] = (unsigned char)(((LD370_IDR_MM / 10) << 4)
-                      |  (LD370_IDR_MM % 10));
+    r[13] = (unsigned char)(((idr_vv() / 10) << 4) | (idr_vv() % 10));
+    r[14] = (unsigned char)(((idr_mm() / 10) << 4) | (idr_mm() % 10));
     r[15] = (unsigned char)(((yy / 10) << 4) | (yy % 10));
     r[16] = (unsigned char)(((ddd / 100) << 4) | ((ddd / 10) % 10));
     r[17] = (unsigned char)(((ddd % 10) << 4) | 0x0f);
@@ -820,7 +820,7 @@ static void emit_lked_idr(void)
     emit(r, sizeof r);
     trace("  LKED-IDR:        22 bytes (%.10s V%02d M%02d, %02d%03d %02d:%02d:%02d)",
       LD370_IDR_PROD,
-      LD370_IDR_VV, LD370_IDR_MM,
+      idr_vv(), idr_mm(),
       yy, ddd, hh, mm, ss);
 }
 
@@ -1942,6 +1942,95 @@ static int write_map(const char *path, const char *mname, const char *entryname,
     return 0;
 }
 
+static void usage(FILE *f)
+{
+    fprintf(f,
+                "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
+                "             [--alias NAME]... [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
+                "             [--ac N] [--rent|--norent] [--reus|--noreus] [--refr]\n"
+                "             [--sparse-text] [--warn-shadow] [--map FILE [--xref]] OBJ...\n"
+                "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
+                "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
+                "       ld370 --version | -V\n"
+                "         print the toolchain version and the commit it was built from.\n"
+                "       ld370 --help | -h\n"
+                "         print this text.\n"
+                "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
+                "             [--ac N] [--rent] [--reus] [--refr] [--norent] [--noreus]\n"
+                "             [--blocksize N]\n"
+                "         pack pre-built member(s) into OUT.xmit / OUT.iebcopy (no linking);\n"
+                "         member name = file basename, or NAME=FILE to set it; default -xmit.\n"
+                "         Pack each member's .iebcopy, NOT its bare .lm: the entry point, the\n"
+                "         AC and RENT/REUS live in the PDS directory, which only the .iebcopy\n"
+                "         form carries --\n"
+                "             ld370 -o NAME --name NAME obj... -iebcopy\n"
+                "             ld370 --pack NAME=NAME.iebcopy -o OUT -xmit\n"
+                "         A bare member packs at entry 0 (--entry is not honoured here) and\n"
+                "         takes --ac and the attribute options from THIS command, not from\n"
+                "         its build.\n"
+                "         --blocksize N sets the target library BLKSIZE (default 15040;\n"
+                "         use the SAME value when building and packing a module).\n"
+                "         A module is marked neither RENT nor REUS unless asked, as IEWL\n"
+                "         does: --rent/--reus/--refr SET the PDS2 attributes; --norent and\n"
+                "         --noreus are accepted and change nothing on their own.  REFR is\n"
+                "         PDS2ATR2, not ATR1.  The attributes reach the DIRECTORY\n"
+                "         entry, so they are visible only in -iebcopy/-xmit output --\n"
+                "         a bare -o member is byte-identical with and without them.\n"
+                "         --alias NAME adds an alias directory entry (IEWL ALIAS): it enters\n"
+                "         at NAME if NAME is a symbol of the module, else at the entry point.\n"
+                "         --pack keeps the aliases of its -iebcopy inputs.\n"
+                "         --map FILE writes a text load map (\"-\" = stdout): each section in\n"
+                "         origin order with its input -- object path, or archive(member)\n"
+                "         and whether --include or autocall pulled it -- its entries\n"
+                "         beneath it, and any unresolved names.  No clock, so maps diff.\n"
+                "         --xref adds, under each section, every address constant naming an\n"
+                "         external symbol: its offset, A/V, the name and where it resolved.\n"
+                "         --sparse-text omits text records no TXT card covered, so a DS\n"
+                "         reservation is left unwritten.  OFF by default: it costs\n"
+                "         byte-fidelity to IEWL (which writes those records) and relies on\n"
+                "         program fetch zeroing what it does not load -- measured on MVS\n"
+                "         3.8j, but not under storage pressure.  internals/measurements/.\n");
+}
+
+/* The options that take a value.  One given last used to fall through to the
+ * input list -- `-e' last reported "cannot open -e" (#807). */
+static int takes_value(const char *a)
+{
+    static const char *const v[] = { "-o", "--dsn", "--name", "--entry", "-e", "--alias",
+        "--include", "-i", "--map", "--ac", "--blocksize", "-L", "-l", NULL };
+    for (int k = 0; v[k]; k++) if (!strcmp(a, v[k])) return 1;
+    return 0;
+}
+
+/* A whole decimal number, or -1 with a message naming the option. */
+static long number_arg(const char *opt, const char *val)
+{
+    char *end;
+    long n = strtol(val, &end, 10);
+    if (!*val || *end || n < 0) {
+        fprintf(stderr, "ld370: %s takes a number, not '%s'\n", opt, val);
+        return -1;
+    }
+    return n;
+}
+
+/* An OS/360 object deck: 80-byte cards, each beginning X'02', with an END card.
+ * Anything else used to link at rc 0 into an empty member (`ld370 -o T hello.c',
+ * #807). */
+static const char *not_a_deck(const unsigned char *d, long n)
+{
+    int end = 0;
+    if (n >= 8 && !memcmp(d, "!<arch>\n", 8)) return "is an archive; name it with .a, or link it with -l";
+    if (n >= 8 && d[2] == 0xC9 && d[3] == 0xD5 && d[4] == 0xD4 && d[5] == 0xD9 && d[6] == 0xF0 && d[7] == 0xF1)
+        return "is a TSO transmission (XMIT), not an object deck";
+    if (n <= 0 || n % 80) return "is not an object deck (not a multiple of 80-byte cards)";
+    for (long k = 0; k < n; k += 80) {
+        if (d[k] != 0x02) return "is not an object deck (a card does not begin X'02')";
+        if (d[k + 1] == 0xC5 && d[k + 2] == 0xD5 && d[k + 3] == 0xC4) end = 1;
+    }
+    return end ? NULL : "is not an object deck (no END card)";
+}
+
 int main(int argc, char **argv)
 {
     const char *outfile = NULL, *unloadfile = NULL, *mname = NULL;
@@ -1961,7 +2050,12 @@ int main(int argc, char **argv)
     FILE *f;
 
     for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--version")) { printf("ld370 %s (%s)\n", CC370_VERSION, CC370_COMMIT); return 0; }
+        if (takes_value(argv[i]) && i + 1 >= argc) {
+            fprintf(stderr, "ld370: %s needs a value\n", argv[i]);
+            return 2;
+        }
+        if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-V")) { printf("ld370 %s (%s)\n", CC370_VERSION, CC370_COMMIT); return 0; }
+        else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(stdout); return 0; }
         else if (!strcmp(argv[i], "-o") && i + 1 < argc) outfile = argv[++i];
         else if (!strcmp(argv[i], "-iebcopy")) want_unload = 1;   /* also emit OUT.iebcopy (unloaded PDS) */
         else if (!strcmp(argv[i], "-xmit")) want_xmit = 1;        /* also emit OUT.xmit (TSO TRANSMIT) */
@@ -1979,17 +2073,30 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--verbose") || !strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "--allow-unresolved")) allow_unresolved = 1;
         else if (!strcmp(argv[i], "--warn-shadow")) warn_shadow = 1;
-        else if (!strcmp(argv[i], "--ac") && i + 1 < argc) apfcode = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--ac") && i + 1 < argc) {
+            /* PDSAPFAC is one byte: 300 was stored as 44 (#807). */
+            long ac = number_arg("--ac", argv[++i]);
+            if (ac < 0) return 2;
+            if (ac > 255) { fprintf(stderr, "ld370: --ac %ld out of range (0..255)\n", ac); return 2; }
+            apfcode = (int)ac;
+        }
         else if (!strcmp(argv[i], "--norent")) no_rent = 1;       /* clear PDS2RENT */
         else if (!strcmp(argv[i], "--noreus")) no_reus = 1;       /* clear PDS2REUS */
         else if (!strcmp(argv[i], "--rent")) set_rent = 1;        /* set PDS2RENT */
         else if (!strcmp(argv[i], "--reus")) set_reus = 1;        /* set PDS2REUS */
         else if (!strcmp(argv[i], "--refr")) set_refr = 1;        /* set PDS2REFR (ATR2) */
-        else if (!strcmp(argv[i], "--blocksize") && i + 1 < argc) src_blksize = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--blocksize") && i + 1 < argc) {
+            src_blksize = number_arg("--blocksize", argv[++i]);   /* "abc" said "0 out of range" (#807) */
+            if (src_blksize < 0) return 2;
+        }
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) Ldir[nLdir++] = argv[++i];
         else if (!strncmp(argv[i], "-L", 2)) Ldir[nLdir++] = argv[i] + 2;
         else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
         else if (!strncmp(argv[i], "-l", 2)) { if (load_lib(argv[i] + 2, Ldir, nLdir)) return 1; }
+        else if (argv[i][0] == '-' && argv[i][1]) {         /* was taken as an input file (#807) */
+            fprintf(stderr, "ld370: unknown option '%s' (ld370 --help)\n", argv[i]);
+            return 2;
+        }
         else if (pack_mode) packspec[npack++] = argv[i];   /* member to pack */
         else if (ends_with(argv[i], ".a")) { if (load_archive(argv[i])) return 1; }
         else objfiles[nobjf++] = argv[i];
@@ -2070,6 +2177,18 @@ int main(int argc, char **argv)
         if (entryname)
             fprintf(stderr, "ld370: warning: --entry is ignored by --pack; a member's entry "
                             "point comes from its -iebcopy directory\n");
+        /* The other link-only options were dropped without a word (#807). */
+        if (mname) {
+            fprintf(stderr, "ld370: --name applies to a link, not to --pack; name a packed "
+                            "member as NAME=FILE\n");
+            return 2;
+        }
+        if (sparse_text)
+            fprintf(stderr, "ld370: warning: --sparse-text is ignored by --pack; it shapes "
+                            "the text records of a link\n");
+        if (allow_unresolved)
+            fprintf(stderr, "ld370: warning: --allow-unresolved is ignored by --pack; a pack "
+                            "resolves nothing\n");
         if (!want_unload && !want_xmit) want_xmit = 1;   /* container-only: default to xmit */
         for (i = 0; i < npack; i++) {
             char *spec = packspec[i], *eq = strchr(spec, '=');
@@ -2096,6 +2215,16 @@ int main(int argc, char **argv)
              *  - bare .lm member: recompute modlen from the CESD (else build_userdata
              *    echoes the template's 8 -> SIZE 8 on MVS); the entry is not present
              *    in a bare member, so assume 0 (start of module). */
+            /* An XMIT, an archive or an object deck is not a member: it used to
+             * fail later with "cannot split member (unknown record)" (#807). */
+            if (n >= 8 && (!memcmp(buf, "!<arch>\n", 8) || buf[0] == 0x02 ||
+                           (buf[2] == 0xC9 && buf[3] == 0xD5 && buf[4] == 0xD4 && buf[5] == 0xD9))) {
+                fprintf(stderr, "ld370: --pack: '%s' is %s, not a load module; pack the member "
+                                "or its -iebcopy\n", file,
+                        buf[0] == 0x02 ? "an object deck (link it first)" :
+                        buf[0] == '!' ? "an archive" : "a TSO transmission (XMIT)");
+                free(buf); return 2;
+            }
             if (n >= 4 && buf[1] == 0xCA && buf[2] == 0x6D && buf[3] == 0x0F) {
                 int r2 = read_iebcopy_member(buf, n, &m[i]);
                 free(buf);                               /* member bytes copied out by the parser */
@@ -2160,48 +2289,20 @@ int main(int argc, char **argv)
     /* a link needs content: explicit objects, or --include members to pull
      * (the faithful mbt model -- INCLUDE the listed NCALIB members + autocall,
      * no "explicit object" concept). */
-    if (!nobjf && !ninc) {
-        fprintf(stderr,
-                "usage: ld370 [-v] -o OUT [-L DIR -l NAME] [--include NAME] [--entry NAME]\n"
-                "             [--alias NAME]... [-xmit] [-iebcopy] [--dsn DS] [--name N] [--blocksize N]\n"
-                "             [--ac N] [--rent|--norent] [--reus|--noreus] [--refr]\n"
-                "             [--sparse-text] [--warn-shadow] [--map FILE [--xref]] OBJ...\n"
-                "         -o OUT writes a load-module member; -xmit/-iebcopy also\n"
-                "         emit OUT.xmit / OUT.iebcopy (host->MVS transport).  OUT defaults to a.out.\n"
-                "       ld370 --version\n"
-                "         print the toolchain version and the commit it was built from.\n"
-                "       ld370 --pack M1 [M2 ...] -o OUT [-xmit] [-iebcopy]\n"
-                "             [--ac N] [--norent] [--noreus] [--blocksize N]\n"
-                "         pack pre-built member(s) into OUT.xmit / OUT.iebcopy (no linking);\n"
-                "         member name = file basename, or NAME=FILE to set it; default -xmit.\n"
-                "         Pack each member's .iebcopy, NOT its bare .lm: the entry point, the\n"
-                "         AC and RENT/REUS live in the PDS directory, which only the .iebcopy\n"
-                "         form carries --\n"
-                "             ld370 -o NAME --name NAME obj... -iebcopy\n"
-                "             ld370 --pack NAME=NAME.iebcopy -o OUT -xmit\n"
-                "         A bare member packs at entry 0 (--entry is not honoured here) and\n"
-                "         takes --ac/--norent/--noreus from THIS command, not from its build.\n"
-                "         --blocksize N sets the target library BLKSIZE (default 15040;\n"
-                "         use the SAME value when building and packing a module).\n"
-                "         --rent/--reus/--refr SET the PDS2 attributes; --norent/--noreus\n"
-                "         clear them.  REFR is PDS2ATR2, not ATR1.  They reach the DIRECTORY\n"
-                "         entry, so they are visible only in -iebcopy/-xmit output --\n"
-                "         a bare -o member is byte-identical with and without them.\n"
-                "         --alias NAME adds an alias directory entry (IEWL ALIAS): it enters\n"
-                "         at NAME if NAME is a symbol of the module, else at the entry point.\n"
-                "         --pack keeps the aliases of its -iebcopy inputs.\n"
-                "         --map FILE writes a text load map (\"-\" = stdout): each section in\n"
-                "         origin order with its input -- object path, or archive(member)\n"
-                "         and whether --include or autocall pulled it -- its entries\n"
-                "         beneath it, and any unresolved names.  No clock, so maps diff.\n"
-                "         --xref adds, under each section, every address constant naming an\n"
-                "         external symbol: its offset, A/V, the name and where it resolved.\n"
-                "         --sparse-text omits text records no TXT card covered, so a DS\n"
-                "         reservation is left unwritten.  OFF by default: it costs\n"
-                "         byte-fidelity to IEWL (which writes those records) and relies on\n"
-                "         program fetch zeroing what it does not load -- measured on MVS\n"
-                "         3.8j, but not under storage pressure.  internals/measurements/.\n");
-        return 2;
+    if (!nobjf && !ninc) { usage(stderr); return 2; }
+
+    /* The member name reaches the directory (-xmit, -iebcopy) and the map.  From
+     * --name or -o it was neither checked nor measured: `1BAD' was accepted and
+     * `verylongname' silently became VERYLONG (#807).  A bare -o member carries
+     * no name, so a host-only link is not held to it. */
+    if (want_xmit || want_unload || mapfile) {
+        const char *nm = mname ? mname : member_from_path(outfile ? outfile : "a.out");
+        if (!valid_member_name(nm)) {
+            fprintf(stderr, "ld370: '%s' (%s) is not a valid MVS member name (1-8 chars, letter "
+                            "or @#$ first, then letters/digits/@#$)%s\n", nm,
+                    mname ? "--name" : "from -o", mname ? "" : "; give --name");
+            return 2;
+        }
     }
 
     /* flag-driven transport outputs: derive OUT.xmit / OUT.unl from the member name */
@@ -2217,6 +2318,10 @@ int main(int argc, char **argv)
            link at rc 1 without a word (#519, #713) -- a missing crt0.o or an
            object not yet built looked like a linker that had silently died. */
         if (!b) { fprintf(stderr, "ld370: cannot open %s: %s\n", objfiles[i], strerror(errno)); return 1; }
+        {
+            const char *why = not_a_deck(b, n);
+            if (why) { fprintf(stderr, "ld370: %s %s\n", objfiles[i], why); free(b); return 1; }
+        }
         O = grow_arr(O, &Ocap, nO + 1, sizeof *O);
         parse_object(b, n, &O[nO]);
         O[nO].src_kind = SRC_EXPLICIT; O[nO].src_path = objfiles[i];
@@ -2276,8 +2381,11 @@ int main(int argc, char **argv)
              * text stayed in the module. */
             if (t == T_SD && G[gi].is_sect && G[gi].type == T_SD) {
                 o->loc[j].dropped = 1; o->has_drop = 1;
-                trace("  duplicate CSECT '%s' in object %d dropped (first definition kept)",
-                      mvs_nm(o->loc[j].name), i);
+                /* IEWL says nothing and ends rc 0; ld370 does the same to the
+                 * module and the return code, but names what it dropped (#807). */
+                fprintf(stderr, "ld370: note: CSECT %s defined again in %s; the first "
+                                "definition is kept and this one dropped, as IEWL does\n",
+                        mvs_nm(o->loc[j].name), O[i].src_path ? O[i].src_path : "an object");
             } else if (is_sect_type(t)) {             /* a section definition */
                 G[gi].is_sect = 1; G[gi].type = t; G[gi].len = o->loc[j].len;
                 G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
@@ -2545,8 +2653,11 @@ int main(int argc, char **argv)
                 in_rec = 0;
             }
         }
-        trace("  CESD:            %d record(s) <=15 entries (%d entr%s: %d section(s) + %d ER)",
-              nrec, nG, nG == 1 ? "y" : "ies", nsect, nG - nsect);
+        /* An LR entry is not an ER; both were counted as "ER" (#807). */
+        int nlr = 0;
+        for (int g = 0; g < nG; g++) if (!G[g].is_sect && G[g].type == 0x03) nlr++;
+        trace("  CESD:            %d record(s) <=15 entries (%d entr%s: %d section(s) + %d LR + %d ER)",
+              nrec, nG, nG == 1 ? "y" : "ies", nsect, nlr, nG - nsect - nlr);
     }
     (void)cesd_off;
 

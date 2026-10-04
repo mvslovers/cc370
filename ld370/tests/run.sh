@@ -245,7 +245,7 @@ printf '\n=== large-RLD object keeps its LD symbols (>512 RLD, no overflow) ===\
 printf 'REF      CSECT\n         DC    V(GO)\n         BR    14\n         END   REF\n' > "$TMP/ref.s"
 if "$AS" -o "$TMP/bigrld.o" "$TMP/bigrld.s" 2>/dev/null \
    && "$AS" -o "$TMP/ref.o" "$TMP/ref.s" 2>/dev/null \
-   && "$LD" -e REF "$TMP/ref.o" "$TMP/bigrld.o" -iebcopy -o "$TMP/bigrld_link" 2>/dev/null; then
+   && "$LD" -e REF "$TMP/ref.o" "$TMP/bigrld.o" -iebcopy --name BIGRLD -o "$TMP/bigrld_link" 2>/dev/null; then
     echo "  OK: GO (LD in a >512-RLD object) resolved across objects"
 else
     echo "  FAIL: GO unresolved -- rld[]/ld[] overflow regressed"; fails=$((fails + 1))
@@ -846,13 +846,17 @@ i = d.find(bytes((0x80, 0x15, 0x82)))
 if i < 0:
     sys.exit("  FAIL: no LKED IDR (80 15 82) in the record stream")
 r = d[i:i + 22]
+# version and modification level come from VERSION (#807: a fixed 01 / 00)
+import re
+vv, mm = (int(x) for x in re.match(r"(\d+)\.(\d+)", open("VERSION").read()).groups())
+bcd = lambda v: ((v // 10) << 4) | (v % 10)
 want = bytes((0x80, 0x15, 0x82)) \
      + "LD370     ".encode('cp037') \
-     + bytes((0x01, 0x00, 0x26, 0x22, 0x3f, 0x02, 0x20, 0x51, 0x7f))
+     + bytes((bcd(vv % 100), bcd(mm % 100), 0x26, 0x22, 0x3f, 0x02, 0x20, 0x51, 0x7f))
 if r != want:
     sys.exit("  FAIL: IDR is %s\n         expected %s"
              % (r.hex(' '), want.hex(' ')))
-print("  OK: 80 15 82 'LD370     ' V01 M00 26223 22:05:17 (LASTIDR set)")
+print("  OK: 80 15 82 'LD370     ' V%02d M%02d 26223 22:05:17 (LASTIDR set)" % (vv, mm))
 EOF
 then :; else fails=$((fails + 1)); fi
 
@@ -1273,8 +1277,10 @@ want="OB:000000:000008 QQ:000008:000020 OC:000028:000008 OA:000030:000008 OD:000
 got=$(awk '$2=="SD"{printf "%s%s:%s:%s", s, $1, $3, $4; s=" "}' "$TMP/d102t2.map")
 w=$(d102words "$TMP/d102t2.lm")
 if [ "$r" = 0 ] && [ "$got" = "$want" ] && grep -q 'LENGTH 000040' "$TMP/d102t2.map" \
-   && echo "$w" | grep -q '30:00000008 34:00000030 38:00000010 3C:00000028' && [ ! -s "$TMP/d102t2.err" ]; then
-    echo "  OK: TE2 = IEWL's layout (x40); OA's A(QQ)=08, OD's V(QE)=10, nothing to warn"
+   && echo "$w" | grep -q '30:00000008 34:00000030 38:00000010 3C:00000028' \
+   && ! grep -q 'warning' "$TMP/d102t2.err" \
+   && [ "$(grep -c 'note: CSECT QQ defined again' "$TMP/d102t2.err")" = 1 ]; then
+    echo "  OK: TE2 = IEWL's layout (x40); OA's A(QQ)=08, OD's V(QE)=10; rc 0, one note for the dropped QQ (#807)"
 else
     echo "  FAIL: TE2 rc $r layout '$got' text '$w'"; cat "$TMP/d102t2.err"; fails=$((fails + 1))
 fi
@@ -1307,6 +1313,41 @@ PY
     fi
 done
 rm -f "$TMP"/d478*
+
+# --- #807: the Command Reference findings ---------------------------------
+# Each check fails on 1.2.0.
+printf '\n=== #807: options, inputs, names, --ac, --blocksize, --pack, trace ===\n'
+printf 'S807     CSECT\n         ENTRY E807\nE807     BR    14\n         END   S807\n' > "$TMP/s807.s"
+"$AS" -o "$TMP/s807.o" "$TMP/s807.s" 2>/dev/null
+c807() {   # NAME WANT-RC GREP-ERE ARGS...   -- rc and a stderr pattern
+    nm=$1; want=$2; pat=$3; shift 3
+    "$LD" "$@" >"$TMP/c807.out" 2>"$TMP/c807.err"; r=$?
+    if [ "$r" = "$want" ] && { [ -z "$pat" ] || grep -qE -e "$pat" "$TMP/c807.err" "$TMP/c807.out"; }; then
+        echo "  OK: $nm (rc $r)"
+    else
+        echo "  FAIL: $nm: rc $r (want $want), $(head -1 "$TMP/c807.err")"; fails=$((fails + 1))
+    fi
+}
+c807 "--help prints the usage"                 0 "usage: ld370"            --help
+c807 "an unknown option is refused"            2 "unknown option '--bogus'" --bogus -o "$TMP/x" "$TMP/s807.o"
+c807 "-e given last needs a value"             2 "-e needs a value"         -o "$TMP/x" "$TMP/s807.o" -e
+printf 'int main(void){return 0;}\n' > "$TMP/hello807.c"; rm -f "$TMP/T807"
+c807 "a C source is not an object"             1 "not an object deck"       -o "$TMP/T807" "$TMP/hello807.c"
+[ -e "$TMP/T807" ] && { echo "  FAIL: a member was written for hello.c"; fails=$((fails + 1)); }
+c807 "--name 1BAD is refused with -iebcopy"    2 "'1BAD' \(--name\) is not a valid" --name 1BAD -iebcopy -o "$TMP/x" "$TMP/s807.o"
+c807 "a 12-char -o name is refused with -xmit" 2 "from -o\) is not a valid.*give --name" -xmit -o "$TMP/verylongname" "$TMP/s807.o"
+c807 "a bare -o member needs no MVS name"      0 ""                         -o "$TMP/very_long_name" "$TMP/s807.o"
+c807 "--ac 300 is out of range"                2 "--ac 300 out of range"    --ac 300 -o "$TMP/x" "$TMP/s807.o"
+c807 "--blocksize abc is not a number"         2 "--blocksize takes a number, not 'abc'" --blocksize abc -o "$TMP/x" "$TMP/s807.o"
+"$LD" -o "$TMP/P807" --name P807 -e E807 "$TMP/s807.o" -xmit 2>/dev/null
+c807 "--pack of an XMIT names the format"      2 "is a TSO transmission"    --pack "$TMP/P807.xmit" -o "$TMP/q"
+c807 "--pack of an object deck names it"       2 "is an object deck"        --pack "$TMP/s807.o" -o "$TMP/q"
+c807 "--name with --pack is refused"           2 "NAME=FILE"                --pack --name X "$TMP/P807" -o "$TMP/q"
+c807 "--sparse-text with --pack is warned"     0 "--sparse-text is ignored by --pack" --pack --sparse-text P807="$TMP/P807" -o "$TMP/q"
+"$LD" -v -o "$TMP/x" -e E807 "$TMP/s807.o" 2>&1 | grep -qE "1 section\(s\) \+ 1 LR \+ 0 ER" \
+    && echo "  OK: -v counts the LR as an LR, not an ER" \
+    || { echo "  FAIL: -v trace: $("$LD" -v -o "$TMP/x" -e E807 "$TMP/s807.o" 2>&1 | grep 'CESD:')"; fails=$((fails + 1)); }
+rm -f "$TMP"/s807.* "$TMP"/c807.* "$TMP"/hello807.c "$TMP"/P807* "$TMP"/q* "$TMP"/x "$TMP"/very_long_name "$TMP"/T807
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

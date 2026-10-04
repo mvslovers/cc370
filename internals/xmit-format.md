@@ -3,11 +3,19 @@
 **Producer:** `ld370 -xmit` (`ld370/src/ld370.c`, the XMIT emitter) for RECFM=U
 *load* libraries. The RECFM=FB *source*-library case (samplib, JCL, macros) is
 `xmit370` -- see `internals/xmit-source-pds.md` for what differs.
-**Consumer on MVS:** `RECV370` (a batch XMIT unpacker, `PGM=RECV370` in
-`SYSC.LINKLIB`) — it parses the NETDATA stream and IEBCOPY-loads the member(s)
-into a load library. (Stock TSO/E `RECEIVE` is **not** present on the target;
-this system has *NJE38 RECEIVE v2.3.0*, whose command syntax differs — `RECEIVE
-INDSN(...)` gives `IKJ56621I`. Use RECV370, the path httpd/brexx already use.)
+**Consumers on MVS:** two paths, both in use.
+- `RECEIVE INDSN('…') DATASET('…')` -- stock TSO/E RECEIVE is not on MVS 3.8j,
+  the command is *NJE38 RECEIVE v2.3.0*'s, run under IKJEFT01.  It
+  self-allocates the target from the transmission's own `INMR02`, which is why
+  `INMBLKSZ`/`INMSIZE` must be right; mbt's `make deploy` (`mbtdeploy.py`)
+  installs this way.
+- `RECV370` (a batch XMIT unpacker, `PGM=RECV370` in `SYSC.LINKLIB`) -- it
+  parses the NETDATA stream and IEBCOPY-loads the member(s) into a load library
+  whose DCB the JCL gives (see below).
+
+(An earlier version of this note said `RECEIVE INDSN(...)` gives `IKJ56621I`
+and to use RECV370 instead; the deploy path above contradicts that, so it is
+gone -- #807.)
 
 **Why XMIT and not raw IEBCOPY-unload:** the IEBCOPY-unloaded dataset is
 RECFM=VS (variable-spanned), and mvsMF's binary upload cannot reconstruct
