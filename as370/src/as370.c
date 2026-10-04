@@ -659,7 +659,10 @@ static void esd_add(struct sym *s, int role) {
 static int lenalgn(int len) { return (len % 8 == 0) ? 8 : (len % 4 == 0) ? 4 : (len % 2 == 0) ? 2 : 1; }
 /* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
-static long fixed_nominal(const char *t, int scale, int expo, int *big);   /* fwd: #782 */
+static long fixed_nominal(const char *t, int scale, int expo, int *big, int *ebad);   /* fwd: #782, #783 */
+static long fixed_value(const char *t, int hasmod, int scale, int expo, int *big, int *ebad);
+static int dc_parse_expo(const char **pp, int ty, int *scale, int *expo, int line, int diag);
+static void dc_mod_limits(int ty, int *scale, int *expo, int line, int diag);   /* fwd: #783 */
 static int fixed_needs_exact(const char *t, int hasscale, int hasexpo);
 static int emit_decimal(const char *txt, int packed, long at, int want, int emit, int diag, int line);   /* fwd: P/Z, the DC path's own */
 /* The quoted body of a literal, without its quotes. emit_decimal() rejects any
@@ -783,7 +786,7 @@ static void lit_classify(struct lit *l) {
         int per = haslen ? len : (ty == 'F' ? 4 : 2);
         if (nv < 1) { nv = 1; vv[0][0] = 0; }
         l->scale = scale; l->scaled = hasscale || hasexpo; l->expo = expo;
-        l->val = vv[0][0] ? (fixed_needs_exact(vv[0], hasscale, hasexpo) ? fixed_nominal(vv[0], scale, expo, NULL) : strtol(vv[0], NULL, 10)) : 0;
+        l->val = fixed_value(vv[0], hasscale || hasexpo, scale, expo, NULL, NULL);
         l->size = per * nv; l->algn = haslen ? 1 : (ty == 'F' ? 4 : 2);
     /* Floating point carries no integer value: emit_lit converts the nominal
      * value itself. DCTABLE's default lengths are E 4 / D 8 / L 16, L doubleword
@@ -901,6 +904,47 @@ static void note_trunc203(long v, int blen, int line) {
     if (v < lo || v > hi)
         note_operr("L, D, E, F, H, or Y-type constant truncated, high order digits lost (IFOX00 IFO203)", 4, line);
 }
+/* The modifier limits of DCTABLE (ifnx5d.asm, STEST/ETEST): a scale modifier
+ * outside 0..14 for E and D, 0..28 for L, -187..346 for F and H is IFO200; an
+ * exponent modifier outside -85..75 is IFO201; both severity 8, and the
+ * modifier is then taken as zero.  Measured on IFOX00 (MVSTK5-REF JOB00346,
+ * tests/dcfperr.s): ES15'1.5' and ES-1'1.5' are IFO200 and 41180000, FE76'1'
+ * and FE-86'1' are IFO201 and 1, FE-85'1' is 0 and silent (#783). */
+static void dc_mod_limits(int ty, int *scale, int *expo, int line, int diag) {
+    int lo = 0;
+    int hi = 14;               /* E and D */
+    if (ty == 'F' || ty == 'H') { lo = -187; hi = 346; }
+    else if (ty == 'L') hi = 28;
+    if (*scale < lo || *scale > hi) {
+        if (diag) note_operr("Invalid scale modifier (IFOX00 IFO200)", 8, line);
+        *scale = 0;
+    }
+    if (*expo < -85 || *expo > 75) {
+        if (diag) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, line);
+        *expo = 0;
+    }
+}
+/* The exponent modifier En, after the scale: IFOX00 reads L, S, E in that
+ * order (ifnx5d STEST, then ETEST).  It was never read, so the first
+ * apostrophe search skipped it and FE9'2' assembled as 2 (#782).  Only a sign
+ * or a digit after the E makes it a modifier.  The limits of both modifiers
+ * are applied here (#783).  Returns whether an exponent modifier was given. */
+static int dc_parse_expo(const char **pp, int ty, int *scale, int *expo, int line, int diag) {
+    const char *p = *pp;
+    int has = 0;
+    int eneg = 0;
+    if (*p == 'E' && (isdigit((unsigned char)p[1]) || ((p[1] == '-' || p[1] == '+') && isdigit((unsigned char)p[2])))) {
+        p++;
+        if (*p == '-') { eneg = 1; p++; }
+        else if (*p == '+') p++;
+        while (isdigit((unsigned char)*p)) *expo = *expo * 10 + (*p++ - '0');
+        if (eneg) *expo = -*expo;
+        has = 1;
+    }
+    *pp = p;
+    if (ty && strchr("FHEDL", ty)) dc_mod_limits(ty, scale, expo, line, diag);
+    return has;
+}
 /* A fixed-point nominal value that is not a plain integer: a decimal point, an
  * exponent in the value (F'1E2'), a scale modifier or an exponent modifier.
  * A plain integer keeps strtol, which is what every such constant used. */
@@ -921,34 +965,86 @@ static int fixed_needs_exact(const char *t, int hasscale, int hasexpo) {
  * FS3'1.25' is 10, FS28'6.2832' -- the FORTRAN scientific routines' two pi --
  * is X'6487FCB9', and FS2'1.2' is 4.8, which IFOX00 writes as 5.  Exact
  * arithmetic gives all three, and no rounding of a double can move them. */
-static long fixed_nominal(const char *t, int scale, int expo, int *big) {
-    typedef unsigned __int128 u128;
-    u128 num = 0, den = 1; int neg = 0, ovf = 0, dig = 0, frac = 0, infrac = 0, nexp = 0;
-    const u128 lim = ((u128)1 << 120);
+typedef unsigned __int128 fx_u128;
+#define FX_LIM ((fx_u128)1 << 120)
+/* A fixed-point nominal value as read: the digits, the sign, how many digits
+ * stood after the point, how many past the precision before it, and the
+ * value's own exponent. */
+struct fxnom { fx_u128 num; int neg; int frac; int dig; int nexp; };
+static void fixed_parse(const char *t, struct fxnom *x) {
+    int infrac = 0;
+    x->num = 0; x->neg = 0; x->frac = 0; x->dig = 0; x->nexp = 0;
     while (*t == ' ') t++;
-    if (*t == '-') { neg = 1; t++; } else if (*t == '+') t++;
+    if (*t == '-') { x->neg = 1; t++; }
+    else if (*t == '+') t++;
     for (;; t++) {
         if (*t == '.' && !infrac) { infrac = 1; continue; }
         if (!isdigit((unsigned char)*t)) break;
-        if (num < lim / 10) { num = num * 10 + (u128)(*t - '0'); if (infrac) frac++; }
-        else if (!infrac) dig++;                 /* digits past the precision: scale by ten instead */
+        if (x->num < FX_LIM / 10) {
+            x->num = x->num * 10 + (fx_u128)(*t - '0');
+            if (infrac) x->frac++;
+        } else if (!infrac) x->dig++;          /* digits past the precision: scale by ten instead */
     }
-    if (*t == 'E' || *t == 'e') { int en = 0, sg = 0; t++;
-        if (*t == '-') { sg = 1; t++; } else if (*t == '+') t++;
-        while (isdigit((unsigned char)*t)) { if (en < 100000) en = en * 10 + (*t - '0'); t++; }
-        nexp = sg ? -en : en; }
-    long e10 = (long)nexp + expo - frac + dig;
+    if (*t != 'E' && *t != 'e') return;
+    int en = 0;
+    int sg = 0;
+    t++;
+    if (*t == '-') { sg = 1; t++; }
+    else if (*t == '+') t++;
+    for (; isdigit((unsigned char)*t); t++)
+        if (en < 100000) en = en * 10 + (*t - '0');
+    x->nexp = sg ? -en : en;
+}
+/* num/den x 10**e10 x 2**scale; *ovf when the numerator outgrows the range.
+ * A denominator that would outgrow it means the value rounds to zero. */
+static void fixed_scale(fx_u128 *num, fx_u128 *den, long e10, int scale, int *ovf) {
     long k;
-    if (e10 >= 0) { for (k = 0; k < e10; k++) { if (num > lim / 10) ovf = 1; num *= 10; } }
-    else { for (k = 0; k < -e10; k++) { if (den > lim / 10) { num = 0; den = 1; break; } den *= 10; } }
-    if (scale >= 0) { for (k = 0; k < scale; k++) { if (num > lim) ovf = 1; num <<= 1; } }
-    else { for (k = 0; k < -scale; k++) { if (den > lim) { num = 0; den = 1; break; } den <<= 1; } }
-    u128 q = num / den, r = num % den;
+    for (k = 0; k < e10; k++) {
+        if (*num > FX_LIM / 10) *ovf = 1;
+        *num *= 10;
+    }
+    for (k = 0; k < -e10; k++) {
+        if (*den > FX_LIM / 10) { *num = 0; *den = 1; return; }
+        *den *= 10;
+    }
+    for (k = 0; k < scale; k++) {
+        if (*num > FX_LIM) *ovf = 1;
+        *num <<= 1;
+    }
+    for (k = 0; k < -(long)scale; k++) {
+        if (*den > FX_LIM) { *num = 0; *den = 1; return; }
+        *den <<= 1;
+    }
+}
+static long fixed_nominal(const char *t, int scale, int expo, int *big, int *ebad) {
+    struct fxnom x;
+    fx_u128 den = 1;
+    int ovf = 0;
+    fixed_parse(t, &x);
+    /* FFPCONV (ifnx5f ZWC1) bounds the value's exponent plus the modifier to
+     * -85..75 for fixed and floating point alike; outside it, IFO201 and the
+     * conversion goes on as if both were zero.  Measured for E (#783); for F
+     * and H it is the same code path in the source, not a measurement. */
+    if (x.nexp + expo < -85 || x.nexp + expo > 75) {
+        if (ebad) *ebad = 1;
+        x.nexp = 0;
+        expo = 0;
+    }
+    fixed_scale(&x.num, &den, (long)x.nexp + expo - x.frac + x.dig, scale, &ovf);
+    fx_u128 q = x.num / den;
+    fx_u128 r = x.num % den;
     if (den > 1 && r >= den - r) q++;            /* half away from zero */
-    if (q > (u128)LONG_MAX) ovf = 1;
+    if (q > (fx_u128)LONG_MAX) ovf = 1;
     if (big) *big = ovf;
     unsigned long lo = (unsigned long)q;
-    return neg ? (long)(0UL - lo) : (long)lo;
+    return x.neg ? (long)(0UL - lo) : (long)lo;
+}
+/* One fixed-point nominal value: empty is 0, a plain integer goes through
+ * strtol as it always did, anything else through fixed_nominal. */
+static long fixed_value(const char *t, int hasmod, int scale, int expo, int *big, int *ebad) {
+    if (!t[0]) return 0;
+    if (!fixed_needs_exact(t, hasmod, 0)) return strtol(t, NULL, 10);
+    return fixed_nominal(t, scale, expo, big, ebad);
 }
 static void bits_put(unsigned char *buf, int bufsz, int *nbits, unsigned long v, int n) {
     int k;
@@ -5825,8 +5921,19 @@ static void bn_sub(struct bn *a, const struct bn *b) {   /* a -= b, requires a >
     bn_norm(a);
 }
 static void bn_shl(struct bn *a, int bits) {
-    int limbs = bits / 32, rem = bits % 32, i;
-    if (limbs) { for (i = a->n - 1; i >= 0; i--) if (i + limbs < BN_LIMBS) a->v[i + limbs] = a->v[i]; for (i = 0; i < limbs; i++) a->v[i] = 0; a->n += limbs; if (a->n > BN_LIMBS) a->n = BN_LIMBS; }
+    int limbs = bits / 32;
+    int rem = bits % 32;
+    int i;
+    if (bits <= 0) return;                         /* nothing to shift; a negative count would index before v[] */
+    if (limbs >= BN_LIMBS) { a->n = 0; return; }   /* every limb shifted out; no caller asks for more than 56 bits */
+    if (limbs) {
+        int top = a->n < BN_LIMBS ? a->n : BN_LIMBS;
+        for (i = top - 1; i >= 0; i--)
+            if (i < BN_LIMBS - limbs) a->v[i + limbs] = a->v[i];
+        for (i = 0; i < limbs; i++) a->v[i] = 0;
+        a->n += limbs;
+        if (a->n > BN_LIMBS) a->n = BN_LIMBS;
+    }
     if (rem) { unsigned long long carry = 0; for (i = 0; i < a->n; i++) { unsigned long long p = ((unsigned long long)a->v[i] << rem) | carry; a->v[i] = (unsigned)(p & 0xffffffffu); carry = p >> 32; } if (carry && a->n < BN_LIMBS) a->v[a->n++] = (unsigned)carry; }
     bn_norm(a);
 }
@@ -5958,9 +6065,8 @@ static void hfp_scale(struct hfp *h, int scale, int line) {
     h->exp += scale;
 }
 
-/* The exponent is excess-64 in seven bits and is NOT range-checked: a value
- * needing an exponent outside 0..127 wraps silently, as it did before. IFOX00
- * flags it; as370 does not (see #53). */
+/* The characteristic is excess-64 in seven bits; emit_float has already
+ * refused one outside 0..127 with IFO239 (#783). */
 static void hfp_put(long at, const struct hfp *h) {
     int i;
     put(at, (long)((h->sign ? 0x80 : 0) | (h->exp & 0x7f)), 1);
@@ -5990,8 +6096,18 @@ static void emit_float(long at, const char *vstr, int bytes, int scale, int expo
     if (h.fracbits > 56) h.fracbits = 56;
     h.lofrac = h.ext ? (h.lb - 1) * 8 : 0;
     if (h.lofrac > 56) h.lofrac = 56;
+    if (eexp + expo < -85 || eexp + expo > 75) {   /* see fixed_nominal: IFO201, both taken as zero */
+        if (g_pass == 2) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, line);
+        eexp = 0;
+        expo = 0;
+    }
     hfp_convert(&M, eexp + expo - nfrac, &h);   /* value = M * 10^(eexp + expo - nfrac) */
     if (scale > 0) hfp_scale(&h, scale, line);
+    if (h.exp < 0 || h.exp > 127) {   /* IFO239: ifnx5f ZWQ7 clears the whole constant, sign included */
+        if (g_pass == 2) note_operr("Invalid floating point characteristic (IFOX00 IFO239)", 8, line);
+        for (int j = 0; j < bytes; j++) put(at + j, 0, 1);
+        return;
+    }
     hfp_put(at, &h);
 }
 /* one copy's width: the size a single nominal value occupies, which is what the
@@ -6025,7 +6141,10 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
          * the integer route and assembled as 0000000000000002 and 00000000 where
          * IFOX00 says 4120000000000000 and 41100000 (#53). */
         const char *q = strchr(p, '\'');
-        if (q) emit_float(loc, q + 1, size, l->scaled ? l->scale : 0, l->expo, l->defln);
+        int lsc = l->scaled ? l->scale : 0;
+        int lex = l->expo;
+        dc_mod_limits(ty, &lsc, &lex, l->defln, 1);
+        if (q) emit_float(loc, q + 1, size, lsc, lex, l->defln);
         else { int j; for (j = 0; j < size; j++) put(loc + j, 0, 1); }
     } else if (ty == 'P' || ty == 'Z') {
         char body[VALSZ]; lit_body(p, body, sizeof body);
@@ -6042,7 +6161,12 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
         if (nv < 1) { nv = 1; vv[0][0] = 0; }
         { int per = size / nv; if (per < 1) per = 1;
           for (vi = 0; vi < nv; vi++) {
-              long v = vv[vi][0] ? (fixed_needs_exact(vv[vi], l->scaled, 0) ? fixed_nominal(vv[vi], l->scale, l->expo, NULL) : strtol(vv[vi], NULL, 10)) : 0;
+              int lsc = l->scale;
+              int lex = l->expo;
+              int ebad = 0;
+              dc_mod_limits(ty, &lsc, &lex, l->defln, 1);
+              long v = fixed_value(vv[vi], l->scaled, lsc, lex, NULL, &ebad);
+              if (ebad) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, l->defln);
               put(loc + (long)vi * per, v, per); } }
     } else if (ty == 'X') {
         const char *q = strchr(p, '\''); unsigned char by[256]; int nb = q ? hex_to_bytes(q + 1, by, 256) : 0;
@@ -7398,18 +7522,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                     while (isdigit((unsigned char)*p)) scale = scale * 10 + (*p++ - '0');
                     if (sneg2) scale = -scale;
                     hasscale = 1; }
-                /* The exponent modifier En, after the scale: IFOX00 reads L, S,
-                 * E in that order (ifnx5d STEST, then ETEST).  It was never
-                 * read, so the first apostrophe search skipped it and FE9'2'
-                 * assembled as 2 (#782).  Only a sign or a digit after the E
-                 * makes it a modifier. */
-                int expo = 0, hasexpo = 0;
-                if (*p == 'E' && (isdigit((unsigned char)p[1]) || ((p[1] == '-' || p[1] == '+') && isdigit((unsigned char)p[2])))) {
-                    p++; int eneg = 0;
-                    if (*p == '-') { eneg = 1; p++; } else if (*p == '+') p++;
-                    while (isdigit((unsigned char)*p)) expo = expo * 10 + (*p++ - '0');
-                    if (eneg) expo = -expo;
-                    hasexpo = 1; }
+                int expo = 0;
+                int hasexpo = dc_parse_expo(&p, ty, &scale, &expo, i, pass == 2);
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
                 int emptyval = !strcmp(op, "DC") ? dc_value_empty(p) : 0;
                 if (emptyval) {
@@ -7664,7 +7778,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                             if (nv < 1) { nv = 1; fv[0][0] = 0; }
                             for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
                                 int big = 0;
-                                val = fv[vi][0] ? (fixed_needs_exact(fv[vi], hasscale, hasexpo) ? fixed_nominal(fv[vi], scale, expo, &big) : strtol(fv[vi], NULL, 10)) : 0;
+                                int ebad = 0;
+                                val = fixed_value(fv[vi], hasscale || hasexpo, scale, expo, &big, &ebad);
+                                if (ebad && emit_dc && k == 0) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, i);
                                 if (emit_dc && k == 0 && !in_dsect) note_trunc203(big ? LONG_MAX : val, blen, i);
                                 if (emit_dc) put(lc, val, blen);
                                 lc += blen;

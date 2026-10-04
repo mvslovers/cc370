@@ -4812,11 +4812,12 @@ rm -f $ew.s $ew.lst
 # the signed range of the field, A is never flagged, one message per nominal
 # value and one per duplicated operand; severity 4, bytes = the low-order bytes.
 # Statement 44, FE9'3', is flagged because the exponent modifier makes it 3E9
-# (#782); statements 49-52 (floating overflow/underflow, #783) are left out of
-# the byte comparison until that lands.  Before #776 as370 was silent, rc 0.
+# (#782); statements 49-52 are IFO201/IFO239 since #783, which makes the run
+# rc 8, as IFOX00's was.  Every diagnostic is compared, not only IFO203.
+# Before #776 as370 was silent, rc 0.
 ./as370 tests/ifo203.s -a -o /tmp/_i203$$.obj >/tmp/_i203$$.lst 2>&1; i203rc=$?
-want=$(grep -E '^ +[0-9]+  IFO203' tests/listref/ifox-listing-ifo203.txt | awk '{print $1}' | tr '\n' ' ')
-got=$(grep -oE 'IFO203\) in line [0-9]+' /tmp/_i203$$.lst | awk '{print $4}' | tr '\n' ' ')
+want=$(grep -E '^ +[0-9]+  IFO[0-9]+' tests/listref/ifox-listing-ifo203.txt | awk '{print $1":"$2}' | sort | tr '\n' ' ')
+got=$(grep -oE '\(IFOX00 IFO[0-9]+\) in line [0-9]+' /tmp/_i203$$.lst | awk '{print $5":"$2}' | tr -d ')' | sort | tr '\n' ' ')
 bytes=$(python3 - tests/listref/ifox-listing-ifo203.txt /tmp/_i203$$.lst <<'PY203'
 import re, sys
 def objs(path):
@@ -4826,13 +4827,13 @@ def objs(path):
         if m: d[int(m.group(3))] = (m.group(1), m.group(2).strip())
     return d
 r, a = objs(sys.argv[1]), objs(sys.argv[2])
-skip = {49, 50, 51, 52}
+skip = set()
 bad = [n for n in range(8, 53) if n not in skip and r.get(n) != a.get(n)]
 print("ok" if not bad and len(r) > 40 else "differ at %s" % bad)
 PY203
 )
-if [ "$i203rc" = 4 ] && [ "$got" = "$want" ] && [ "$bytes" = ok ]; then
-    echo "ifo203: OK (IFO203 on the same $(echo $want | wc -w | tr -d ' ') values as IFOX00, rc 4, bytes identical)"
+if [ "$i203rc" = 8 ] && [ "$got" = "$want" ] && [ "$bytes" = ok ]; then
+    echo "ifo203: OK (the same $(echo $want | wc -w | tr -d ' ') diagnostics as IFOX00, rc 8, bytes identical)"
 else echo "ifo203: FAIL -- rc $i203rc; IFOX00 [$want] as370 [$got]; bytes $bytes"; fail=1; fi
 rm -f /tmp/_i203$$.obj /tmp/_i203$$.lst
 
@@ -4878,6 +4879,33 @@ head -c "$dsn" /tmp/_dsc$$.obj > /tmp/_dsc$$a; head -c "$dsn" "$dsref" > /tmp/_d
 if [ "$r" = 0 ] && cmp -s /tmp/_dsc$$a /tmp/_dsc$$b; then echo "dcscale: OK (round, shift, drop; no IFO202 while a bit survives -- deck == IFOX00)"
 else echo "dcscale: FAIL (rc $r, deck vs tests/ref/dcscale.obj)"; fail=1; fi
 rm -f /tmp/_dsc$$.obj /tmp/_dsc$$.out /tmp/_dsc$$a /tmp/_dsc$$b
+
+# --- #783: floating-point range and modifier limits --------------------------
+# tests/dcfperr.s is an ORACLE INPUT (MVSTK5-REF JOB00346, rc 8, captured with
+# --deck-on-error; snapshots -1823 -> -1833).  Under Decision A (#160) an rc 8
+# deck is an oracle only where the diagnostics agree, so both are compared:
+# every (statement, IFO code) pair and the whole deck.  The rules: a value
+# exponent plus modifier outside -85..75 is IFO201 and taken as zero (E'1E76'
+# is 1.0); a characteristic outside 0..127 is IFO239 and the constant is all
+# zeros, sign included; modifier limits per DCTABLE are IFO200 / IFO201.
+python3 - tests/dcfperr.s tests/ref/dcfperr.obj tests/listref/ifox-listing-dcfperr.txt <<'PY783' || fail=1
+import re, subprocess, sys, tempfile, os
+src, ref, lst = sys.argv[1:4]
+with tempfile.TemporaryDirectory() as td:
+    out = os.path.join(td, "x.obj")
+    r = subprocess.run(["./as370", src, "-o", out], capture_output=True, text=True)
+    mine_deck = open(out, "rb").read() if os.path.exists(out) else b""
+msgs = r.stdout + r.stderr
+mine = sorted((int(m.group(2)), m.group(1)) for m in re.finditer(r"\(IFOX00 (IFO\d+)[^)]*\)\S* in line (\d+)", msgs))
+ifox = sorted((int(a), b) for a, b in re.findall(r"^ +(\d+)  (IFO\d+)", open(lst).read(), re.M))
+rd = open(ref, "rb").read(); n = (len(rd) // 80 - 1) * 80
+ok = mine == ifox and r.returncode == 8 and len(mine_deck) == len(rd) and mine_deck[:n] == rd[:n]
+if ok:
+    print(f"dcfperr: OK ({len(ifox)} diagnostics and the deck == IFOX00, rc 8)")
+else:
+    print(f"dcfperr: FAIL -- rc {r.returncode}; as370 {mine} IFOX00 {ifox}; deck {'same' if mine_deck[:n] == rd[:n] else 'differs'}")
+sys.exit(0 if ok else 1)
+PY783
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
