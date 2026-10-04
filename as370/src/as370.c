@@ -5927,8 +5927,9 @@ static void bn_shl(struct bn *a, int bits) {
     if (bits <= 0) return;                         /* nothing to shift; a negative count would index before v[] */
     if (limbs >= BN_LIMBS) { a->n = 0; return; }   /* every limb shifted out; no caller asks for more than 56 bits */
     if (limbs) {
-        for (i = a->n - 1; i >= 0; i--)
-            if (i + limbs < BN_LIMBS) a->v[i + limbs] = a->v[i];
+        int top = a->n < BN_LIMBS ? a->n : BN_LIMBS;
+        for (i = top - 1; i >= 0; i--)
+            if (i < BN_LIMBS - limbs) a->v[i + limbs] = a->v[i];
         for (i = 0; i < limbs; i++) a->v[i] = 0;
         a->n += limbs;
         if (a->n > BN_LIMBS) a->n = BN_LIMBS;
