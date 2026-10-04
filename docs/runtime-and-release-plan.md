@@ -116,6 +116,18 @@ rexx370, 9 in nsf370. That makes every change to them a breaking change.
 - After that the internal macros are free to be reworked — they date from
   PDPCLIB — including for a later VM/CMS target. Related: #482 (Metal C).
 
+**Direction for a later VM/CMS target.** The CMS port of GCC defined the
+interface between generated code and runtime **at the macro level** — the
+prologue/epilogue macros and named helpers — and implemented it twice, once
+for PDPCLIB (MVS) and once for GCCLIB (CMS). It does not cover every case:
+the compiler calls the stack manager directly, though by name, through a
+VCON. For cc370 this makes #687/#688/#689 the first half. A CMS target would
+be a **second implementation of the same macros and helper names**, selected
+by the target, not a second compiler. The rework of the internal macros,
+once the 43 hand-written files have moved to the public set, should keep that
+split: what the generated code may rely on (macro names, helper names and
+their contracts) on one side, how a system implements them on the other.
+
 ### Phase 4 — startup (research, in libc370)
 
 - **libc370#159** `crt0` and `crt1` differ by three lines (the `IDENTIFY` for
