@@ -139,8 +139,12 @@ silent wrong results first. After each merge, one line to Book (session
    directory, `--ac` 0..255, `--pack` input/option checks, dup-CSECT note,
    IDR version from VERSION; man page after #100. Leftovers: #821.
    (#806 follow-up #820: `--json` on an object deck carries its ESD.)
-4. #804 xmit370 -- `--latin1` on UTF-8, silent rc 1 on non-XMIT input, name
-   cutting, option checks.
+4. ~~#804 xmit370~~ **done** (#825): names refused or upper-cased, never cut;
+   values checked; per-command options; non-XMIT input named; `--latin1`
+   warns on UTF-8; RECFM/INMRECFM decoding shared with file370.
+4a. **#824 as370 -- NEXT, silent wrong object code**: a negative relocation
+   term gets a positive or no RLD item (`A(-MAIN)`, `A(X-MAIN)`, `A(-X)`).
+   Needs an IFOX00 capture first; #810's COM/DXD/CXD/Q can share the job.
 5. #808 cc370 driver -- a severity-4 as370 warning fails the build; `-c`/`-S`
    with several sources and `-o`; `-o` name check; 8-character collisions in
    one unit. `#pragma map`, `-mpickax`, `-pipe`, trigraphs and `-b` go to
