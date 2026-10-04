@@ -172,9 +172,9 @@ as370 order inside it.**
 - New: #761 (float DC scale modifier ignored).
 - ~~#776~~ **done**: cc370 emits a double's words signed (#778); as370 raises
   IFO203 (#780, JOB00343: signed range for F/H/Y, never A; 26 of 27, the 27th
-  needs the exponent modifier). Unfiled from the same job: `FE9'2'` ignores the
-  exponent modifier; `E'1E76'` (IFO201) and `E'1E-80'` (IFO239) silent with
-  other bytes.
+  needs the exponent modifier). From the same job: #782 (`FE9'2'` ignores the
+  exponent modifier) and #783 (`E'1E76'` IFO201 / `E'1E-80'` IFO239 silent,
+  other bytes); both no known user.
 
 **After 1.2.0:** #518 (with the driver and mbt), #106, #78, #684, #345, #113,
 #601, #109; research and design #76, #229 (parked), #386, #112, #383, #698,
