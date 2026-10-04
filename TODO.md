@@ -1656,6 +1656,12 @@ Pointers only. The reasoning lives in the issues and their PRs.
   another non-empty is a warning, rc 4, per IFOX00's convention (340 of 5,538
   obj_ctrl decks; stdout unchanged).
 
+- **2026-10-04 — #258 measured on the oracle (JOB00320), PR #759.** Every
+  S'/I' value of tests/scaleint.s is IFOX00's; I' of a symbol without a scale
+  is IFO123 + IFO124 (fixed). Snapshots 0921 -> 0931 unchanged. Found on the
+  way, NOT filed yet: as370 ignores the scale modifier of a floating-point
+  constant (DS2'1.5': IFOX00 43001800.., as370 41180000..).
+
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
   startfiles, as370); `make test-sysroot` 4/4, all fail against main. The
