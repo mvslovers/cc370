@@ -14,7 +14,7 @@ $ xmit370 list hello.xmit
       INMLRECL   80
       INMDSORG   PO
       INMBLKSZ   3120
-      INMRECFM   FB
+      INMRECFM   FB (X'9000')
       INMDSNAM   USER1.HELLO.SAMPLIB
   INMR02
       INMUTILN   INMCOPY
@@ -22,12 +22,12 @@ $ xmit370 list hello.xmit
       INMLRECL   3136
       INMDSORG   PS
       INMBLKSZ   3140
-      INMRECFM   VS
+      INMRECFM   VS (X'4802')
   INMR03
       INMSIZE    1432
       INMLRECL   80
       INMDSORG   PS
-      INMRECFM   ?
+      INMRECFM   VBS, transmission records (X'0001')
   INMR06
   environment header 328 bytes (COPYR1 52 + COPYR2)
   source DCB: DSORG=PO RECFM=FB LRECL=80 BLKSIZE=3120 (unloaded 3140)

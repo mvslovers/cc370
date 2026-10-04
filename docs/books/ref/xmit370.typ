@@ -32,8 +32,16 @@ than load modules to install.
 
 #syntax(title: "Create option:", read("../syntax/xmit370-option.txt"))
 
+#syntax(title: "Common:", read("../syntax/xmit370-common.txt"))
+
 The first operand is the subcommand. The options that follow may be given in
-any order, before or after the file or directory operand.
+any order, before or after the file or directory operand. Each option belongs
+to its subcommand: #cmd("-C") to #cmd("extract"), the options from
+#cmd("-o") to #cmd("--latin1") to #cmd("create"). Given to another
+subcommand, an option is an error, for example
+#cmd("xmit370: -C does not apply to 'create' (xmit370 --help)"), return
+code 2. The common options #cmd("-v"), #cmd("-h") and #cmd("-V") and their
+long forms apply to every subcommand.
 
 === Operands
 
@@ -62,16 +70,18 @@ any order, before or after the file or directory operand.
   [#cmd("--blocksize") #var("n")], [sets the block size of the library. It
     must be a multiple of #cmd("--lrecl") and must not exceed 19069, the
     largest block that one 3350 track holds as a single record. The default
-    is 3120, 39 records of 80 bytes.#idx("block size", "of a source library")],
+    is 3120, 39 records of 80 bytes, and with #cmd("--recfm f") the record
+    length.#idx("block size", "of a source library")],
   [#cmd("--recfm") #var("format")], [sets the record format: #cmd("fb"), the
     default, or #cmd("f"), in capitals or not. Other formats are refused.
-    For #cmd("f"), give #cmd("--blocksize") equal to #cmd("--lrecl")\; xmit370
-    does not check this and records whatever block size it is given.],
+    #cmd("f") is unblocked: the block size is the record length, and a
+    #cmd("--blocksize") that differs is refused.],
   [#cmd("--stats")], [writes ISPF statistics into each directory entry.
     This is the default.],
   [#cmd("--no-stats")], [leaves the statistics out.],
-  [#cmd("--userid") #var("name")], [sets the user ID recorded in the
-    statistics and in the control records. See @xmit370-stats.],
+  [#cmd("--userid") #var("name")], [sets the user ID, one to eight
+    characters, recorded in the statistics and in the control records. See
+    @xmit370-stats.],
   [#cmd("--stats-date") #var("date")], [sets one date and time for every
     member and for the transmission itself. See @xmit370-stats.],
   [#cmd("--member") #var("name")#cmd("=")#var("file")], [adds #var("file")
@@ -84,7 +94,7 @@ any order, before or after the file or directory operand.
     to the files named by #cmd("--member").],
   [#cmd("--tabs") #var("n")], [expands each tab character to the next
     multiple of #var("n") columns. The default is 8. #cmd("--tabs 0")
-    refuses tab characters\; so does a value that is not a number.],
+    refuses tab characters.],
   [#cmd("--no-tabs")], [refuses tab characters, as #cmd("--tabs 0") does.],
   [#cmd("--latin1")], [translates bytes above #cmd("X'7F'") as Latin-1
     characters instead of refusing them. See @xmit370-chars.],
@@ -93,19 +103,20 @@ any order, before or after the file or directory operand.
     adds the directory flag byte and the length of the user data to each
     member\; for #cmd("extract"), names each file written.],
   [#cmd("--help"), #cmd("-h")], [displays a summary of the options and
-    ends.],
+    ends, wherever it appears in the command.],
   [#cmd("--version"), #cmd("-V")], [displays the toolchain version and the
     commit from which xmit370 was built, for example
-    #cmd("xmit370 1.2.0 (b17cd14)"), and ends. It is recognized only in
-    place of the subcommand. Unlike as370, xmit370 uses #cmd("-v") for
-    verbose output, not for the version.],
+    #cmd("xmit370 1.2.1-dev (99722f1)"), and ends, wherever it appears in
+    the command. Unlike as370, xmit370 uses #cmd("-v") for verbose output,
+    not for the version.],
 )
 
-#note[The three subcommands share one option parser. An option that does
-not apply to the subcommand, such as #cmd("-C") with #cmd("create") or
-#cmd("--dsn") with #cmd("list"), is accepted and has no effect. The summary
-from #cmd("--help") does not mention #cmd("-h"), #cmd("-V"),
-#cmd("--version") or #cmd("--verbose").]
+#note[The value of #cmd("--lrecl"), #cmd("--blocksize") and #cmd("--tabs")
+must be a whole number of zero or more\; anything else is refused with
+#cmd("xmit370: --tabs takes a number, not 'abc'"), return code 2. An option
+that takes a value and is given without one is refused with
+#var("option")#cmd(" needs a value"). #cmd("-v") on its own, in place of the
+subcommand, is an unknown command.]
 
 == How Files Become Members <xmit370-members>
 
@@ -117,26 +128,25 @@ it:
   matches an #cmd("--exclude") pattern.
 - A subdirectory is skipped with a message. Other files that are not regular
   files are skipped without one.
-- The member name is the file name without its last extension, in capitals,
-  and cut to eight characters: #cmd("runhello.jcl") becomes
-  #cmd("RUNHELLO"), and #cmd("verylongname.txt") becomes
-  #cmd("VERYLONG"), without a message.
+- The member name is the file name without its last extension, in
+  capitals: #cmd("runhello.jcl") becomes #cmd("RUNHELLO").
 - The name must then be a valid member name: one to eight characters of
   #cmd("A")–#cmd("Z"), #cmd("0")–#cmd("9"), #cmd("@"), #cmd("#") and
   #cmd("$"), the first not a digit. A file whose name does not qualify is
   refused, and the message shows the #cmd("--member") option that would
-  take it:
+  take it. A name longer than eight characters is refused in the same way,
+  never cut:
 
 #screen(```
 xmit370: t1/my-file: 'MY-FILE' is not a valid member name (1-8 of A-Z 0-9 @ # $, first not a digit); use --member NAME=t1/my-file
+xmit370: v1/verylongname.txt: 'VERYLONGNAME' is not a valid member name (1-8 of A-Z 0-9 @ # $, first not a digit); use --member NAME=v1/verylongname.txt
 ```)
 
 #cmd("--member") #var("name")#cmd("=")#var("file") adds a file under a
-name of your choosing. The name is used exactly as written, *without*
-conversion to capitals, so write it in capitals. A name of more than eight
-characters is refused\; a name of one to eight characters outside the valid
-set is accepted with a warning, because existing libraries do contain such
-names:
+name of your choosing. The name is converted to capitals. A name of more
+than eight characters is refused, with return code 2\; a name of one to
+eight characters outside the valid set is accepted with a warning, because
+existing libraries do contain such names:
 
 #screen(```
 xmit370: warning: '1BAD' is not a standard member name (A-Z 0-9 @ # $); ISPF and TSO may not handle it
@@ -207,10 +217,14 @@ tab is refused: a file that contains one is not text. For a byte above
   text that came out of an EBCDIC data set, for example #cmd("¬") in a
   macro.
 
-#note[#cmd("--latin1") applies to every file and is not checked against
-the UTF-8 test: a UTF-8 file packed with #cmd("--latin1") is accepted
-without a message, and each of its multi-byte characters becomes two or
-three wrong characters on MVS.]
+#cmd("--latin1") applies to every file. A file that is valid UTF-8 and
+contains characters outside ASCII is still packed, but xmit370 names it, since
+each of its multi-byte characters becomes two or three wrong characters on
+MVS:
+
+#screen(```
+xmit370: v5/u8: warning: the file is UTF-8, and --latin1 maps each of its bytes on its own; its non-ASCII characters will not survive
+```)
 
 All members of one transmission share one logical record length, so a
 library whose lines are longer than 80 columns needs #cmd("--lrecl") and a
@@ -231,9 +245,10 @@ writes:
 - the user ID.
 
 #idx("xmit370", "--userid option")
-The user ID is the #cmd("--userid") value, cut to eight characters and used
-as written, so give it in capitals. Without #cmd("--userid") it is the first
-qualifier of #cmd("--dsn"), cut to eight characters and in capitals:
+The user ID is the #cmd("--userid") value, in capitals\; a value of more
+than eight characters is refused with return code 2. Without
+#cmd("--userid") it is the first qualifier of #cmd("--dsn"), cut to eight
+characters and in capitals:
 #cmd("--dsn user1.hello.samplib") gives #cmd("USER1"). The same user ID is
 recorded as the sender and the receiver of the transmission
 (#cmd("INMFUID"), #cmd("INMTUID")), with #cmd("ORIGNODE") as both nodes.
@@ -247,16 +262,20 @@ differ.
 #cmd("--stats-date") replaces all of these times with one:
 #var("yyyy")#cmd("-")#var("mm")#cmd("-")#var("dd"), optionally followed by
 #cmd("T") or a blank and #var("hh")#cmd(":")#var("mm"), with or without
-#cmd(":")#var("ss"). The time defaults to midnight. With
+#cmd(":")#var("ss"). The time defaults to midnight. The date must exist
+and lie in the years 1900 to 2099, the range of the ISPF date, and the time
+must be a valid time of day\; anything else is refused with return code 2:
+
+#screen(```
+xmit370: --stats-date: '2026-13-45' is not a date YYYY-MM-DD[THH:MM:SS] between 1900 and 2099
+```)
+
+With
 #cmd("--stats-date"), the transmission depends only on the contents and the
 names of the files and on the options: it is identical byte for byte from
 one run to the next, whatever the modification times of the files and the
 time zone of the workstation. Give it when the transmission is a release
 artifact that must be reproducible.
-
-#note[A date that is out of range is not refused but carried over:
-#cmd("2026-13-45") is taken as 14 February 2027. Only text that does not
-have the form of a date is refused.]
 
 == Attributes of the Transmitted Library <xmit370-dcb>
 
@@ -274,7 +293,8 @@ attributes and where they come from.
     [DSORG], [#cmd("PO"), always.],
     [RECFM], [#cmd("FB"), or #cmd("F") with #cmd("--recfm f").],
     [LRECL], [#cmd("--lrecl"), default 80.],
-    [BLKSIZE], [#cmd("--blocksize"), default 3120.],
+    [BLKSIZE], [#cmd("--blocksize"), default 3120\; for #cmd("F"), the
+      LRECL.],
     [Directory blocks], [The number of 256-byte directory blocks the members
       need, plus five, and at least 10.],
     [Data set name], [#cmd("--dsn").],
@@ -352,8 +372,11 @@ installation, check the attributes and list the members of the library.]
 
 - Each control record, #cmd("INMR01") to #cmd("INMR06"), with the text units
   it carries: the user IDs and nodes, the time of the transmission, and for
-  each #cmd("INMR02") the utility, the size and the attributes. A record
-  format that list does not decode is shown as #cmd("?").
+  each #cmd("INMR02") the utility, the size and the attributes. The record
+  format is shown by name and as the hexadecimal value of the text unit:
+  #cmd("FB (X'9000')") for the library, #cmd("VS (X'4802')") for the
+  unloaded form, and #cmd("VBS, transmission records (X'0001')") in
+  #cmd("INMR03").
 - The header of the unloaded data set and the attributes it records for the
   library (#cmd("source DCB")), with the block size of the unloaded form in
   parentheses: the library block size plus 20, and at least 296.
@@ -403,11 +426,17 @@ code other than 0, it has not written the transmission.
       valid member name, a line could not be translated (see
       @xmit370-refused), or #cmd("extract") could not write a member. A
       file given to #cmd("list") or #cmd("extract") that is not a
-      transmission also ends with 1, with no message.],
+      transmission also ends with 1:
+      #var("file")#cmd(": not a TSO transmission (it does not begin with INMR01)").],
     [2], [The command was in error and nothing was done: no subcommand, an
-      unknown subcommand or option, a missing #cmd("-o") or #cmd("--dsn"),
-      an option value out of range, a malformed #cmd("--member"), two
-      files with the same member name, or no members at all. The same
+      unknown subcommand or option, an option given to a subcommand it does
+      not belong to or without its value, a missing #cmd("-o") or
+      #cmd("--dsn"), an option value that is not a number or out of range,
+      a #cmd("--recfm f") block size other than the record length, a
+      #cmd("--stats-date") that is not a valid date, a #cmd("--member") name
+      or #cmd("--userid") that is not 1 to 8 characters, a malformed
+      #cmd("--member"), two files with the same member name, or no members
+      at all. The same
       code ends a #cmd("create") whose output file cannot be written
       (#var("file")#cmd(": cannot write")).],
   )
