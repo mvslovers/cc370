@@ -177,8 +177,8 @@ as370 order inside it.**
   needs the exponent modifier). From the same job: ~~#782~~ **done** (#790,
   JOB00345: 10**n half away from zero, E before S) and ~~#783~~ **done**
   (#794, JOB00346: IFO201 total exponent, IFO239 zeros, IFO200/201 limits);
-  no known user. Next from the same jobs: as370 does not substitute &vars in
-  an open-code MNOTE (IFOX00 does, JOB00345) -- to be filed.
+  no known user. ~~#799~~ **done** (#800): an open-code MNOTE substitutes its
+  variable symbols and is listed as a source/generated pair (JOB00345).
 - #160 Decision A **applied** (comments 2026-10-04): of 933 rc>=8 decks, 453
   agree with IFOX00 statement by statement and all 453 are identical; 178 agree
   in codes (all identical once stamps match -- 11 differed only by
