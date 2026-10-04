@@ -83,7 +83,7 @@ DRIVER  := $(BUILD)/gcc/xgcc
 CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
-        test test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 \
+        test test-as370 test-listref test-libcorpus test-cc370 test-corpus test-xmit370 test-cmplmd370 \
         test-dasm370 test-sysroot dist test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
@@ -178,7 +178,7 @@ compiler: $(BUILD)/config.status $(VERHDR)
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-version test-macros test-runtime-host test-as370 test-listref test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
+test: test-version test-macros test-runtime-host test-as370 test-listref test-libcorpus test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
 
 test-as370:
 	@$(MAKE) -C as370 test
@@ -202,6 +202,11 @@ test-version-cc370: tools compiler
 # must give the same deck.  Needs the libc370 checkout beside this one.
 test-macros: as370/as370
 	@sh macros/tests/check.sh
+
+# as370 against IFOX00 on the frozen libc370 corpus (#23): 753 modules and their
+# IFOX00 decks from MVSTK5-REF, all in the repo -- no libc370 checkout, no MVS.
+test-libcorpus: as370/as370
+	@sh as370/tests/libcorpus/check.sh
 
 test-listref: as370/as370
 	@sh as370/tests/listref/check.sh

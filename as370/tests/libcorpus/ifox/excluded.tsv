@@ -1,0 +1,5 @@
+# Modules whose IFOX00 deck is not used as an oracle (cc370#23, the rc-12/8
+# rule of cc370#160/#241: only where both assemblers report the same
+# diagnostics -- not compared here, the batch ran with SYSPRINT DUMMY).
+# member	path	reason
+L0001	attic/asm/ssireq01.asm	IFOX00 rc 8: an MVS/ESA source (AMODE, RMODE, SPLEVEL, STORAGE) Assembler XF does not know; libc370 attic, not built

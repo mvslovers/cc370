@@ -1,0 +1,61 @@
+         COPY  PDPTOP
+         CSECT
+* Program text area
+         DS    0F
+* X-func __txvlct prologue
+@@TXVLCT PDPPRLG CINDEX=0,FRAME=112,BASER=12,ENTRY=YES
+         B     @@FEN0
+         LTORG
+@@FEN0   EQU   *
+         DROP  12
+         BALR  12,0
+         USING *,12
+@@PG0    EQU   *
+         LR    11,1
+         L     10,=A(@@PGT0)
+* Function __txvlct code
+         L     2,4(11)
+         LA    3,1(0,0)
+         LR    15,2
+         LTR   2,2
+         BE    @@L3
+         ST    2,88(13)
+         LA    1,88(,13)
+         L     15,=V(ATOI)
+         BALR  14,15
+@@L3     EQU   *
+         L     12,0(,10)
+         ST    15,104(13)
+         BCTR  15,0
+         LA    2,254(0,0)
+         CLR   15,2
+         BH    @@L6
+         MVC   88(4,13),=F'19'
+         MVC   92(4,13),=F'1'
+         MVC   96(4,13),=F'1'
+         LA    2,107(,13)
+         ST    2,100(13)
+         LA    1,88(,13)
+         L     15,=V(@@NWTX99)
+         BALR  14,15
+         LTR   15,15
+         BE    @@L6
+         MVC   88(4,13),0(11)
+         ST    15,92(13)
+         LA    1,88(,13)
+         L     15,=V(@@ARADD)
+         BALR  14,15
+         LR    3,15
+@@L6     EQU   *
+         L     12,0(,10)
+         LR    15,3
+* Function __txvlct epilogue
+         PDPEPIL
+* Function __txvlct literal pool
+         DS    0F
+         LTORG
+* Function __txvlct page table
+         DS    0F
+@@PGT0   EQU   *
+         DC    A(@@PG0)
+         END
