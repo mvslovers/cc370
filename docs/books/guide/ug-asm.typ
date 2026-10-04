@@ -78,6 +78,11 @@ its line number, as in @ug-asm-clock-session below. An object module with an
 error of severity 8 is written, but it is not expected to run: correct the
 source before you link it.
 
+#note[When cc370 runs as370 on the code it generated, any return code
+other than 0 fails the build, a warning (4) included, and the object module
+is not kept. To see the warning, compile with #cmd("-S") and assemble the
+#cmd(".s") file with as370 yourself.]
+
 #idx("listing", "assembler")
 To obtain an assembler listing, add #cmd("-a=")#var("file"). The listing has
 the layout of the IFOX00 listing, with the external symbol dictionary, the
@@ -236,7 +241,8 @@ The C program declares the routine and calls it like any C function, as
 makes the external name of a C function by cutting its name to eight
 characters, changing lower case to upper case and the underscore to
 #cmd("@"): #cmd("addup") becomes #cmd("ADDUP"). Name the control section or
-entry point of the assembler routine accordingly. When the C name cannot be
+entry point of the assembler routine accordingly (see also
+@ug-compile-names). When the C name cannot be
 spelled that way, give it an #cmd("asm") label that names the external name
 exactly:
 

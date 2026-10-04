@@ -241,6 +241,25 @@ still have received fewer members than you sent.
 #fig(caption: [Output of the RECEIVE job])[_Output to be captured on MVS._]
 <ug-transfer-receive-out>
 
+=== Receiving with RECV370 <ug-transfer-recv370>
+
+#idx("RECV370")
+A system without a TSO #cmd("RECEIVE") command can install the file with
+RECV370, a batch program that does the same work. RECV370 must be in the
+link list or in a #cmd("STEPLIB") library. @ug-transfer-recv370-jcl
+receives the staging data set into the new library
+#cmd("USER1.SUMUP.LOAD").
+
+#fig(caption: [A job that receives the library with RECV370])[
+  #code(read("../ex/ug-transfer/recv370.jcl"), numbers: true)
+] <ug-transfer-recv370-jcl>
+
+#cmd("XMITIN") names the staging data set, #cmd("SYSUT1") is a work data
+set, and #cmd("SYSUT2") is the library to create. Give #cmd("SYSUT2") space
+and directory blocks, but *no DCB parameter*: the attributes of the library
+come from the file. As with #cmd("RECEIVE"), IEBCOPY reports each member it
+loads with #cmd("IEB154I")\; check the members of the library afterwards.
+
 === Replacing Members of an Existing Library <ug-transfer-replace>
 
 #idx("load library", "updating")
