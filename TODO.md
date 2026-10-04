@@ -158,8 +158,9 @@ as370 order inside it.**
 - #23: freeze the 753 libc370 inputs (29 hand-written + 724 cc370-generated)
   with a manifest, assemble them once by IFOX00 on MVSTK5-REF (their macros as
   a library there), commit the decks.
-- #56: BRX* rows dropped (**done, #763**); TPROT/IPTE get encoders -- their
-  IFOX00 operand format is pinned by an oracle capture first (needs the OK).
+- #56 **done** (#763, #766): BRX* rows dropped; TPROT is SSE, IPTE is S-format
+  (MVSTK5-REF JOB00321 -- not RRE as the issue assumed); an S instruction with
+  a second operand is now IFO211.
 - #686: repair (8-char label, memcpy), confirm once on MVS.
 - #118: decided "refuse below 268", but that would forbid `--recfm f` with
   blocksize 80 (BLKSIZE must equal LRECL); **proposed instead: declare
