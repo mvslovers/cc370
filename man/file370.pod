@@ -78,10 +78,11 @@ object deck's ESD.
 =item B<--json>
 
 The machine-readable form of B<--csects>; implies it. For one file the output is
-one JSON object: C<file>, C<format>, and for a load module C<csects> (each with
-C<esdid>, C<name>, C<type> and, as they apply, C<addr>, C<len>, C<owner>, C<seg>,
-C<typebyte>) and C<count>. A file without a CESD gives C<file> and C<format>
-only. For several files the output is one JSON array of those objects. Strings
+one JSON object: C<file>, C<format>, and for a load module or an object deck
+C<csects> -- the CESD or the ESD, each entry with C<name>, C<type> and, as they
+apply, C<esdid>, C<addr>, C<len>, C<owner>, C<seg>, C<typebyte> -- and C<count>.
+An object deck's LD has no ESDID; its C<owner> is the id of its section. Any other
+file gives C<file> and C<format> only. For several files the output is one JSON array of those objects. Strings
 are JSON-escaped.
 
 =item B<--help>
