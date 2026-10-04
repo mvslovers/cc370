@@ -67,10 +67,10 @@ options end the build earlier, as @cc370-stop-tab shows.
 #cmd("-S") or #cmd("-c") and a single source, #cmd("-o") names the output
 instead.
 
-#note[With #cmd("-c") or #cmd("-S"), give #cmd("-o") only when there is one
-C source. Given several C sources and #cmd("-o"), cc370 compiles them together
-as one unit and writes one output file that contains all of them. Without
-#cmd("-o"), each source gets an output file of its own.]
+With #cmd("-c") or #cmd("-S") and several sources, each source gets an
+output file of its own, and #cmd("-o") cannot be given: cc370 refuses the
+command with #cmd("cannot specify -o with -c or -S and multiple files") and
+return code 1.
 
 === Input Files
 
@@ -116,7 +116,8 @@ them.
   [#cmd("-flinker-output=")#var("type")], [writes a transport file beside
     the load module member: #cmd("xmit") a TSO TRANSMIT file,
     #cmd("iebcopy") an IEBCOPY unloaded data set. See @cc370-output. Any
-    other #var("type") is accepted and writes nothing.],
+    other #var("type") is an error, on every command, also one that does not
+    link.],
   [#cmd("-O")#var("level")], [selects the optimization level\; see
     @cc370-opt.],
   [#cmd("-std=")#var("standard")], [selects the C dialect\; see
@@ -160,6 +161,8 @@ them.
   [#cmd("-print-file-name=")#var("file")], [displays the full name of a
     file of the C library, for example #cmd("crt1.o") or
     #cmd("libc.a").],
+  [#cmd("-print-libgcc-file-name")], [displays the full name of
+    #cmd("libcc370rt.a"), the run-time support library (@cc370-sysroot).],
   [#cmd("-print-search-dirs")], [displays the program and library search
     paths.],
   [#cmd("-print-prog-name=")#var("program")], [displays the full name of
@@ -171,8 +174,8 @@ them.
     commands of the phases.],
   [#cmd("--help")], [displays a summary of the driver options.],
   [#cmd("--target-help")], [displays the target options of
-    @cc370-target. The driver also passes the option to as370, which
-    rejects it, so the command ends with return code 1.],
+    @cc370-target and ends with return code 0. Nothing is compiled or
+    linked, even when files are named.],
   [#cmd("--version")], [displays the version, for example
     #cmd("cc370 1.2.0 (b17cd14), based on GCC 3.4.6").],
   [#var("gcc-option")], [any other option of the GCC 3.4.6 driver and
@@ -472,12 +475,22 @@ extern int write_rec(int) asm("WRITEREC");
 
 #idx("external names", "collisions")
 Two C names that agree in their first eight characters, apart from case,
-get the same external name. When both are defined in one source, cc370
-warns, and as370 then rejects the second definition, as @cc370-errors
-shows. When they are defined in different sources, or one of them is only
-referenced, nothing reports the collision during the compile. Choose names
-that differ in their first eight characters, or give one of them an
-#cmd("asm") label.
+get the same external name. Within one source, cc370 warns about every such
+pair, whether the names are defined or only referenced:
+
+- When both are defined, as370 then rejects the second definition, and the
+  build fails.
+- When one is defined and the other referenced, or both are referenced, the
+  build continues with the warning only. The calls reach whatever ends up
+  with that name: in @cc370-errors, #cmd("codec_stream_encode") calls
+  itself.
+
+cc370 compiles one source at a time and cannot see the names of another.
+When two sources define colliding names, ld370 warns that the name is doubly
+defined, keeps the first definition and ends with return code 0. When one
+source defines a name and another only references a colliding one, nothing
+reports the collision. Choose names that differ in their first eight
+characters, or give one of them an #cmd("asm") label.
 
 #idx("pragma")
 The pragmas #cmd("#pragma map"), #cmd("#pragma linkage"),
@@ -571,26 +584,29 @@ cc370 -O1 -o hello -Wa,-a=hello.lst -Wl,--ac,1 -Wl,--map,hello.map hello.c
 == Return Codes <cc370-rc>
 
 #idx("cc370", "return codes")#idx("return codes")
-cc370 ends with return code 0 when every phase it ran ended with 0, and with
-1 as soon as one did not. A phase that fails ends the build: no later phase
-is run, and the output file of the failing phase is not kept.
+cc370 ends with return code 0 when every phase it ran succeeded, and with 1
+as soon as one failed. A phase that fails ends the build: no later phase is
+run, and the output file of the failing phase is not kept.
+
+#idx("as370", "warnings under cc370")
+as370 succeeds with return code 0 or 4. A warning, return code 4, is shown,
+the object module is kept, and the build continues\; return code 8 and above
+fail the build.
 
 #tab(caption: [cc370 return codes])[
   #table(columns: (0.9in, 1fr),
     [Code], [Meaning],
-    [0], [The build completed. Warnings from cc1 do not change the return
-      code.],
-    [1], [A phase failed: cc1 found an error, as370 ended with a return code
-      other than 0, ld370 found an unresolved reference or another error, or
-      an input file was missing.],
+    [0], [The build completed. Warnings from cc1, as370 and ld370 do not
+      change the return code.],
+    [1], [A phase failed: cc1 found an error, as370 ended with return code 8
+      or higher, ld370 found an unresolved reference or another error, an
+      input file was missing, or the command was refused (for example
+      #cmd("-o") with #cmd("-c") and several sources, or an unknown
+      #cmd("-flinker-output=") type).],
     [#var("rc")], [With #cmd("-pass-exit-codes"), the return code of the
       phase that failed, for example 8 for an as370 error.],
   )
 ] <cc370-rc-tab>
-
-#note[A warning from as370, return code 4, fails the build as well, and the
-object module is not kept. To obtain it, run as370 on the assembler source
-yourself (#cmd("-S"), then as370), and read the warning.]
 
 == Examples <cc370-examples>
 
@@ -605,11 +621,12 @@ The TRANSMIT file names the data set #cmd("IBMUSER.HOST.LOAD"), which is
 ld370's default\; #cmd("-Wl,--dsn,")#var("data-set-name") records another
 one. The member name #cmd("UPCASE") comes from #cmd("-o upcase").
 
-@cc370-errors shows two errors described in this chapter: two external names
-that collide (@cc370-names) and a character that has no image in code page
+@cc370-errors shows three messages described in this chapter: two external
+names defined in one source that collide, a definition that collides with a
+reference (@cc370-names), and a character that has no image in code page
 037 (@cc370-charset).
 
-#fig(caption: [A collision of external names and a character outside
+#fig(caption: [Collisions of external names and a character outside
   Latin-1])[
   #screen(raw(read("../ex/cc370/errors.txt")))
 ] <cc370-errors>

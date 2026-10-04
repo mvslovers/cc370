@@ -52,10 +52,11 @@ each command describes them in full.
 #tab(caption: [Return codes (part 1 of 3)])[
   #table(columns: (0.95in, 0.45in, 1fr),
     [Command], [Code], [Meaning],
-    [cc370], [0], [The build completed. Warnings do not change the code.],
-    [], [1], [A phase failed: cc1 found an error, as370 ended with a code
-      other than 0 (a warning, 4, included), ld370 failed, or an input file
-      is missing. The output of the failing phase is not kept.],
+    [cc370], [0], [The build completed. Warnings, among them an as370
+      return code of 4, do not change the code.],
+    [], [1], [A phase failed: cc1 found an error, as370 ended with 8 or
+      higher, ld370 failed, an input file is missing, or the command was
+      refused. The output of the failing phase is not kept.],
     [], [#mv("rc")], [With #mc("-pass-exit-codes"): the code of the phase
       that failed.],
     [as370], [0], [No statement was flagged.],
@@ -121,7 +122,7 @@ each command describes them in full.
 #idx("cc370", "messages")
 cc370 runs cc1, as370 and ld370 in turn (see @cc370-phases). The messages of
 as370 and ld370 reach the terminal unchanged and are described under those
-commands. cc1 reports a problem in the C source in the form
+commands\; an as370 warning, return code 4, does not end the build. cc1 reports a problem in the C source in the form
 
 #screen[#mv("file")#mc(":")#mv("line")#mc(": error: ")#mv("text") \
 #mv("file")#mc(":")#mv("line")#mc(": warning: ")#mv("text")]
@@ -141,6 +142,18 @@ MVS, and those of the driver itself.
   #mc("cc370: no input files") when it was the only one. Return code 1.
 ][Correct the file name.]
 
+#msg[#mc("cc370: cannot specify -o with -c or -S and multiple files")][
+  #mc("-o") was given with #mc("-c") or #mc("-S") and more than one source.
+  Nothing is compiled. Return code 1.
+][Leave out #mc("-o"), so that each source gets an output file of its own,
+  or compile one source per command.]
+
+#msg[#mc("cc370: -flinker-output= takes xmit or iebcopy, not \"")#mv("type")#mc("\"")][
+  The value of #mc("-flinker-output=") is neither #mc("xmit") nor
+  #mc("iebcopy"). The command is refused before any phase runs, also when it
+  would not link. Return code 1.
+][Write #mc("-flinker-output=xmit") or #mc("-flinker-output=iebcopy").]
+
 #msg[#mc("cc1: error: unrecognized command line option \"")#mv("option")#mc("\"")][
   cc1 does not know the option. An option written #mc("--")#mv("name") is
   shown as #mc("-f")#mv("name"). Return code 1.
@@ -149,9 +162,13 @@ MVS, and those of the driver itself.
 
 #msg[#mv("file")#mc(":")#mv("line")#mc(": warning: external symbol `")#mv("name1")#mc("' collides with `")#mv("name2")#mc("': both map to the MVS name `")#mv("mvsname")#mc("'")][
   Two external names of one source file become the same name of at most
-  eight characters on MVS (see @cc370-names). The compilation continues;
-  as370 then rejects the second definition with IFO196, and the build fails.
-][Rename one of the two objects, or make it #mc("static").]
+  eight characters on MVS (see @cc370-names). The names may be defined or
+  only referenced. The compilation continues. When both are defined, as370
+  then rejects the second definition with IFO196, and the build fails\;
+  otherwise the build completes, and the references reach whatever has that
+  name.
+][Rename one of the two, make it #mc("static"), or give it an #mc("asm")
+  label.]
 
 #msg[#mv("file")#mc(":")#mv("line")#mc(":")#mv("col")#mc(": character U+")#mv("xxxx")#mc(" has no equivalent in the execution character set (ISO-8859-1, mapped to EBCDIC)")][
   A string literal or character constant contains a character above
@@ -627,8 +644,10 @@ code is 0.
 #msg[#mc("ld370: warning: '")#mv("name")#mc("' doubly defined: ")#mv("file")#mc(" defines it again (first definition kept)")][
   An entry point is defined in two object modules, or in a member that
   automatic library call or #mc("--include") brought in (the text then
-  names the member and the library). The first definition is used.
-][Remove one of the definitions.]
+  names the member and the library). The first definition is used. Two C
+  names in different sources that agree in their first eight characters
+  give this message too (see @cc370-names).
+][Remove one of the definitions, or rename one of the C names.]
 
 #msg[#mc("ld370: warning: '")#mv("name")#mc("' resolved from ")#mv("member")#mc(" in ")#mv("lib")#mc("; also defined by ")#mv("member2")#mc(" ...")][
   More than one library member defines #mv("name"). The text ends

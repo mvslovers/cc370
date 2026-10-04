@@ -8,6 +8,18 @@ COUNTER@ EQU   *
  Assembler Done   1 Statement Flagged /   8 was Highest Severity
 $ echo $?
 1
+$ cat codec.c
+extern int codec_stream_decode(int);
+
+int codec_stream_encode(int x)
+{
+    return codec_stream_decode(x);
+}
+$ cc370 -c codec.c
+codec.c: In function `codec_stream_encode':
+codec.c:6: warning: external symbol `codec_stream_encode' collides with `codec_stream_decode': both map to the MVS name `CODEC@ST'
+$ echo $?
+0
 $ cat euro.c
 const char *euro = "€";
 $ cc370 -c euro.c

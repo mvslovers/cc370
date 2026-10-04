@@ -141,7 +141,10 @@ Two names that agree in their first eight characters therefore become the
 same name. @ug-compile-names-fig compiles #cmd("names.c"), which defines
 #cmd("print_header") and #cmd("print_heading"): the compiler warns, and the
 assembler rejects the second definition of #cmd("PRINT@HE"), so the
-compilation fails.
+compilation fails. The compiler also warns when one of the two names, or
+both, are only referenced in the source\; then the compilation succeeds, and
+every call goes to whichever function ends up with the name. Treat the
+warning as an error.
 
 #fig(caption: [Two names that collide, and the same names with asm
   labels])[
@@ -226,10 +229,11 @@ The format warning matters even though #cmd("int") and #cmd("long") have the
 same size on this target: the program would print the right value here,
 and the wrong one when it is compiled for a system on which they differ.
 
-#note[A warning of the assembler, return code 4, also fails the build, and
-the object module is not kept. This happens only with assembler code you
-write yourself, in an #cmd("asm") statement or an assembler source\; see
-@ug-asm.]
+#note[A warning of the assembler, return code 4, is shown and does not fail
+the build. An assembler error, 8 or
+higher, does. Both come only from assembler code you write yourself, in an
+#cmd("asm") statement or an assembler source, or from a collision of
+external names\; see @ug-asm.]
 
 == Headers and the Sysroot <ug-compile-headers>
 

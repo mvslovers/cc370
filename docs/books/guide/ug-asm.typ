@@ -78,10 +78,9 @@ its line number, as in @ug-asm-clock-session below. An object module with an
 error of severity 8 is written, but it is not expected to run: correct the
 source before you link it.
 
-#note[When cc370 runs as370 on the code it generated, any return code
-other than 0 fails the build, a warning (4) included, and the object module
-is not kept. To see the warning, compile with #cmd("-S") and assemble the
-#cmd(".s") file with as370 yourself.]
+#note[When cc370 runs as370, a warning (4) is shown and the build goes on
+with the object module\; return code 8 or higher fails the build, and the
+object module is not kept.]
 
 #idx("listing", "assembler")
 To obtain an assembler listing, add #cmd("-a=")#var("file"). The listing has

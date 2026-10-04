@@ -31,10 +31,9 @@ that says how serious they were.
   code 1. Compile with #cmd("-Wall"), and treat each warning as a question
   about your code.
 - *as370* reports each statement in error with its line number, as in
-  @ug-asm-clock-session. When as370 runs under cc370, every return code
-  other than 0, even the 4 of a warning, fails the build. To see the
-  warning, compile with #cmd("-S") and assemble the #cmd(".s") file with
-  as370 yourself.
+  @ug-asm-clock-session. When as370 runs under cc370, a warning, return
+  code 4, is shown and the build goes on\; return code 8 or higher fails
+  it.
 - *ld370* reports, above all, external references that nothing defines.
   @ug-diag-unres shows the link of SUMUP without the library that holds
   ADDUP and REPORT.
