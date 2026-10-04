@@ -21,6 +21,22 @@ neither number is mistaken for the other.
 ## [Unreleased]
 
 ### Added
+- **as370: `COM`, `DXD`, `CXD` and Q-type constants** (#810, #229). They were
+  the last Assembler XF statements and constant types it lacked: `COM` and
+  `DXD` were undefined operation codes, `CXD` and `DC Q(...)` "not
+  implemented".
+  - `COM` opens a common section (ESD type CM): its own counter from zero, can
+    be resumed, holds no text, and its symbols relocate against it.
+  - `DXD` defines an external dummy section (XD) with the length and alignment
+    of its operands.
+  - `CXD` reserves a fullword that is not punched, with an RLD entry of type 3.
+  - `Q(name)` gives an RLD entry of type 2 against the DXD or DSECT it names;
+    a DSECT named this way becomes an XD. IFO231 is reported for a name not yet
+    defined and IFO207 for one that is neither.
+  - Decks and listings were measured on IFOX00 and are byte-identical up to the
+    END card.
+  - **ld370 does not handle either kind yet:** a common section is placed over
+    the first section (#837), and pseudo registers stay unresolved (#76).
 - **as370: IFO203** (#776), severity 4, for a fixed-point or Y-type constant
   that does not fit its field: `F'2147483648'`, `H'65535'`, `FL1'128'`,
   `Y(32768)`. The signed range of the field decides, A-type is never flagged,

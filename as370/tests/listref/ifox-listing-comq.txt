@@ -1,0 +1,87 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 23.46 10/04/26
+COMQ      SD  0001 000000 000034
+DA        XD  0002 000000 000005
+DB        XD  0003 000007 000010
+DH        XD  0004 000001 000008
+MAP       XD  0005 000007 000007
+CBLK      CM  0006 000000 00000A
+GBLK      CM  0007 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 23.46 10/04/26
+                                      1 * COM, DXD, CXD AND Q CONSTANTS, THE CLEAN CASES (CC370#810).
+000000                                2 MAP      DSECT
+000000                                3 M1       DS    F
+000004                                4 M2       DS    CL3
+000000                                5 COMQ     CSECT
+                            00000     6          USING COMQ,15
+000000 5810 F004      00004           7          L     1,QA
+                                      8 DA       DXD   CL5                     NO ALIGNMENT
+                                      9 DB       DXD   2D                      DOUBLEWORD
+                                     10 DH       DXD   H,F                     TWO OPERANDS
+000004 00000000                      11 QA       DC    Q(DA)
+000008 0000000000000000              12 QB       DC    Q(DB,DH)
+000010 00000000                      13 QS       DC    Q(MAP)                  A DSECT AS A PSEUDO REGISTER
+000014 0000                          14 QL       DC    QL2(DB)
+000016 0000
+000018 00000000                      15          CXD
+00001C 00000000                      16 QLEN     CXD
+000020 0000000000000000              17          DC    A(CF1,CG1,CF2)
+00002C 07FE                          18          BR    14
+000000                               19 CBLK     COM
+000000                               20 CF1      DS    F
+000000                               21 GBLK     COM
+000000                               22 CG1      DS    D
+000004                               23 CBLK     COM                           RESUMED
+000004                               24 CF2      DS    CL6
+00002E                               25 COMQ     CSECT                         RESUMED
+00002E 0000
+000030 00000004                      26          DC    A(M2)
+         *** ERROR ***
+                                     27          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 23.46 10/04/26
+ 0001     0000      3C     000018
+ 0001     0000      3C     00001C
+ 0001     0002      2C     000004
+ 0001     0003      2C     000008
+ 0001     0003      24     000014
+ 0001     0004      2C     00000C
+ 0001     0005      2C     000010
+ 0001     0006      0C     000020
+ 0001     0006      0C     000028
+ 0001     0007      0C     000024
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 23.46 10/04/26
+CBLK     00001 00000000 00019  00023
+CF1      00004 00000000 00020  00017
+CF2      00006 00000004 00024  00017
+CG1      00008 00000000 00022  00017
+COMQ     00001 00000000 00005  00006 00025
+DA       00001 00000000 00008  00011
+DB       00001 00000000 00009  00012 00014
+DH       00001 00000000 00010  00012
+GBLK     00001 00000000 00021
+MAP      00001 00000000 00002  00013
+M1       00004 00000000 00003
+M2       00003 00000004 00004  00026
+QA       00004 00000004 00011  00007
+QB       00004 00000008 00012
+QL       00002 00000014 00014
+QLEN     00004 0000001C 00016
+QS       00004 00000010 00013
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 23.46 10/04/26
+   26  IFO158      NAME OF STATEMENT IN DSECT USED IN RELOCATABLE ADDRESS CONSTANT
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     1
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         27
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         8
+TOTAL RECORDS PRINTED                        87

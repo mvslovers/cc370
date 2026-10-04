@@ -317,9 +317,9 @@ rm -f "$OUT6"
 # one, and a DSECT opened twice. The resumed cases are the point: without them
 # "the section's origin" and "the section's own counter" give the same answer.
 #
-# CM1 is asserted to DIVERGE: as370 has no COM support at all -- no ESD entry,
-# no counter from zero (#229) -- and the three cards after it inherit that. The
-# case fails if it stops diverging, which is how #229 gets its gate for free.
+# CM1 is a COMMON section: its own CM entry and its own counter from zero.
+# The case asserted a divergence there until COM was implemented (#229, #810);
+# it is compared line for line now, like the rest.
 REF7=tests/listref/ifox-listing-orglist.txt
 OUT7=/tmp/as370-listref-og.$$
 ASMDATE=09/07/26 ASMTIME=12.00 ./as370 tests/listref/orglist.s -a="$OUT7" >/dev/null 2>&1
@@ -338,41 +338,17 @@ def norm(lines):
         out.append(l)
     return out
 R, M = norm(ref), norm(mine)
-# Drop the CM1 ESD line from the reference rather than skipping it in place:
-# leaving it in shifts every later line by one, and every comparison after it
-# then reports a difference that is really an alignment artefact.
-cm_esd = [l for l in R if " CM  " in l and not l[40:].startswith("CM1")]
-R = [l for l in R if l not in cm_esd]
-# Everything from the COM statement onward is in #229's shadow: as370 has no
-# COM support, so that section's counter and every counter after it are wrong.
-# Keyed on the source text, not a statement number -- the comment block at the
-# head of the fixture would renumber every case that used one.
-def com_at(lines):
-    for i, l in enumerate(lines):
-        if l[40:].startswith("CM1      COM"): return i
-    return len(lines)
-cut = min(com_at(R), com_at(M))
-ok, seen229 = True, False
-if cm_esd and not any(" CM  " in l and "COM" not in l[40:] for l in M):
-    seen229 = True                              # the missing CM1 ESD entry
+ok = True
 for i in range(max(len(R), len(M))):
     r = R[i] if i < len(R) else "<none>"
     m = M[i] if i < len(M) else "<none>"
-    if any(r.startswith(p) for p in HDR):
-        if r[:90] != m[:90]: ok = False; print(f"DIFF hdr {i}:\n  ref |{r}|\n  mine|{m}|")
-        continue
-    if i >= cut:
-        if r != m: seen229 = True
-        continue
-    if r != m:
+    hdr = any(r.startswith(p) for p in HDR)
+    if (r[:90] != m[:90]) if hdr else (r != m):
         ok = False
         print(f"DIFF line {i}:\n  ref |{r}|\n  mine|{m}|")
-if not seen229:
-    ok = False
-    print("#229 no longer diverges -- COM implemented? update this case")
 sys.exit(0 if ok else 1)
 PYO
-[ $? = 0 ] && echo "listref orglist: ORG/CSECT/DSECT counters column-exact to IFOX00 (COM diverges, #229)" \
+[ $? = 0 ] && echo "listref orglist: ORG/CSECT/DSECT/COM counters column-exact to IFOX00" \
            || { echo "listref orglist: MISMATCH"; fail=1; }
 rm -f "$OUT7"
 
@@ -516,7 +492,7 @@ import re, os, subprocess
 NAMES = """
 absrx absssub absundef absusing actr adcon aifcond aliasext align amp_fold
 amp_selfdef amp_subst attrapos attrapos_remark attrdup attre basereg
-basereg2 bitlen blank_csect blankcont brmnem ccwstar cmprule cnop collate
+basereg2 bitlen blank_csect blankcont brmnem ccwstar cmprule cnop collate comdxd comq
 cont72 contattr contparen contrem contsev csect_resume csect_resume2
 csect_resume3 dcattr dcvals dcvlist droplist dsectpool dupfac emptydc
 emptyopnd endpool endstop entryprobe entsd equfwd equlen equlist eququote
@@ -567,6 +543,31 @@ print("listref source: %d SOURCE pages line for line with IFOX00" % len(NAMES) i
       else "listref source: MISMATCH in %s" % " ".join(bad))
 raise SystemExit(1 if bad else 0)
 PYS
+
+# --- case 11: COM, DXD, CXD and Q, every page up to the diagnostics -- #810 --
+# The XD entry lists its alignment in ADDR, CM its extent; CXD lists 00000000
+# that the deck never punches; Q and CXD are RLD types 2 and 3.
+for T11 in comdxd comq; do
+OUT11=/tmp/as370-listref-q.$$
+ASMDATE=10/04/26 ASMTIME=$(sed -n 's/.* \([0-9][0-9]\.[0-9][0-9]\) 10\/04\/26.*/\1/p' tests/listref/ifox-listing-$T11.txt | head -1) \
+    ./as370 tests/$T11.s -a="$OUT11" -o /dev/null >/dev/null 2>&1
+python3 - tests/listref/ifox-listing-$T11.txt "$OUT11" <<'PYQ'
+import sys
+def norm(p):
+    out = []
+    for l in open(p, encoding="latin-1").read().split("\n"):
+        l = l.replace("\f", "").rstrip()
+        if "DIAGNOSTICS AND STATISTICS" in l: break
+        if not l: continue
+        out.append(l[:90] if ("ASM" in l[90:] or "PAGE" in l[100:]) else l)
+    return out
+R, M = norm(sys.argv[1]), norm(sys.argv[2])
+sys.exit(0 if R == M else 1)
+PYQ
+[ $? = 0 ] && echo "listref $T11: ESD + SOURCE + RLD + XREF column-exact to IFOX00 (COM/DXD/CXD/Q)" \
+           || { echo "listref $T11: MISMATCH"; fail=1; }
+rm -f "$OUT11"
+done
 
 # --- case 8: the cross-reference pages of every reference here -- #538 ------
 # Every listing in this directory was captured with XREF(FULL), so each carries
