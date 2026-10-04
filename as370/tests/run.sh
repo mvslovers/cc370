@@ -4837,5 +4837,24 @@ if [ "$i203rc" = 4 ] && [ "$got" = "$want" ] && [ "$bytes" = ok ]; then
 else echo "ifo203: FAIL -- rc $i203rc; IFOX00 [$want] as370 [$got]; bytes $bytes"; fail=1; fi
 rm -f /tmp/_i203$$.obj /tmp/_i203$$.lst
 
+# --- a local SET symbol shadows a global of the same name ------------------
+# The global list was process-wide: once any context declared GBLA &M, &M was
+# global in every context, and a macro's LCLA &M wrote -- and reset -- the open
+# code's global.  IFNX5M (IFOX00's own instruction processor) calls DBV, whose
+# LCLA &M reset the open code's &M from 3 to 0: the FAR table came out 384
+# bytes short and 44 cards differed, with nothing flagging it (#786).
+# tests/lclscope.s covers the macro local over an open-code global, an
+# open-code local under a macro global, an array, macro-to-macro, and SETC;
+# every DC names its value in the remark.
+# Oracle: MVSTK5-REF JOB00344, tests/ref/lclscope.obj,
+# tests/listref/ifox-listing-lclscope.txt.  Before the fix 5 of the 12 differed.
+./as370 tests/lclscope.s -o /tmp/_ls$$.obj >/tmp/_ls$$.out 2>&1; r=$?
+lsref=tests/ref/lclscope.obj; lsn=$(( ($(wc -c < "$lsref") / 80 - 1) * 80 ))
+head -c "$lsn" /tmp/_ls$$.obj > /tmp/_ls$$a; head -c "$lsn" "$lsref" > /tmp/_ls$$b
+if [ "$r" = 0 ] && [ "$(wc -c < /tmp/_ls$$.obj)" = "$(wc -c < "$lsref")" ] && cmp -s /tmp/_ls$$a /tmp/_ls$$b; then
+    echo "lclscope: OK (LCLx shadows GBLx only in its own context -- deck == IFOX00)"
+else echo "lclscope: FAIL (rc $r, deck vs tests/ref/lclscope.obj)"; fail=1; fi
+rm -f /tmp/_ls$$.obj /tmp/_ls$$.out /tmp/_ls$$a /tmp/_ls$$b
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

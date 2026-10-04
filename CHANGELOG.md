@@ -29,6 +29,11 @@ neither number is mistaken for the other.
   27th, `FE9'3'`, waits for the exponent modifier.
 
 ### Fixed
+- **as370: a macro's LCLx no longer overwrites a global** (#786). A name
+  declared GBLx anywhere was global in every context, so a macro's `LCLA &M`
+  wrote and reset the open code's global `&M`. IFNX5M lost 384 bytes of its
+  opcode table at rc 8; it is now identical to IFOX00, and nothing else in
+  the 5,528-module tree moved.
 - **A fullword constant is emitted signed** (#776). The words of a floating
   constant reached the backend unsigned on a 64-bit host, so the low word of
   `1e32` came out as `DC F'3558193243'`, which IFOX00 flags IFO203 (rc 4).

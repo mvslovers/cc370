@@ -2222,7 +2222,7 @@ static char g_sysect[9] = "";
  * assignment, so presence answers "does this symbol hold a value" and cannot
  * answer "did an LCLx/GBLx ever declare it" -- which is the question IFO006
  * asks, and the reason cc370#97 was invisible from set_find alone. */
-struct setrow { char name[20]; char val[VALSZ]; char (*elem)[VALSZ]; unsigned char *eset; int nelem; int declared; };
+struct setrow { char name[20]; char val[VALSZ]; char (*elem)[VALSZ]; unsigned char *eset; int nelem; int declared; int islcl; };
 /* Local SET symbols per macro context. 256 was too small by a little: IFCEOAK1
  * needs 295, IFCEXXXF 303, IFCSXXXG 288 -- and the ones that reach these numbers
  * only reach them once N'&SYSLIST stops cutting their loops short, so the old
@@ -2331,9 +2331,33 @@ static char *row_elem(struct setrow *r, long idx, int create) {
     if (create) r->eset[idx - 1] = 1;
     return r->elem[idx - 1];
 }
+/* Global in THIS context: declared GBLx somewhere, and not declared LCLx here.
+ * The global list is process-wide, so on its own it made a name global in every
+ * context once any context said GBLx -- and a macro's `LCLA &M' then wrote the
+ * open code's global &M.  DBV's LCLA &M reset IFNX5M's &M from 3 to 0, and the
+ * FAR table came out 384 bytes short with no diagnostic naming it (#786,
+ * tests/lclscope.s). */
+static int is_global_in(struct ctx *c, const char *n) {
+    char b[20]; base_of(n, b);
+    struct setrow *r = row_find(c->sr, c->nset, b);
+    if (r && r->islcl) return 0;
+    return is_global(b);
+}
+/* LCLx: the name is local to context c from here on, whatever another context
+ * declared it as.  The row lives in c's own table. */
+static void lcl_declare(struct ctx *c, const char *n) {
+    char b[20]; base_of(n, b);
+    struct setrow *r = row_find(c->sr, c->nset, b);
+    if (!r) {
+        if (c->nset >= MAXLSET) { fprintf(stderr, "as370: local SET-symbol table full (%d)\n", MAXLSET); exit(2); }
+        r = &c->sr[c->nset]; memset(r, 0, sizeof *r);
+        scopy(r->name, b, 19); c->nset++;
+    }
+    r->islcl = 1;
+}
 static char *set_find(struct ctx *c, const char *n) {
     char b[20]; long idx = set_split(n, b);
-    int g = is_global(n);
+    int g = is_global_in(c, n);
     struct setrow *r = row_find(g ? g_sr : c->sr, g ? g_nset : c->nset, b);
     if (!r) return NULL;
     if (idx < 0) return r->elem ? NULL : r->val;
@@ -2341,7 +2365,7 @@ static char *set_find(struct ctx *c, const char *n) {
 }
 static void set_put(struct ctx *c, const char *n, const char *v) {
     char b[20]; long idx = set_split(n, b);
-    int g = is_global(n);
+    int g = is_global_in(c, n);
     struct setrow *rows = g ? g_sr : c->sr;
     int *pn = g ? &g_nset : &c->nset, cap = g ? MAXGSET : MAXLSET;
     struct setrow *r = row_find(rows, *pn, b);
@@ -2359,7 +2383,7 @@ static void set_put(struct ctx *c, const char *n, const char *v) {
  * cannot separate "declared and empty" from "never declared" (cc370#97). */
 static struct setrow *set_row(struct ctx *c, const char *n) {
     char b[20]; set_split(n, b);
-    int g = is_global(n);
+    int g = is_global_in(c, n);
     return row_find(g ? g_sr : c->sr, g ? g_nset : c->nset, b);
 }
 /* release a context's array element vectors (the rows themselves are inline) */
@@ -4108,9 +4132,9 @@ static int set_stmt(struct ctx *c, const char *lbl, const char *op, const char *
         int isg = (op[0] == 'G'); char fl[24][FLDW]; int nf = split_fields(opnd, fl, 24), j;
         for (j = 0; j < nf; j++) { char *lp = strchr(fl[j], '(');
             if (lp) { if (c->narr < 48) { int b2 = (int)(lp - fl[j]); if (b2 > 19) b2 = 19; memcpy(c->arrb[c->narr], fl[j], b2); c->arrb[c->narr][b2] = 0; c->arrnum[c->narr] = (op[3] != 'C'); c->narr++; }
-                       if (isg) mark_global(fl[j]); }  /* array */
+                       if (isg) mark_global(fl[j]); else lcl_declare(c, fl[j]); }  /* array */
             else if (isg) { mark_global(fl[j]); if (!set_find(c, fl[j])) set_put(c, fl[j], op[3] == 'C' ? "" : "0"); }
-            else set_put(c, fl[j], op[3] == 'C' ? "" : "0");
+            else { lcl_declare(c, fl[j]); set_put(c, fl[j], op[3] == 'C' ? "" : "0"); }
             { struct setrow *dr = set_row(c, fl[j]); if (dr) dr->declared = 1; } }   /* cc370#97 */
         return 1;
     }
