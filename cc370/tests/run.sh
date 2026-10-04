@@ -627,5 +627,40 @@ compile sa "$WORK/sa.c" "-Os -fstrict-aliasing" && grep -qE '^ +LA +15,1\(' "$WO
     { echo "strict-aliasing: FAIL -- an explicit -fstrict-aliasing is no longer honoured"; safail=1; }
 if [ $safail = 0 ]; then echo "strict-aliasing: OK (off at -O2/-Os: *i is reloaded; -fstrict-aliasing still works)"; else fail=1; fi
 
+# --- issue #686: nested functions -- the static chain and the trampoline ----
+# Three defects, one feature.  (1) The static chain arrived in R10, which every
+# prologue reloads with the page table (`L 10,=A(@@PGTn)') before the body
+# copies it out: a nested function read its parent's variables through the
+# wrong address, silently -- the chain is now R0.  (2) The trampoline label
+# was `@@LTRAMP0', nine characters; it is @@LTR0.  (3) Its template was
+# copied with BCOPY, which libc370 lacks (TARGET_MEM_FUNCTIONS never reached
+# MVS) -- now MEMCPY.  And the template began with BALR 14,0, clobbering the
+# caller's return address; it is now based on R15 (5800 F00C ...).
+AS370=$ROOT/as370/as370
+cat > "$WORK/nd.c" <<'EOF'
+volatile int r;
+int outer(int x) { int inner(int y) { return x + y; } return inner(1); }
+EOF
+cat > "$WORK/nt.c" <<'EOF'
+volatile int r;
+int nested(int x) { int inner(int y) { return x + y; } int (*fp)(int) = inner; return fp(1); }
+EOF
+ndfail=0
+if compile nd "$WORK/nd.c" "-O1 -std=gnu99"; then
+    grep -qE '^ +LA +0,' "$WORK/nd.s" || { echo "nested: FAIL -- the caller does not pass the chain in R0"; ndfail=1; }
+    awk '/^@@F1 /,/PDPEPIL/' "$WORK/nd.s" | grep -qE '^ +(ST +0,|LR +[0-9]+,0$)' ||
+        { echo "nested: FAIL -- the nested function does not read the chain from R0"; ndfail=1; }
+else echo "nested: FAIL -- the direct case does not compile"; ndfail=1; fi
+if compile nt "$WORK/nt.c" "-O1 -std=gnu99"; then
+    grep -q '^@@LTR0 ' "$WORK/nt.s" || { echo "nested: FAIL -- no @@LTR0 trampoline label"; ndfail=1; }
+    if grep -q 'LTRAMP\|=V(BCOPY)' "$WORK/nt.s"; then echo "nested: FAIL -- @@LTRAMP0 or BCOPY is back"; ndfail=1; fi
+    grep -q '=V(MEMCPY)' "$WORK/nt.s" || { echo "nested: FAIL -- the template is not copied with MEMCPY"; ndfail=1; }
+    awk '/^@@LTR0 /{f=1;next} f&&n<2{print;n++}' "$WORK/nt.s" | tr -d ' \n' | grep -q "DCX'5800'DCX'F00C'" ||
+        { echo "nested: FAIL -- the template does not start L 0,12(15)"; ndfail=1; }
+    if [ -x "$AS370" ]; then "$AS370" "$WORK/nt.s" -o "$WORK/nt.o" >"$WORK/nt.as" 2>&1 ||
+        { echo "nested: FAIL -- the trampoline case does not assemble: $(head -2 "$WORK/nt.as")"; ndfail=1; }; fi
+else echo "nested: FAIL -- the trampoline case does not compile"; ndfail=1; fi
+if [ $ndfail = 0 ]; then echo "nested: OK (chain in R0; trampoline @@LTR0, R15-based, copied with MEMCPY, assembles)"; else fail=1; fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
