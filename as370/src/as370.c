@@ -4769,11 +4769,25 @@ static void mexp_line(const char *line, char **out, int *nout, int depth) {
     /* MNOTE in open code: the same statement, listed without the '+' that marks
      * a generated card. IFOX00 numbers it and flags it exactly as it does one
      * from a macro body (cc370#39). */
+    /* An open-code MNOTE with a variable symbol is a model statement like any
+     * other: IFOX00 lists the card as written, then the generated statement
+     * with the value and the '+', and the message hangs on the generated one
+     * (MVSTK5-REF JOB00345, tests/dcmod.s statements 32 and 33+; #799).  This
+     * branch runs ahead of the open-code substitution below, so it substitutes
+     * the operand itself.  A macro's model card arrives here substituted. */
     if (op[0] && !strcmp(op, "MNOTE")) {
         char mtext[256], mimg[256]; int mcom = 0, mexp = 0;
-        int msev = mnote_split(opnd, mtext, sizeof mtext, mimg, sizeof mimg, &mcom, &mexp);
+        char msubd[STMTSZ];
+        const char *mopnd = opnd;
+        int mpair = (g_genlevel == 0 || g_copyraw > 0) && has_varsym(line);
+        if (mpair) { msub_ex(opc, opnd, msubd, sizeof msubd, 1); mopnd = msubd; }
+        int msev = mnote_split(mopnd, mtext, sizeof mtext, mimg, sizeof mimg, &mcom, &mexp);
+        if (mpair && *nout + 1 < MAXLINES) {   /* the source card, print-only */
+            lflags[*nout] = LF_NOASM; line_mcall[*nout] = mcall_cur() + 1; gcard[*nout] = NULL; line_org[*nout] = g_curorg;
+            out[*nout] = strdup(line); (*nout)++;
+        }
         if (*nout < MAXLINES) {
-            lflags[*nout] = (unsigned char)(g_genlevel > 0 ? LF_GEN | LF_NOASM : LF_NOASM); line_mcall[*nout] = mcall_cur() + 1;
+            lflags[*nout] = (unsigned char)(g_genlevel > 0 || mpair ? LF_GEN | LF_NOASM : LF_NOASM); line_mcall[*nout] = mcall_cur() + 1;
             gcard[*nout] = msev < 0 ? NULL : strdup(mimg); line_org[*nout] = g_curorg; out[*nout] = strdup(sysbuf);   /* IFO178: listed as written */
             if (msev < 0) note_operr("Syntax error in the MNOTE severity (IFOX00 IFO178)", 8, *nout);
             else note_mnote(msev, mexp, mtext, *nout);

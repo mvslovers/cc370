@@ -4870,6 +4870,14 @@ python3 tests/dcmod_check.py ./as370 fixed fscale fexp || fail=1
 d202=$(./as370 tests/dcmod.s -o /dev/null 2>&1 | grep -oE 'IFO202\) in line [0-9]+' | awk '{print $4}' | tr '\n' ' ')
 if [ "$d202" = "11 " ]; then echo "dcmod IFO202: OK (statement 11 only, as IFOX00)"
 else echo "dcmod IFO202: FAIL -- as370 [$d202], IFOX00 [11]"; fail=1; fi
+# The open-code MNOTE at statement 32 substitutes &X: listed as written, then
+# 33+ with X=ABC, and the message on 33 -- as IFOX00 lists it (#799).
+mn=$(./as370 tests/dcmod.s -a -o /dev/null 2>&1)
+src=$(printf '%s\n' "$mn" | grep -E '^ +32 +MNOTE 1,.X=&X.$' | wc -l | tr -d ' ')
+gen=$(printf '%s\n' "$mn" | grep -E '^ +33\+ +1,X=ABC$' | wc -l | tr -d ' ')
+msg=$(printf '%s\n' "$mn" | grep -c 'MNOTE in line 32 (statement 33) - X=ABC')
+if [ "$src" = 1 ] && [ "$gen" = 1 ] && [ "$msg" = 1 ]; then echo "open-code MNOTE: OK (32 as written, 33+ X=ABC, message on 33 -- as IFOX00)"
+else echo "open-code MNOTE: FAIL -- source $src, generated $gen, message $msg"; fail=1; fi
 # tests/dcscale.s (MVSTK5-REF JOB00347, rc 0) separates the scale rules: round
 # to the normalised precision, then shift and DROP, and IFO202 only when no bit
 # is left -- .123458 -> 012345 and .12345F8 -> 012346, neither flagged.

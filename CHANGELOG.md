@@ -29,6 +29,10 @@ neither number is mistaken for the other.
   27th, `FE9'3'`, waits for the exponent modifier.
 
 ### Fixed
+- **as370: an open-code MNOTE substitutes its variable symbols** (#799).
+  `MNOTE 1,'X=&X'` printed `X=&X`; it is now listed as written, followed by
+  the generated statement `1,X=ABC` with its `+`, and the message is on that
+  one -- as IFOX00 lists it. MNOTEs inside macros were never affected.
 - **as370: floating-point range and modifier limits** (#783). `E'1E76'` was
   silent with a wrapped characteristic; IFOX00 says IFO201 and writes 1.0,
   because a value exponent plus modifier outside -85..75 is taken as zero
