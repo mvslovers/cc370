@@ -248,6 +248,7 @@ and then each control record (#cmd("INMR01"), #cmd("INMR02"),
   [#cmd("INMTNODE")], [the node it is sent to],
   [#cmd("INMTUID")], [the user it is sent to],
   [#cmd("INMFTIME")], [the time it was sent],
+  [#cmd("INMNUMF")], [the number of files in the transmission],
   [#cmd("INMDSORG")], [the data set organization],
   [#cmd("INMRECFM")], [the record format],
   [#cmd("INMLRECL")], [the record length],
@@ -258,7 +259,7 @@ and then each control record (#cmd("INMR01"), #cmd("INMR02"),
 
 Other text units are not shown. #cmd("INMRECFM") is shown by name with its
 value in hexadecimal, for example #cmd("U (X'C002')") for a load library,
-#cmd("F (X'9000')") for a source library, #cmd("VS (X'4802')") for the
+#cmd("FB (X'9000')") for a source library, #cmd("VS (X'4802')") for the
 unloaded data set, and #cmd("VBS, transmission records (X'0001')") in
 #cmd("INMR03"). When the data is an IEBCOPY unloaded data set, it follows
 under #cmd("wrapped image:") in the form of @file370-v-iebcopy, however
