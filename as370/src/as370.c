@@ -5087,6 +5087,16 @@ static long ca_scale_int(int kind, const char *v) {
             snprintf(m, sizeof m, "attribute reference to undefined symbol %.8s (IFOX00 IFO080)", v);   /* sym: at most 8 */
             note_operr(m, 4, g_ca_slot); }
         else if (!sym || styp_find(v)) {   /* defined without a scale, or a self-defining term */
+            /* I' of a SYMBOL walks all of EVALIAT: a defaulted length is IFO120
+             * (IAT17 -- an EQU without a length operand, as for L'), the
+             * defaulted scale IFO123 (IAT18), and the type without an integer
+             * attribute IFO124 (IAT15) -- so `I'CC' of a C constant is IFO123
+             * and IFO124 under IFOX00 (MVSTK5-REF JOB00320).  A self-defining
+             * term goes straight to IAT15, and S' stops at SAT05. */
+            if (kind == 'I' && sym) {
+                if (name_has(equdef, nequdef, v)) note_operr("illegal length attribute reference (IFOX00 IFO120)", 4, g_ca_slot);
+                note_operr("illegal scale attribute reference (IFOX00 IFO123)", 4, g_ca_slot);
+            }
             snprintf(m, sizeof m, "illegal %s attribute reference (IFOX00 %s)", what, kind == 'S' ? "IFO123" : "IFO124");
             note_operr(m, 4, g_ca_slot); }
         return 0;
