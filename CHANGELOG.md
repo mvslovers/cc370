@@ -36,6 +36,18 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **xmit370 checks what it used to take or cut silently** (#804). A derived
+  member name longer than 8 characters was cut (`verylongname.txt` became
+  `VERYLONG`); it is refused with the `--member` hint. `--member` names and
+  `--userid` are upper-cased, and a userid over 8 characters is refused.
+  `--recfm f` takes the record length as block size and refuses another;
+  an impossible `--stats-date` is refused, not normalised; a non-numeric
+  `--tabs`, `--lrecl` or `--blocksize` is refused. `list`/`extract` on a
+  file that is not a transmission say so (rc 1 was silent). `--latin1` on
+  a UTF-8 file warns. An option given to a command it does not belong to is
+  an error, `--help`/`--version` work anywhere, and INMR03's INMRECFM is
+  named -- the same decoding as file370's, which now shows FB (not F) and
+  INMR01's INMNUMF.
 - **ld370 refuses what it used to take silently** (#807). A file that is not
   an object deck linked at rc 0 into an empty member; it is refused with
   rc 1. An unknown option, or an option given last without its value, was

@@ -63,6 +63,11 @@ live only in the directory entry.
 
 =head1 OPTIONS
 
+Each option belongs to one command -- B<-C> to B<extract>, everything from
+B<--dsn> to B<--latin1> to B<create> -- and given to another it is a usage
+error. B<-v>, B<--help> and B<--version> apply anywhere. A numeric value must be
+a whole number.
+
 =over 4
 
 =item B<--dsn> I<name>
@@ -91,7 +96,9 @@ maximum is 19069, the largest block that fits one track as a single record.
 
 =item B<--recfm> B<fb>|B<f>
 
-Record format (default C<fb>).
+Record format (default C<fb>). B<f> is unblocked: the block size is the record
+length, so without B<--blocksize> it becomes B<--lrecl>, and a B<--blocksize>
+that differs from it is refused.
 
 =item B<--stats>, B<--no-stats>
 
@@ -100,20 +107,22 @@ an entry is 42 bytes and the C byte is X'0F'; without, 12 bytes and X'00'.
 
 =item B<--userid> I<name>
 
-Userid recorded in the statistics.  Defaults to the first qualifier of
-B<--dsn>, or to C<$USER>.
+Userid recorded in the statistics, 1-8 characters, upper-cased.  Defaults to
+the first qualifier of B<--dsn> (which B<create> requires).
 
 =item B<--stats-date> I<YYYY-MM-DD>[B<T>I<HH:MM:SS>]
 
 Use one fixed timestamp for every member's statistics instead of each file's
 modification time.  Statistics derived from mtime make the output depend on the
-checkout; pinning the date makes a release artifact byte-reproducible.
+checkout; pinning the date makes a release artifact byte-reproducible.  The
+date must exist (years 1900-2099, the range ISPF's packed date holds) and the
+time be a valid 24-hour time; anything else is refused, not normalised.
 
 =item B<--member> I<name>B<=>I<file>
 
-Add I<file> as member I<name>, bypassing the name derivation.  Repeatable.  A
-name outside the standard character set is accepted with a warning -- real
-libraries do contain them.
+Add I<file> as member I<name>, bypassing the name derivation.  Repeatable.  The
+name is upper-cased and must be 1-8 characters; one outside the standard
+character set is accepted with a warning -- real libraries do contain them.
 
 =item B<--exclude> I<glob>
 
@@ -127,12 +136,21 @@ Expand tabs to I<n> columns (default 8), or treat a tab as an error.
 
 Map bytes E<gt>= 0x80 through CP037 instead of refusing them.  Needed when the
 input came from an EBCDIC dataset and legitimately contains characters outside
-ASCII; not what you want for a UTF-8 file, which B<xmit370> detects and reports
-separately.
+ASCII; not what you want for a UTF-8 file, whose multi-byte characters it maps
+byte by byte.  Without B<--latin1> such a file is refused; with it, a UTF-8 file
+that has non-ASCII characters gets a warning naming it.
 
-=item B<-v>
+=item B<-v>, B<--verbose>
 
 List members as they are packed or extracted.
+
+=item B<-h>, B<--help>
+
+Print the usage and exit.
+
+=item B<-V>, B<--version>
+
+Print the toolchain version and commit, and exit.
 
 =back
 
@@ -154,8 +172,27 @@ from the transmission's own attributes:
 
 =head1 EXIT STATUS
 
-0 on success, 1 if members were rejected or a file could not be read, 2 for a
-usage error.
+=over 4
+
+=item B<0>
+
+Success.
+
+=item B<1>
+
+A member was rejected or a file could not be read: a derived member name that is
+not valid (longer than 8 characters included -- it is never cut), a file that
+cannot be stat'ed or converted, or, for B<list>/B<extract>, a file that cannot
+be read or is not a TSO transmission (it says so).
+
+=item B<2>
+
+A usage error or a refusal of the whole command: an unknown option or command,
+an option given to the wrong command or without its value, a value out of range
+or not a number, a B<--member> name not 1-8 characters, a duplicate member name,
+no members found, or an output that cannot be written.
+
+=back
 
 =head1 SEE ALSO
 
