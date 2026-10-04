@@ -117,7 +117,7 @@ static struct esdent esdord[MAXSYM]; static int nesdord;
  * following by position, the clobbered value shifted the whole first card
  * (cc370#199). */
 
-struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int sect; int defln; int psect; int pline; int stmt; int flagged; };
+struct lit { char text[FLDW]; long loc; long val; int placed; int isV; int isA; int ltseq; char ext[FLDW]; int size; int algn; int dup; int scale; int scaled; int expo; int sect; int defln; int psect; int pline; int stmt; int flagged; };
 /* `pline` is 1 + the lines[] index of the LTORG or END that placed the literal,
  * and `stmt` its statement number in the -a listing: a pool is listed behind the
  * statement that flushed it, so both the SOURCE page and the LITERAL
@@ -659,7 +659,8 @@ static void esd_add(struct sym *s, int role) {
 static int lenalgn(int len) { return (len % 8 == 0) ? 8 : (len % 4 == 0) ? 4 : (len % 2 == 0) ? 2 : 1; }
 /* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
-static long scaled_fixed(const char *t, int scale);   /* fwd: the DC path's own converter */
+static long fixed_nominal(const char *t, int scale, int expo, int *big);   /* fwd: #782 */
+static int fixed_needs_exact(const char *t, int hasscale, int hasexpo);
 static int emit_decimal(const char *txt, int packed, long at, int want, int emit, int diag, int line);   /* fwd: P/Z, the DC path's own */
 /* The quoted body of a literal, without its quotes. emit_decimal() rejects any
  * character that is not a digit or a point -- the closing quote included, with
@@ -755,6 +756,13 @@ static void lit_classify(struct lit *l) {
         if (*sp == '-') { sneg = 1; sp++; } else if (*sp == '+') sp++;
         while (isdigit((unsigned char)*sp)) { scale = scale * 10 + (*sp++ - '0'); sd = 1; }
         if (sd) { if (sneg) scale = -scale; hasscale = 1; p = sp; } else scale = 0; }
+    /* The exponent modifier follows the scale (IFOX00 reads L, S, E in that
+     * order -- ifnx5d STEST/ETEST), as on the DC path (#782). */
+    int expo = 0, hasexpo = 0;
+    if (*p == 'E') { const char *ep = p + 1; int eneg = 0, ed = 0;
+        if (*ep == '-') { eneg = 1; ep++; } else if (*ep == '+') ep++;
+        while (isdigit((unsigned char)*ep)) { expo = expo * 10 + (*ep++ - '0'); ed = 1; }
+        if (ed) { if (eneg) expo = -expo; hasexpo = 1; p = ep; } else expo = 0; }
     l->isV = (ty == 'V'); l->isA = (ty == 'A' || ty == 'V' || ty == 'Y');
     if (ty == 'A' || ty == 'V' || ty == 'Y') {
         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
@@ -774,8 +782,8 @@ static void lit_classify(struct lit *l) {
         char vv[64][FLDW]; int nv = split_fields(body, vv, 64);
         int per = haslen ? len : (ty == 'F' ? 4 : 2);
         if (nv < 1) { nv = 1; vv[0][0] = 0; }
-        l->scale = scale; l->scaled = hasscale;
-        l->val = vv[0][0] ? (hasscale ? scaled_fixed(vv[0], scale) : strtol(vv[0], NULL, 10)) : 0;
+        l->scale = scale; l->scaled = hasscale || hasexpo; l->expo = expo;
+        l->val = vv[0][0] ? (fixed_needs_exact(vv[0], hasscale, hasexpo) ? fixed_nominal(vv[0], scale, expo, NULL) : strtol(vv[0], NULL, 10)) : 0;
         l->size = per * nv; l->algn = haslen ? 1 : (ty == 'F' ? 4 : 2);
     /* Floating point carries no integer value: emit_lit converts the nominal
      * value itself. DCTABLE's default lengths are E 4 / D 8 / L 16, L doubleword
@@ -874,32 +882,6 @@ static struct lit *lit_get(const char *t) {
  *   non-bit operand interrupts it or the statement ends; every statement starts
  *   on a byte boundary. `DC AL.3(5)' is A0, `DC AL.12(1),AL2(3)' is 0010 0003,
  *   and `DC 3AL.4(1)' is 1110. */
-/* A nominal fixed-point value with a SCALE modifier: the value multiplied by
- * two to the power of the scale, rounded to nearest.
- *
- * `DC FS3'1.25'' is 1.25 x 8 = 10, and `DC FS28'6.2832'' -- the FORTRAN-syntax
- * scientific routines' definition of two pi -- is x'6487FCB9'. as370 read the
- * nominal value with strtol, which stops at the decimal point and knows nothing
- * of the modifier, so it stored 1 and 6 (cc370#217).
- *
- * Rounding is to NEAREST and away from zero, measured on ten values chosen to
- * separate it from truncation: `FS2'1.2'' is 4.8 and IFOX00 writes 5.
- *
- * Only reached when a scale modifier is present. Without one the integer path
- * is untouched, which is the property the tree gate should show and does. */
-static long scaled_fixed(const char *t, int scale) {
-    /* No <math.h>: pow() and floor() would want -lm on the CI's Linux leg while
-     * linking silently on this host, which is the portability trap this project
-     * keeps meeting from the other side. Doubling in a loop and truncating
-     * toward zero after a half-step gives the same answer for every value the
-     * oracle was asked. */
-    double f = 1.0; int k;
-    while (*t == ' ') t++;
-    if (scale >= 0) { for (k = 0; k < scale && k < 64; k++) f *= 2.0; }
-    else            { for (k = 0; k < -scale && k < 64; k++) f /= 2.0; }
-    double d = strtod(t, NULL) * f;
-    return (long)(d >= 0 ? d + 0.5 : d - 0.5);
-}
 /* IFO203, severity 4: a fixed-point or Y-type constant whose value does not
  * fit its field.  The low-order bytes are kept -- put() already does that --
  * and only the message is new (#776).  Measured on IFOX00 (MVSTK5-REF
@@ -917,6 +899,55 @@ static void note_trunc203(long v, int blen, int line) {
     long hi = (1L << (8 * blen - 1)) - 1;
     if (v < lo || v > hi)
         note_operr("L, D, E, F, H, or Y-type constant truncated, high order digits lost (IFOX00 IFO203)", 4, line);
+}
+/* A fixed-point nominal value that is not a plain integer: a decimal point, an
+ * exponent in the value (F'1E2'), a scale modifier or an exponent modifier.
+ * A plain integer keeps strtol, which is what every such constant used. */
+static int fixed_needs_exact(const char *t, int hasscale, int hasexpo) {
+    return hasscale || hasexpo || strpbrk(t, ".Ee") != NULL;
+}
+/* value = mantissa x 10**(exponent in the value + exponent modifier) x 2**scale,
+ * rounded to nearest and away from zero, in exact integer arithmetic (#782).
+ * Measured on IFOX00 (MVSTK5-REF JOB00345, tests/dcmod.s): FE-1'15' is 2,
+ * FE-1'-15' is -2, FE-1'25' is 3 -- half away from zero, not to even;
+ * FS4E-1'25' is 40 -- the exponent applies first, then the scale; FE1'1E2' is
+ * 1000 -- the value's own exponent adds to the modifier; FE10'1' keeps the
+ * low-order bits of 1E10 (540BE400) and is IFO203.  *big is set when the
+ * magnitude is not representable, so the caller can flag the truncation; the
+ * low-order bits are exact whenever no division is involved.
+ *
+ * It replaces a double converter that served the scale modifier alone (#217):
+ * FS3'1.25' is 10, FS28'6.2832' -- the FORTRAN scientific routines' two pi --
+ * is X'6487FCB9', and FS2'1.2' is 4.8, which IFOX00 writes as 5.  Exact
+ * arithmetic gives all three, and no rounding of a double can move them. */
+static long fixed_nominal(const char *t, int scale, int expo, int *big) {
+    typedef unsigned __int128 u128;
+    u128 num = 0, den = 1; int neg = 0, ovf = 0, dig = 0, frac = 0, infrac = 0, nexp = 0;
+    const u128 lim = ((u128)1 << 120);
+    while (*t == ' ') t++;
+    if (*t == '-') { neg = 1; t++; } else if (*t == '+') t++;
+    for (;; t++) {
+        if (*t == '.' && !infrac) { infrac = 1; continue; }
+        if (!isdigit((unsigned char)*t)) break;
+        if (num < lim / 10) { num = num * 10 + (u128)(*t - '0'); if (infrac) frac++; }
+        else if (!infrac) dig++;                 /* digits past the precision: scale by ten instead */
+    }
+    if (*t == 'E' || *t == 'e') { int en = 0, sg = 0; t++;
+        if (*t == '-') { sg = 1; t++; } else if (*t == '+') t++;
+        while (isdigit((unsigned char)*t)) { if (en < 100000) en = en * 10 + (*t - '0'); t++; }
+        nexp = sg ? -en : en; }
+    long e10 = (long)nexp + expo - frac + dig;
+    long k;
+    if (e10 >= 0) { for (k = 0; k < e10; k++) { if (num > lim / 10) ovf = 1; num *= 10; } }
+    else { for (k = 0; k < -e10; k++) { if (den > lim / 10) { num = 0; den = 1; break; } den *= 10; } }
+    if (scale >= 0) { for (k = 0; k < scale; k++) { if (num > lim) ovf = 1; num <<= 1; } }
+    else { for (k = 0; k < -scale; k++) { if (den > lim) { num = 0; den = 1; break; } den <<= 1; } }
+    u128 q = num / den, r = num % den;
+    if (den > 1 && r >= den - r) q++;            /* half away from zero */
+    if (q > (u128)LONG_MAX) ovf = 1;
+    if (big) *big = ovf;
+    unsigned long lo = (unsigned long)q;
+    return neg ? (long)(0UL - lo) : (long)lo;
 }
 static void bits_put(unsigned char *buf, int bufsz, int *nbits, unsigned long v, int n) {
     int k;
@@ -5915,7 +5946,7 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
         if (nv < 1) { nv = 1; vv[0][0] = 0; }
         { int per = size / nv; if (per < 1) per = 1;
           for (vi = 0; vi < nv; vi++) {
-              long v = vv[vi][0] ? (l->scaled ? scaled_fixed(vv[vi], l->scale) : strtol(vv[vi], NULL, 10)) : 0;
+              long v = vv[vi][0] ? (fixed_needs_exact(vv[vi], l->scaled, 0) ? fixed_nominal(vv[vi], l->scale, l->expo, NULL) : strtol(vv[vi], NULL, 10)) : 0;
               put(loc + (long)vi * per, v, per); } }
     } else if (ty == 'X') {
         const char *q = strchr(p, '\''); unsigned char by[256]; int nb = q ? hex_to_bytes(q + 1, by, 256) : 0;
@@ -7271,6 +7302,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                     while (isdigit((unsigned char)*p)) scale = scale * 10 + (*p++ - '0');
                     if (sneg2) scale = -scale;
                     hasscale = 1; }
+                /* The exponent modifier En, after the scale: IFOX00 reads L, S,
+                 * E in that order (ifnx5d STEST, then ETEST).  It was never
+                 * read, so the first apostrophe search skipped it and FE9'2'
+                 * assembled as 2 (#782).  Only a sign or a digit after the E
+                 * makes it a modifier. */
+                int expo = 0, hasexpo = 0;
+                if (*p == 'E' && (isdigit((unsigned char)p[1]) || ((p[1] == '-' || p[1] == '+') && isdigit((unsigned char)p[2])))) {
+                    p++; int eneg = 0;
+                    if (*p == '-') { eneg = 1; p++; } else if (*p == '+') p++;
+                    while (isdigit((unsigned char)*p)) expo = expo * 10 + (*p++ - '0');
+                    if (eneg) expo = -expo;
+                    hasexpo = 1; }
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
                 int emptyval = !strcmp(op, "DC") ? dc_value_empty(p) : 0;
                 if (emptyval) {
@@ -7524,8 +7567,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                             static char fv[512][FLDW]; int nv = split_fields(body, fv, 512), vi;
                             if (nv < 1) { nv = 1; fv[0][0] = 0; }
                             for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
-                                val = fv[vi][0] ? (hasscale ? scaled_fixed(fv[vi], scale) : strtol(fv[vi], NULL, 10)) : 0;
-                                if (emit_dc && k == 0 && !in_dsect) note_trunc203(val, blen, i);
+                                int big = 0;
+                                val = fv[vi][0] ? (fixed_needs_exact(fv[vi], hasscale, hasexpo) ? fixed_nominal(fv[vi], scale, expo, &big) : strtol(fv[vi], NULL, 10)) : 0;
+                                if (emit_dc && k == 0 && !in_dsect) note_trunc203(big ? LONG_MAX : val, blen, i);
                                 if (emit_dc) put(lc, val, blen);
                                 lc += blen;
                             }
