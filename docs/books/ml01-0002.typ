@@ -16,7 +16,7 @@
     entered here when that release is made.
 
     *Draft.* This book is in preparation and describes the toolchain as it is
-    being developed. It is published with the release named above.
+    being developed. It is published together with that release.
 
     Comments on this book may be addressed to the issue tracker of
     the mvslovers/cc370 repository on GitHub.
