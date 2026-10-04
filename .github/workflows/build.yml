@@ -108,6 +108,9 @@ jobs:
       - name: xmit370 suite
         run: make test-xmit370
 
+      - name: ar370 suite
+        run: make test-ar370
+
   # A second GCC version, pinned, for the -Werror surface only.  The suites
   # are already covered above and are compiler-independent, so this builds
   # the tools and stops -- it is a diagnostic gate, not a second test run.

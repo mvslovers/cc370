@@ -36,6 +36,16 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **ar370 no longer drops or cuts anything silently** (#805). More than 2048
+  objects or 16384 symbols were dropped at rc 0; they have no limit now. A
+  member name longer than 15 characters was cut to 16 bytes; it goes into a
+  GNU `//` long-name member, which ld370 already reads, and a name longer
+  than 63 characters is refused. Only object decks are stored -- a source
+  file or an archive given as input is an error. The operation is matched
+  whole (`ar370 --version x` created an empty archive `x`); `--help`/`-h`
+  and `-V` are new. `t` lists member names without the trailing `/` and
+  names the member behind every symbol. `rc` replaces an existing archive;
+  the manual now says so.
 - **as370: an open-code MNOTE substitutes its variable symbols** (#799).
   `MNOTE 1,'X=&X'` printed `X=&X`; it is now listed as written, followed by
   the generated statement `1,X=ABC` with its `+`, and the message is on that
