@@ -1,8 +1,8 @@
-* cc370#258: S' and I' in conditional assembly. FS (3, 28) is the
-* case measured under IFOX00 in the issue; the others follow IFNX2A
-* DCSCAN and IFNX3A EVALSAT/EVALIAT: H 0/15, DS2 2/12, LL10 0/16,
-* P'123.45' 2/3, PL4'1.5' 1/6, Z'-12.3' 1/2. C has neither attribute
-* (IFO123 and IFO124), NODEF is undefined (IFO080 twice), all sev 4.
+* cc370#258: S' and I' in conditional assembly.
+* IFOX00 values, MVSTK5-REF JOB00320: FS 3/28, H 0/15, DS2 2/12,
+* LL10 0/16, P'123.45' 2/3, PL4'1.5' 1/6, Z'-12.3' 1/2. C has neither
+* attribute: IFO123 for S', IFO123 and IFO124 for I'. NODEF is
+* undefined: IFO080 for each. All severity 4.
          MACRO
          QS    &P
          LCLA  &A,&B

@@ -3377,15 +3377,15 @@ fi
 rm -rf "$h85"
 
 # ---------------------------------------------------------------- scaleint --
-# cc370#258: S' and I' were 0 for every symbol. See tests/scaleint.s for the
-# rules and which value is measured; the binary before gave AL1(0),AL1(0)
-# throughout and no diagnostic.
+# cc370#258: S' and I' were 0 for every symbol. Every value and message in
+# tests/scaleint.s is IFOX00's (MVSTK5-REF JOB00320); the binary before gave
+# AL1(0),AL1(0) throughout and no diagnostic.
 ./as370 tests/scaleint.s -a -o /dev/null >/tmp/_si$$.out 2>&1; r=$?
 si_bad=""
 for v in "3),AL1(28" "0),AL1(15" "2),AL1(12" "0),AL1(16" "2),AL1(3" "1),AL1(6" "1),AL1(2"; do
     grep -q "DC    AL1($v)" /tmp/_si$$.out || si_bad="$si_bad AL1($v)"
 done
-[ "$(grep -c 'WARNING.*IFO123' /tmp/_si$$.out)" = 1 ] || si_bad="$si_bad IFO123"
+[ "$(grep -c 'WARNING.*IFO123' /tmp/_si$$.out)" = 2 ] || si_bad="$si_bad IFO123x2"
 [ "$(grep -c 'WARNING.*IFO124' /tmp/_si$$.out)" = 1 ] || si_bad="$si_bad IFO124"
 [ "$(grep -c 'WARNING.*IFO080' /tmp/_si$$.out)" = 2 ] || si_bad="$si_bad IFO080x2"
 if [ "$r" = 4 ] && [ -z "$si_bad" ]; then
