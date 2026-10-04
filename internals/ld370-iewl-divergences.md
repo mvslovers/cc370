@@ -78,8 +78,8 @@ Two lessons from PM-2026-002 (`knowledge/postmortems/`), worth restating:
 
 Full write-ups: `knowledge/postmortems/PM-2026-002-ld370-text-truncation.md`,
 `internals/multitext-fetch-truncation.md`,
-`rexx370/docs/toolchain-ld370-ld-symbol-resolution.md`,
-`rexx370/docs/toolchain-ld370-pack-directory-overflow.md`.
+`rexx370/internals/toolchain-ld370-ld-symbol-resolution.md`,
+`rexx370/internals/toolchain-ld370-pack-directory-overflow.md`.
 
 ---
 
