@@ -793,6 +793,7 @@ static void lit_classify(struct lit *l) {
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {
         int base = (ty == 'E') ? 4 : (ty == 'D') ? 8 : 16;
         l->size = haslen ? len : base; l->algn = haslen ? 1 : (base == 16 ? 8 : base);
+        l->scale = scale; l->scaled = hasscale; l->expo = expo;   /* #761 */
     /* P and Z had no arm at all, so a packed or zoned literal fell into the
      * default below and reserved FOUR bytes: `=P'0'' is one byte, X'0C'. That
      * is not only three bytes too many -- the pool is segmented by the alignment
@@ -5840,63 +5841,158 @@ static unsigned long long bn_divmod(const struct bn *N, const struct bn *D, stru
     }
     *Rr = R; return Q;
 }
-static void emit_float(long at, const char *vstr, int bytes) {
-    const char *p = vstr; int sign = 0;
+/* An IBM hex float being built: the sign, the excess-64 characteristic, and the
+ * fraction -- F for the high half (fracbits wide), G for the low half of an
+ * extended constant (lofrac wide, 0 otherwise).  hb/lb are the halves' byte
+ * lengths.  emit_float() runs the stages below over one of these. */
+struct hfp {
+    int sign;                  /* 1 for a negative constant */
+    int exp;                   /* characteristic, excess 64 */
+    int ext;                   /* extended precision: two halves */
+    int hb;                    /* bytes in the high half */
+    int lb;                    /* bytes in the low half, 0 if not extended */
+    int fracbits;              /* fraction bits in the high half */
+    int lofrac;                /* fraction bits in the low half */
+    unsigned long long F;      /* high fraction */
+    unsigned long long G;      /* low fraction */
+};
+
+/* The nominal value as an exact decimal: digits into M, the count after the
+ * point into *nfrac, the value's own exponent into *eexp.  Returns the sign. */
+static int hfp_parse(const char *p, struct bn *M, int *nfrac, int *eexp) {
+    int sign = 0;
+    int seenpoint = 0;
+    int es = 1;
     if (*p == '+') p++; else if (*p == '-') { sign = 1; p++; }
-    struct bn M; bn_set(&M, 0); int nfrac = 0, seenpoint = 0;
-    for (; *p && *p != '\'' && *p != ' '; p++) {
+    bn_set(M, 0); *nfrac = 0; *eexp = 0;
+    for (; *p && *p != '\'' && *p != ' ' && *p != 'e' && *p != 'E'; p++) {
         if (*p == '.') { seenpoint = 1; continue; }
-        if (*p == 'e' || *p == 'E') break;
-        if (*p >= '0' && *p <= '9') { bn_mul_small(&M, 10); bn_add_small(&M, *p - '0'); if (seenpoint) nfrac++; }
+        if (*p < '0' || *p > '9') continue;
+        bn_mul_small(M, 10); bn_add_small(M, *p - '0');
+        if (seenpoint) (*nfrac)++;
     }
-    int eexp = 0;
-    if (*p == 'e' || *p == 'E') { p++; int es = 1; if (*p == '+') p++; else if (*p == '-') { es = -1; p++; } while (*p >= '0' && *p <= '9') { eexp = eexp * 10 + (*p++ - '0'); } eexp *= es; }
-    if (M.n == 0) { int j; for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero -- and a signed zero is still all zeros (measured: D'-0') */
-    /* Extended precision (L, 16 bytes) is two long floats: the high half is an
-     * ordinary one, the low half repeats the sign with an exponent 14 LESS -- the
-     * fourteen hex digits the high fraction holds -- and continues the same
-     * fraction. So the 112-bit fraction is developed in one piece and rounded
-     * once, at its end, not half by half. Measured against IFOX00:
-     *   L'1.5'   4118000000000000 3300000000000000
-     *   L'-1.5'  C118000000000000 B300000000000000   sign in both halves
-     *   L'0.1'   4019999999999999 329999999999999A   rounded at bit 112 */
-    int ext = (bytes > 8), hb = ext ? 8 : bytes, lb = ext ? bytes - 8 : 0;
-    int fracbits = (hb - 1) * 8; if (fracbits > 56) fracbits = 56;
-    int lofrac = ext ? (lb - 1) * 8 : 0; if (lofrac > 56) lofrac = 56;
-    int P = eexp - nfrac, k;                 /* value = M * 10^P */
-    struct bn num = M, den; bn_set(&den, 1);
+    if (*p != 'e' && *p != 'E') return sign;
+    p++;
+    if (*p == '+') p++; else if (*p == '-') { es = -1; p++; }
+    while (*p >= '0' && *p <= '9') *eexp = *eexp * 10 + (*p++ - '0');
+    *eexp *= es;
+    return sign;
+}
+
+/* M x 10**P into h: normalised to [1/16, 1) and rounded half up once, at the end
+ * of the whole fraction.  Extended precision (L, 16 bytes) is two long floats:
+ * the high half is an ordinary one, the low half repeats the sign with an
+ * exponent 14 LESS -- the fourteen hex digits the high fraction holds -- and
+ * continues the same fraction.  So the 112-bit fraction is developed in one
+ * piece and rounded once, at its end, not half by half.  Measured against
+ * IFOX00:
+ *   L'1.5'   4118000000000000 3300000000000000
+ *   L'-1.5'  C118000000000000 B300000000000000   sign in both halves
+ *   L'0.1'   4019999999999999 329999999999999A   rounded at bit 112 */
+static void hfp_convert(const struct bn *M, int P, struct hfp *h) {
+    struct bn num = *M;
+    struct bn den;
+    struct bn N;
+    struct bn R;
+    int k;
+    bn_set(&den, 1);
     if (P >= 0) for (k = 0; k < P; k++) bn_mul_small(&num, 10);
     else for (k = 0; k < -P; k++) bn_mul_small(&den, 10);
-    int exp = 64;                            /* normalise num/den into [1/16, 1) */
-    while (bn_cmp(&num, &den) >= 0) { bn_mul_small(&den, 16); exp++; }
-    for (;;) { struct bn t = num; bn_mul_small(&t, 16); if (bn_cmp(&t, &den) < 0) { num = t; exp--; } else break; }
-    struct bn N = num; bn_shl(&N, fracbits);  /* F = round(num * 2^fracbits / den) */
-    struct bn R; unsigned long long F = bn_divmod(&N, &den, &R);
-    unsigned long long G = 0;
-    if (ext) {                                /* the low half continues the fraction: G = round(R * 2^lofrac / den) */
-        struct bn N2 = R; bn_shl(&N2, lofrac);
-        struct bn R2; G = bn_divmod(&N2, &den, &R2);   /* R < den, so the quotient stays below 2^lofrac <= 2^56 */
-        bn_mul_small(&R2, 2); if (bn_cmp(&R2, &den) >= 0) G++;   /* round half up, once, at bit 112 */
-        if (lofrac < 64 && (G >> lofrac)) { G = 0; F++; }        /* the low half rounded up into the high one */
+    h->exp = 64;                             /* normalise num/den into [1/16, 1) */
+    while (bn_cmp(&num, &den) >= 0) { bn_mul_small(&den, 16); h->exp++; }
+    for (;;) {
+        struct bn t = num;
+        bn_mul_small(&t, 16);
+        if (bn_cmp(&t, &den) >= 0) break;
+        num = t; h->exp--;
+    }
+    N = num; bn_shl(&N, h->fracbits);        /* F = round(num * 2^fracbits / den) */
+    h->F = bn_divmod(&N, &den, &R);
+    h->G = 0;
+    if (h->ext) {                            /* the low half continues the fraction: G = round(R * 2^lofrac / den) */
+        struct bn N2 = R;
+        struct bn R2;
+        bn_shl(&N2, h->lofrac);
+        h->G = bn_divmod(&N2, &den, &R2);    /* R < den, so the quotient stays below 2^lofrac <= 2^56 */
+        bn_mul_small(&R2, 2);
+        if (bn_cmp(&R2, &den) >= 0) h->G++;  /* round half up, once, at bit 112 */
+        if (h->lofrac < 64 && (h->G >> h->lofrac)) { h->G = 0; h->F++; }   /* the low half rounded up into the high one */
     } else {
-        bn_mul_small(&R, 2); if (bn_cmp(&R, &den) >= 0) F++;    /* round half up */
+        bn_mul_small(&R, 2);
+        if (bn_cmp(&R, &den) >= 0) h->F++;   /* round half up */
     }
-    if (fracbits < 64 && (F >> fracbits)) {                     /* rounded up to 1.0 -> renormalise */
-        unsigned long long carry = F & 0xf;
-        F >>= 4;
-        if (ext && lofrac >= 4) G = (G >> 4) | (carry << (lofrac - 4));
-        exp++;
+    if (h->fracbits < 64 && (h->F >> h->fracbits)) {   /* rounded up to 1.0 -> renormalise */
+        unsigned long long carry = h->F & 0xf;
+        h->F >>= 4;
+        if (h->ext && h->lofrac >= 4) h->G = (h->G >> 4) | (carry << (h->lofrac - 4));
+        h->exp++;
     }
-    /* The exponent is excess-64 in seven bits and is NOT range-checked: a value
-     * needing an exponent outside 0..127 wraps silently, as it did before. IFOX00
-     * flags it; as370 does not (see #53). */
+}
+
+/* The scale modifier (#761): the fraction is shifted right SCALE hex digits
+ * and the characteristic raised by as many, so the value is unchanged and the
+ * constant unnormalised.  The fraction is rounded at its normalised precision
+ * first (hfp_convert), and the digits shifted out are then dropped, not
+ * rounded.  IFO202 (severity 8) only when the shift leaves NO bit of the
+ * fraction: ifnx5f tests the shifted result for zero ("ZERO IF SHIFTED OUT ALL
+ * BITS"), not the bits it lost.  Measured on IFOX00 (MVSTK5-REF JOB00345,
+ * tests/dcmod.s): ES1'1.5' 42018000, ES2'1.5' 43001800, DS2'1.5'
+ * 4300180000000000, LS2'1.5' 43001800... with the low half's characteristic 14
+ * below the high one (35000000...), EL3S1'1.5' 420180, ES1'-1.5' C2018000,
+ * ES6'1.5' 47000000 with IFO202; and JOB00347, tests/dcscale.s, which separates
+ * the rules: .123458 shifted one digit is 012345 (dropped, not rounded),
+ * .12345F8 is 012346 (rounded to six digits before the shift), and neither is
+ * IFO202 although both lose a digit. */
+static void hfp_scale(struct hfp *h, int scale, int line) {
+    typedef unsigned __int128 u128;
+    int tot = h->fracbits + h->lofrac;
+    int sh = 4 * scale;
+    u128 c = ((u128)h->F << h->lofrac) | (u128)h->G;
+    u128 lost;
+    if (sh >= tot) { lost = c; c = 0; }
+    else { lost = c & (((u128)1 << sh) - 1); c >>= sh; }
+    if (lost && c == 0 && g_pass == 2)
+        note_operr("Arithmetic precision of floating-point constant lost (IFOX00 IFO202)", 8, line);
+    h->F = (unsigned long long)(c >> h->lofrac);
+    h->G = h->lofrac ? (unsigned long long)(c & (((u128)1 << h->lofrac) - 1)) : 0;
+    h->exp += scale;
+}
+
+/* The exponent is excess-64 in seven bits and is NOT range-checked: a value
+ * needing an exponent outside 0..127 wraps silently, as it did before. IFOX00
+ * flags it; as370 does not (see #53). */
+static void hfp_put(long at, const struct hfp *h) {
     int i;
-    put(at, (long)((sign ? 0x80 : 0) | (exp & 0x7f)), 1);
-    for (i = 1; i < hb; i++) put(at + i, (long)((F >> (8 * (hb - 1 - i))) & 0xff), 1);   /* ascending byte order: same values, but the TXT emission log stays address-monotonic */
-    if (ext) {
-        put(at + hb, (long)((sign ? 0x80 : 0) | ((exp - 14) & 0x7f)), 1);   /* exp AFTER any renormalisation */
-        for (i = 1; i < lb; i++) put(at + hb + i, (long)((G >> (8 * (lb - 1 - i))) & 0xff), 1);
+    put(at, (long)((h->sign ? 0x80 : 0) | (h->exp & 0x7f)), 1);
+    for (i = 1; i < h->hb; i++) put(at + i, (long)((h->F >> (8 * (h->hb - 1 - i))) & 0xff), 1);   /* ascending byte order: same values, but the TXT emission log stays address-monotonic */
+    if (!h->ext) return;
+    put(at + h->hb, (long)((h->sign ? 0x80 : 0) | ((h->exp - 14) & 0x7f)), 1);   /* exp AFTER any renormalisation */
+    for (i = 1; i < h->lb; i++) put(at + h->hb + i, (long)((h->G >> (8 * (h->lb - 1 - i))) & 0xff), 1);
+}
+
+/* SCALE and EXPO are the constant's modifiers (#761): EXPO adds to the value's
+ * own exponent, SCALE unnormalises the result by that many hex digits.  LINE is
+ * the statement a precision loss is charged to. */
+static void emit_float(long at, const char *vstr, int bytes, int scale, int expo, int line) {
+    struct bn M;
+    struct hfp h;
+    int nfrac;
+    int eexp;
+    h.sign = hfp_parse(vstr, &M, &nfrac, &eexp);
+    if (M.n == 0) {            /* true zero -- and a signed zero is still all zeros (measured: D'-0') */
+        for (int j = 0; j < bytes; j++) put(at + j, 0, 1);
+        return;
     }
+    h.ext = (bytes > 8);
+    h.hb = h.ext ? 8 : bytes;
+    h.lb = h.ext ? bytes - 8 : 0;
+    h.fracbits = (h.hb - 1) * 8;
+    if (h.fracbits > 56) h.fracbits = 56;
+    h.lofrac = h.ext ? (h.lb - 1) * 8 : 0;
+    if (h.lofrac > 56) h.lofrac = 56;
+    hfp_convert(&M, eexp + expo - nfrac, &h);   /* value = M * 10^(eexp + expo - nfrac) */
+    if (scale > 0) hfp_scale(&h, scale, line);
+    hfp_put(at, &h);
 }
 /* one copy's width: the size a single nominal value occupies, which is what the
  * per-type emitters below are written against. */
@@ -5929,7 +6025,7 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
          * the integer route and assembled as 0000000000000002 and 00000000 where
          * IFOX00 says 4120000000000000 and 41100000 (#53). */
         const char *q = strchr(p, '\'');
-        if (q) emit_float(loc, q + 1, size);
+        if (q) emit_float(loc, q + 1, size, l->scaled ? l->scale : 0, l->expo, l->defln);
         else { int j; for (j = 0; j < size; j++) put(loc + j, 0, 1); }
     } else if (ty == 'P' || ty == 'Z') {
         char body[VALSZ]; lit_body(p, body, sizeof body);
@@ -7395,7 +7491,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         static char fvals[512][FLDW]; int nv = split_fields(body, fvals, 512), vi;
                         if (nv < 1) { nv = 1; fvals[0][0] = 0; }
                         for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
-                            if (emit_dc) emit_float(lc, fvals[vi], flen);
+                            if (emit_dc) emit_float(lc, fvals[vi], flen, hasscale ? scale : 0, expo, i);
                             lc += flen;
                         }
                     }

@@ -4862,7 +4862,22 @@ rm -f /tmp/_ls$$.obj /tmp/_ls$$.out /tmp/_ls$$a /tmp/_ls$$b
 # regions are checked as each issue lands; dcmod_check.py names the region.
 #   fixed  X'34'-X'67'  F/H with an exponent modifier and a value exponent:
 #          10**n, half away from zero, E before S (#782)
-python3 tests/dcmod_check.py ./as370 fixed || fail=1
+#   fscale X'00'-X'33'  E/D/L with a scale modifier (#761)
+#   fexp   X'68'-X'87'  E/D/L with an exponent modifier (#761)
+python3 tests/dcmod_check.py ./as370 fixed fscale fexp || fail=1
+# IFO202 on statement 11 (ES6'1.5', every bit shifted out) and nowhere else.
+d202=$(./as370 tests/dcmod.s -o /dev/null 2>&1 | grep -oE 'IFO202\) in line [0-9]+' | awk '{print $4}' | tr '\n' ' ')
+if [ "$d202" = "11 " ]; then echo "dcmod IFO202: OK (statement 11 only, as IFOX00)"
+else echo "dcmod IFO202: FAIL -- as370 [$d202], IFOX00 [11]"; fail=1; fi
+# tests/dcscale.s (MVSTK5-REF JOB00347, rc 0) separates the scale rules: round
+# to the normalised precision, then shift and DROP, and IFO202 only when no bit
+# is left -- .123458 -> 012345 and .12345F8 -> 012346, neither flagged.
+./as370 tests/dcscale.s -o /tmp/_dsc$$.obj >/tmp/_dsc$$.out 2>&1; r=$?
+dsref=tests/ref/dcscale.obj; dsn=$(( ($(wc -c < "$dsref") / 80 - 1) * 80 ))
+head -c "$dsn" /tmp/_dsc$$.obj > /tmp/_dsc$$a; head -c "$dsn" "$dsref" > /tmp/_dsc$$b
+if [ "$r" = 0 ] && cmp -s /tmp/_dsc$$a /tmp/_dsc$$b; then echo "dcscale: OK (round, shift, drop; no IFO202 while a bit survives -- deck == IFOX00)"
+else echo "dcscale: FAIL (rc $r, deck vs tests/ref/dcscale.obj)"; fail=1; fi
+rm -f /tmp/_dsc$$.obj /tmp/_dsc$$.out /tmp/_dsc$$a /tmp/_dsc$$b
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
