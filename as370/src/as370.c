@@ -999,12 +999,18 @@ static void fixed_parse(const char *t, struct fxnom *x) {
  * A denominator that would outgrow it means the value rounds to zero. */
 static void fixed_scale(fx_u128 *num, fx_u128 *den, long e10, int scale, int *ovf) {
     long k;
-    for (k = 0; k < e10; k++) { if (*num > FX_LIM / 10) *ovf = 1; *num *= 10; }
+    for (k = 0; k < e10; k++) {
+        if (*num > FX_LIM / 10) *ovf = 1;
+        *num *= 10;
+    }
     for (k = 0; k < -e10; k++) {
         if (*den > FX_LIM / 10) { *num = 0; *den = 1; return; }
         *den *= 10;
     }
-    for (k = 0; k < scale; k++) { if (*num > FX_LIM) *ovf = 1; *num <<= 1; }
+    for (k = 0; k < scale; k++) {
+        if (*num > FX_LIM) *ovf = 1;
+        *num <<= 1;
+    }
     for (k = 0; k < -(long)scale; k++) {
         if (*den > FX_LIM) { *num = 0; *den = 1; return; }
         *den <<= 1;
@@ -5918,6 +5924,7 @@ static void bn_shl(struct bn *a, int bits) {
     int limbs = bits / 32;
     int rem = bits % 32;
     int i;
+    if (bits <= 0) return;                         /* nothing to shift; a negative count would index before v[] */
     if (limbs >= BN_LIMBS) { a->n = 0; return; }   /* every limb shifted out; no caller asks for more than 56 bits */
     if (limbs) {
         for (i = a->n - 1; i >= 0; i--)
