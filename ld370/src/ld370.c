@@ -64,14 +64,14 @@ static int nwarn = 0;                 /* warnings issued by this link */
 /* APF authorization code (SETCODE AC(n)); goes into the PDS2 directory entry's
  * APF section (PDSAPFAC).  Default 0; httpd's HTTPD module needs AC(1). */
 static int apfcode = 0;
-/* Clear the PDS2ATR1 reentrant/reusable attributes (the template marks every
- * module RENT+REUS).  --norent clears PDS2RENT (0x80); --noreus clears PDS2REUS
- * (0x40).  RENT implies REUS, so --norent alone leaves a serially-reusable module;
- * a module that can't even be serially reused wants both.  For a module with
- * modifiable storage that must not be marked reentrant (a REXX370 module needs this). */
+/* Clear the PDS2ATR1 reentrant/reusable attributes.  --norent clears PDS2RENT
+ * (0x80); --noreus clears PDS2REUS (0x40).  The template marked every module
+ * RENT+REUS until cc370#100; it now marks neither, IEWL's default, so these
+ * change nothing on their own and remain for builds that state both
+ * directions (mbt passes rent/reus from project.toml either way). */
 static int no_rent = 0, no_reus = 0;
-/* Set the same attributes, for a module that must carry one the template does
- * not give it.  --rent sets PDS2RENT, --reus PDS2REUS, --refr PDS2REFR.
+/* Set the attributes -- since cc370#100 the only way a module gets them.
+ * --rent sets PDS2RENT, --reus PDS2REUS, --refr PDS2REFR.
  *
  * REFR IS IN PDS2ATR2 (ud[9]) AND NOT PDS2ATR1, and getting that wrong is a
  * silent no-op rather than a visible bug: 0x01 in ATR1 is PDS21BLK, which the
@@ -864,8 +864,16 @@ static void emit_lked_idr(void)
  * attributes (PDS2ATR), entry point (PDS2EPA) and total length (PDS2STOR) from
  * the member's CESD/control records per the IHAPDS layout, instead of echoing
  * this one member's values. */
+/* ud[8] = PDS2ATR1 is 03 -- EXEC|1BLK, neither RENT nor REUS -- IEWL's own
+ * default: HEWLFINT clears the attribute bytes before PARM processing, and a
+ * plain IEWL link lists ATTR 03F2 under IEHLIST (mvsdev 2026-09-23).  It was C3
+ * (RENT+REUS) until cc370#100, so every module claimed reentrancy nobody had
+ * declared -- and httpd shares one copy of a RENT module between concurrent
+ * requests (CDUSE 3 on mvsdev, 2026-10-04) while cc370 keeps writable statics
+ * in the CSECT.  RENT/REUS/REFR are now asked for with --rent/--reus/--refr,
+ * which mbt passes from project.toml. */
 static const unsigned char unload_userdata[24] = {
-    0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc3, 0xf2, 0x00, 0x00,
+    0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xf2, 0x00, 0x00,
     0x08, 0x00, 0x08, 0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x01, 0x00, 0x00 };
 
 /* echoed environment: cylinder of the source PDS data extent (= UDEBX extent
@@ -1117,10 +1125,12 @@ static void build_userdata(unsigned char ud[24], const struct umember *m)
      * by accident (the bug 7a49c29d guarded against). */
     ud[21] = 1; ud[22] = (unsigned char)apfcode; ud[23] = 0;
 
-    /* PDS2ATR1 reentrant/reusable overrides, applied like --ac to the freshly built
-     * module (a --pack of a pre-built -iebcopy returned above, keeping the member's
-     * own attributes set at ITS build).  RENT implies REUS, so --norent alone leaves
-     * the module serially reusable; --noreus drops that too. */
+    /* PDS2ATR1 attributes, applied like --ac to the freshly built module (a --pack
+     * of a pre-built -iebcopy returned above, keeping the member's own attributes
+     * set at ITS build).  The default is neither since cc370#100; the set-flags
+     * stay orthogonal (see set_rent above): IEWL's RENT is --rent --reus.
+     * --norent/--noreus clear, and are kept so a build that states both
+     * directions links the same under either default. */
     if (no_rent) ud[8] = (unsigned char)(ud[8] & ~0x80);     /* clear PDS2RENT */
     if (no_reus) ud[8] = (unsigned char)(ud[8] & ~0x40);     /* clear PDS2REUS */
     if (set_rent) ud[8] = (unsigned char)(ud[8] | 0x80);     /* set PDS2RENT */
@@ -2120,8 +2130,9 @@ int main(int argc, char **argv)
                  * where the directory metadata is not what is under test. */
                 nbare++;
                 fprintf(stderr, "ld370: warning: '%s' is a bare load module: packing %s at "
-                                "entry 0, AC %d%s%s\n", file, mvs_nm(m[i].name), apfcode,
-                        no_rent ? ", not RENT" : "", no_reus ? ", not REUS" : "");
+                                "entry 0, AC %d, %s\n", file, mvs_nm(m[i].name), apfcode,
+                        (set_rent && set_reus) ? "RENT REUS" : set_rent ? "RENT, not REUS"
+                                                 : set_reus ? "REUS, not RENT" : "neither RENT nor REUS");
             }
         }
         /* Once, however many bare members there were: the entry point is the
