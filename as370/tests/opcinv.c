@@ -72,11 +72,11 @@ int main(void)
          * that the value is in range and the count below is that it is right. */
         if (o->cls < OPC_APP || o->cls > OPC_PRIV)
             bad("%s: ISA class %d is not one of the five", o->name, o->cls);
-        /* Only the S space is two bytes wide, and a one-byte S opcode has to be
-         * spelled with a zero low half or the encoder writes a byte nobody
-         * asked for. */
-        if (o->opw == 2 && o->fmt != F_S && o->fmt != F_S0)
-            bad("%s: two-byte opcode outside the S formats", o->name);
+        /* Only the S space -- and TPROT's SSE, X'E501' (#56) -- is two bytes
+         * wide, and a one-byte S opcode has to be spelled with a zero low half
+         * or the encoder writes a byte nobody asked for. */
+        if (o->opw == 2 && o->fmt != F_S && o->fmt != F_S0 && o->fmt != F_SSE)
+            bad("%s: two-byte opcode outside the S and SSE formats", o->name);
         if (o->opw == 1 && (o->fmt == F_S || o->fmt == F_S0) && (o->op & 0xff))
             bad("%s: one byte wide but spelled 0x%04X, low half not zero", o->name, o->op);
         for (j = i + 1; j < n; j++)
@@ -101,7 +101,7 @@ int main(void)
      * These are the reconciliation of two independent passes (cc370#395). */
     {
         int c[5] = { 0, 0, 0, 0, 0 };
-        static const int want[5] = { 126, 52, 16, 10, 30 };   /* APP: 128 before #56 dropped BRXH/BRXLE */
+        static const int want[5] = { 126, 52, 16, 10, 32 };   /* PRIV: 30 before #56 added TPROT/IPTE */   /* APP: 128 before #56 dropped BRXH/BRXLE */
         static const char *nm[5] = { "APP", "FP", "DEC", "IO", "PRIV" };
         for (i = 0; i < n; i++)
             if (optab[i].cls >= 0 && optab[i].cls <= OPC_PRIV) c[optab[i].cls]++;

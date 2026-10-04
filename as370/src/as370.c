@@ -1989,7 +1989,7 @@ static void add_reloc_sect(long at, int sect, int len, int neg) {
     rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = 0;
     rels[nrel].len = len; rels[nrel].neg = neg; nrel++;
 }
-static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS) ? 6 : 4; }
+static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS || fmt == F_SSE) ? 6 : 4; }
 
 /* ---- WP-4 macro preprocessor --------------------------------------------- */
 /* per-expanded-line listing flags, parallel to the flattened lines[] array */
@@ -6284,7 +6284,16 @@ static void do_pass(int pass, char **lines, int nlines) {
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
                 case F_S0:   /* no operand: 2-byte opcode + a zero halfword, and the operand field was blanked above because it is a remark */
                     put(lc, o->op, 2); put(lc + 2, 0, 2); lc += 4; break;
-                case F_S: { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
+                case F_S:
+                    /* An S instruction has ONE operand.  IFOX00 answers a second
+                     * with IFO211 TOO MANY OPERANDS, severity 12, and zeroes the
+                     * instruction: `IPTE 1,2' -- the later RRE spelling -- is
+                     * 0000 0000 (MVSTK5-REF JOB00321, #56).  as370 encoded the first
+                     * operand and dropped the rest: `STCK 1,2' came out B205 0001. */
+                    if (nf > 1) { if (pass == 2) note_operr("too many operands (IFOX00 IFO211)", 12, i);
+                        resolve(F[0], &d, sub, &ns, &sy);   /* IFOX00 still lists the first operand's value: 00001 */
+                        put(lc, 0, 4); lc += 4; lrecs[i].a1 = d & 0xffffffL; lrecs[i].hasa1 = 1; break; }
+                    { resolve(F[0], &d, sub, &ns, &sy); if (ns >= 2) note_badfmt(op, i); int b = (!sy && ns == 0 && r_ibase >= 0) ? r_ibase : (int)sub[0];   /* 2-byte opcode + S operand D2(B2) */
                     if (!sy && ns == 1 && r_reloc) {   /* explicit base D(B) + relocatable displacement -> IFO228 */
                         note_relocdisp(op, i); put(lc, 0, 4); lc += 4;
                         lrecs[i].a1 = r_raw; lrecs[i].hasa1 = 1; break; }
@@ -6293,6 +6302,21 @@ static void do_pass(int pass, char **lines, int nlines) {
                         lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; break; }
                     put(lc, o->op, 2); put(lc + 2, ((long)b << 12) | (d & 0xfff), 2); lc += 4;
                     lrecs[i].a1 = (d & 0xfffL) + using_base_of(b); lrecs[i].hasa1 = 1; break; }
+                case F_SSE: {   /* TPROT: 2-byte opcode, D1(B1), D2(B2) -- six bytes (#56, JOB00321) */
+                    int bb[2] = { 0, 0 }, k2, bad = 0; long dd[2] = { 0, 0 };
+                    for (k2 = 0; k2 < 2 && !bad; k2++) {
+                        long dk, sk[4]; int nsk = 0, syk = 0, b;
+                        resolve(F[k2], &dk, sk, &nsk, &syk); if (nsk >= 2) note_badfmt(op, i);
+                        b = (!syk && nsk == 0 && r_ibase >= 0) ? r_ibase : (int)sk[0];
+                        if (!syk && nsk == 1 && r_reloc) { note_relocdisp(op, i); bad = 1; }
+                        else if (!r_addrok) { note_addrerr(op, i); bad = 1; }
+                        bb[k2] = b; dd[k2] = dk;
+                    }
+                    if (bad) { put(lc, 0, 6); lc += 6; lrecs[i].a1 = 0; lrecs[i].hasa1 = 1; lrecs[i].a2 = 0; lrecs[i].hasa2 = 1; break; }
+                    put(lc, o->op, 2); put(lc + 2, ((long)bb[0] << 12) | (dd[0] & 0xfff), 2);
+                    put(lc + 4, ((long)bb[1] << 12) | (dd[1] & 0xfff), 2); lc += 6;
+                    lrecs[i].a1 = (dd[0] & 0xfffL) + using_base_of(bb[0]); lrecs[i].hasa1 = 1;
+                    lrecs[i].a2 = (dd[1] & 0xfffL) + using_base_of(bb[1]); lrecs[i].hasa2 = 1; break; }
                 case F_SS: { resolve(F[0], &d, sub, &ns, &sy); int ib1 = r_ibase, l1 = r_len, rl1 = r_reloc, ao1 = r_addrok, se1 = r_subempty; long raw1 = r_raw;
                     int ab1 = r_abase; long ad1 = r_adisp;
                     resolve(F[1], &d2, sub2, &ns2, &sy2); int ib2 = r_ibase, l2 = r_len, rl2 = r_reloc, ao2 = r_addrok, se2 = r_subempty; long raw2 = r_raw;

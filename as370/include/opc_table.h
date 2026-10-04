@@ -73,7 +73,7 @@
  * OPCD alone: IPK X'B20B' and PTLB X'B20D' (ifnx5m.asm:1562-1563).  With no
  * operand the rest of the card is a remark, so the operand field must not be
  * read at all. */
-enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC, F_S, F_S0 };
+enum fmt { F_NONE, F_RR, F_RX, F_RS, F_SI, F_SS, F_BR, F_BC, F_SVC, F_S, F_S0, F_SSE };
 
 /* What a decoder should do with an entry when several claim one encoding. */
 enum opc_dec { OPD_PRIMARY, OPD_ALIAS, OPD_NEVER };
@@ -98,7 +98,8 @@ enum opc_dec { OPD_PRIMARY, OPD_ALIAS, OPD_NEVER };
  * changes is what a later reader believes about where it came from.
  *
  *   OPC_FP    52  opcode 20-3F and 60-7F, the whole short/long/extended set
- *   OPC_PRIV  30  problem-state programs cannot execute them
+ *   OPC_PRIV  32  problem-state programs cannot execute them (30 until #56
+ *                 added TPROT and IPTE)
  *   OPC_IO    10  the channel instructions
  *   OPC_DEC   16  packed decimal, and the two zone/numeric moves with it
  *   OPC_APP  126  everything else, and what `--isa app' keeps (128 until
@@ -386,11 +387,18 @@ static const struct opc optab[] = {
      * NI/CLI/MVI, S via IPK/SPKA/STCK (which sit in optab[] in as370.c, beside
      * the extended branches).
      *
-     * NOT added, deliberately: TPROT (X'E501', SSE) and IPTE (X'B221', RRE).
-     * as370 has neither format, so an entry for them would have to invent an
-     * encoding -- turning a clean "undefined operation code" RC 8 into silently
-     * wrong bytes, which is the failure mode this table exists to avoid. They
-     * stay documented gaps -- see #51, which lists the full IFOX00 delta. */
+     * TPROT and IPTE were left out until their IFOX00 format was MEASURED
+     * rather than assumed (#56; MVSTK5-REF JOB00321, tests/tprotipte.s):
+     *   TPROT X'E501' is F_SSE, D1(B1),D2(B2), six bytes -- `TPROT 4(5),8(9)'
+     *         is E501 5004 9008;
+     *   IPTE  X'B221' is plain F_S, D2(B2) -- `IPTE 0(1)' is B221 1000.  The
+     *         later RRE spelling `IPTE R1,R2' is not Assembler XF's: IFOX00
+     *         answers `IPTE 1,2' with IFO211 TOO MANY OPERANDS and zeroes it.
+     * The format names in the issue (SSE/RRE) were the later architecture's;
+     * guessing RRE would have invented exactly the encoding this table exists
+     * to avoid. */
+    { "TPROT", F_SSE, 0xE501, 0, 2, OPD_PRIMARY, OPC_PRIV },        /* test protection */
+    { "IPTE", F_S, 0xB221, 0, 2, OPD_PRIMARY, OPC_PRIV },           /* invalidate page table entry */
     { "MP", F_SS, 0xFC, 0, 1, OPD_PRIMARY, OPC_DEC },               /* multiply decimal -- same shape as DP X'FD' */
     { "SSK", F_RR, 0x08, 0, 1, OPD_PRIMARY, OPC_PRIV },
     { "ISK", F_RR, 0x09, 0, 1, OPD_PRIMARY, OPC_PRIV },
