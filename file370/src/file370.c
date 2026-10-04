@@ -194,15 +194,30 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
            path, nmem, nsym);
     if (!v) return;
 
-    /* member list */
-    p = 8;
-    while (p + 60 <= n) {
-        char name[17]; long size; int i;
-        memcpy(name, b + p, 16); name[16] = 0;
-        for (i = 15; i >= 0 && (name[i] == ' ' || name[i] == '/'); i--) name[i] = 0;
-        size = atol((const char *)b + p + 48);
-        if (name[0]) printf("    member  %-16s  %ld bytes\n", name, size);
-        p += 60 + size + (size & 1);
+    /* member list.  A name that did not fit the header is "/NNN", an offset
+     * into the "//" long-name member, which ar370 writes since #805. */
+    {
+        const unsigned char *ln = NULL; long lnlen = 0;
+        for (p = 8; p + 60 <= n; ) {
+            long size = atol((const char *)b + p + 48);
+            if (b[p] == '/' && b[p + 1] == '/') { ln = b + p + 60; lnlen = size; }
+            p += 60 + size + (size & 1);
+        }
+        p = 8;
+        while (p + 60 <= n) {
+            char name[64]; long size; int i, L = 0;
+            size = atol((const char *)b + p + 48);
+            if (b[p] == '/' && b[p + 1] >= '0' && b[p + 1] <= '9' && ln) {
+                long o = atol((const char *)b + p + 1);
+                while (o < lnlen && ln[o] != '/' && ln[o] != '\n' && L < 63) name[L++] = (char)ln[o++];
+                name[L] = 0;
+            } else {
+                memcpy(name, b + p, 16); name[16] = 0;
+                for (i = 15; i >= 0 && (name[i] == ' ' || name[i] == '/'); i--) name[i] = 0;
+            }
+            if (name[0]) printf("    member  %-16s  %ld bytes\n", name, size);
+            p += 60 + size + (size & 1);
+        }
     }
     /* symbol names: count(4) + count*offset(4) + NUL-terminated names */
     if (symtab && nsym > 0) {

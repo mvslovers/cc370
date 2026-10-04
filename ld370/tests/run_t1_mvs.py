@@ -65,7 +65,8 @@ def main():
     if os.path.exists(ar370):
         idx = subprocess.run([ar370, "t", args.lib],
                              capture_output=True, text=True).stdout
-        if sum(1 for ln in idx.splitlines() if ln.strip() == "@@CRT0") < 2:
+        # a symbol line is "  NAME  MEMBER" since #805; the name is the first word
+        if sum(1 for ln in idx.splitlines() if ln.split()[:1] == ["@@CRT0"]) < 2:
             sys.exit(f"{args.lib} has a first-wins symbol index (only one @@CRT0 "
                      "definer) -- rebuild it with the current ar370 so conflict-"
                      "aware autocall can pick @@exita.o over the @@crtm.o bundle")

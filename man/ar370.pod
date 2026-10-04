@@ -4,9 +4,13 @@ ar370 - OS/360 object-deck archiver with an ESD symbol index
 
 =head1 SYNOPSIS
 
-B<ar370> B<rc> I<archive.a> I<obj>...
+B<ar370> [B<->]B<rc> I<archive.a> I<obj>...
 
-B<ar370> B<t> I<archive.a>
+B<ar370> [B<->]B<t> I<archive.a>
+
+B<ar370> B<--version> | B<-V>
+
+B<ar370> B<--help> | B<-h>
 
 =head1 DESCRIPTION
 
@@ -18,21 +22,71 @@ member.
 
 =head1 OPERATIONS
 
+The operation is matched whole: B<r>, B<c>, B<rc> or B<cr> create, B<t> lists,
+each optionally after a B<->. Anything else is an error.
+
 =over 4
 
 =item B<rc> I<archive.a> I<obj>...
 
 Create I<archive.a> from the given object decks, building the symbol table.
+An existing I<archive.a> is B<replaced>, not added to: the archive holds exactly
+the decks named on this command. Objects and symbols have no fixed limit.
+
+Each input must be an OS/360 object deck -- 80-byte card images, each beginning
+X'02', with an END card. Any other file, an archive included, is refused and no
+archive is written.
+
+A member is named after its file's base name. A name of up to 15 characters is
+stored in the member header; a longer one, up to 63 characters, goes into a GNU
+C<//> long-name member, which L<ld370(1)> and L<file370(1)> read. A name longer
+than 63 characters is refused: L<ld370(1)> could not name it with B<--include>.
 
 =item B<t> I<archive.a>
 
-List the archive's members and the symbols each one exports.
+List the archive's members with their sizes, then every symbol of the symbol
+table with the member that defines it. A symbol defined by several members
+appears once per member.
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--version>, B<-V>
+
+Print the toolchain version and commit, and exit. Recognised as the first
+argument, whatever follows it.
+
+=item B<--help>, B<-h>
+
+Print the usage and exit.
+
+=back
+
+=head1 EXIT STATUS
+
+=over 4
+
+=item B<0>
+
+Success.
+
+=item B<1>
+
+A file could not be read or written, an input is not an object deck, a member
+name is longer than 63 characters, or the file given to B<t> is not an archive.
+
+=item B<2>
+
+A usage error: too few operands or an unknown operation.
 
 =back
 
 =head1 SEE ALSO
 
-L<cc370(1)>, L<as370(1)>, L<ld370(1)>, L<ar(1)>
+L<cc370(1)>, L<as370(1)>, L<ld370(1)>, L<file370(1)>, L<ar(1)>
 
 =head1 AUTHOR
 

@@ -84,7 +84,7 @@ CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
         test test-as370 test-listref test-libcorpus test-cc370 test-corpus test-xmit370 test-cmplmd370 \
-        test-dasm370 test-sysroot dist test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
+        test-dasm370 test-ar370 test-sysroot dist test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler runtime man
@@ -178,7 +178,7 @@ compiler: $(BUILD)/config.status $(VERHDR)
 # xmit370's suite IS wired in: its two external inputs (the TSO TRANSMIT oracle
 # and the CBT571 corpus) are optional -- those cases skip themselves and the
 # rest of the suite is self-contained.
-test: test-version test-macros test-runtime-host test-as370 test-listref test-libcorpus test-cc370 test-corpus test-xmit370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
+test: test-version test-macros test-runtime-host test-as370 test-listref test-libcorpus test-cc370 test-corpus test-xmit370 test-ar370 test-cmplmd370 test-dasm370 test-idrdump370 test-file370
 
 test-as370:
 	@$(MAKE) -C as370 test
@@ -230,6 +230,9 @@ test-sysroot: tools compiler runtime
 
 test-xmit370: xmit370/xmit370
 	@sh xmit370/tests/run.sh
+
+test-ar370: ar370/ar370 as370/as370 ld370/ld370 file370/file370
+	@sh ar370/tests/run.sh
 
 test-dasm370: dasm370/dasm370 as370/as370
 	@sh dasm370/tests/run.sh

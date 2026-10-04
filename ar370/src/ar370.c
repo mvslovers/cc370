@@ -12,8 +12,11 @@
  * The names come from our own ESD scan (SD/CM/LD + named PC); host `ranlib`
  * cannot index OS/360 decks.
  *
- * Build: gcc -O2 -Wall -Wextra -Werror -o ld/ar370 ld/ar370.c
- * Usage: ar370 rc  ARCHIVE.a  OBJ1.o [OBJ2.o ...]   create with symbol table
+ * A member name that does not fit the header's 16 bytes with its "/" goes into
+ * the GNU "//" long-name member, and the header names it "/<offset>" -- the
+ * layout ld370 already reads (#805).  It used to be cut to 16 bytes silently.
+ *
+ * Usage: ar370 rc  ARCHIVE.a  OBJ1.o [OBJ2.o ...]   (re)create with symbol table
  *        ar370 t   ARCHIVE.a                          list members + symbols
  */
 #include <stdio.h>
@@ -23,14 +26,29 @@
 #include "mvs370.h"
 #include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 
-#define MAXOBJ 2048
-#define MAXSYM 16384
-
-struct objf { const char *member; unsigned char *data; long size; };
+/* Objects and symbols grow as needed.  They were fixed at 2048 and 16384, and
+ * the 2049th object and the 16385th symbol were dropped silently at rc 0
+ * (#805). */
+struct objf { const char *member; unsigned char *data; long size; long lnoff; };
 struct sym  { char name[64]; int obj; };
 
-static struct objf O[MAXOBJ]; static int nO;
-static struct sym  S[MAXSYM]; static int nS;
+static struct objf *O; static int nO, capO;
+static struct sym  *S; static int nS, capS;
+
+/* ld370 keeps a member name in 64 bytes; a longer one could never be named by
+ * --include, so it is refused rather than stored. */
+#define MEMBER_NAME_MAX 63
+
+static void *grow(void *p, int *cap, int need, size_t size)
+{
+    if (need <= *cap) return p;
+    int nc = *cap ? *cap * 2 : 256;
+    while (nc < need) nc *= 2;
+    void *q = realloc(p, (size_t)nc * size);
+    if (!q) { fprintf(stderr, "ar370: out of memory\n"); exit(1); }
+    *cap = nc;
+    return q;
+}
 
 static const char *basename_of(const char *p)
 {
@@ -62,7 +80,8 @@ static void scan_esd(int oi)
             nm[8] = 0;
             for (j = 7; j >= 0 && nm[j] == ' '; j--) nm[j] = 0;
             if (blank) continue;                                    /* unnamed private code */
-            if (nS < MAXSYM) { strcpy(S[nS].name, nm); S[nS].obj = oi; nS++; }
+            S = grow(S, &capS, nS + 1, sizeof *S);
+            strcpy(S[nS].name, nm); S[nS].obj = oi; nS++;
         }
     }
 }
@@ -93,14 +112,44 @@ static void ar_hdr(FILE *f, const char *namefield, long size)
              namefield, 0, 0, 0, "100644", size);
     fwrite(h, 1, 60, f);
 }
+/* Is this an OS/360 object deck: 80-byte cards, each beginning X'02' and
+ * carrying a card type, with an END card?  ar370 stored any file it was given,
+ * an archive included (#805); ld370 would then fail on it far from the cause. */
+static const char *not_a_deck(const unsigned char *d, long n)
+{
+    long i; int end = 0;
+    if (n >= 8 && !memcmp(d, "!<arch>\n", 8)) return "is an archive, not an object deck";
+    if (n <= 0 || n % 80) return "is not an object deck (not a multiple of 80-byte cards)";
+    for (i = 0; i < n; i += 80) {
+        if (d[i] != 0x02) return "is not an object deck (a card does not begin X'02')";
+        if (d[i + 1] == 0xC5 && d[i + 2] == 0xD5 && d[i + 3] == 0xC4) end = 1;   /* END */
+    }
+    return end ? NULL : "is not an object deck (no END card)";
+}
+
 static int create(const char *arch, int argc, char **argv, int first)
 {
-    long stringtab = 0, symdata, symmember, off; int i, s; FILE *f;
+    long stringtab = 0, symdata, symmember, lndata = 0, lnmember = 0, off; int i, s; FILE *f;
 
-    for (i = first; i < argc && nO < MAXOBJ; i++) {
+    for (i = first; i < argc; i++) {
+        const char *why;
+        O = grow(O, &capO, nO + 1, sizeof *O);
         O[nO].member = basename_of(argv[i]);
+        O[nO].lnoff = -1;
         O[nO].data = mvs_read_file(argv[i], &O[nO].size);
         if (!O[nO].data) { perror(argv[i]); return 1; }
+        if ((why = not_a_deck(O[nO].data, O[nO].size)) != NULL) {
+            fprintf(stderr, "ar370: %s %s\n", argv[i], why);
+            return 1;
+        }
+        if (strlen(O[nO].member) > MEMBER_NAME_MAX) {
+            fprintf(stderr, "ar370: %s: member name longer than %d characters\n", argv[i], MEMBER_NAME_MAX);
+            return 1;
+        }
+        if (strlen(O[nO].member) > 15) {          /* "name/" does not fit 16 bytes */
+            O[nO].lnoff = lndata;
+            lndata += (long)strlen(O[nO].member) + 2;    /* "name/\n" */
+        }
         scan_esd(nO);
         nO++;
     }
@@ -109,10 +158,12 @@ static int create(const char *arch, int argc, char **argv, int first)
     for (s = 0; s < nS; s++) stringtab += (long)strlen(S[s].name) + 1;
     symdata = 4 + 4 * nS + stringtab;
     symmember = 60 + symdata + (symdata & 1);             /* header + even-padded data */
+    if (lndata) lnmember = 60 + lndata + (lndata & 1);    /* "//" long names, after "/" */
 
     /* member-header offsets (symbol table points at these) */
-    static long objoff[MAXOBJ];
-    off = 8 + symmember;                                  /* after magic + symtab member */
+    long *objoff = malloc((size_t)(nO ? nO : 1) * sizeof *objoff);
+    if (!objoff) { fprintf(stderr, "ar370: out of memory\n"); return 1; }
+    off = 8 + symmember + lnmember;                       /* after magic + symtab + long names */
     for (i = 0; i < nO; i++) { objoff[i] = off; off += 60 + O[i].size + (O[i].size & 1); }
 
     f = fopen(arch, "wb");
@@ -125,52 +176,109 @@ static int create(const char *arch, int argc, char **argv, int first)
     for (s = 0; s < nS; s++) fwrite(S[s].name, 1, strlen(S[s].name) + 1, f);
     if (symdata & 1) fputc('\n', f);
 
+    if (lndata) {
+        ar_hdr(f, "//", lndata);
+        for (i = 0; i < nO; i++)
+            if (O[i].lnoff >= 0) fprintf(f, "%s/\n", O[i].member);
+        if (lndata & 1) fputc('\n', f);
+    }
+
     for (i = 0; i < nO; i++) {
-        char nf[17]; snprintf(nf, sizeof nf, "%s/", O[i].member);
+        char nf[17];
+        if (O[i].lnoff >= 0) snprintf(nf, sizeof nf, "/%ld", O[i].lnoff);
+        else snprintf(nf, sizeof nf, "%s/", O[i].member);
         ar_hdr(f, nf, O[i].size);
         fwrite(O[i].data, 1, (size_t)O[i].size, f);
         if (O[i].size & 1) fputc('\n', f);
     }
-    fclose(f);
+    free(objoff);
+    if (fclose(f)) { perror(arch); return 1; }
     return 0;
 }
 
-/* list members + the symbol table of an existing archive */
+/* A member's name as the header gives it: "name/" short, "/NNN" an offset into
+ * the "//" long-name member.  Without the trailing "/" either way (#805: `t'
+ * printed "name/"). */
+static void member_name(const unsigned char *h, const unsigned char *ln, long lnlen, char *out, size_t outsz)
+{
+    size_t L = 0;
+    if (h[0] == '/' && h[1] >= '0' && h[1] <= '9' && ln) {
+        long o = atol((const char *)h + 1);
+        while (o < lnlen && ln[o] != '/' && ln[o] != '\n' && L + 1 < outsz) out[L++] = (char)ln[o++];
+    } else {
+        while (L < 16 && h[L] != '/' && h[L] != ' ' && L + 1 < outsz) { out[L] = (char)h[L]; L++; }
+    }
+    out[L] = 0;
+}
+
+/* list the members, then every symbol with the member that defines it -- the
+ * symbol table holds the member's header offset, which is what ties them */
 static int list(const char *arch)
 {
-    long n; unsigned char *a = mvs_read_file(arch, &n); long p = 8; int s;
+    long n; unsigned char *a = mvs_read_file(arch, &n); long p = 8, q;
+    const unsigned char *symtab = NULL, *ln = NULL; long lnlen = 0;
     if (!a) { perror(arch); return 1; }
-    if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ar370: %s: not an archive\n", arch); return 1; }
+    if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ar370: %s: not an archive\n", arch); free(a); return 1; }
+    for (q = 8; q + 60 <= n; ) {                   /* find "/" and "//" first */
+        long size = atol((const char *)a + q + 48);
+        if (a[q] == '/' && a[q + 1] == ' ') symtab = a + q + 60;
+        else if (a[q] == '/' && a[q + 1] == '/') { ln = a + q + 60; lnlen = size; }
+        q += 60 + size + (size & 1);
+    }
+    printf("members:\n");
     while (p + 60 <= n) {
-        char name[17], szs[11]; long size;
-        memcpy(name, a + p, 16); name[16] = 0;
-        memcpy(szs, a + p + 48, 10); szs[10] = 0; size = atol(szs);
-        { char *e = strchr(name, ' '); if (e) *e = 0; }            /* trim padding */
-        if (!strcmp(name, "/")) {
-            long q = p + 60; unsigned long cnt = ((unsigned long)a[q] << 24) | (a[q+1] << 16) | (a[q+2] << 8) | a[q+3];
-            const char *names = (const char *)(a + q + 4 + 4 * cnt);
-            printf("symbol table: %lu symbol(s)\n", cnt);
-            for (s = 0; (unsigned)s < cnt; s++) { printf("  %s\n", names); names += strlen(names) + 1; }
-        } else {
-            printf("%-16s %ld bytes\n", name, size);
+        long size = atol((const char *)a + p + 48);
+        if (a[p] != '/' || (a[p + 1] >= '0' && a[p + 1] <= '9')) {
+            char name[MEMBER_NAME_MAX + 1];
+            member_name(a + p, ln, lnlen, name, sizeof name);
+            printf("  %-16s %ld bytes\n", name, size);
         }
         p += 60 + size + (size & 1);
+    }
+    if (symtab) {
+        unsigned long cnt = ((unsigned long)symtab[0] << 24) | ((unsigned long)symtab[1] << 16) | ((unsigned long)symtab[2] << 8) | symtab[3], s;
+        const char *names = (const char *)(symtab + 4 + 4 * cnt);
+        printf("symbol table: %lu symbol(s)\n", cnt);
+        for (s = 0; s < cnt; s++) {
+            const unsigned char *o4 = symtab + 4 + 4 * s;
+            long mo = ((long)o4[0] << 24) | ((long)o4[1] << 16) | ((long)o4[2] << 8) | o4[3];
+            char name[MEMBER_NAME_MAX + 1] = "?";
+            if (mo >= 8 && mo + 60 <= n) member_name(a + mo, ln, lnlen, name, sizeof name);
+            printf("  %-8s  %s\n", names, name);
+            names += strlen(names) + 1;
+        }
     }
     free(a);
     return 0;
 }
 
+static void usage(FILE *f)
+{
+    fprintf(f, "usage: ar370 rc ARCHIVE.a OBJ...   (re)create ARCHIVE.a from the object decks,\n"
+               "                                    with a symbol table; an existing archive\n"
+               "                                    is replaced, not added to\n"
+               "       ar370 t  ARCHIVE.a           list the members and which defines each symbol\n"
+               "       ar370 --version | -V         toolchain version + commit\n"
+               "       ar370 --help | -h            this text\n"
+               "The operation is r, c, rc or cr (create) or t (list), optionally after a '-'.\n");
+}
+
 int main(int argc, char **argv)
 {
-    if (argc == 2 && !strcmp(argv[1], "--version")) { printf("ar370 %s (%s)\n", CC370_VERSION, CC370_COMMIT); return 0; }
-    if (argc < 3) {
-        fprintf(stderr, "usage: ar370 rc ARCHIVE.a OBJ...   (create with symbol table)\n"
-                        "       ar370 t  ARCHIVE.a           (list members + symbols)\n"
-                        "       ar370 --version              (toolchain version + commit)\n");
-        return 2;
+    const char *op;
+    if (argc >= 2 && (!strcmp(argv[1], "--version") || !strcmp(argv[1], "-V"))) {
+        printf("ar370 %s (%s)\n", CC370_VERSION, CC370_COMMIT); return 0;
     }
-    if (strchr(argv[1], 't')) return list(argv[2]);
-    if (strchr(argv[1], 'r') || strchr(argv[1], 'c')) return create(argv[2], argc, argv, 3);
-    fprintf(stderr, "ar370: unknown operation '%s'\n", argv[1]);
+    if (argc >= 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) { usage(stdout); return 0; }
+    if (argc < 3) { usage(stderr); return 2; }
+    /* The operation is matched whole.  It was matched letter by letter, so
+     * `ar370 --version x' -- which contains an r -- created an empty archive
+     * named x at rc 0 (#805). */
+    op = argv[1];
+    if (*op == '-') op++;
+    if (!strcmp(op, "t")) return list(argv[2]);
+    if (!strcmp(op, "r") || !strcmp(op, "c") || !strcmp(op, "rc") || !strcmp(op, "cr"))
+        return create(argv[2], argc, argv, 3);
+    fprintf(stderr, "ar370: unknown operation '%s' (r, c, rc, cr or t)\n", argv[1]);
     return 2;
 }
