@@ -146,12 +146,26 @@ as370 order inside it.**
 | ~~11~~ | ~~#439~~ **landed, PR #753** | dasm370 | a multi-section deck disassembles to an empty CSECT at rc 0 |
 | ~~12~~ | ~~#102~~ **landed, PR #755**; #103 split off (CM placement first) | ld370 | duplicate CSECT / COMMON per IEWL |
 
-**Waiting on the maintainer:** #100 (RENT+REUS default — to be talked
-through), #110 and #193 (proposed: close), #36 (proposed: close as decided),
-#160 / #241 / #23 (do rc-12 IFOX00 decks count as an oracle, and where do
-reference decks come from), #56 (the BRX* rows), #686 (fix the trampoline or
-reject it), #118 (refuse or raise the declared size), #478 (needs one MVS
-oracle link).
+**Decided with the maintainer, 2026-10-04:**
+- #110, #193, #36 **closed**.
+- #100: ld370's default becomes IEWL's (no RENT/REUS). RENT bites today: httpd
+  shares one copy of a RENT module between concurrent requests (CDUSE=3), and
+  cc370 keeps statics in the CSECT. mbt v2.1.0 passes rent/reus/refr both ways
+  (step 1 done); consumers declare (step 2, coordinated by mbt-4c); **the ld370
+  flip waits for mbt-4c's "step 2 complete" on the issue.**
+- rc-12 IFOX00 decks (#160, #241): an oracle only where both assemblers report
+  the same diagnostics; otherwise "oracle not usable". Next: compare per module.
+- #23: freeze the 753 libc370 inputs (29 hand-written + 724 cc370-generated)
+  with a manifest, assemble them once by IFOX00 on MVSTK5-REF (their macros as
+  a library there), commit the decks.
+- #56: BRX* rows dropped (**done, #763**); TPROT/IPTE get encoders -- their
+  IFOX00 operand format is pinned by an oracle capture first (needs the OK).
+- #686: repair (8-char label, memcpy), confirm once on MVS.
+- #118: decided "refuse below 268", but that would forbid `--recfm f` with
+  blocksize 80 (BLKSIZE must equal LRECL); **proposed instead: declare
+  max(blocksize+20, 288)** -- waiting for the maintainer.
+- #478: **done, #764** (IEWL JOB01639: IEW0241, first kept).
+- New: #761 (float DC scale modifier ignored).
 
 **After 1.2.0:** #518 (with the driver and mbt), #106, #78, #684, #345, #113,
 #601, #109; research and design #76, #229 (parked), #386, #112, #383, #698,
