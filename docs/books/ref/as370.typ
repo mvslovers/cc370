@@ -187,8 +187,11 @@ convention of IFOX00. @as370-rc-tab lists the values.
       written, for example an undefined operation code. The object module is
       written, but it is not expected to run.],
     [12], [Severe errors.],
-    [16], [Terminal error. A file could not be opened or written; the
-      assembly was not completed.],
+    [16], [Terminal error. A file could not be opened or written, and the
+      assembly was not completed\; or the command was in error, for
+      example an unknown option (#cmd("IFO258"), the option is ignored) or a
+      second source file. In the second case the assembly is still made and
+      the object module written.],
   )
 ] <as370-rc-tab>
 
