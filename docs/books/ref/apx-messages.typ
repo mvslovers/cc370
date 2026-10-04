@@ -96,10 +96,9 @@ each command describes them in full.
   #table(columns: (0.95in, 0.45in, 1fr),
     [Command], [Code], [Meaning],
     [xmit370], [0], [The subcommand completed.],
-    [], [1], [A file or directory could not be read, a name or a line was
-      refused, or #mc("extract") could not write a member. A file given to
-      #mc("list") or #mc("extract") that is not a transmission also ends
-      with 1.],
+    [], [1], [A file or directory could not be read or is not a
+      transmission, a name or a line was refused, or #mc("extract") could
+      not write a member.],
     [], [2], [The command was in error and nothing was done, or the
       transmission could not be written.],
     [dasm370], [0], [The output was written.],
@@ -740,8 +739,9 @@ with a count of the errors.
 ][Correct the members and repeat the command.]
 
 #msg[#mc("xmit370: ")#mv("path")#mc(": '")#mv("name")#mc("' is not a valid member name (1-8 of A-Z 0-9 @ # $, first not a digit); use --member NAME=")#mv("path")][
-  A file of the directory has a name that cannot be a member name. Return
-  code 1; no transmission is written.
+  A file of the directory has a name that cannot be a member name, for
+  example one longer than eight characters. Return code 1; no transmission
+  is written.
 ][Rename the file, or map it with #mc("--member").]
 
 #msg[#mc("xmit370: ")#mv("path")#mc(": subdirectories are not members, skipped")][
@@ -765,8 +765,21 @@ with a count of the errors.
 
 #msg[#mc("xmit370: warning: '")#mv("name")#mc("' is not a standard member name (A-Z 0-9 @ # $); ISPF and TSO may not handle it")][
   A name given with #mc("--member") contains characters outside the usual
-  set. The member is written with that name.
+  set. The name is shown, and the member written, in capitals.
 ][Use a standard name unless the other name is intended.]
+
+#msg[#mc("xmit370: ")#mv("path")#mc(": warning: the file is UTF-8, and --latin1 maps each of its bytes on its own; its non-ASCII characters will not survive")][
+  #mc("--latin1") was given and a member file is valid UTF-8 with characters
+  above ASCII. Each byte is translated as a Latin-1 character, so every such
+  character becomes two or three wrong ones. The return code is not
+  changed.
+][Remove #mc("--latin1") and replace the characters, or convert the file to
+  Latin-1.]
+
+#msg[#mc("xmit370: ")#mv("path")#mc(": not a TSO transmission (it does not begin with INMR01)")][
+  The file given to #mc("list") or #mc("extract") is not a transmission.
+  Return code 1.
+][Name a transmission file.]
 
 #msg[#mc("xmit370: ")#mv("path")#mc(": warning: not a multiple of 80 bytes")][
   Written by #mc("list"): the transmission does not consist of whole 80-byte
@@ -789,15 +802,19 @@ with a count of the errors.
 #msg[#mc("xmit370: --lrecl ")#mv("n")#mc(" out of range (1..32760)") \
 #mc("xmit370: --blocksize ")#mv("n")#mc(" out of range (")#mv("lrecl")#mc("..32760)") \
 #mc("xmit370: --blocksize ")#mv("n")#mc(" is not a multiple of --lrecl ")#mv("lrecl") \
-#mc("xmit370: --blocksize ")#mv("n")#mc(" exceeds 19069, the largest block that fits one track")][
+#mc("xmit370: --blocksize ")#mv("n")#mc(" exceeds 19069, the largest block that fits one track") \
+#mc("xmit370: --recfm f is unblocked: --blocksize must equal --lrecl (")#mv("lrecl")#mc("), not ")#mv("n")][
   The record length or block size cannot be used. Return code 2.
 ][Correct the value.]
 
 #msg[#mc("xmit370: --member: '")#mv("name")#mc("' is ")#mv("n")#mc(" characters, a member name is 1-8") \
 #mc("xmit370: --member: expected NAME=FILE, got '")#mv("arg")#mc("'") \
-#mc("xmit370: --stats-date: cannot parse '")#mv("arg")#mc("'") \
+#mc("xmit370: --stats-date: '")#mv("arg")#mc("' is not a date YYYY-MM-DD[THH:MM:SS] between 1900 and 2099") \
+#mc("xmit370: --userid '")#mv("x")#mc("' is ")#mv("n")#mc(" characters, a userid is 1-8") \
+#mc("xmit370: ")#mv("option")#mc(" takes a number, not '")#mv("value")#mc("'") \
+#mc("xmit370: ")#mv("option")#mc(" needs a value") \
 #mc("xmit370: --recfm: only 'f' and 'fb' are supported")][
-  The value of the option is not valid. Return code 2.
+  The value of the option is missing or not valid. Return code 2.
 ][Correct the value.]
 
 #msg[#mc("xmit370: duplicate member name ")#mv("name")#mc(" (")#mv("path1")#mc(" and ")#mv("path2")#mc(")") \
@@ -807,13 +824,15 @@ with a count of the errors.
 ][Rename or exclude one of the files, or name a directory that contains
   files.]
 
+#msg[#mc("xmit370: ")#mv("option")#mc(" does not apply to '")#mv("command")#mc("' (xmit370 --help)")][
+  The option belongs to another subcommand, for example #mc("--dsn") given
+  to #mc("list"). Return code 2.
+][Remove the option.]
+
 #msg[#mc("xmit370: unknown option '")#mv("option")#mc("'") \
 #mc("xmit370: unknown command '")#mv("command")#mc("'")][
   The usage text follows. Return code 2.
 ][Correct the command.]
-
-A file given to #mc("list") or #mc("extract") that is not a transmission
-ends the command with return code 1 and no message.
 
 == dasm370 Messages <apx-messages-dasm370>
 
