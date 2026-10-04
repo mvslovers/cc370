@@ -1,0 +1,8 @@
+$ cc370 -Wall -c count.c
+count.c: In function `main':
+count.c:7: error: 'for' loop initial declaration used outside C99 mode
+$ echo $?
+1
+$ cc370 -Wall -std=gnu99 -c count.c
+$ echo $?
+0

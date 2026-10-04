@@ -1,0 +1,7 @@
+$ LIB=$(dirname $(cc370 -print-file-name=libc.a))
+$ ld370 -o SUMUP --entry @@CRT0 $LIB/crt0.o sumup.o -L. -lsum -L$LIB -lcc370rt -lc -lcc370rt -iebcopy
+$ echo $?
+0
+$ file370 -v SUMUP.iebcopy | grep member
+    member SUMUP     ttr=000001  entry=000000  modlen=70440  [EXEC AC=0]
+    1 directory member entr(y/ies)

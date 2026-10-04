@@ -1,0 +1,13 @@
+$ cc370 -std=gnu99 -c warn.c
+$ cc370 -std=gnu99 -Wall -c warn.c
+warn.c: In function `main':
+warn.c:8: warning: int format, long int arg (arg 2)
+warn.c:6: warning: unused variable `unused'
+$ echo $?
+0
+$ cc370 -std=gnu99 -Wall -Werror -c warn.c
+warn.c: In function `main':
+warn.c:8: warning: int format, long int arg (arg 2)
+warn.c:6: warning: unused variable `unused'
+$ echo $?
+1

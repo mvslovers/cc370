@@ -1,0 +1,7 @@
+$ cc370 -o sumup2 sumup.o
+ld370: unresolved external reference(s):
+    ADDUP
+    REPORT
+ld370: 2 unresolved external(s) -- the module would S0C4 at runtime (each is a NULL adcon); add the defining object/archive, or pass --allow-unresolved to override
+$ echo $?
+1

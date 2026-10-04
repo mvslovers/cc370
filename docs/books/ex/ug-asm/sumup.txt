@@ -1,0 +1,8 @@
+$ as370 -o addup.o addup.asm
+$ as370 -o report.o report.asm
+$ cc370 -O1 -Wall -c sumup.c
+$ cc370 -o sumup sumup.o addup.o report.o -flinker-output=xmit
+$ echo $?
+0
+$ file370 sumup.xmit
+sumup.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unload (member SUMUP)

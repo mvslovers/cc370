@@ -1,0 +1,11 @@
+$ cc370 -Wall -c names.c
+names.c: In function `print_heading':
+names.c:2: warning: external symbol `print_heading' collides with `print_header': both map to the MVS name `PRINT@HE'
+PRINT@HE       DS    0H                                                      
+ ERROR: Symbol previously defined (IFOX00 IFO196) - PRINT@HE in line 30 (statement 143)
+ Assembler Done   1 Statement Flagged /   8 was Highest Severity
+$ echo $?
+1
+$ cc370 -Wall -c asmname.c
+$ echo $?
+0

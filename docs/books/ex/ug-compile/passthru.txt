@@ -1,0 +1,7 @@
+$ cc370 -std=gnu99 -Wall -O1 -o hello -flinker-output=xmit -Wl,--dsn,USER1.HELLO.LOAD -Wl,--map,hello.map hello.c
+$ file370 hello.xmit
+hello.xmit: TSO XMIT/NETDATA -> USER1.HELLO.LOAD, IEBCOPY, wraps IEBCOPY unload (member HELLO)
+$ head -3 hello.map
+LD370 MAP  HELLO  ENTRY @@CRT0 000000  LENGTH 011328
+
+SECTION   TYPE  ORIGIN  LENGTH  SOURCE

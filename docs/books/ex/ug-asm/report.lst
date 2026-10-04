@@ -1,0 +1,51 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                         ASM370 0100 23.38 10/04/26
+REPORT    SD  0001 000000 000060
+PRINTF    ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                    ASM370 0100 23.38 10/04/26
+                                      1 *        void report(int sum, int average) -- print both with printf
+000000                                2 REPORT   CSECT
+                                      3          PDPPRLG FRAME=104,BASER=12,ENTRY=NO
+                                      4+         PRINT OFF                                                      00000702
+                                      5+         PRINT ON                                                       00001702
+000000                                6+         DS    0H                                                       00002200
+                            00000     7+         USING *,12                                                     00002300
+000000                                8+         DS    0H
+000000 90EC D00C      0000C           9+         STM   14,12,12(13)
+000004 41C0 F000      00000          10+         LA    12,0(,15)                                                00003000
+000008 58F0 D04C      0004C          11+         L     15,76(,13)                                               00003100
+00000C 50D0 F004      00004          12+         ST    13,4(,15)                                                00003200
+000010 50F0 D008      00008          13+         ST    15,8(,13)                                                00003300
+000014 18DF                          14+         LR    13,15                                                    00003400
+000016 41F0 F068      00068          15+         LA    15,104(,15)                                              00003800
+00001A 50FD 004C      0004C          16+         ST    15,76(13)                                                00004100
+00001E 18B1                          17          LR    11,1               R11 = our parameter list
+000020 4110 C04C      0004C          18          LA    1,FMT              printf argument 1: the format
+000024 5010 D058      00058          19          ST    1,88(,13)
+000028 D207 D05C B000 0005C 00000    20          MVC   92(8,13),0(11)     arguments 2 and 3: sum, average
+00002E 4110 D058      00058          21          LA    1,88(,13)          R1 = printf's parameter list
+000032 58F0 C048      00048          22          L     15,=V(PRINTF)
+000036 05EF                          23          BALR  14,15
+                                     24          PDPEPIL
+                                     25+         PRINT OFF                                                      00000702
+                                     26+         PRINT ON                                                       00001702
+000038 58D0 D004      00004          27+         L     13,4(,13)                                                00001900
+00003C 58ED 000C      0000C          28+         L     14,12(13,0)
+000040 980C D014      00014          29+         LM    0,12,20(13)
+000044 07FE                          30+         BR    14
+000048                               31          LTORG
+000048 00000000                      32                =V(PRINTF)
+00004C E2E4D4406C846B40              33 FMT      DC    C'SUM %d, AVERAGE %d',X'15',X'00'
+                                     34          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                             ASM370 0100 23.38 10/04/26
+ 0001     0002      1C     000048
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                    ASM370 0100 23.38 10/04/26
+FMT      00018 0000004C 00033  00018
+REPORT   00001 00000000 00002
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                    ASM370 0100 23.38 10/04/26
+=V(PRINTF)
+         00004 00000048 00032  00022
