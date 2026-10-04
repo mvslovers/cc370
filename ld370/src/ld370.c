@@ -77,7 +77,7 @@ static int no_rent = 0, no_reus = 0;
  * silent no-op rather than a visible bug: 0x01 in ATR1 is PDS21BLK, which the
  * template already sets, so a --refr written against the wrong byte would
  * change nothing and still look implemented.  cc370#100's own text and
- * docs/ld370-iewl-divergences.md both said ATR1; file370's decoder has had it
+ * internals/ld370-iewl-divergences.md both said ATR1; file370's decoder has had it
  * right all along ({9, 0x01, "REFR"}).  Named consumer: rexx370 replaces
  * SYS1.LPALIB(IKJEFT01), whose IBM original is linked REFR,RENT, and a module
  * that lands in the PLPA should not differ from the one it replaces.
@@ -2200,7 +2200,7 @@ int main(int argc, char **argv)
                 "         reservation is left unwritten.  OFF by default: it costs\n"
                 "         byte-fidelity to IEWL (which writes those records) and relies on\n"
                 "         program fetch zeroing what it does not load -- measured on MVS\n"
-                "         3.8j, but not under storage pressure.  docs/measurements/.\n");
+                "         3.8j, but not under storage pressure.  internals/measurements/.\n");
         return 2;
     }
 

@@ -12,7 +12,7 @@
  * lmod_iter_next()'s, which is shared, tested, and stops at MODEND.
  *
  * WHY THE CESDID MATTERS.  An SPZAP entry NAMES its section and carries no
- * offset (docs/load-module-format.md 10.1, from HEWLFIDR.ASM's ZAPLOOP).  So a
+ * offset (internals/load-module-format.md 10.1, from HEWLFIDR.ASM's ZAPLOOP).  So a
  * member's entry COUNT is an upper bound on "was this CSECT serviced" and the
  * decoded CESDID is the answer -- which is the whole reason this exists.
  */
@@ -25,7 +25,7 @@
 #include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 #define VERSION_STR "idrdump370 " CC370_VERSION " (" CC370_COMMIT ")"
 
-/* IDR subtypes -- HEWLFOUT.ASM via docs/load-module-format.md section 10.
+/* IDR subtypes -- HEWLFOUT.ASM via internals/load-module-format.md section 10.
  * LASTIDR is OR'd into the subtype byte, so mask before comparing. */
 enum { IDR_SPZAP = 0x01, IDR_LKED = 0x02, IDR_XLATE = 0x04, IDR_USER = 0x08,
        IDR_LAST  = 0x80 };

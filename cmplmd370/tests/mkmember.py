@@ -2,7 +2,7 @@
 """Build synthetic bound load-module members for the record-reader tests.
 
 Our own bytes, not IBM's: the members below are assembled here from the layout
-in docs/load-module-format.md, so the reader cases in run.sh need no corpus and
+in internals/load-module-format.md, so the reader cases in run.sh need no corpus and
 nothing proprietary is committed.  They are deliberately minimal -- a CESD, a
 control record per text record, and whatever the case under test needs.
 

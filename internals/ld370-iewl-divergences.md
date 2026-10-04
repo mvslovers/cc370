@@ -77,7 +77,7 @@ Two lessons from PM-2026-002 (`knowledge/postmortems/`), worth restating:
 > before suspecting MVS.
 
 Full write-ups: `knowledge/postmortems/PM-2026-002-ld370-text-truncation.md`,
-`docs/multitext-fetch-truncation.md`,
+`internals/multitext-fetch-truncation.md`,
 `rexx370/docs/toolchain-ld370-ld-symbol-resolution.md`,
 `rexx370/docs/toolchain-ld370-pack-directory-overflow.md`.
 
@@ -183,7 +183,7 @@ The method note that follows from it: **in this source the prose and the code
 disagree, and the option table is the authority.** Anyone mining IEWL for
 behaviour should confirm against `OPTFIELD` and the action list rather than the
 header comments. The same caution applies to IFOX00 — see
-`as370/docs/ifox-option-parity.md`.
+`as370/internals/ifox-option-parity.md`.
 
 ---
 
@@ -247,7 +247,7 @@ macro-driven (`JCSECT`, `JCALL`, `GOIF`, `JHEAD`), so a plain grep for `CSECT`
 finds nothing — search for the macro names or the comment text instead.
 
 **Our own format documentation** — independent of the above, and the better first
-stop: `docs/object-module-format.md`, `docs/load-module-format.md`,
-`docs/entry-point-resolution.md`, `docs/unload-format.md`, `docs/xmit-format.md`.
+stop: `internals/object-module-format.md`, `internals/load-module-format.md`,
+`internals/entry-point-resolution.md`, `internals/unload-format.md`, `internals/xmit-format.md`.
 
 Code cited throughout: `ld370/src/ld370.c`, `as370/src/as370.c`.

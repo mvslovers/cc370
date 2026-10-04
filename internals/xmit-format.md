@@ -2,7 +2,7 @@
 
 **Producer:** `ld370 -xmit` (`ld370/src/ld370.c`, the XMIT emitter) for RECFM=U
 *load* libraries. The RECFM=FB *source*-library case (samplib, JCL, macros) is
-`xmit370` -- see `docs/xmit-source-pds.md` for what differs.
+`xmit370` -- see `internals/xmit-source-pds.md` for what differs.
 **Consumer on MVS:** `RECV370` (a batch XMIT unpacker, `PGM=RECV370` in
 `SYSC.LINKLIB`) — it parses the NETDATA stream and IEBCOPY-loads the member(s)
 into a load library. (Stock TSO/E `RECEIVE` is **not** present on the target;
@@ -15,7 +15,7 @@ variable-record boundaries (it splits/pads at LRECL; its `record` data-type is
 not wired into the write path). A TSO TRANSMIT file is **RECFM=FB LRECL=80**,
 which uploads byte-clean as a binary sequential dataset. TRANSMIT of a load
 library internally runs IEBCOPY to unload it and wraps that in NETDATA — so the
-IEBCOPY-unload (`docs/unload-format.md`) is the *payload* and this is the outer
+IEBCOPY-unload (`internals/unload-format.md`) is the *payload* and this is the outer
 wrapper. Commercial precedent: Dignus PLINK ships a TSO TRANSMIT file.
 
 **Validated end-to-end on real MVS (2026-06-19):** `as370 → ld370 → --xmit`
@@ -130,7 +130,7 @@ XMIT's `INMR02` instead, which is why `INMBLKSZ`/`INMSIZE` must be correct there
 
 Give it **no** DCB and RECV370 takes the attributes from the transmission's own
 COPYR1/INMR02 instead -- which is how a source library is received, and what
-makes those computed fields load-bearing there. See `docs/xmit-source-pds.md`.
+makes those computed fields load-bearing there. See `internals/xmit-source-pds.md`.
 
 ## 5. Status & open points
 

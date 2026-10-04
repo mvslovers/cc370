@@ -78,7 +78,7 @@ separately; each states the range of the other it works with.
 | cc370 1.0.0 | libc370 <= 2.0.x |
 
 Who owns what, why the ranges are what they are, and what a release of
-either project has to do: [docs/releasing.md](docs/releasing.md).
+either project has to do: [internals/releasing.md](internals/releasing.md).
 
 ## Build & install
 
@@ -170,12 +170,12 @@ ar370/   src/                   ar370 — .a archiver (ld370 autocalls against i
 file370/ src/                   file370 — format inspector (file/objdump for the formats above)
 xmit370/ src/ tests/            xmit370 — TSO TRANSMIT for source PDSes (samplib, JCL, macros)
 common/  src/ include/          format primitives shared by the tools (CP037, CKD, NETDATA)
-docs/                           object / load-module / unload / xmit formats + roadmap
+internals/                      maintainer notes: formats, measurements, roadmap, releasing
 Makefile                        make (whole toolchain) / make tools / make compiler
 ```
 
 Deep dives: [`CLAUDE.md`](CLAUDE.md) (architecture + gotchas),
-[`as370/README.md`](as370/README.md), and `docs/` (the on-the-wire formats).
+[`as370/README.md`](as370/README.md), and `internals/` (the on-the-wire formats).
 
 ## Provenance
 

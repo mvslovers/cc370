@@ -203,7 +203,7 @@ own oracle set cannot see what the 5,230-member corpus does.
 
 Both rebuild in one line and the tables re-derive in about two minutes:
 
-    gcc -O2 -Wall -Icommon/include -o /tmp/zprobe docs/measurements/tools/zprobe.c \
+    gcc -O2 -Wall -Icommon/include -o /tmp/zprobe internals/measurements/tools/zprobe.c \
         common/src/obj370.c common/src/mvs370.c
 
 The corpora are local and unpublished: the bound members under

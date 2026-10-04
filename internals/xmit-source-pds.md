@@ -4,9 +4,9 @@
 **Consumer on MVS:** `RECV370` (`PGM=RECV370`), the same batch unpacker the
 load-module path uses.
 
-This is the RECFM=FB sibling of `docs/xmit-format.md`. The container is the
+This is the RECFM=FB sibling of `internals/xmit-format.md`. The container is the
 same pair of nested formats — an IEBCOPY unloaded PDS wrapped in TSO
-TRANSMIT/NETDATA — so read `docs/unload-format.md` and `docs/xmit-format.md`
+TRANSMIT/NETDATA — so read `internals/unload-format.md` and `internals/xmit-format.md`
 first. This document records only what a **source** library does differently
 from the **load** library `ld370` emits, and how each of those differences was
 measured rather than guessed.
@@ -60,7 +60,7 @@ Unchanged: COPYR2, the device characteristics, the DEB extent handling, the
 directory record framing, the per-member `DL=0` end-of-member record, INMR02 #2
 (INMCOPY / PS / VS / BLKSIZE+20), INMR03 and INMR06.
 
-**Why the DCB fields matter here and not there.** `docs/xmit-format.md` notes
+**Why the DCB fields matter here and not there.** `internals/xmit-format.md` notes
 that RECV370 pre-allocates `SYSUT2` from the JCL DCB and ignores `INMBLKSZ`.
 That is true of the *load-library* path, where the JCL supplies
 `DCB=(RECFM=U,BLKSIZE=15040)`. The CBT571 sample `JRECVPDS` allocates a source

@@ -21,7 +21,7 @@ cc -O2 -Wall -Wextra -Werror -Icommon/include \
 
 # --- record-reader cases, on members we build ourselves -----------------
 # These need no corpus: mkmember.py assembles each member from the layout in
-# docs/load-module-format.md, so the cases run everywhere and nothing
+# internals/load-module-format.md, so the cases run everywhere and nothing
 # proprietary is committed.  Each one stood for a real refusal or a real
 # silent error before #372.
 MK=cmplmd370/tests/mkmember.py

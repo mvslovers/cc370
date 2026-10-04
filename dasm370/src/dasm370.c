@@ -1666,7 +1666,7 @@ static int load_member(const unsigned char *m, long n, const char *want, int all
             if (pend < 0 && segend) { cs++; segend = 0; }
             if (r.flags & LMOD_CTL_RLD) {
                 /* THE RLD INFO COMES FIRST, and the ID/length list after it.
-                 * docs/load-module-format.md puts the list at off 16, which is
+                 * internals/load-module-format.md puts the list at off 16, which is
                  * right only when there is no RLD info to precede it -- and the
                  * two orders are indistinguishable in exactly that case.
                  * Reading the list first made the RLD parse start 4 bytes late,
@@ -1797,7 +1797,7 @@ static void no_section(const char *want, const char *src)
                 /* obj_type_name() answers "??" for the load-module types it has
                  * no object-deck counterpart for, and "??" tells a reader
                  * nothing.  X'03' is LR and X'07' is the deleted/null entry
-                 * (docs/load-module-format.md section 7), and a name surviving
+                 * (internals/load-module-format.md section 7), and a name surviving
                  * as a tombstone is a different finding from a name that is
                  * absent -- 31 of the caller's 124 are exactly this. */
                 const char *t = obj_type_name(esdtype[i]);

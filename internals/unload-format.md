@@ -2,7 +2,7 @@
 
 **Producer:** `ld370 -iebcopy` (`ld370/src/ld370.c`, the unload emitter) for
 RECFM=U load libraries; `xmit370 create` builds the same structure for RECFM=FB
-source libraries (`docs/xmit-source-pds.md` records the field-by-field delta).
+source libraries (`internals/xmit-source-pds.md` records the field-by-field delta).
 **Consumer:** IEBCOPY `COPY` with an unloaded sequential `SYSUT1` (the LOAD step),
 which writes the members back into a real load library on MVS.
 
@@ -12,7 +12,7 @@ the member(s) in the byte stream an IEBCOPY *UNLOAD* would produce; that stream
 uploads as an ordinary binary sequential dataset and IEBCOPY *LOADs* it into the
 target load library. In practice the unload is wrapped once more in TSO TRANSMIT
 (`-xmit`, RECFM=FB80) because mvsMF cannot rebuild the bare RECFM=VS unload on
-upload — see `docs/xmit-format.md`.
+upload — see `internals/xmit-format.md`.
 
 **Authoritative sources** (MVS 3.8j, `~/repos/MVSSRC/.../Data Management Utilities (IEB)`):
 `IEBLDUL` (LOAD/UNLOAD init: COPYR1/COPYR2 field equates, the fake-DEB TTR
@@ -53,7 +53,7 @@ real IEBCOPY UNLOAD (oracle `tests/fixtures/e2e2.iebcopy-unload.bin`).
 > record at each per-member EOF). A member packed *behind* an earlier member's
 > `DL=0` EOF in one VS record is lost on reload -> `IEB183I`. This was the actual
 > cause of every failed 2-member round-trip; the unload byte layout above is
-> necessary but not sufficient. See `docs/xmit-format.md` and `xmit_check.py`.
+> necessary but not sufficient. See `internals/xmit-format.md` and `xmit_check.py`.
 
 All records after COPYR2 are **CKD record images**: a 12-byte count field
 optionally followed by a key and data. There is **no** RDW/BDW in the stream
@@ -169,7 +169,7 @@ RX1   ttr=000007 C=B1  00000B0000000000C3D20000200020 000010 880000 | 000010 C2D
 ## 5. Member-data records
 
 The member's record stream is split into its physical blocks (the records a
-loader/IEWFETCH sees — see `docs/load-module-format.md` §3) by `split_member()`:
+loader/IEWFETCH sees — see `internals/load-module-format.md` §3) by `split_member()`:
 
 | byte 0 | record | block length |
 |---|---|---|

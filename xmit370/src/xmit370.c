@@ -16,10 +16,10 @@
  * directory user data (ISPF statistics instead of load-module PDS2 fields) and
  * how member bytes are produced (fixed-length text records instead of
  * load-module record images).  The geometry model here is ld370's, which is
- * validated on real MVS -- see docs/unload-format.md.
+ * validated on real MVS -- see internals/unload-format.md.
  *
- * Format references: docs/xmit-source-pds.md, docs/unload-format.md,
- * docs/xmit-format.md.
+ * Format references: internals/xmit-source-pds.md, internals/unload-format.md,
+ * internals/xmit-format.md.
  */
 
 #include <ctype.h>
@@ -44,7 +44,7 @@
  * BLKSIZE instead over-packs tracks with many small records into a physically
  * impossible layout -- the S106-0F class of bug.  A source library has many
  * more, smaller blocks than a load library, so the density matters here more,
- * not less.  See docs/unload-format.md.
+ * not less.  See internals/unload-format.md.
  */
 #define DIR_BLK           256      /* PDS directory block                       */
 
@@ -302,7 +302,7 @@ static void packed_date(unsigned char d[4], const struct tm *t)
 static unsigned char bcd2(int v) { return (unsigned char)(((v / 10) << 4) | (v % 10)); }
 
 /* The 30-byte ISPF statistics user data, as measured on a real TSO TRANSMIT of
- * a source PDS (see docs/xmit-source-pds.md for the field map). */
+ * a source PDS (see internals/xmit-source-pds.md for the field map). */
 static void build_ispf_stats(unsigned char ud[30], const struct member *m)
 {
     struct tm t;
@@ -601,7 +601,7 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
      * blocks into a single logical record instead (measured on the ctca_demo
      * oracle: 564 bytes = 2x276 + 12); ld370's per-block framing is the variant
      * that has been through RECV370, so it is what we emit.  See
-     * docs/xmit-source-pds.md. */
+     * internals/xmit-source-pds.md. */
     {
         long q = bounds[1];
         while (q < bounds[2]) {

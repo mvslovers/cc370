@@ -144,14 +144,14 @@ int obj_end_get(const unsigned char *card, struct obj_end *e)
  * members carry one, almost all ICK*, and both walkers stopped dead at it --
  * file370 said "TRUNCATED/unrecognized", cmplmd370 said "malformed".  Neither
  * cc370 nor as370 emits one, which is why it went unnoticed; a module bound
- * SCTR or OVLY does.  docs/load-module-format.md section 8 has the layout:
+ * SCTR or OVLY does.  internals/load-module-format.md section 8 has the layout:
  * byte 0 = X'10', bytes 1-3 = the DATA byte count, 4-byte header
  * (HEWLFOUT.ASM:973-984), so the record is 4 + count and several may follow
  * each other because the data is segmented into <=1024-byte records.
  *
  * The scatter record carries no program text -- it is the loader's translation
  * and scatter tables, written once between the IDRs and the first control
- * record (docs/load-module-format.md section 2) -- so a consumer building a
+ * record (internals/load-module-format.md section 2) -- so a consumer building a
  * module image is RIGHT to skip it, and the four in IEANUC01 sit exactly there.
  *
  * SYM records are framed since #372; anything else remains malformed rather
@@ -286,7 +286,7 @@ int lmod_cesd_walk(const unsigned char *m, long n,
 
     /* The CESD records lead the member -- but not necessarily from offset 0:
      * a module linked with TEST puts its SYM records first
-     * (docs/load-module-format.md section 2).  Scanning from 0 for X'2x' found
+     * (internals/load-module-format.md section 2).  Scanning from 0 for X'2x' found
      * nothing at all on such a member, so every section was "not in the
      * reference".  Walk the record stream instead and take the CESD records
      * wherever they are; the first non-CESD record after them ends the walk,

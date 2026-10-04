@@ -21,7 +21,7 @@ figure can be re-derived rather than re-argued.
 Both host probes build against the repo's own record walker, which is the point —
 a probe with its own parser measures its own parser:
 
-    gcc -O2 -Wall -Icommon/include -o /tmp/zprobe docs/measurements/tools/zprobe.c \
+    gcc -O2 -Wall -Icommon/include -o /tmp/zprobe internals/measurements/tools/zprobe.c \
         common/src/obj370.c common/src/mvs370.c
 
 The corpora they read are local and unpublished (`mvs38src/work/measurements/`).

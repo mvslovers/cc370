@@ -252,7 +252,7 @@ of a RECFM=FB **source** library parses to zero members: file370 recognises the
 container, reports `RECFM=U`, and finds no directory. Our emitters only ever
 produce the RECFM=U load-library shape and the `xmit370 create` FB shape, so an
 unload made by IEBCOPY itself from an FB library is a case that never had to
-work. `docs/xmit-source-pds.md` already records the field-by-field delta on the
+work. `internals/xmit-source-pds.md` already records the field-by-field delta on the
 producer side; the consumer side does not know it.
 
 The distinction is worth naming, because it is the difference between a *transport*
@@ -279,7 +279,7 @@ win.
   advertise an old level and still have been modified, which is exactly the
   explanation for "the source looks right but a handful of bytes differ". Wanted
   in bulk (~5,500 modules joined against a source index), so it streams JSON
-  records rather than taking one invocation per module. `docs/load-module-format.md`
+  records rather than taking one invocation per module. `internals/load-module-format.md`
   §10 already specifies the bytes; §10.5's `LASTIDR X'80'` OR'd into the *subtype*
   is the detail an ad-hoc parser misses.
 - **`map370`** — a modern binder map. Related: ld370 itself has no `MAP`/`XREF`
@@ -290,7 +290,7 @@ win.
 **A fact worth pinning before any of these is written:** there is **no
 AMODE/RMODE in an F-level load module** (5752-SC104, MVS 3.8j) — that is a DFP
 concept (5665-295). The "A24 R24" a modern ISPF shows is the editor's default
-display, not something stored in the module (`docs/load-module-format.md` §13).
+display, not something stored in the module (`internals/load-module-format.md` §13).
 A tool should say *"24-bit (F-level)"* rather than suggest a stored mode.
 
 ---

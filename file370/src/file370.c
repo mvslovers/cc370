@@ -70,7 +70,7 @@ static enum fmt detect(const unsigned char *b, long n)
         return F_XMIT;                                            /* "INMR01" at offset 2 */
     if (n >= 4 && obj_card_type(b) != OBJ_OTHER) return F_OBJ;
     /* First record is the CESD -- unless the module was linked with TEST, in
-     * which case the SYM records come first (docs/load-module-format.md
+     * which case the SYM records come first (internals/load-module-format.md
      * section 2), and a sniff that only knows X'20' calls the member "data". */
     if (n >= 1 && (b[0] == 0x20 || b[0] == 0x28)) return F_LMOD;
     if (n >= 8 && (b[0] & 0xf0) == 0x40) return F_LMOD;           /* leading SYM */

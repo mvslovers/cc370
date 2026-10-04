@@ -161,7 +161,7 @@ usage error.
 
 L<ld370(1)>, L<file370(1)>, L<cc370(1)>
 
-F<docs/xmit-source-pds.md>, F<docs/xmit-format.md>, F<docs/unload-format.md>
+F<internals/xmit-source-pds.md>, F<internals/xmit-format.md>, F<internals/unload-format.md>
 
 =head1 AUTHOR
 

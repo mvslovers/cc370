@@ -1,6 +1,6 @@
 # as370 against IFOX00 — option parity, and what the byte-identity claim covers
 
-Companion to `docs/ld370-iewl-divergences.md`, same purpose: the reference
+Companion to `internals/ld370-iewl-divergences.md`, same purpose: the reference
 material that has no other owner. The **defects** live in the tracker.
 
 ## What "byte-identical to IFOX00" does and does not prove
@@ -85,7 +85,7 @@ the `-a` listing. Purely cosmetic — no effect on the object deck. Correct to s
 worth honouring only if listing fidelity ever matters.
 
 **In IEWL, `PRINT`/`NOPRINT` are documented PARM options that its own source does
-not implement** — see `docs/ld370-iewl-divergences.md`. Not an as370 concern, but
+not implement** — see `internals/ld370-iewl-divergences.md`. Not an as370 concern, but
 the cautionary note applies to both codebases: in these sources the prose and the
 code can disagree, so verify against the option table.
 
