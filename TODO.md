@@ -134,8 +134,11 @@ silent wrong results first. After each merge, one line to Book (session
 2. ~~#806 file370~~ **done** (#817): COPYR1 RECFM decides the directory
    (ISPF statistics for source libraries), no 4 MB cut, one JSON document,
    INMRECFM named, `-` is stdin; the suite runs in CI now.
-3. #807 ld370 -- non-object input links rc 0, `--ac` unchecked, member names
-   unchecked, `--help`, man page after #100.
+3. ~~#807 ld370~~ **done** (#819): object-deck input check, unknown options
+   and missing values rc 2, member names checked where they reach a
+   directory, `--ac` 0..255, `--pack` input/option checks, dup-CSECT note,
+   IDR version from VERSION; man page after #100. Leftovers: #821.
+   (#806 follow-up #820: `--json` on an object deck carries its ESD.)
 4. #804 xmit370 -- `--latin1` on UTF-8, silent rc 1 on non-XMIT input, name
    cutting, option checks.
 5. #808 cc370 driver -- a severity-4 as370 warning fails the build; `-c`/`-S`
@@ -146,6 +149,10 @@ silent wrong results first. After each merge, one line to Book (session
 7. #811 flags everywhere: `--version`/`-V`, `-v` verbose (also as370 and
    dasm370 -- decided, "Read this first" in the next release), `--help`.
 8. #809 dasm370 / cmplmd370 / idrdump370 details.
+9. #821 ld370 leftovers of #807 (--pack with --warn-shadow/-i, non-member
+   --pack input, unprefixed write errors, rc 1/2 classification).
+10. #822 as370 -- rc 16 still writes the object, `-a=FILE` falls back to
+    stdout at rc 0, ERRnnn beside IFOnnn.
 
 ## Triage of 2026-10-03 — the next block, before 1.2.0
 
