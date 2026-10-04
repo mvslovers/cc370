@@ -414,6 +414,22 @@ static void assign_geometry(void)
 
 /* Emit the IEBCOPY unloaded image.  bounds[] reports the four payload record
  * boundaries the NETDATA layer frames on: COPYR1, COPYR2, directory+EOD, data. */
+/* The blocksize the unloaded form DECLARES (COPYR1 and INMR02 #2) is the
+ * library's plus 20 -- but never less than 296.  A PDS directory block goes
+ * out as a 288-byte logical record (12 count + 8 key + 256, with the end-of-
+ * directory marker), which does not scale with --blocksize, and a RECFM=VS
+ * record needs its 4-byte RDW inside LRECL (= BLKSIZE - 4): every record of a
+ * working transmission is exactly LRECL - 4 at most.  So 288 + 4 + 4.  Below
+ * that, RECEIVE refuses the file -- `--recfm f --blocksize 80', the only legal
+ * pair for an unblocked 80-byte library, declared 100: NJE38 RECEIVE "logical
+ * records that exceed the LRECL of the dataset", rc 8 (mvsdev JOB01342, with
+ * 288 declared; #118).  At --blocksize 276 and above nothing changes. */
+static long unl_blksize(void)
+{
+    long b = opt_blksize + 20;
+    return b < 296 ? 296 : b;
+}
+
 static long emit_unload(unsigned char *o, long *bounds)
 {
     long p = 0;
@@ -429,7 +445,7 @@ static long emit_unload(unsigned char *o, long *bounds)
     mvs_put16(o + MVS_XC1LRECL, (int)opt_lrecl);
     o[MVS_XC1RECFM] = (unsigned char)opt_recfm;
     o[MVS_XC1KEYLN] = 0;
-    mvs_put16(o + MVS_XC1TBLKS, (int)opt_blksize + 20);      /* unloaded-PS BLKSIZE */
+    mvs_put16(o + MVS_XC1TBLKS, (int)unl_blksize());         /* unloaded-PS BLKSIZE */
     p = MVS_ENV_HDR_LEN;
     bounds[0] = MVS_COPYR1_LEN;
     bounds[1] = MVS_ENV_HDR_LEN;
@@ -563,9 +579,9 @@ static long emit_xmit(unsigned char *o, const unsigned char *unl, const long *bo
     mvs_put24(r + rp, 0); r[rp + 3] = 1; rp += 4;
     mvs_tus(r, &rp, INM_UTILN, "INMCOPY");
     mvs_tui(r, &rp, INM_SIZE, unl_size, 4);
-    mvs_tui(r, &rp, INM_LRECL, opt_blksize + 20 - 4, 4);
+    mvs_tui(r, &rp, INM_LRECL, unl_blksize() - 4, 4);
     mvs_tui(r, &rp, INM_DSORG, MVS_DSORG_PS, 2);
-    mvs_tui(r, &rp, INM_BLKSZ, opt_blksize + 20, 4);
+    mvs_tui(r, &rp, INM_BLKSZ, unl_blksize(), 4);
     mvs_tui(r, &rp, INM_RECFM, MVS_INMRECFM_INMCOPY, 2);   /* 4802, as every real transmission (#117) */
     mvs_netdata_seg(o, &p, r, rp, 1);
 
