@@ -155,9 +155,11 @@ as370 order inside it.**
   neither; flags orthogonal). httplua, httprexx, lua370, nsf370 not yet ported.
 - rc-12 IFOX00 decks (#160, #241): an oracle only where both assemblers report
   the same diagnostics; otherwise "oracle not usable". Next: compare per module.
-- #23: freeze the 753 libc370 inputs (29 hand-written + 724 cc370-generated)
-  with a manifest, assemble them once by IFOX00 on MVSTK5-REF (their macros as
-  a library there), commit the decks.
+- #23 **done** (#774): 753 libc370 inputs frozen with IFOX00's deck each
+  (MVSTK5-REF JOB00324-00341); `make test-libcorpus` in CI: 752 identical, 0
+  differ, 1 excluded (ESA attic source, rc 8). Unfiled finding: as370 lacks
+  IFO203 for an F constant above 2^31-1 (strtod.s, JOB00342) -- and cc370
+  emits such constants.
 - #56 **done** (#763, #766): BRX* rows dropped; TPROT is SSE, IPTE is S-format
   (MVSTK5-REF JOB00321 -- not RRE as the issue assumed); an S instruction with
   a second operand is now IFO211.
@@ -1624,6 +1626,12 @@ at the cost of one more dimension in which two objects can disagree.
 ## Recently landed
 
 Pointers only. The reasoning lives in the issues and their PRs.
+
+- **2026-10-04 — cc370 1.2.0 RELEASED** (tag `v1.2.0` on `b17cd14`, PR #772,
+  go from mbt-4c). Assets 4 tarballs + 2 .deb + 2 .rpm + install.sh +
+  SHA256SUMS; Homebrew tap at 1.2.0 (one-symlink formula, #732); apt (Debian
+  12), dnf (Fedora), install.sh (macOS, Ubuntu) verified; mbt-4c built all 8
+  consumers against it. VERSION 1.2.1-dev (#773). Then #23 (#774).
 
 - **2026-10-03 — the triage block, items 1-5, MERGED** (PRs #736-#739, #741).
   #86 the recorders count what they drop, the rc no longer depends on the
