@@ -910,7 +910,7 @@ static const struct opc *find_op(int b0, int b1, int mask, int *is_mask_form)
     for (i = 0; optab[i].name; i++) {
         const struct opc *o = &optab[i];
         if (isa_app && o->cls != OPC_APP) continue;
-        int code = (o->opw == 2) ? ((o->fmt == F_S || o->fmt == F_S0) ? o->op : -1)
+        int code = (o->opw == 2) ? ((o->fmt == F_S || o->fmt == F_S0 || o->fmt == F_SSE) ? o->op : -1)
                                  : ((o->fmt == F_S || o->fmt == F_S0) ? ((o->op >> 8) & 0xff) : o->op);
         int want = (o->opw == 2) ? ((b0 << 8) | b1) : b0;
         if (code != want) continue;
@@ -929,7 +929,7 @@ static const struct opc *find_op(int b0, int b1, int mask, int *is_mask_form)
 
 static int ins_len_of(int fmt)
 {
-    return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS) ? 6 : 4;
+    return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS || fmt == F_SSE) ? 6 : 4;
 }
 
 /* Re-encode what we decoded and compare it with what we read.  A decoder that
@@ -1029,6 +1029,13 @@ static int operands(const struct opc *o, const unsigned char *b, long a, char *o
         return 1;
     case F_S0:
         out[0] = 0;
+        return 1;
+    case F_SSE:   /* TPROT D1(B1),D2(B2) (#56) */
+        b1 = (b[2] >> 4) & 0xf; d1 = ((b[2] & 0xf) << 8) | b[3];
+        b2 = (b[4] >> 4) & 0xf; d2 = ((b[4] & 0xf) << 8) | b[5];
+        addr_b(a, d1, b1, t1, sizeof t1);
+        addr_b(a, d2, b2, t2, sizeof t2);
+        snprintf(out, n, "%s,%s", t1, t2);
         return 1;
     case F_SS:
         b1 = (b[2] >> 4) & 0xf; d1 = ((b[2] & 0xf) << 8) | b[3];
@@ -2473,7 +2480,7 @@ static int base_regs(const struct opc *o, const unsigned char *b, int *r)
     case F_SI:
         r[n] = (b[2] >> 4) & 0xf; if (r[n]) n++;
         break;
-    case F_SS:
+    case F_SS: case F_SSE:
         r[n] = (b[2] >> 4) & 0xf; if (r[n]) n++;
         r[n] = (b[4] >> 4) & 0xf; if (r[n]) n++;
         break;
@@ -3065,7 +3072,7 @@ static void mask_disp(unsigned char *t, int fmt)
     switch (fmt) {
     case F_RX: case F_BC: case F_RS: case F_SI: case F_S:
         t[2] &= 0xf0; t[3] = 0; break;
-    case F_SS:
+    case F_SS: case F_SSE:
         t[2] &= 0xf0; t[3] = 0; t[4] &= 0xf0; t[5] = 0; break;
     default: break;
     }
@@ -3077,7 +3084,7 @@ static int disp_of(const unsigned char *b, int fmt, int *bs, int *ds)
     case F_RX: case F_BC: case F_RS: case F_SI: case F_S:
         bs[0] = (b[2] >> 4) & 0xf; ds[0] = ((b[2] & 0xf) << 8) | b[3];
         return 1;
-    case F_SS:
+    case F_SS: case F_SSE:
         bs[0] = (b[2] >> 4) & 0xf; ds[0] = ((b[2] & 0xf) << 8) | b[3];
         bs[1] = (b[4] >> 4) & 0xf; ds[1] = ((b[4] & 0xf) << 8) | b[5];
         return 2;

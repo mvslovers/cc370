@@ -1100,20 +1100,23 @@ else
     fi
 fi
 rm -f /tmp/_o51.obj
-# Deliberate exclusions: TPROT (X'E501', SSE) and IPTE (X'B221', RRE) are in
-# IFOX00's table but as370 has neither format. They must stay a LOUD gap -- a
-# fabricated encoding would turn RC 8 into silently wrong bytes. This asserts
-# the exclusion is deliberate, so a later "completeness" sweep cannot quietly
-# add them without an encoder.
-for m in TPROT IPTE; do
-    printf 'T        CSECT\n         %s 1,2\n         END\n' "$m" > /tmp/_x51.s
-    ./as370 /tmp/_x51.s -o /tmp/_x51.obj >/tmp/_x51.out 2>&1
-    if [ $? -ne 8 ] || ! grep -q "Undefined operation code" /tmp/_x51.out; then
-        echo "opcodes_370: FAIL ($m must stay rejected RC 8 -- as370 has no SSE/RRE format)"; fail=1
-    else
-        echo "opcodes_370: OK ($m still rejected RC 8 -- documented gap, not silent bytes)"
-    fi
-done
+# TPROT and IPTE, in the format IFOX00 gives them (#56; MVSTK5-REF JOB00321,
+# tests/ref/tprotipte.obj is IFOX00's deck): TPROT is SSE D1(B1),D2(B2), six
+# bytes; IPTE is plain S-format D2(B2); the RRE spelling `IPTE R1,R2' is
+# IFO211 TOO MANY OPERANDS at severity 12 and zeroed -- the same rule that now
+# catches `STCK 1,2', which as370 encoded as B205 0001.  Until #56 both
+# mnemonics were undefined operation codes here.
+./as370 tests/tprotipte.s -o /tmp/_tp56.obj >/tmp/_tp56.out 2>&1; r=$?
+n211=$(grep -c 'ERROR: too many operands (IFOX00 IFO211)' /tmp/_tp56.out)
+tpref=tests/ref/tprotipte.obj; tpn=$(( ($(wc -c < "$tpref") / 80 - 1) * 80 ))
+head -c "$tpn" /tmp/_tp56.obj > /tmp/_tp56a; head -c "$tpn" "$tpref" > /tmp/_tp56b
+if [ "$r" = 12 ] && [ "$n211" = 2 ] && [ "$(wc -c < /tmp/_tp56.obj)" = "$(wc -c < "$tpref")" ] \
+   && cmp -s /tmp/_tp56a /tmp/_tp56b; then
+    echo "opcodes_370: OK (TPROT SSE, IPTE S, IPTE R1,R2 = IFO211 -- deck == IFOX00)"
+else
+    echo "opcodes_370: FAIL (TPROT/IPTE: rc $r, IFO211 x$n211, deck vs tests/ref/tprotipte.obj)"; fail=1
+fi
+rm -f /tmp/_tp56.obj /tmp/_tp56.out /tmp/_tp56a /tmp/_tp56b
 # BRXH and BRXLE are ESA/390 and IFOX00 does not know them (genop.asm has
 # WRD/RDD at X'84'/X'85', no BRX*).  as370 took them as F_SI -- R1 dropped,
 # the target written as a base and displacement, rc 0 -- until #56 dropped the
