@@ -856,6 +856,34 @@ static const char *fmt_name(enum fmt f)
     }
 }
 
+/* An object deck's ESD as --json: the same shape as a load module's CESD.
+ * Only the load module had it, so --json on a deck said its format and no
+ * more, although --csects lists a deck's ESD (#806 follow-up). */
+struct obj_json { int n; };
+static int obj_json_item(const struct obj_esd *e, void *ctx)
+{
+    struct obj_json *j = ctx;
+    printf("%s\n      {", j->n++ ? "," : "");
+    if (e->esdid) printf("\"esdid\": %d, ", e->esdid);
+    printf("\"name\": ");
+    json_str(cesd_name(e->name, mvs_nm(e->name)));
+    printf(", \"type\": \"%s\"", esd_type(e->type));
+    if (obj_is_section(e->type)) printf(", \"addr\": %ld, \"len\": %ld", e->addr, e->len);
+    else if (e->type == 0x01) printf(", \"addr\": %ld, \"owner\": %ld", e->addr, e->len);
+    printf("}");
+    return 1;
+}
+
+static void obj_json(const char *path, const unsigned char *b, long n)
+{
+    struct obj_json j = { 0 };
+    json_item_open(path);
+    printf(", \"format\": \"object deck\", \"csects\": [");
+    for (long off = 0; off + OBJ_CARD_LEN <= n; off += OBJ_CARD_LEN)
+        if (obj_card_type(b + off) == OBJ_ESD) obj_esd_walk(b + off, obj_json_item, &j);
+    printf("%s  ],\n   \"count\": %d}", j.n ? "\n" : "", j.n);
+}
+
 static int inspect(const char *path, int v, int csects, int json)
 {
     long n;
@@ -863,7 +891,12 @@ static int inspect(const char *path, int v, int csects, int json)
     enum fmt f;
     if (!b) { perror(path); return 1; }
     f = n ? detect(b, n) : F_UNKNOWN;
-    if (json && f != F_LMOD) {             /* no CESD to list: the format alone */
+    if (json && f == F_OBJ) {              /* the deck's ESD */
+        obj_json(path, b, n);
+        free(b);
+        return 0;
+    }
+    if (json && f != F_LMOD) {             /* no ESD to list: the format alone */
         json_item_open(path);
         printf(", \"format\": \"%s\"}", n ? fmt_name(f) : "empty");
         free(b);
@@ -897,9 +930,9 @@ static void usage(FILE *f)
         "             for an XMIT it peels the wrapped unload and its members\n"
         "  --csects   list the external symbol dictionary and nothing else:\n"
         "             a bound member's CESD, an object deck's ESD\n"
-        "  --json     a JSON object per file -- a load module's CESD, the format\n"
-        "             of anything else -- and an array of them for several\n"
-        "             files; implies --csects\n"
+        "  --json     a JSON object per file -- a load module's CESD, an object\n"
+        "             deck's ESD, the format of anything else -- and an array of\n"
+        "             them for several files; implies --csects\n"
         "Options apply to the files named after them.\n"
         "Exit status: 0 all recognised, 2 a file not in a known format (it\n"
         "outranks 1), 1 a file that could not be read.\n");
