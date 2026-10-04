@@ -5845,12 +5845,24 @@ static unsigned long long bn_divmod(const struct bn *N, const struct bn *D, stru
  * fraction -- F for the high half (fracbits wide), G for the low half of an
  * extended constant (lofrac wide, 0 otherwise).  hb/lb are the halves' byte
  * lengths.  emit_float() runs the stages below over one of these. */
-struct hfp { int sign, exp, ext, hb, lb, fracbits, lofrac; unsigned long long F, G; };
+struct hfp {
+    int sign;                  /* 1 for a negative constant */
+    int exp;                   /* characteristic, excess 64 */
+    int ext;                   /* extended precision: two halves */
+    int hb;                    /* bytes in the high half */
+    int lb;                    /* bytes in the low half, 0 if not extended */
+    int fracbits;              /* fraction bits in the high half */
+    int lofrac;                /* fraction bits in the low half */
+    unsigned long long F;      /* high fraction */
+    unsigned long long G;      /* low fraction */
+};
 
 /* The nominal value as an exact decimal: digits into M, the count after the
  * point into *nfrac, the value's own exponent into *eexp.  Returns the sign. */
 static int hfp_parse(const char *p, struct bn *M, int *nfrac, int *eexp) {
-    int sign = 0, seenpoint = 0, es = 1;
+    int sign = 0;
+    int seenpoint = 0;
+    int es = 1;
     if (*p == '+') p++; else if (*p == '-') { sign = 1; p++; }
     bn_set(M, 0); *nfrac = 0; *eexp = 0;
     for (; *p && *p != '\'' && *p != ' ' && *p != 'e' && *p != 'E'; p++) {
@@ -5878,7 +5890,10 @@ static int hfp_parse(const char *p, struct bn *M, int *nfrac, int *eexp) {
  *   L'-1.5'  C118000000000000 B300000000000000   sign in both halves
  *   L'0.1'   4019999999999999 329999999999999A   rounded at bit 112 */
 static void hfp_convert(const struct bn *M, int P, struct hfp *h) {
-    struct bn num = *M, den, N, R;
+    struct bn num = *M;
+    struct bn den;
+    struct bn N;
+    struct bn R;
     int k;
     bn_set(&den, 1);
     if (P >= 0) for (k = 0; k < P; k++) bn_mul_small(&num, 10);
@@ -5895,7 +5910,8 @@ static void hfp_convert(const struct bn *M, int P, struct hfp *h) {
     h->F = bn_divmod(&N, &den, &R);
     h->G = 0;
     if (h->ext) {                            /* the low half continues the fraction: G = round(R * 2^lofrac / den) */
-        struct bn N2 = R, R2;
+        struct bn N2 = R;
+        struct bn R2;
         bn_shl(&N2, h->lofrac);
         h->G = bn_divmod(&N2, &den, &R2);    /* R < den, so the quotient stays below 2^lofrac <= 2^56 */
         bn_mul_small(&R2, 2);
@@ -5960,14 +5976,20 @@ static void hfp_put(long at, const struct hfp *h) {
 static void emit_float(long at, const char *vstr, int bytes, int scale, int expo, int line) {
     struct bn M;
     struct hfp h;
-    int nfrac, eexp, j;
+    int nfrac;
+    int eexp;
     h.sign = hfp_parse(vstr, &M, &nfrac, &eexp);
-    if (M.n == 0) { for (j = 0; j < bytes; j++) put(at + j, 0, 1); return; }   /* true zero -- and a signed zero is still all zeros (measured: D'-0') */
+    if (M.n == 0) {            /* true zero -- and a signed zero is still all zeros (measured: D'-0') */
+        for (int j = 0; j < bytes; j++) put(at + j, 0, 1);
+        return;
+    }
     h.ext = (bytes > 8);
     h.hb = h.ext ? 8 : bytes;
     h.lb = h.ext ? bytes - 8 : 0;
-    h.fracbits = (h.hb - 1) * 8; if (h.fracbits > 56) h.fracbits = 56;
-    h.lofrac = h.ext ? (h.lb - 1) * 8 : 0; if (h.lofrac > 56) h.lofrac = 56;
+    h.fracbits = (h.hb - 1) * 8;
+    if (h.fracbits > 56) h.fracbits = 56;
+    h.lofrac = h.ext ? (h.lb - 1) * 8 : 0;
+    if (h.lofrac > 56) h.lofrac = 56;
     hfp_convert(&M, eexp + expo - nfrac, &h);   /* value = M * 10^(eexp + expo - nfrac) */
     if (scale > 0) hfp_scale(&h, scale, line);
     hfp_put(at, &h);
