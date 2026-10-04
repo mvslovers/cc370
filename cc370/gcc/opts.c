@@ -665,7 +665,10 @@ common_handle_option (size_t scode, const char *arg,
 
     case OPT_flinker_output_:
       /* MVS transport-wrapper selector (xmit/iebcopy): consumed by the link
-	 spec (see LINK_SPEC), ignored by the compiler proper. */
+	 spec (see LINK_SPEC), ignored by the compiler proper.  Any other value
+	 was accepted and wrote no wrapper (#808).  */
+      if (strcmp (arg, "xmit") && strcmp (arg, "iebcopy"))
+	error ("-flinker-output= takes xmit or iebcopy, not \"%s\"", arg);
       break;
 
     case OPT__help:

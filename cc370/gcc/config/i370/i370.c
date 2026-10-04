@@ -2937,13 +2937,11 @@ mvs_map_extname (const char *name, char *mvsname)
    (ASM_OUTPUT_COMMON -- uninitialized file-scope globals).  This catches two
    colliding definitions in one translation unit (the issue #17 case).
 
-   Not diagnosed: a definition colliding with a same-TU *reference* to a
-   different symbol (a call to codec_stream_decode from a TU defining
-   codec_stream_encode) -- cc370 emits no EXTRN for a =V(...) call (as370
-   creates the external reference from the V-con) and the reference is printed
-   at several literal-pool sites with no single hook; and cross-TU collisions
-   (each name defined in a separate .c), which a per-TU compile cannot see.
-   Both surface at link/assemble time, not here.  */
+   A same-TU *reference* is checked too (a call to codec_stream_decode from a
+   TU defining codec_stream_encode): cc370 emits no EXTRN for a =V(...) call,
+   but ASM_OUTPUT_EXTERNAL, called once per referenced external, feeds the name
+   into this list (#808).  Not diagnosed: cross-TU collisions (each name in a
+   separate .c), which a per-TU compile cannot see -- the manual says so.  */
 
 void
 mvs_check_extname_collision (const char *name)
