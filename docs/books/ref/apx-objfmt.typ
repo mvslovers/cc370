@@ -281,7 +281,8 @@ translator record of the load module. as370 writes it in EBCDIC as follows:
 #idx("ASMDATE")
 #idx("reproducible output")
 The date is the date of the workstation, so the same source assembled on two
-days gives two object modules that differ in this field and nowhere else.
+days gives two object modules that differ in this field and, unless the
+source uses #cmd("&SYSDATE") or #cmd("&SYSTIME"), nowhere else.
 To fix it, set the environment variable #cmd("ASMDATE") to a date in the
 form #var("mm")#cmd("/")#var("dd")#cmd("/")#var("yy"). The same variable sets
 the date that the assembler variable #cmd("&SYSDATE") returns, and

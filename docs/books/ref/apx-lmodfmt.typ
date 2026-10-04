@@ -1,6 +1,6 @@
 #import "../bookmaster/bookmaster.typ": *
 
-= Load Module and Transport #box[Formats] <apx-lmodfmt>
+= Load Module and Transport Formats <apx-lmodfmt>
 
 #idx("load module", "format")
 This appendix describes the files that ld370 and xmit370 write, from the
@@ -71,8 +71,8 @@ a control record and a text record for each piece of text\; and the RLD
 records, the last of which ends the module. A module without address
 constants has no RLD records, and its last control record carries the end
 mark: #cmd("X'0D'"). ld370 does not write #cmd("X'03'") records\; the MVS
-linkage editor does, placing the relocation items of a text record in the
-control record in front of it.
+linkage editor does, with relocation items and the ID/length list in one
+control record.
 
 === Composite External Symbol Dictionary <apx-lmodfmt-cesd>
 
@@ -375,7 +375,8 @@ track: a 12-byte count field, then the key, if any, then the data.
     [11], [1], [The key length. Zero.],
     [12], [2], [Zero.],
     [14], [2], [The block size of the unloaded data set: the block size of
-      the library plus 20.],
+      the library plus 20, and at least 296, the length of a directory
+      record and its count field and key.],
     [16], [20], [The characteristics of the device the library was on, as
       the #cmd("DEVTYPE") macro returns them. ld370 and xmit370 write those
       of a 3350: device type #cmd("X'3050200B'"), largest block 19069, 560
@@ -508,7 +509,7 @@ the record is a list of text units:
     [INMDIR], [#cmd("X'000C'")], [The number of directory blocks to
       allocate: those the members need, plus 5, and at least 10.],
     [INMBLKSZ], [#cmd("X'0030'")], [The block size: of the library, or of
-      the unloaded form (the library's plus 20).],
+      the unloaded form (COPYR1 offset 14).],
     [INMDSORG], [#cmd("X'003C'")], [The organization: #cmd("X'0200'")
       partitioned, #cmd("X'4000'") sequential.],
     [INMLRECL], [#cmd("X'0042'")], [The record length: 80 in
@@ -593,15 +594,19 @@ two layers. These are the differences:
 
 == Example <apx-lmodfmt-ex>
 
-The two object modules of @apx-objfmt-ex, #cmd("fmt.o") and #cmd("sub.o")
-(#cmd("SUB") is a section of two instructions), were linked with
+The object module #cmd("fmt.o") of @apx-objfmt-ex and #cmd("sub.o"),
+assembled from the source in @apx-lmodfmt-sub, were linked with
 
 ```
 LDDATE=26277 LDTIME=120000 ld370 -o FMT --name FMT fmt.o sub.o \
       --reus -iebcopy -xmit --dsn USER1.DEMO.LOAD
 ```
 
-which wrote the member #cmd("FMT"), the unloaded library
+#fig(caption: [SUB, the section that FMT calls])[
+  #code(read("../ex/apx-objfmt/sub.asm"))
+] <apx-lmodfmt-sub>
+
+The link wrote the member #cmd("FMT"), the unloaded library
 #cmd("FMT.iebcopy") and the transmission #cmd("FMT.xmit"). The weak
 reference #cmd("OPT") is left unresolved. The dumps were made with
 #cmd("xxd -a -g1 -c16"), without the character column\; a line #cmd("*")
