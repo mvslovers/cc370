@@ -31,6 +31,50 @@ else
     pass "an alias's AC and PDS2MNM are read after the alias section"
 fi
 
+# --- #806: an xmit370 source library, >4 MB, JSON, INMR03, stdin ----------
+# Each fails on 1.2.0.  In-repo fixtures only: xmit370 builds the libraries.
+X=./xmit370/xmit370
+W6=$(mktemp -d)
+if [ -x "$X" ]; then
+    mkdir "$W6/src"; printf 'LINE ONE\nLINE TWO\n' > "$W6/src/hello.txt"
+    "$X" create -o "$W6/src.xmit" --dsn TEST.SRC --userid TESTER --stats-date 2026-10-04T12:00:00 "$W6/src" >/dev/null 2>&1
+    o=$("$F" -v "$W6/src.xmit")
+    if printf '%s\n' "$o" | grep -q "RECFM=FB, LRECL=80 source library" \
+       && printf '%s\n' "$o" | grep -qE "member HELLO .*ispf v1\.00 2026/277 12:00 2 lines TESTER" \
+       && ! printf '%s\n' "$o" | grep -q "entry="; then
+        pass "a source library's directory reads as ISPF statistics, not PDS2 fields"
+    else fail "source library: $(printf '%s\n' "$o" | grep -E 'IEBCOPY|member' | head -3)"; fi
+    # a 5 MB member: the data must not stop at 4 MB
+    mkdir "$W6/big"; awk 'BEGIN{for(i=0;i<70000;i++) printf "%-79s\n", "LINE " i}' > "$W6/big/big.txt"
+    "$X" create -o "$W6/big.xmit" --dsn TEST.BIG "$W6/big" >/dev/null 2>&1
+    db=$("$F" -v "$W6/big.xmit" | sed -n 's/.*control record(s) (INMR01..INMR06), \([0-9]*\) data byte.*/\1/p')
+    [ -n "$db" ] && [ "$db" -gt 5000000 ] && pass "XMIT data past 4 MB is kept ($db bytes)" || fail "big XMIT data bytes: '$db'"
+    "$F" -v "$W6/big.xmit" | grep -q "member BIG " && pass "the big library's member is listed" || fail "big library member not listed"
+    # INMR03's record format is named, not "data"
+    "$F" -v "$W6/src.xmit" | grep -qE "INMRECFM   VBS, transmission records \(X'0001'\)" \
+        && pass "INMR03 INMRECFM X'0001' is named" || fail "INMRECFM: $("$F" -v "$W6/src.xmit" | grep INMRECFM | tr '\n' '|')"
+fi
+# --json over several files is one document, and a quote in a name is escaped
+cp ./ld370/tests/fixtures/e2e.iewl-member.bin "$W6/a\"b.lm"
+if command -v python3 >/dev/null; then
+    "$F" --json "$W6/a\"b.lm" ./ld370/tests/fixtures/e2e.iewl-member.bin "$W6/src/hello.txt" 2>/dev/null | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert isinstance(d,list) and len(d)==3, d
+assert d[0]["file"].endswith("a\"b.lm") and d[0]["count"]==len(d[0]["csects"])
+assert d[2]["format"]=="data"
+' && pass "--json over three files is one array; the quote is escaped" || fail "--json several files: not one valid document"
+    "$F" --json ./ld370/tests/fixtures/e2e.iewl-member.bin | python3 -c '
+import json,sys; d=json.load(sys.stdin); assert isinstance(d,dict) and "csects" in d' \
+        && pass "--json over one file is still one object" || fail "--json one file: no longer an object"
+fi
+# - is standard input
+a=$("$F" ./ld370/tests/fixtures/e2e.iewl-member.bin | sed 's/^[^:]*://')
+b=$("$F" - < ./ld370/tests/fixtures/e2e.iewl-member.bin | sed 's/^[^:]*://')
+[ -n "$a" ] && [ "$a" = "$b" ] && pass "- reads standard input" || fail "stdin: '$b' vs '$a'"
+"$F" --help | grep -q "until now" && fail "--help still carries changelog prose" || pass "--help has no changelog prose"
+rm -rf "$W6"
+
 LM="$FIX/target-bytes/tk5/LPALIB/IKJEFT01.bin"
 DECK="$FIX/ifox-run/decks/IKJEES20.obj"
 if [ ! -f "$LM" ] || [ ! -f "$DECK" ]; then
@@ -159,6 +203,7 @@ if [ -n "$CE" ]; then
     fi
     rm -f /tmp/_f370ce.$$ /tmp/_f370tk.$$
 fi
+
 
 echo
 echo "$fail failure(s)"
