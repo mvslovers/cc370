@@ -139,8 +139,16 @@ silent wrong results first. After each merge, one line to Book (session
    directory, `--ac` 0..255, `--pack` input/option checks, dup-CSECT note,
    IDR version from VERSION; man page after #100. Leftovers: #821.
    (#806 follow-up #820: `--json` on an object deck carries its ESD.)
-4. #804 xmit370 -- `--latin1` on UTF-8, silent rc 1 on non-XMIT input, name
-   cutting, option checks.
+4. ~~#804 xmit370~~ **done** (#825): names refused or upper-cased, never cut;
+   values checked; per-command options; non-XMIT input named; `--latin1`
+   warns on UTF-8; RECFM/INMRECFM decoding shared with file370.
+4a. ~~#824 as370~~ **done** (#828): unary minus counted, externals keyed
+   apart -- one RLD entry per term in its own direction (JOB00348). No tree
+   deck moved. #810's capture (COM/DXD/CXD/Q, JOB00349, rc 8) is in the
+   scratchpad, not committed, until #810 is implemented.
+4b. #827 `#pragma pack` ignored -- joint decision with libc370 (theirs:
+   drop the 9 pragmas, layout proven identical; `pack(reset)` is not GCC
+   syntax and would leak if cc370 enabled the pragma).
 5. #808 cc370 driver -- a severity-4 as370 warning fails the build; `-c`/`-S`
    with several sources and `-o`; `-o` name check; 8-character collisions in
    one unit. `#pragma map`, `-mpickax`, `-pipe`, trigraphs and `-b` go to

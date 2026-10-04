@@ -1,0 +1,61 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 22.33 10/04/26
+RLNEG     SD  0001 000000 000024
+X         ER  0002
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 22.33 10/04/26
+                                      1 * NEGATIVE RELOCATION TERMS (CC370#824).  EACH A-CON NAMES ITS TERMS.
+000000                                2 RLNEG    CSECT
+                                      3          EXTRN X
+000000 00000000                       4 NEG1     DC    A(-RLNEG)               -RLNEG
+000004 0000000A                       5 NEG2     DC    A(10-RLNEG)             -RLNEG
+000008 00000000                       6 NEG3     DC    A(X-RLNEG)              +X -RLNEG
+00000C 00000000                       7 NEG4     DC    A(-X)                   -X
+000010 00000000                       8 NEG5     DC    A(-RLNEG+X)             -RLNEG +X
+000014 00000000                       9 NEG6     DC    A(RLNEG-X)              +RLNEG -X
+000018 000000                        10 NEG7     DC    AL3(-X)                 -X, 3 BYTES
+00001B 00
+00001C 00000000                      11 NEG8     DC    A(X)                    +X, CONTROL
+000020 00000000                      12 NEG9     DC    A(RLNEG)                +RLNEG, CONTROL
+                                     13          END
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 22.33 10/04/26
+ 0001     0001      0E     000000
+ 0001     0001      0E     000004
+ 0001     0001      0E     000008
+ 0001     0001      0E     000010
+ 0001     0001      0C     000014
+ 0001     0001      0C     000020
+ 0001     0002      0C     000008
+ 0001     0002      0E     00000C
+ 0001     0002      0C     000010
+ 0001     0002      0E     000014
+ 0001     0002      0A     000018
+ 0001     0002      0C     00001C
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 22.33 10/04/26
+NEG1     00004 00000000 00004
+NEG2     00004 00000004 00005
+NEG3     00004 00000008 00006
+NEG4     00004 0000000C 00007
+NEG5     00004 00000010 00008
+NEG6     00004 00000014 00009
+NEG7     00003 00000018 00010
+NEG8     00004 0000001C 00011
+NEG9     00004 00000020 00012
+RLNEG    00001 00000000 00002  00004 00005 00006 00008 00009 00012
+X        00001 00000000 00003  00006 00007 00008 00009 00010 00011
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 22.33 10/04/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         13
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         4
+TOTAL RECORDS PRINTED                        61

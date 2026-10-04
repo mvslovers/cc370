@@ -1620,13 +1620,19 @@ static int equ_len_of(const char *e) {
  *
  * expr_sect() itself only ever wanted one section out of this, and threw the
  * tally away. It is the same walk, with the result kept. */
+/* An external reference's key in the term tally: below -1, one per symbol. */
+#define ER_KEY(s)      (-2 - (int)((s) - syms))
+#define ER_OF_KEY(k)   (&syms[-2 - (k)])
 static int expr_sect_terms(const char *f, int *tsect, long *tsign, int max) {
     int nt = 0, k;
     const char *p = f; int sign = 1, expect = 1;
     while (*p) {
         if (*p == ' ') { p++; continue; }
         if (*p == '+') { if (!expect) sign = 1; expect = 1; p++; continue; }
-        if (*p == '-') { if (!expect) sign = -1; expect = 1; p++; continue; }
+        /* A minus where a term is expected is UNARY and flips the sign of the
+         * term that follows: A(-RLNEG) and A(-X) were relocated positively
+         * because only a binary minus counted (#824). */
+        if (*p == '-') { sign = expect ? -sign : -1; expect = 1; p++; continue; }
         if (*p == '/') { p++; expect = 1; continue; }
         if (*p == ',') { p++; sign = 1; expect = 1; continue; }     /* multi-value term separator */
         if (*p == '*' && !expect) { p++; expect = 1; continue; }   /* binary multiply */
@@ -1657,8 +1663,14 @@ static int expr_sect_terms(const char *f, int *tsect, long *tsign, int max) {
              * into an immediate hang and got found. reloc_sym walks the same
              * syntax and has carried this advance since it was written. */
             if (!n) { p++; continue; }                             /* unhandled char: advance to guarantee progress */
-            if (nm[0] && !isdigit((unsigned char)nm[0])) { struct sym *s = sym_find(nm); if (s && s->type != S_ABS) csect = s->sect; } }
-        if (csect >= 0) { int f2 = -1; for (k = 0; k < nt; k++) if (tsect[k] == csect) { f2 = k; break; }
+            if (nm[0] && !isdigit((unsigned char)nm[0])) { struct sym *s = sym_find(nm);
+                /* An external reference is a relocation target of its own,
+                 * keyed apart from every section (ER_KEY): it used to fall in
+                 * with whatever section its sym held, so A(X-RLNEG) netted to
+                 * nothing and got no RLD item at all (#824). */
+                if (s && s->type == S_ER && !s->defined && s->esdid) csect = ER_KEY(s);
+                else if (s && s->type != S_ABS) csect = s->sect; } }
+        if (csect != -1) { int f2 = -1; for (k = 0; k < nt; k++) if (tsect[k] == csect) { f2 = k; break; }
             if (f2 < 0 && nt < max) { f2 = nt; tsect[nt] = csect; tsign[nt] = 0; nt++; }
             if (f2 >= 0) tsign[f2] += sign; }
         sign = 1; expect = 0;
@@ -1668,6 +1680,8 @@ static int expr_sect_terms(const char *f, int *tsect, long *tsign, int max) {
 static int expr_sect(const char *f) {
     int tsect[8]; long tsign[8]; int k;
     int nt = expr_sect_terms(f, tsect, tsign, 8);
+    for (k = 0; k < nt; k++)                   /* an external's key reads as its sym's section, as before #824 */
+        if (tsect[k] <= -2) tsect[k] = ER_OF_KEY(tsect[k])->sect;
     for (k = 0; k < nt; k++) if (tsign[k] > 0) return tsect[k];     /* net +relocatable term */
     for (k = 0; k < nt; k++) if (tsign[k] != 0) return tsect[k];
     return cur_sect_id;
@@ -2133,6 +2147,13 @@ static void add_reloc_sect(long at, int sect, int len, int neg) {
     if (!rel) rel = cur_sect_esdid;
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
     rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = 0;
+    rels[nrel].len = len; rels[nrel].neg = neg; nrel++;
+}
+/* One relocation against an external reference, with a direction (#824). */
+static void add_reloc_er(long at, const struct sym *s, int len, int neg) {
+    if (in_dsect) return;                       /* a dummy section generates no relocations */
+    if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
+    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = s->esdid; rels[nrel].isV = 0;
     rels[nrel].len = len; rels[nrel].neg = neg; nrel++;
 }
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS || fmt == F_SSE) ? 6 : 4; }
@@ -7755,11 +7776,18 @@ static void do_pass(int pass, char **lines, int nlines) {
                                       int q, nz = 0, simple = 1, allreal = 1;
                                       for (q = 0; q < nt; q++) { if (!tg[q]) continue; nz++;
                                           if (tg[q] != 1) simple = 0;
+                                          if (ts[q] <= -2) continue;          /* an external: its ER entry */
                                           if (!sect_esdid_of(ts[q]) || dsect_sect[ts[q] & 255]) allreal = 0; }
+                                      /* Every unit of the tally is one entry, in its own direction --
+                                       * sections and externals alike.  Measured on IFOX00 (MVSTK5-REF
+                                       * JOB00348, tests/rlneg.s): A(-RLNEG) one negative entry, A(-X)
+                                       * and AL3(-X) one negative against the ER, A(X-RLNEG) +X and
+                                       * -RLNEG, A(RLNEG-X) +RLNEG and -X (#824). */
                                       if (nz && !(nz == 1 && simple) && allreal) {
                                           for (q = 0; q < nt; q++) { long t = tg[q], u;
-                                              for (u = 0; u < (t < 0 ? -t : t); u++)
-                                                  add_reloc_sect(lc, ts[q], blen, t < 0); }
+                                              for (u = 0; u < (t < 0 ? -t : t); u++) {
+                                                  if (ts[q] <= -2) add_reloc_er(lc, ER_OF_KEY(ts[q]), blen, t < 0);
+                                                  else add_reloc_sect(lc, ts[q], blen, t < 0); } }
                                       } else if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0, blen); }
                                       /* A relocatable Y-con -- simply or complexly -- is IFO205
                                        * (severity 4) under YFLAG, IFOX00's default, from a length

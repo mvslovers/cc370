@@ -63,14 +63,20 @@ Compile and assemble only; emit an object deck (F<.o>).
 =item B<-o> I<file>
 
 Place output in I<file>. With a default (link) run this is the load-module
-member, and its basename also becomes the MVS member name.
+member, and its basename also becomes the MVS member name. With a wrapper
+(B<-flinker-output=>) that name must be a valid member name, which
+L<ld370(1)> checks: C<-o my_prog> is refused, the underscore being no MVS
+character.
+
+With B<-c> or B<-S> and more than one source, B<-o> is refused: each source
+gets its own output.
 
 =item B<-flinker-output=>{B<xmit>|B<iebcopy>}
 
 Additionally emit a host-to-MVS transport wrapper beside the load-module member:
 B<xmit> (TSO TRANSMIT, I<out>F<.xmit>) installs with C<RECV370>; B<iebcopy>
 (unloaded PDS, I<out>F<.iebcopy>) is self-describing and can be packed into a
-library with L<ld370(1)> B<--pack>.
+library with L<ld370(1)> B<--pack>. Any other value is an error.
 
 =item B<-O1>
 
@@ -90,15 +96,36 @@ Add a header search directory, a library search directory, or link a library
 
 Print the target (C<cc370>), the product version, or driver/version banners.
 
+=item B<-print-libgcc-file-name>
+
+Print the path of the companion library F<libcc370rt.a>, which every link
+pulls in.
+
 =back
 
 All other standard GCC driver options are accepted.
+
+=head1 DIAGNOSTICS
+
+MVS external names are at most 8 characters, so a longer C name is cut and two
+names can become one symbol (C<codec_stream_encode> and C<codec_stream_decode>
+both become C<CODEC@ST>). B<cc370> warns when that happens within one
+translation unit, between definitions and references alike. Across units it
+cannot see the other name: two colliding definitions get L<ld370(1)>'s
+C<doubly defined> warning, a colliding reference gets nothing. An C<__asm__> name
+sets the external name explicitly.
+
+=head1 EXIT STATUS
+
+C<0> on success, C<1> when a step failed. L<as370(1)> ends with return code
+4 on a warning: the object is written and good, so the driver shows the warning
+and carries on. Return code 8 and above fail the command and leave no object.
 
 =head1 FILES
 
 =over 4
 
-=item F<I<prefix>/libexec/cc370/1.0.0/cc1>
+=item F<I<prefix>/libexec/cc370/I<version>/cc1>
 
 The compiler proper (driver-private).
 

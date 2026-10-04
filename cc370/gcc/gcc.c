@@ -204,6 +204,17 @@ static const char *target_system_root = TARGET_SYSTEM_ROOT;
 static const char *target_system_root = 0;
 #endif
 
+/* as370 ends with IFOX00's return codes: 4 is a warning, the object is
+   written and good.  The driver took any non-zero status as a failure, so a
+   severity-4 diagnostic failed the build and deleted the object (#808).  The
+   assembler alone gets the allowance: cc1 reports errors with status 1.  */
+static int
+assembler_prog_p (const char *prog)
+{
+  const char *b = lbasename (prog);
+  return !strcmp (b, "as") || !strcmp (b, "as370");
+}
+
 /* Nonzero means pass the updated target_system_root to the compiler.  */
 
 static int target_system_root_changed;
@@ -2847,7 +2858,9 @@ See %s for instructions.",
 		  ret_code = -1;
 		}
 	      else if (WIFEXITED (status)
-		       && WEXITSTATUS (status) >= MIN_FATAL_STATUS)
+		       && WEXITSTATUS (status) >= MIN_FATAL_STATUS
+		       && !(WEXITSTATUS (status) <= 4
+			    && assembler_prog_p (commands[j].prog)))
 		{
 		  if (WEXITSTATUS (status) > greatest_status)
 		    greatest_status = WEXITSTATUS (status);
@@ -3403,8 +3416,8 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
 	  /* CPP driver cannot obtain switch from cc1_options.  */
 	  if (is_cpp_driver)
 	    add_preprocessor_option ("--target-help", 13);
-	  add_assembler_option ("--target-help", 13);
-	  add_linker_option ("--target-help", 13);
+	  /* Not to the assembler or the linker: as370 and ld370 have no target
+	     help, and refused the option, failing the command (#808).  */
 	}
       else if (! strcmp (argv[i], "-pass-exit-codes"))
 	{
@@ -3414,7 +3427,7 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
       else if (! strcmp (argv[i], "-print-search-dirs"))
 	print_search_dirs = 1;
       else if (! strcmp (argv[i], "-print-libgcc-file-name"))
-	print_file_name = "libgcc.a";
+	print_file_name = "libcc370rt.a";  /* the companion library (#808) */
       else if (! strncmp (argv[i], "-print-file-name=", 17))
 	print_file_name = argv[i] + 17;
       else if (! strncmp (argv[i], "-print-prog-name=", 17))
@@ -3741,7 +3754,12 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
 	}
     }
 
-  combine_inputs = (have_c && have_o && lang_n_infiles > 1);
+  /* GCC 3.4 ran one cc1 over all the sources here and wrote one combined
+     output; cc370 makes one object per source, so that is refused, as later
+     GCCs refuse it (#808).  */
+  if (have_c && have_o && lang_n_infiles > 1)
+    fatal ("cannot specify -o with -c or -S and multiple files");
+  combine_inputs = false;
 
   if ((save_temps_flag || report_times) && use_pipes)
     {
@@ -6048,6 +6066,16 @@ main (int argc, const char **argv)
 
   process_command (argc, argv);
 
+  /* -flinker-output= picks ld370's wrapper; cc1 checks the value, but a link
+     of objects alone runs no cc1, and an unknown value then wrote no wrapper
+     without a word (#808).  */
+  for (i = 0; (int) i < n_switches; i++)
+    if (! strncmp (switches[i].part1, "flinker-output=", 15)
+	&& strcmp (switches[i].part1 + 15, "xmit")
+	&& strcmp (switches[i].part1 + 15, "iebcopy"))
+      fatal ("-flinker-output= takes xmit or iebcopy, not \"%s\"",
+	     switches[i].part1 + 15);
+
   /* Initialize the vector of specs to just the default.
      This means one element containing 0s, as a terminator.  */
 
@@ -6437,9 +6465,11 @@ main (int argc, const char **argv)
     if (explicit_link_files[i] || outfiles[i] != NULL)
       num_linker_inputs++;
 
-  /* Run ld to link all the compiler output files.  */
+  /* Run ld to link all the compiler output files.  Not for --target-help:
+     only cc1 has target options, and linking its dummy output tried to make
+     a load module and failed the command (#808).  */
 
-  if (num_linker_inputs > 0 && error_count == 0)
+  if (num_linker_inputs > 0 && error_count == 0 && ! target_help_flag)
     {
       int tmp = execution_count;
 

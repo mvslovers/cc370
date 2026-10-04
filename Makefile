@@ -84,7 +84,7 @@ CC1     := $(BUILD)/gcc/cc1
 
 .PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
         test test-as370 test-listref test-libcorpus test-cc370 test-corpus test-xmit370 test-cmplmd370 \
-        test-dasm370 test-ar370 test-sysroot dist test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
+        test-dasm370 test-ar370 test-sysroot test-driver dist test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
 # `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
 # `make tools` is the fast path that builds only the three standalone tools.
 all: tools compiler runtime man
@@ -219,6 +219,7 @@ test-cc370: compiler runtime as370/as370 ld370/ld370
 	@sh cc370/tests/run.sh
 	@sh cc370/tests/helpers.sh
 	@$(MAKE) --no-print-directory test-sysroot
+	@$(MAKE) --no-print-directory test-driver
 
 # The second sysroot (#726): an installed tree with no libc370 of its own,
 # and a stand-in libc370 linked in as cc370/libc370/.
@@ -227,6 +228,13 @@ test-sysroot: tools compiler runtime
 	@$(MAKE) --no-print-directory install-tools install-compiler install-macros install-runtime \
 	    PREFIX=$(abspath $(BUILD))/sysroot-test >/dev/null
 	@sh cc370/tests/sysroot.sh $(abspath $(BUILD))/sysroot-test
+
+# The driver itself (#808): rc handling, option checks, help texts.
+test-driver: tools compiler runtime
+	@rm -rf $(BUILD)/driver-test
+	@$(MAKE) --no-print-directory install-tools install-compiler install-macros install-runtime \
+	    PREFIX=$(abspath $(BUILD))/driver-test >/dev/null
+	@sh cc370/tests/driver.sh $(abspath $(BUILD))/driver-test
 
 test-xmit370: xmit370/xmit370
 	@sh xmit370/tests/run.sh
