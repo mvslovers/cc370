@@ -170,10 +170,11 @@ as370 order inside it.**
   refused by NJE38 RECEIVE (JOB01342), 296 RECEIVEs PO/F/80/80 (JOB01343).
 - #478: **done, #764** (IEWL JOB01639: IEW0241, first kept).
 - New: #761 (float DC scale modifier ignored).
-- New: #776 (as370 misses IFO203 for an out-of-range F constant; cc370 emits
-  a double's words unsigned, `DC F'3558193243'` in strtod.s -- IFOX rc 4,
-  deck identical). **cc370 half done** (#778: words emitted signed; libc370
-  only strtod.c moves). Open: the as370 IFO203 half, after an oracle probe.
+- ~~#776~~ **done**: cc370 emits a double's words signed (#778); as370 raises
+  IFO203 (#780, JOB00343: signed range for F/H/Y, never A; 26 of 27, the 27th
+  needs the exponent modifier). Unfiled from the same job: `FE9'2'` ignores the
+  exponent modifier; `E'1E76'` (IFO201) and `E'1E-80'` (IFO239) silent with
+  other bytes.
 
 **After 1.2.0:** #518 (with the driver and mbt), #106, #78, #684, #345, #113,
 #601, #109; research and design #76, #229 (parked), #386, #112, #383, #698,
