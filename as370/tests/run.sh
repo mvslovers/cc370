@@ -4811,12 +4811,11 @@ rm -f $ew.s $ew.lst
 # so fixture and listing move together or not at all.  F, H, FLn/HLn and Y take
 # the signed range of the field, A is never flagged, one message per nominal
 # value and one per duplicated operand; severity 4, bytes = the low-order bytes.
-# Known gap: statement 44, FE9'3', is flagged by IFOX00 only because it applies
-# the exponent modifier (3E9), which as370 does not yet; statements 43-44 and
-# 49-52 (exponent modifier, floating overflow/underflow) are left out of the
-# byte comparison for the same reason.  Before #776 as370 was silent, rc 0.
+# Statement 44, FE9'3', is flagged because the exponent modifier makes it 3E9
+# (#782); statements 49-52 (floating overflow/underflow, #783) are left out of
+# the byte comparison until that lands.  Before #776 as370 was silent, rc 0.
 ./as370 tests/ifo203.s -a -o /tmp/_i203$$.obj >/tmp/_i203$$.lst 2>&1; i203rc=$?
-want=$(grep -E '^ +[0-9]+  IFO203' tests/listref/ifox-listing-ifo203.txt | awk '$1 != 44 {print $1}' | tr '\n' ' ')
+want=$(grep -E '^ +[0-9]+  IFO203' tests/listref/ifox-listing-ifo203.txt | awk '{print $1}' | tr '\n' ' ')
 got=$(grep -oE 'IFO203\) in line [0-9]+' /tmp/_i203$$.lst | awk '{print $4}' | tr '\n' ' ')
 bytes=$(python3 - tests/listref/ifox-listing-ifo203.txt /tmp/_i203$$.lst <<'PY203'
 import re, sys
@@ -4827,7 +4826,7 @@ def objs(path):
         if m: d[int(m.group(3))] = (m.group(1), m.group(2).strip())
     return d
 r, a = objs(sys.argv[1]), objs(sys.argv[2])
-skip = {43, 44, 49, 50, 51, 52}
+skip = {49, 50, 51, 52}
 bad = [n for n in range(8, 53) if n not in skip and r.get(n) != a.get(n)]
 print("ok" if not bad and len(r) > 40 else "differ at %s" % bad)
 PY203
@@ -4855,6 +4854,15 @@ if [ "$r" = 0 ] && [ "$(wc -c < /tmp/_ls$$.obj)" = "$(wc -c < "$lsref")" ] && cm
     echo "lclscope: OK (LCLx shadows GBLx only in its own context -- deck == IFOX00)"
 else echo "lclscope: FAIL (rc $r, deck vs tests/ref/lclscope.obj)"; fail=1; fi
 rm -f /tmp/_ls$$.obj /tmp/_ls$$.out /tmp/_ls$$a /tmp/_ls$$b
+
+# --- DC modifiers: scale and exponent on F, H, E, D, L (#782, #761, #783) ----
+# tests/dcmod.s is an ORACLE INPUT (MVSTK5-REF JOB00345, snapshots
+# -20261004-1823 -> -1833 unchanged); tests/ref/dcmod.obj is IFOX00's deck,
+# captured at rc 8 (IFO202 on ES6 is severity 8) with --deck-on-error.  The
+# regions are checked as each issue lands; dcmod_check.py names the region.
+#   fixed  X'34'-X'67'  F/H with an exponent modifier and a value exponent:
+#          10**n, half away from zero, E before S (#782)
+python3 tests/dcmod_check.py ./as370 fixed || fail=1
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

@@ -29,6 +29,12 @@ neither number is mistaken for the other.
   27th, `FE9'3'`, waits for the exponent modifier.
 
 ### Fixed
+- **as370: the exponent modifier on F and H** (#782). `FE9'2'` assembled as
+  2; it is 2E9. The value is mantissa x 10**(value exponent + modifier) x
+  2**scale in exact arithmetic, rounded half away from zero, the exponent
+  before the scale -- all measured on IFOX00 (`as370/tests/dcmod.s`). A value
+  exponent alone (`F'1E2'`) is honoured too, on the DC and the literal path.
+  `FE9'3'` now gets the IFO203 that #780 had left open.
 - **as370: a macro's LCLx no longer overwrites a global** (#786). A name
   declared GBLx anywhere was global in every context, so a macro's `LCLA &M`
   wrote and reset the open code's global `&M`. IFNX5M lost 384 bytes of its
