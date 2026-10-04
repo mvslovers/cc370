@@ -111,6 +111,9 @@ jobs:
       - name: ar370 suite
         run: make test-ar370
 
+      - name: file370 suite (in-repo part; the corpus part skips without mvs38src)
+        run: make test-file370
+
   # A second GCC version, pinned, for the -Werror surface only.  The suites
   # are already covered above and are compiler-independent, so this builds
   # the tools and stops -- it is a diagnostic gate, not a second test run.

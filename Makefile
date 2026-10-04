@@ -243,7 +243,7 @@ test-cmplmd370: cmplmd370/cmplmd370
 test-idrdump370: idrdump370/idrdump370
 	@sh idrdump370/tests/run.sh
 
-test-file370: file370/file370
+test-file370: file370/file370 xmit370/xmit370
 	@sh file370/tests/run.sh
 
 # --- install --------------------------------------------------------------

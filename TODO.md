@@ -121,6 +121,31 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
+## Command Reference findings — #804-#811, the current block (2026-10-04)
+
+Found while writing ML01-0002 (the Command Reference); the maintainer handed
+them over through the Book session, plan decided 2026-10-04. Order by harm:
+silent wrong results first. After each merge, one line to Book (session
+"Book") per fix, so the chapter follows.
+
+1. ~~#805 ar370~~ **done** (#815): no limits, GNU long names (> 63 refused),
+   whole-word operation, object-deck input check, `t` names each symbol's
+   member; `rc` still replaces (decided).
+2. #806 file370 -- XMIT data cut at 4 MB, source-library directories decoded
+   as load-module entries, `--json` with several files.
+3. #807 ld370 -- non-object input links rc 0, `--ac` unchecked, member names
+   unchecked, `--help`, man page after #100.
+4. #804 xmit370 -- `--latin1` on UTF-8, silent rc 1 on non-XMIT input, name
+   cutting, option checks.
+5. #808 cc370 driver -- a severity-4 as370 warning fails the build; `-c`/`-S`
+   with several sources and `-o`; `-o` name check; 8-character collisions in
+   one unit. `#pragma map`, `-mpickax`, `-pipe`, trigraphs and `-b` go to
+   issues of their own (decided).
+6. #810 as370 `COM` -- needs an IFOX00 capture (approved).
+7. #811 flags everywhere: `--version`/`-V`, `-v` verbose (also as370 and
+   dasm370 -- decided, "Read this first" in the next release), `--help`.
+8. #809 dasm370 / cmplmd370 / idrdump370 details.
+
 ## Triage of 2026-10-03 — the next block, before 1.2.0
 
 All 51 open issues were checked against `main` (`9ec6101`). Three were closed
