@@ -54,7 +54,8 @@ neither number is mistaken for the other.
   length and attributes; COPYR1's RECFM now decides, and the heading names
   it. Data of a transmission past 4 MB was cut without a word; it is kept
   whole. `--json` over several files is one JSON array (one file still one
-  object), names are escaped, and a file without a CESD reports its format;
+  object), names are escaped, an object deck carries its ESD as a load
+  module carries its CESD, and any other file reports its format;
   `--json` implies `--csects`. INMR03's record format is named, `-` reads
   standard input, and a text file beginning with a space or `@`..`O` is no
   longer taken for a load module.

@@ -68,6 +68,18 @@ assert d[2]["format"]=="data"
 import json,sys; d=json.load(sys.stdin); assert isinstance(d,dict) and "csects" in d' \
         && pass "--json over one file is still one object" || fail "--json one file: no longer an object"
 fi
+# --json on an object deck carries its ESD, as --csects lists it (#806 follow-up)
+if command -v python3 >/dev/null && [ -x ./as370/as370 ]; then
+    printf 'A        CSECT\n         ENTRY E\n         EXTRN X\nE        DC    V(X)\n         END\n' > "$W6/oj.s"
+    ./as370/as370 "$W6/oj.s" -o "$W6/oj.o" 2>/dev/null
+    "$F" --json "$W6/oj.o" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert d["format"]=="object deck" and d["count"]==3, d
+assert [c["type"] for c in d["csects"]]==["SD","LD","ER"]
+assert d["csects"][1]["owner"]==1 and "esdid" not in d["csects"][1]
+' && pass "--json on an object deck lists its ESD (SD, LD with owner, ER)" || fail "--json object deck: no ESD"
+fi
 # - is standard input
 a=$("$F" ./ld370/tests/fixtures/e2e.iewl-member.bin | sed 's/^[^:]*://')
 b=$("$F" - < ./ld370/tests/fixtures/e2e.iewl-member.bin | sed 's/^[^:]*://')
