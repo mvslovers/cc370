@@ -1381,7 +1381,15 @@ enum reg_class
   mvs_need_entry = 0
 
 #if defined(TARGET_DIGNUS) || defined(TARGET_PDPMAC)
+/* Nothing is emitted for a referenced external (as370 makes the ER from the
+   V-con), but the name joins the 8-character collision check, so a reference
+   that collapses onto a different defined or referenced name is warned too
+   (#808).  */
+#ifdef TARGET_HLASM
+#define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME) mvs_check_extname_collision (NAME)
+#else
 #define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME)
+#endif
 #endif
 
 #ifdef TARGET_LE

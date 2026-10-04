@@ -65,6 +65,31 @@ else
     echo "distinct: OK (no false positive)"
 fi
 
+# (3b) #808: a definition and a mere reference in the same unit collide too.
+cat > "$WORK/ref.c" <<'EOF'
+void codec_stream_decode(int x);
+void codec_stream_encode(int x) { codec_stream_decode(x); }
+EOF
+compile ref "$WORK/ref.c"
+if grep -q "collides with" "$WORK/diag" && grep -q "CODEC@ST" "$WORK/diag"; then
+    echo "collide-ref: OK (definition vs reference warned)"
+else
+    echo "collide-ref: FAIL (no warning for a defined name colliding with a referenced one)"; fail=1
+fi
+
+# (3c) two references only, no definition -> warned as well.
+cat > "$WORK/ref2.c" <<'EOF'
+void codec_stream_decode(int x);
+void codec_stream_encode(int x);
+void f(void) { codec_stream_decode(1); codec_stream_encode(2); }
+EOF
+compile ref2 "$WORK/ref2.c"
+if grep -q "collides with" "$WORK/diag"; then
+    echo "collide-ref2: OK (two references warned)"
+else
+    echo "collide-ref2: FAIL (no warning for two colliding references)"; fail=1
+fi
+
 # (4) the __asm__ workaround: two 8-char linkage names that differ are distinct
 # object-deck symbols -> must NOT warn (no false positive on the workaround).
 cat > "$WORK/asm.c" <<'EOF'

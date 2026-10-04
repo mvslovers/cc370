@@ -36,6 +36,21 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **The cc370 driver** (#808):
+  - An as370 warning (return code 4) no longer fails the command and deletes
+    the object. 8 and above still do.
+  - `-c`/`-S` with several sources and `-o` is refused. It used to run one
+    cc1 over all of them and write one combined output.
+  - `--target-help` prints cc1's target options with rc 0. It used to pass
+    the option to as370 and ld370, which refused it, and then try a link.
+  - `-flinker-output=` takes `xmit` or `iebcopy` and refuses anything else,
+    on a link of objects alone as well.
+  - `-print-libgcc-file-name` names `libcc370rt.a`.
+  - `--help` sends bug reports to the cc370 issue tracker.
+  - A reference whose 8-character external name collides with another name
+    of the same unit, defined or referenced, is warned like two definitions
+    already were.
+  - `make test-driver` runs these checks on an installed tree.
 - **as370 relocates negative and mixed-sign address terms right** (#824).
   `A(-SECT)`, `A(-EXT)` and `AL3(-EXT)` got a positive RLD entry, and
   `A(EXT-SECT)`, `A(-SECT+EXT)`, `A(SECT-EXT)` none at all, so a module

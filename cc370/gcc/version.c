@@ -20,4 +20,4 @@ const char version_string[] = "3.4.6 - cc370 " CC370_VERSION;
    forward us bugs reported to you, if you determine that they are
    not bugs in your modifications.)  */
 
-const char bug_report_url[] = "<URL:http://gcc.gnu.org/bugs.html>";
+const char bug_report_url[] = "<URL:https://github.com/mvslovers/cc370/issues>";
