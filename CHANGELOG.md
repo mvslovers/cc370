@@ -36,6 +36,12 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **as370 relocates negative and mixed-sign address terms right** (#824).
+  `A(-SECT)`, `A(-EXT)` and `AL3(-EXT)` got a positive RLD entry, and
+  `A(EXT-SECT)`, `A(-SECT+EXT)`, `A(SECT-EXT)` none at all, so a module
+  linked from them held wrong addresses with no diagnostic. A unary minus
+  now counts, and an external reference is a relocation target of its own:
+  one entry per term, in its own direction, as IFOX00 writes them.
 - **xmit370 checks what it used to take or cut silently** (#804). A derived
   member name longer than 8 characters was cut (`verylongname.txt` became
   `VERYLONG`); it is refused with the `--member` hint. `--member` names and
