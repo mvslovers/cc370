@@ -38,34 +38,33 @@ change them; it stores each one byte for byte.
     library.
     #v(0.3em)
     Each member is named after the base name of its file\; the directory
-    part is dropped. The files are not checked: any file can be stored, and
-    a file that contains no ESD records adds a member and no symbols. ar370
-    reads every #var("object") before it opens #var("archive"), so when one
-    of them cannot be read, the library is neither written nor changed.],
-  [#cmd("t") #var("archive")], [lists the library: first the symbols in its
-    index, in index order, then its members, each with its length in bytes.
-    The member names are shown as the library stores them, followed by
-    #cmd("/") (see @ar370-format). The list does not say which member
-    defines which symbol\; the map written by #cmd("ld370 --map") does, for
-    the members a link includes.],
-  [#cmd("--version")], [displays the toolchain version and the commit from
-    which ar370 was built, for example #cmd("ar370 1.2.0 (b17cd14)"), and
-    ends. It is recognized only as the sole operand.],
+    part is dropped. Every #var("object") must be an object module: a whole
+    number of 80-byte card images that begins with an ESD record
+    (#cmd("X'02'")) and contains an END record. A source file or an archive
+    is refused with a message and return code 1. ar370 reads and checks every
+    #var("object") before it opens #var("archive"), so when one of them is
+    refused or cannot be read, the library is neither written nor changed.],
+  [#cmd("t") #var("archive")], [lists the library: under #cmd("members:")
+    each member with its length in bytes, then under #cmd("symbol table:")
+    each symbol of the index with the member that defines it, in index
+    order (see @ar370-session).],
+  [#cmd("--help"), #cmd("-h")], [writes the usage summary to standard output
+    and ends with return code 0.],
+  [#cmd("--version"), #cmd("-V")], [displays the toolchain version and the
+    commit from which ar370 was built, for example
+    #cmd("ar370 1.2.1-dev (6d28b20)"), and ends.],
 )
 
-#idx("ar370", "operation letters")
-The operation is recognized by its letters, not as a word. An operation that
-contains #cmd("t") lists the library. Otherwise an operation that contains
-#cmd("r") or #cmd("c") creates it, so #cmd("r"), #cmd("c"), #cmd("cr") and
-#cmd("crs") all do what #cmd("rc") does. Any other operation, such as
-#cmd("x"), #cmd("q") or #cmd("-v"), is rejected with the message
-#cmd("ar370: unknown operation '")#var("op")#cmd("'") and return code 2.
-ar370 has no #cmd("--help") option: called with fewer than two operands, it
-writes its usage summary to standard error and ends with return code 2.
-
-#note[The letter rule also applies to an operation that was meant as an
-option. #cmd("ar370 --version lib.a") contains an #cmd("r"), and so creates
-an empty library named #cmd("lib.a").]
+#idx("ar370", "operations")
+The operation is one of #cmd("r"), #cmd("c"), #cmd("rc") or #cmd("cr"), all
+of which create the library, or #cmd("t"), which lists it\; it may be
+written with a leading #cmd("-"), as in #cmd("-rc"). Any other operation,
+such as #cmd("crs") or #cmd("x"), is rejected with the message
+#cmd("ar370: unknown operation '")#var("op")#cmd("' (r, c, rc, cr or t)")
+and return code 2. #cmd("--help") and #cmd("--version") are recognized as
+the first operand whatever follows them. Called with no operands, or with
+too few, ar370 writes its usage summary to standard error and ends with
+return code 2.
 
 == The Symbol Index <ar370-index>
 
@@ -135,8 +134,11 @@ contents have the layout used by GNU #cmd("ar"): a four-byte count of
 symbols, then for each symbol the four-byte offset of the header of the
 member that defines it, and then the symbol names, each ended by a zero
 byte. All numbers are big-endian. The object modules follow in the order
-they were named, each under its base name followed by #cmd("/"), as GNU
-#cmd("ar") writes short member names. The #cmd("ranlib") command of the
+they were named. A name of up to 15 characters is stored in the member's own
+header, followed by #cmd("/"), as GNU #cmd("ar") writes short names. A longer
+name is stored, as GNU #cmd("ar") does, in a second special member named
+#cmd("//") that follows the index, and the member's header holds
+#cmd("/")#var("n"), the offset of the name in it. The #cmd("ranlib") command of the
 workstation cannot build this index, because it does not understand OS/360
 object modules.
 
@@ -152,26 +154,18 @@ produce an identical library.
 #tab(caption: [ar370 limits])[
   #table(columns: (1.6in, 1fr),
     [Limit], [Behavior when exceeded],
-    [2048 object modules in one library], [The object modules after the
-      2048th are not stored. No message is issued, and the return code
-      is 0.],
-    [16384 symbols in the index], [The symbols after the 16384th are not
-      entered. No message is issued, and the return code is 0.],
-    [15 characters in a member name], [The 16-character name field holds the
-      name and its terminating #cmd("/"). A longer base name is cut to 16
-      characters and stored without the #cmd("/")\; a member
-      #cmd("averyveryverylongname.o") is stored as #cmd("averyveryverylon").
-      The name matters only to #cmd("ld370 --include"), which must then be
-      given the shortened name.],
+    [63 characters in a member name], [ar370 ends with the message
+      #var("file")#cmd(": member name longer than 63 characters") and return
+      code 1, and writes no library. A longer name could not be given to
+      #cmd("ld370 --include").],
     [9,999,999,999 bytes in one member], [The size field of a header has ten
       digits. ar370 ends with the message #cmd("ar370: member is") #var("n")
       #cmd("bytes; an ar header's size field holds 10 digits and cannot express it") and return code 1.],
   )
 ] <ar370-limits-tab>
 
-#note[Because the first two limits are exceeded without a message, check a
-very large library with file370, which reports the number of members and
-symbols it holds (see @file370).]
+There is no limit on the number of object modules in a library or of
+symbols in its index.
 
 == Return Codes <ar370-rc>
 
@@ -181,11 +175,14 @@ symbols it holds (see @file370).]
     [Code], [Meaning],
     [0], [The library was written, or listed.],
     [1], [A file could not be read or written: an #var("object"), or the
-      #var("archive") to be listed, does not exist\; the file to be listed
-      is not an archive (#cmd("ar370: ")#var("file")#cmd(": not an archive"))\; or the library cannot be created. A message naming the
-      file is written to standard error.],
-    [2], [The command was not understood: fewer than two operands, or an
-      unknown operation.],
+      #var("archive") to be listed, does not exist\; an #var("object") is not
+      an object module or is itself an archive\; a member name is longer
+      than 63 characters\; the file to be listed is not an archive
+      (#cmd("ar370: ")#var("file")#cmd(": not an archive"))\; or the library
+      cannot be created. A message naming the file is written to standard
+      error.],
+    [2], [The command was not understood: too few operands, or an unknown
+      operation.],
   )
 ] <ar370-rc-tab>
 
