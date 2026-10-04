@@ -157,10 +157,10 @@ libc370 2.1.0 is the matching release: it drops its copies and requires
 `cc370 >= 1.1.0` (checked at compile time through `__CC370__`). From this
 release cc370 is also published prebuilt for Linux and macOS.
 
-**Upgrading:** projects built with mbt need an mbt that links `-lcc370rt`
-(mbt#138) before they move to libc370 2.1. An installed libc370 2.0 keeps
-working with cc370 1.1.0: the runtime is linked first and wins over its
-copies.
+**Upgrading:** the cc370 driver links `-lcc370rt` itself; a build system that
+calls ld370 directly must link `-lcc370rt` ahead of `-lc` before it moves to
+libc370 2.1. An installed libc370 2.0 keeps working with cc370 1.1.0: the
+runtime is linked first and wins over its copies.
 
 ### Added
 - **Prebuilt releases** (#523): `cc370-<v>-{linux-amd64,linux-arm64,
@@ -179,8 +179,8 @@ copies.
   abort on overflow) and `__ffssi2` (`@@FFSSI2`), which `__builtin_ffs(int)`
   now calls instead of libc's `ffs()`. Installed as `<sysroot>/lib/libcc370rt.a`;
   the driver links `-lcc370rt` ahead of `-lc`, so it wins over the copies
-  libc370 before 2.1 still carries. mbt links it when the file exists
-  (mbt#138).
+  libc370 before 2.1 still carries. A build system that calls ld370 itself
+  links it the same way, when the file exists.
 - **The prologue macros ship with cc370** (#688): `PDPTOP`, `PDPPRLG` and
   `PDPEPIL`, the members every `.s` the compiler writes depends on, install
   into `<sysroot>/macros` with the compiler, so its output assembles without
@@ -200,9 +200,9 @@ copies.
 
 ## [1.0.0] - 2026-10-02
 
-The first release: the toolchain eleven ecosystem projects already build with,
-given a version they can name. A libc370 release can now require
-`cc370 >= 1.0.0` instead of a commit, and mbt can pin it.
+The first release: the toolchain as it already stood, given a version a
+project can name. A libc370 release can now require `cc370 >= 1.0.0` instead
+of a commit, and a build system can pin it.
 
 ### Added
 - **The toolchain**, as it stands on `main`:
