@@ -28,17 +28,18 @@ what ld370 is about to send to MVS (see @ld370).
 #deflist(
   [#var("file")], [is a file to examine. Name one or more\; each is described
     in turn. file370 recognizes a file by its contents, not by its name (see
-    @file370-formats). A #var("file") of #cmd("-") is a file of that name,
-    not standard input.],
+    @file370-formats). A #var("file") of #cmd("-") is standard input,
+    reported under the name #cmd("-").],
   [#cmd("-v")], [writes a structural display of each file instead of the
     one-line summary. @file370-verbose describes it for each format.],
   [#cmd("--csects")], [writes the external symbol dictionary of each file
     and nothing else. For a load module member this is the composite ESD
     (see @file370-csects). For an object module it is the same as
     #cmd("-v"). For the other formats it has no effect.],
-  [#cmd("--json")], [writes the list of #cmd("--csects") for a load module
-    member in JSON. It has no effect without #cmd("--csects"), and none on
-    an object module.],
+  [#cmd("--json")], [writes the output of #cmd("--csects") in JSON, and
+    implies #cmd("--csects"). For a load module member that is its composite
+    ESD\; for any other file it is the format alone. See
+    @file370-json.],
   [#cmd("--help"), #cmd("-h")], [displays a summary of the options on
     standard output and ends with return code 0.],
   [#cmd("--version"), #cmd("-V")], [displays the toolchain version and the
@@ -78,13 +79,18 @@ decides the format.
     [Load module member], [ld370], [A first byte of #cmd("X'20'") or
       #cmd("X'28'"), which begins a composite ESD record, or a first byte
       from #cmd("X'40'") to #cmd("X'4F'"), which begins the SYM record of a
-      module linked with the TEST attribute.],
+      module linked with the TEST attribute\; and, in either case, a record
+      stream that decodes as far as a CESD or control record.],
   )
 ] <file370-formats-tab>
 
 A file that passes none of the tests is reported as
 #var("file")#cmd(": data (not a recognized cc370 toolchain format)"), with
-return code 2. A file of length zero is reported as
+return code 2. The last test is what keeps a text file out of the load
+module class: a line that begins with a blank or with one of the
+characters #cmd("@") to #cmd("O") has a first byte in the SYM range, but
+no load module records follow, so the file is reported as data. A file of
+length zero is reported as
 #var("file")#cmd(": empty file"), with return code 0.
 
 #idx("load module", "transport forms")
@@ -119,8 +125,11 @@ file name. @file370-summary-fig shows a summary of each format. The fields are:
     Bytes found after the end of the module are reported as
     #cmd("(+")#var("n")#cmd(" after MODEND)"), and a record that cannot be
     decoded as #cmd("(TRUNCATED/unrecognized record)").],
-  [IEBCOPY], [The name of every entry in the directory, aliases included,
-    in directory order.],
+  [IEBCOPY], [The kind of library, taken from the record format in the
+    IEBCOPY header: #cmd("(RECFM=U load library)"), or for any other record
+    format a source library with its record format and record length, such
+    as #cmd("(RECFM=FB, LRECL=80 source library)"). Then the name of every
+    entry in the directory, aliases included, in directory order.],
   [XMIT], [The data set name the file will be received into
     (#cmd("INMDSNAM")), the utility that unloaded it (#cmd("INMUTILN")),
     and what the data is: an IEBCOPY unloaded data set, with its member name
@@ -177,8 +186,11 @@ described in @file370-csects, and the summary line comes last.
 === IEBCOPY Unloaded Data Set
 
 #idx("PDS directory", "load module attributes")
-After the length of the IEBCOPY header, file370 shows each directory entry
-on two lines. The first gives the member name, #cmd("(alias)") for an alias,
+After the length of the IEBCOPY header, file370 shows each directory entry.
+How it reads the user data of an entry depends on the kind of library given
+in the heading.
+
+In a load library each entry takes two lines. The first gives the member name, #cmd("(alias)") for an alias,
 the TTR of the member, its entry point, its length (#cmd("modlen"), in
 decimal), for an alias the name of the member it is an alias of, and the
 attributes that are set, in brackets. The second line gives the attribute
@@ -210,11 +222,15 @@ The attributes are named as in @file370-attr-tab.
   )
 ] <file370-attr-tab>
 
-#note[file370 reads the user data of every directory entry as that of a
-load library. In the directory of any other library, such as a source
-library written by xmit370, the entry point, length and attributes it
-shows have no meaning, and the heading still reads
-#cmd("(RECFM=U source)").]
+#idx("PDS directory", "ISPF statistics")
+In a source library each entry takes one line: the member name and TTR,
+followed by the ISPF statistics when the entry carries them (30 bytes of
+user data): the version and modification level, the date and time of the
+last change, the number of lines and the user ID, as in
+#cmd("ispf v1.00 2026/277 00:00 7 lines TESTER"). The date is given as year
+and day of the year. An entry with user data of another length shows
+#cmd("userdata=")#var("n")#cmd(" bytes"). @file370-v-srcxmit shows a source
+library written by xmit370.
 
 === XMIT File
 
@@ -239,18 +255,21 @@ and then each control record (#cmd("INMR01"), #cmd("INMR02"),
   [#cmd("INMDIR")], [the number of directory blocks],
 )
 
-Other text units are not shown. A record format that file370 does not
-decode is shown as #cmd("data"). When the data is an IEBCOPY unloaded data
-set, it follows under #cmd("wrapped image:") in the form of
-@file370-v-iebcopy.
+Other text units are not shown. #cmd("INMRECFM") is shown by name with its
+value in hexadecimal, for example #cmd("U (X'C002')") for a load library,
+#cmd("F (X'9000')") for a source library, #cmd("VS (X'4802')") for the
+unloaded data set, and #cmd("VBS, transmission records (X'0001')") in
+#cmd("INMR03"). When the data is an IEBCOPY unloaded data set, it follows
+under #cmd("wrapped image:") in the form of @file370-v-iebcopy, however
+large it is.
 
 #fig(caption: [Structural display of an XMIT file])[
   #screen(raw(read("../ex/file370/file-v-xmit.txt")))
 ] <file370-v-xmit>
 
-#note[file370 examines at most the first 4,194,304 bytes of the data of an
-XMIT file. The data byte count of a larger file stops there, without a
-message\; the directory, which comes first, is still shown in full.]
+#fig(caption: [Structural display of a source library in an XMIT file])[
+  #screen(raw(read("../ex/file370/file-v-srcxmit.txt")))
+] <file370-v-srcxmit>
 
 == Listing the Composite ESD <file370-csects>
 
@@ -278,17 +297,31 @@ shown as #cmd("(blank)") when the name field holds blanks and as
 byte are set, which a finished module should not have, the byte is shown as
 #cmd("[typebyte ")#var("xx")#cmd("]").
 
-With #cmd("--json"), the same list is written as one JSON object for each
-file, with the members #cmd("file"), #cmd("csects") and #cmd("count"). Each
-element of #cmd("csects") has #cmd("esdid"), #cmd("name") and #cmd("type"),
-and as the type requires #cmd("addr") and #cmd("len"), #cmd("addr") and
-#cmd("owner"), #cmd("seg") and #cmd("typebyte"). Addresses and lengths are
-decimal numbers. When several files are named, the objects follow one
-another without being enclosed in an array.
-
 #fig(caption: [The composite ESD of a load module member])[
   #screen(raw(read("../ex/file370/file-csects.txt")))
 ] <file370-v-csects>
+
+=== JSON Output <file370-json>
+
+#idx("file370", "--json option")
+#cmd("--json") writes one JSON object for each file. Every object has the
+members #cmd("file"), the name as given, and #cmd("format"), one of
+#cmd("\"object deck\""), #cmd("\"ar370 archive\""),
+#cmd("\"load module\""), #cmd("\"IEBCOPY unload\""), #cmd("\"XMIT\""),
+#cmd("\"data\"") and #cmd("\"empty\""). For a load module member, the
+members #cmd("csects") and #cmd("count") follow. Each element of
+#cmd("csects") has #cmd("esdid"), #cmd("name") and #cmd("type"), and as
+the type requires #cmd("addr") and #cmd("len"), #cmd("addr") and
+#cmd("owner"), #cmd("seg") and #cmd("typebyte"). Addresses and lengths are
+decimal numbers, and strings are escaped as JSON requires.
+
+For one file the output is that object. For several files it is a JSON
+array of them, as in @file370-json-fig. A file that cannot be read is
+reported on standard error and left out of the array.
+
+#fig(caption: [JSON output for three files])[
+  #screen(raw(read("../ex/file370/file-json.txt")))
+] <file370-json-fig>
 
 == Return Codes <file370-rc>
 

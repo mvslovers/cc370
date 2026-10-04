@@ -7,7 +7,7 @@ demolib.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unlo
       INMFUID    IBMUSER
       INMTNODE   IBMUSER
       INMTUID    DUMMY
-      INMFTIME   2026100420402000
+      INMFTIME   2026100422451700
     INMR02
       INMUTILN   IEBCOPY
       INMSIZE    890
@@ -15,7 +15,7 @@ demolib.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unlo
       INMLRECL   0
       INMDSORG   PO
       INMBLKSZ   15040
-      INMRECFM   U
+      INMRECFM   U (X'C002')
       INMDSNAM   IBMUSER.HOST.LOAD
     INMR02
       INMUTILN   INMCOPY
@@ -23,15 +23,15 @@ demolib.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unlo
       INMLRECL   15056
       INMDSORG   PS
       INMBLKSZ   15060
-      INMRECFM   VS
+      INMRECFM   VS (X'4802')
     INMR03
       INMSIZE    890
       INMLRECL   80
       INMDSORG   PS
-      INMRECFM   data
+      INMRECFM   VBS, transmission records (X'0001')
     INMR06
     wrapped image:
-      (unload): IEBCOPY unloaded PDS (RECFM=U source)
+      (unload): IEBCOPY unloaded PDS (RECFM=U load library)
     env header 328 bytes (COPYR1 X'CA6D0F' + COPYR2)
     member ADD2     (alias)  ttr=000001  entry=000016  modlen=32  of MAIN  [RENT REUS EXEC AC=0]
              ATR1=C2 ATR2=E2  AC=00  PDS2TTRT=000005  PDS2EPM=000000

@@ -1,0 +1,40 @@
+$ file370 src.xmit
+src.xmit: TSO XMIT/NETDATA -> USER.SRC, IEBCOPY, wraps IEBCOPY unload (2 members)
+$ file370 -v src.xmit
+src.xmit: TSO XMIT/NETDATA -> USER.SRC, IEBCOPY, wraps IEBCOPY unload (2 members)
+    5 control record(s) (INMR01..INMR06), 1704 data byte(s)
+    INMR01
+      INMLRECL   80
+      INMFNODE   ORIGNODE
+      INMFUID    TESTER
+      INMTNODE   ORIGNODE
+      INMTUID    TESTER
+      INMFTIME   2026100400000000
+    INMR02
+      INMUTILN   IEBCOPY
+      INMSIZE    1088
+      INMDIR     10
+      INMLRECL   80
+      INMDSORG   PO
+      INMBLKSZ   3120
+      INMRECFM   F (X'9000')
+      INMDSNAM   USER.SRC
+    INMR02
+      INMUTILN   INMCOPY
+      INMSIZE    1704
+      INMLRECL   3136
+      INMDSORG   PS
+      INMBLKSZ   3140
+      INMRECFM   VS (X'4802')
+    INMR03
+      INMSIZE    1088
+      INMLRECL   80
+      INMDSORG   PS
+      INMRECFM   VBS, transmission records (X'0001')
+    INMR06
+    wrapped image:
+      (unload): IEBCOPY unloaded PDS (RECFM=FB, LRECL=80 source library)
+    env header 328 bytes (COPYR1 X'CA6D0F' + COPYR2)
+    member ADD1      ttr=000001  ispf v1.00 2026/277 00:00 7 lines TESTER
+    member MAIN      ttr=000003  ispf v1.00 2026/277 00:00 6 lines TESTER
+    2 directory member entr(y/ies)
