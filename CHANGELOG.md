@@ -36,6 +36,18 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **ld370 refuses what it used to take silently** (#807). A file that is not
+  an object deck linked at rc 0 into an empty member; it is refused with
+  rc 1. An unknown option, or an option given last without its value, was
+  taken as an input file; both are rc 2, and `--help`/`-h` and `-V` are new.
+  A member name from `--name` or `-o` that is not a valid MVS name was
+  accepted or cut (`verylongname` became `VERYLONG`); where it reaches a
+  directory or the map it is refused. `--ac` above 255 (300 stored as 44)
+  and a non-numeric `--blocksize` are refused. `--pack` names an XMIT, an
+  archive or an object deck given as a member, refuses `--name`, and warns
+  that `--sparse-text`/`--allow-unresolved` do not apply. A dropped duplicate
+  CSECT is named in a note (rc unchanged, as IEWL's). The LKED IDR carries
+  the toolchain's version, not V01 M00, and `-v` counts an LR as an LR.
 - **file370 reads source libraries and large transmissions right** (#806).
   The directory of a source library (as `xmit370 create` writes it) was
   decoded as a load library's, its ISPF statistics shown as entry point,

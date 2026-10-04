@@ -92,7 +92,12 @@ Name the target dataset recorded in the XMIT (default F<IBMUSER.HOST.LOAD>).
 
 =item B<--name> I<n>
 
-Set the PDS member name (otherwise derived from I<out>'s basename).
+Set the PDS member name (otherwise derived from I<out>'s basename, extension
+dropped, uppercased). Where the name reaches a directory or the map -- with
+B<-xmit>, B<-iebcopy> or B<--map> -- it must be a valid MVS member name (1-8
+characters, a letter or C<@#$> first, then letters, digits or C<@#$>); anything
+else is refused with RC=2, never cut. A bare B<-o> member carries no name and is
+not held to it.
 
 =item B<--blocksize> I<n>
 
@@ -100,29 +105,35 @@ Set the target load-library B<BLKSIZE> (default B<15040>, the de-facto LINKLIB
 blocksize on MVS 3.8j). It drives the text-record split limit, the unloaded-form
 blocksize, the COPYR1 C<UBLKSIZE> and the INMR02 C<INMBLKSZ>, so a member built at
 I<n> installs into any LINKLIB whose BLKSIZE is E<gt>= I<n>. The default 15040 fits
-both 15040 and 19069 libraries; the old fixed 19069 fit only a fresh E<gt>=19069
-library. Use B<6144> for a small or older device, B<19069> for a 3350-full-track
+both 15040 and 19069 libraries. Use B<6144> for a small or older device, B<19069> for a 3350-full-track
 library. B<Use the same value when building a module and when> B<--pack>-ing it:
 B<--pack> does not re-split, so packing a member built at a larger blocksize while
 declaring a smaller one is refused (the oversized blocks would not fit the target).
-Range 1024..32740.
+Range 1024..32740; a value that is not a number is refused.
 
 =item B<--ac> I<n>
 
 Set the APF authorization code (C<SETCODE AC(>I<n>C<)>) in the PDS2 directory
-entry. Default 0. Applied to the freshly linked module; a B<--pack> of a
-B<-iebcopy> member keeps that member's own AC.
+entry. Default 0, range 0..255 (it is one byte; a larger value is refused).
+Applied to the freshly linked module; a B<--pack> of a B<-iebcopy> member keeps
+that member's own AC.
+
+=item B<--rent>, B<--reus>, B<--refr>
+
+Mark the module reentrant, serially reusable or refreshable. B<A module is linked
+with none of them unless asked>, as IEWL does (a plain IEWL link lists ATTR
+C<03F2>); until cc370 1.2.0 every module was marked RENT and REUS. Declare what
+the module is: a module with modifiable storage must not be marked reentrant.
+B<--rent> and B<--reus> set C<PDS2ATR1>, B<--refr> sets C<PDS2ATR2>. Like B<--ac>,
+they apply to the module being linked; a B<--pack> of a B<-iebcopy> member keeps
+that member's own attributes (set when it was built), so per-member attributes mix
+in one library.
 
 =item B<--norent>, B<--noreus>
 
-Clear the reentrant / reusable attributes (C<PDS2ATR1>) that the link otherwise
-marks on every module. B<--norent> clears B<RENT>, B<--noreus> clears B<REUS>.
-RENT implies REUS, so B<--norent> alone leaves a serially-reusable (not reentrant)
-module; pass both for a module that cannot be reused at all. Use this for a module
-with modifiable storage that must not be marked reentrant. Like B<--ac>, the flags
-apply to the module being linked; a B<--pack> of a B<-iebcopy> member keeps that
-member's own attributes (set when it was built), so per-member attributes mix in
-one library.
+Accepted for scripts written against the old default, and since that default is
+gone they change nothing on their own. Given together with the matching set-flag
+they are refused.
 
 =item B<--sparse-text>
 
@@ -172,15 +183,13 @@ C<IEHLIST LISTPDS FORMAT> on MVS 3.8j:
     PARM='NCAL,LIST,XREF,REFR'     ATTR 03F3
     PARM='NCAL,LIST,RENT,REFR'     ATTR C3F3
 
-and IEHLIST's own attribute index names bit 15 C<REFR>. Our B<--norent>
-B<--noreus> reproduces the first of those and B<--norent> B<--noreus> B<--refr>
-the second, listed by the same utility.
+and IEHLIST's own attribute index names bit 15 C<REFR>. ld370's default
+reproduces the first of those and B<--refr> the second, listed by the same
+utility.
 
 The set-flags are B<orthogonal>: each does exactly what it names. RENT implies
 REUS as an attribute, but B<--rent> does not set REUS on the caller's behalf --
-pass both for IEWL's C<RENT>. Against today's template B<--rent> and B<--reus>
-are idempotent, since it already sets both; they exist so that default can be
-inverted later without a flag day (see cc370#100).
+pass both for IEWL's C<RENT>.
 
 Giving a set and a clear for the same attribute is B<refused>, not resolved by
 precedence: either resolution would be a guess at what was meant.
@@ -208,8 +217,8 @@ all survive. B<Pack any member that needs a non-zero entry, a non-zero AC or
 non-default attributes from its> B<-iebcopy>, not its bare F<.lm>.
 
 The two halves of what a bare member loses are not equally repairable, and only
-one of them can be given again here. B<--ac>, B<--norent> and B<--noreus> on the
-B<--pack> command do apply to a bare member, so an authorized module can be
+one of them can be given again here. B<--ac>, B<--rent>, B<--reus> and B<--refr>
+on the B<--pack> command do apply to a bare member, so an authorized module can be
 packed from one by repeating the flag. The B<entry point> cannot: it is packed
 as B<0>, and B<--entry> is B<not honoured by> B<--pack> --- it is accepted and
 ignored, since entry resolution belongs to the link. Packing a bare member
@@ -221,11 +230,59 @@ you are in, which is why the warning does not try to guess.
 A member's name comes from its F<.iebcopy> directory, or (for a bare member) the
 file's basename with the extension stripped and uppercased. Override either with
 I<NAME>=I<FILE>; a bare member whose basename is not a valid MVS member name
-B<must> be named this way.
+B<must> be named this way, and B<--name> is refused with B<--pack> for that
+reason. An XMIT, an archive or an object deck given as a member is refused, naming
+what it is. B<--sparse-text> and B<--allow-unresolved> shape a link and are
+ignored by a pack, with a warning; B<--map> and B<--alias> are refused.
 
-=item B<-v>
+=item B<-v>, B<--verbose>
 
 Verbose: trace the link / pack phases on stderr.
+
+=item B<--help>, B<-h>
+
+Print the usage and exit.
+
+=item B<--version>, B<-V>
+
+Print the toolchain version and the commit it was built from, and exit.
+
+=back
+
+An argument beginning with B<-> that is not an option is refused (it used to be
+taken as an input file), as is an option given last without its value.
+
+=head1 INPUT
+
+Every input that is not an archive (F<.a>, B<-l>) must be an OS/360 object deck:
+80-byte cards, each beginning C<X'02'>, with an END card. Anything else -- a C
+source, an XMIT, an archive without its F<.a> -- is refused with RC=1, and no
+member is written.
+
+A CSECT that an earlier object already defined is dropped with its text, space,
+relocations and entries, and every reference binds to the first definition, as
+IEWL does. IEWL says nothing; ld370 prints a note naming the CSECT, and the
+return code is unchanged.
+
+=head1 EXIT STATUS
+
+=over 4
+
+=item B<0>
+
+The output was written. Warnings and notes do not change it.
+
+=item B<1>
+
+The link failed: an input could not be read or is not an object deck,
+references stayed unresolved (without B<--allow-unresolved>), the B<--entry>
+symbol was not found, or an output could not be written.
+
+=item B<2>
+
+A usage error: an unknown option, an option without its value, a value out of
+range or not a number, an invalid member or alias name, or options that cannot be
+combined.
 
 =back
 
@@ -254,7 +311,12 @@ with RC=2 if malformed.
 =back
 
 Both are read independently: setting only one pins that field and leaves the
-other on the host clock.
+other on the host clock. They set the transmission's C<INMFTIME> in a B<-xmit>
+file too, so an XMIT is reproducible as well. Its other INMR01 fields are fixed:
+C<INMFNODE> C<ORIGNODE>, C<INMFUID> C<IBMUSER>, C<INMTNODE> C<IBMUSER> and
+C<INMTUID> C<DUMMY> -- the values of the TSO TRANSMIT the format was matched
+against (F<ld370/tests/fixtures/e2e.iewl.xmit>). RECEIVE and RECV370 install the
+transmission whatever they say.
 
 =head1 SEE ALSO
 

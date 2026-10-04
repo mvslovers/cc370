@@ -131,8 +131,9 @@ silent wrong results first. After each merge, one line to Book (session
 1. ~~#805 ar370~~ **done** (#815): no limits, GNU long names (> 63 refused),
    whole-word operation, object-deck input check, `t` names each symbol's
    member; `rc` still replaces (decided).
-2. #806 file370 -- XMIT data cut at 4 MB, source-library directories decoded
-   as load-module entries, `--json` with several files.
+2. ~~#806 file370~~ **done** (#817): COPYR1 RECFM decides the directory
+   (ISPF statistics for source libraries), no 4 MB cut, one JSON document,
+   INMRECFM named, `-` is stdin; the suite runs in CI now.
 3. #807 ld370 -- non-object input links rc 0, `--ac` unchecked, member names
    unchecked, `--help`, man page after #100.
 4. #804 xmit370 -- `--latin1` on UTF-8, silent rc 1 on non-XMIT input, name
