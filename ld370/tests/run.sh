@@ -1277,6 +1277,34 @@ else
 fi
 rm -f "$TMP"/d102*
 
+echo "== an entry defined by two explicit objects is warned about, first kept (#478)"
+# IEWL, MVSCE-LAB JOB01639: EA and EB both define ENTRY DUPE, EC refers to it.
+# IEW0241 DOUBLY DEFINED, RC 4, in both orders; the first definition is kept
+# and EC's V(DUPE) binds to it -- EA+4, or EB+8 with the order swapped.
+# ld370 bound the same way and said nothing (except for an autocalled member).
+printf "EA       CSECT\n         ENTRY DUPE\n         DC    CL4'EA1'\nDUPE     DC    CL4'EA2'\n         END\n" > "$TMP/d478a.s"
+printf "EB       CSECT\n         ENTRY DUPE\n         DC    CL8'EB1'\nDUPE     DC    CL4'EB2'\n         END\n" > "$TMP/d478b.s"
+printf "EC       CSECT\n         DC    V(DUPE)\n         END\n" > "$TMP/d478c.s"
+for x in a b c; do "$AS" "$TMP/d478$x.s" -o "$TMP/d478$x.o" || echo "  assemble d478$x failed"; done
+for ord in ab ba; do
+    if [ $ord = ab ]; then o1=a; o2=b; want=00000004; else o1=b; o2=a; want=00000008; fi
+    "$LD" -o "$TMP/d478$ord.lm" --name T "$TMP/d478$o1.o" "$TMP/d478$o2.o" "$TMP/d478c.o" 2>"$TMP/d478$ord.err"; r=$?
+    got=$(python3 - "$TMP/d478$ord.lm" "$FI" <<'PY'
+import sys, subprocess, re
+v = subprocess.run([sys.argv[2], "-v", sys.argv[1]], capture_output=True, text=True).stdout
+off, n = [(int(a, 16), int(b)) for a, b in re.findall(r"@([0-9A-F]+)\s+text\s+(\d+) bytes", v)][0]
+print(open(sys.argv[1], "rb").read()[off + 0x18:off + 0x1C].hex().upper())
+PY
+)
+    if [ "$r" = 0 ] && [ "$got" = "$want" ] \
+       && grep -q "warning: 'DUPE' doubly defined: .*d478$o2.o defines it again (first definition kept)" "$TMP/d478$ord.err"; then
+        echo "  OK: order $o1,$o2: warned, V(DUPE) = $want (the first definition), as IEWL"
+    else
+        echo "  FAIL: order $o1,$o2: rc $r, V(DUPE) $got (want $want), stderr '$(cat "$TMP/d478$ord.err")'"; fails=$((fails + 1))
+    fi
+done
+rm -f "$TMP"/d478*
+
 printf '\n'
 if [ "$fails" -eq 0 ]; then
     echo "ld370 regression: ALL GREEN"
