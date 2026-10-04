@@ -29,6 +29,13 @@ neither number is mistaken for the other.
   27th, `FE9'3'`, waits for the exponent modifier.
 
 ### Fixed
+- **as370: floating-point range and modifier limits** (#783). `E'1E76'` was
+  silent with a wrapped characteristic; IFOX00 says IFO201 and writes 1.0,
+  because a value exponent plus modifier outside -85..75 is taken as zero
+  (ifnx5f). A characteristic outside 0..127 (`E'7.3E75'`, `E'1E-80'`) is
+  IFO239 and the constant all zeros; a scale or exponent modifier outside
+  DCTABLE's limits is IFO200 / IFO201 and taken as zero. All severity 8,
+  measured on IFOX00 (`as370/tests/dcfperr.s`).
 - **as370: the scale and exponent modifiers on E, D and L** (#761). `DS2'1.5'`
   was written normalised (`41180000…`); it is `43001800…`. The fraction is
   rounded at its normalised precision, shifted right S hex digits with the

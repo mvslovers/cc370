@@ -659,7 +659,8 @@ static void esd_add(struct sym *s, int role) {
 static int lenalgn(int len) { return (len % 8 == 0) ? 8 : (len % 4 == 0) ? 4 : (len % 2 == 0) ? 2 : 1; }
 /* classify a literal (=A/V/F/H/D/Y/X/C, optional Ln) into byte size + alignment;
  * record the address symbol (A/V/Y) or the numeric value (F/H/D) */
-static long fixed_nominal(const char *t, int scale, int expo, int *big);   /* fwd: #782 */
+static long fixed_nominal(const char *t, int scale, int expo, int *big, int *ebad);   /* fwd: #782, #783 */
+static void dc_mod_limits(int ty, int *scale, int *expo, int line, int diag);   /* fwd: #783 */
 static int fixed_needs_exact(const char *t, int hasscale, int hasexpo);
 static int emit_decimal(const char *txt, int packed, long at, int want, int emit, int diag, int line);   /* fwd: P/Z, the DC path's own */
 /* The quoted body of a literal, without its quotes. emit_decimal() rejects any
@@ -783,7 +784,7 @@ static void lit_classify(struct lit *l) {
         int per = haslen ? len : (ty == 'F' ? 4 : 2);
         if (nv < 1) { nv = 1; vv[0][0] = 0; }
         l->scale = scale; l->scaled = hasscale || hasexpo; l->expo = expo;
-        l->val = vv[0][0] ? (fixed_needs_exact(vv[0], hasscale, hasexpo) ? fixed_nominal(vv[0], scale, expo, NULL) : strtol(vv[0], NULL, 10)) : 0;
+        l->val = vv[0][0] ? (fixed_needs_exact(vv[0], hasscale, hasexpo) ? fixed_nominal(vv[0], scale, expo, NULL, NULL) : strtol(vv[0], NULL, 10)) : 0;
         l->size = per * nv; l->algn = haslen ? 1 : (ty == 'F' ? 4 : 2);
     /* Floating point carries no integer value: emit_lit converts the nominal
      * value itself. DCTABLE's default lengths are E 4 / D 8 / L 16, L doubleword
@@ -901,6 +902,24 @@ static void note_trunc203(long v, int blen, int line) {
     if (v < lo || v > hi)
         note_operr("L, D, E, F, H, or Y-type constant truncated, high order digits lost (IFOX00 IFO203)", 4, line);
 }
+/* The modifier limits of DCTABLE (ifnx5d.asm, STEST/ETEST): a scale modifier
+ * outside 0..14 for E and D, 0..28 for L, -187..346 for F and H is IFO200; an
+ * exponent modifier outside -85..75 is IFO201; both severity 8, and the
+ * modifier is then taken as zero.  Measured on IFOX00 (MVSTK5-REF JOB00346,
+ * tests/dcfperr.s): ES15'1.5' and ES-1'1.5' are IFO200 and 41180000, FE76'1'
+ * and FE-86'1' are IFO201 and 1, FE-85'1' is 0 and silent (#783). */
+static void dc_mod_limits(int ty, int *scale, int *expo, int line, int diag) {
+    int lo = (ty == 'F' || ty == 'H') ? -187 : 0;
+    int hi = (ty == 'F' || ty == 'H') ? 346 : (ty == 'L') ? 28 : 14;
+    if (*scale < lo || *scale > hi) {
+        if (diag) note_operr("Invalid scale modifier (IFOX00 IFO200)", 8, line);
+        *scale = 0;
+    }
+    if (*expo < -85 || *expo > 75) {
+        if (diag) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, line);
+        *expo = 0;
+    }
+}
 /* A fixed-point nominal value that is not a plain integer: a decimal point, an
  * exponent in the value (F'1E2'), a scale modifier or an exponent modifier.
  * A plain integer keeps strtol, which is what every such constant used. */
@@ -921,7 +940,7 @@ static int fixed_needs_exact(const char *t, int hasscale, int hasexpo) {
  * FS3'1.25' is 10, FS28'6.2832' -- the FORTRAN scientific routines' two pi --
  * is X'6487FCB9', and FS2'1.2' is 4.8, which IFOX00 writes as 5.  Exact
  * arithmetic gives all three, and no rounding of a double can move them. */
-static long fixed_nominal(const char *t, int scale, int expo, int *big) {
+static long fixed_nominal(const char *t, int scale, int expo, int *big, int *ebad) {
     typedef unsigned __int128 u128;
     u128 num = 0, den = 1; int neg = 0, ovf = 0, dig = 0, frac = 0, infrac = 0, nexp = 0;
     const u128 lim = ((u128)1 << 120);
@@ -937,6 +956,11 @@ static long fixed_nominal(const char *t, int scale, int expo, int *big) {
         if (*t == '-') { sg = 1; t++; } else if (*t == '+') t++;
         while (isdigit((unsigned char)*t)) { if (en < 100000) en = en * 10 + (*t - '0'); t++; }
         nexp = sg ? -en : en; }
+    /* FFPCONV (ifnx5f ZWC1) bounds the value's exponent plus the modifier to
+     * -85..75 for fixed and floating point alike; outside it, IFO201 and the
+     * conversion goes on as if both were zero.  Measured for E (#783); for F
+     * and H it is the same code path in the source, not a measurement. */
+    if (nexp + expo < -85 || nexp + expo > 75) { if (ebad) *ebad = 1; nexp = 0; expo = 0; }
     long e10 = (long)nexp + expo - frac + dig;
     long k;
     if (e10 >= 0) { for (k = 0; k < e10; k++) { if (num > lim / 10) ovf = 1; num *= 10; } }
@@ -5958,9 +5982,8 @@ static void hfp_scale(struct hfp *h, int scale, int line) {
     h->exp += scale;
 }
 
-/* The exponent is excess-64 in seven bits and is NOT range-checked: a value
- * needing an exponent outside 0..127 wraps silently, as it did before. IFOX00
- * flags it; as370 does not (see #53). */
+/* The characteristic is excess-64 in seven bits; emit_float has already
+ * refused one outside 0..127 with IFO239 (#783). */
 static void hfp_put(long at, const struct hfp *h) {
     int i;
     put(at, (long)((h->sign ? 0x80 : 0) | (h->exp & 0x7f)), 1);
@@ -5990,8 +6013,18 @@ static void emit_float(long at, const char *vstr, int bytes, int scale, int expo
     if (h.fracbits > 56) h.fracbits = 56;
     h.lofrac = h.ext ? (h.lb - 1) * 8 : 0;
     if (h.lofrac > 56) h.lofrac = 56;
+    if (eexp + expo < -85 || eexp + expo > 75) {   /* see fixed_nominal: IFO201, both taken as zero */
+        if (g_pass == 2) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, line);
+        eexp = 0;
+        expo = 0;
+    }
     hfp_convert(&M, eexp + expo - nfrac, &h);   /* value = M * 10^(eexp + expo - nfrac) */
     if (scale > 0) hfp_scale(&h, scale, line);
+    if (h.exp < 0 || h.exp > 127) {   /* IFO239: ifnx5f ZWQ7 clears the whole constant, sign included */
+        if (g_pass == 2) note_operr("Invalid floating point characteristic (IFOX00 IFO239)", 8, line);
+        for (int j = 0; j < bytes; j++) put(at + j, 0, 1);
+        return;
+    }
     hfp_put(at, &h);
 }
 /* one copy's width: the size a single nominal value occupies, which is what the
@@ -6025,7 +6058,10 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
          * the integer route and assembled as 0000000000000002 and 00000000 where
          * IFOX00 says 4120000000000000 and 41100000 (#53). */
         const char *q = strchr(p, '\'');
-        if (q) emit_float(loc, q + 1, size, l->scaled ? l->scale : 0, l->expo, l->defln);
+        int lsc = l->scaled ? l->scale : 0;
+        int lex = l->expo;
+        dc_mod_limits(ty, &lsc, &lex, l->defln, 1);
+        if (q) emit_float(loc, q + 1, size, lsc, lex, l->defln);
         else { int j; for (j = 0; j < size; j++) put(loc + j, 0, 1); }
     } else if (ty == 'P' || ty == 'Z') {
         char body[VALSZ]; lit_body(p, body, sizeof body);
@@ -6042,7 +6078,12 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
         if (nv < 1) { nv = 1; vv[0][0] = 0; }
         { int per = size / nv; if (per < 1) per = 1;
           for (vi = 0; vi < nv; vi++) {
-              long v = vv[vi][0] ? (fixed_needs_exact(vv[vi], l->scaled, 0) ? fixed_nominal(vv[vi], l->scale, l->expo, NULL) : strtol(vv[vi], NULL, 10)) : 0;
+              int lsc = l->scale;
+              int lex = l->expo;
+              int ebad = 0;
+              dc_mod_limits(ty, &lsc, &lex, l->defln, 1);
+              long v = vv[vi][0] ? (fixed_needs_exact(vv[vi], l->scaled, 0) ? fixed_nominal(vv[vi], lsc, lex, NULL, &ebad) : strtol(vv[vi], NULL, 10)) : 0;
+              if (ebad) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, l->defln);
               put(loc + (long)vi * per, v, per); } }
     } else if (ty == 'X') {
         const char *q = strchr(p, '\''); unsigned char by[256]; int nb = q ? hex_to_bytes(q + 1, by, 256) : 0;
@@ -7410,6 +7451,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     while (isdigit((unsigned char)*p)) expo = expo * 10 + (*p++ - '0');
                     if (eneg) expo = -expo;
                     hasexpo = 1; }
+                if (ty && strchr("FHEDL", ty)) dc_mod_limits(ty, &scale, &expo, i, pass == 2);
                 int setlbl = (pass == 1 && oi == 0 && lbl[0]);   /* the symbol addresses the first operand */
                 int emptyval = !strcmp(op, "DC") ? dc_value_empty(p) : 0;
                 if (emptyval) {
@@ -7664,7 +7706,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                             if (nv < 1) { nv = 1; fv[0][0] = 0; }
                             for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
                                 int big = 0;
-                                val = fv[vi][0] ? (fixed_needs_exact(fv[vi], hasscale, hasexpo) ? fixed_nominal(fv[vi], scale, expo, &big) : strtol(fv[vi], NULL, 10)) : 0;
+                                int ebad = 0;
+                                val = fv[vi][0] ? (fixed_needs_exact(fv[vi], hasscale, hasexpo) ? fixed_nominal(fv[vi], scale, expo, &big, &ebad) : strtol(fv[vi], NULL, 10)) : 0;
+                                if (ebad && emit_dc && k == 0) note_operr("Illegal or invalid exponent modifier (IFOX00 IFO201)", 8, i);
                                 if (emit_dc && k == 0 && !in_dsect) note_trunc203(big ? LONG_MAX : val, blen, i);
                                 if (emit_dc) put(lc, val, blen);
                                 lc += blen;
