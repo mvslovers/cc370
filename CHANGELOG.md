@@ -20,6 +20,14 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Added
+- **as370: IFO203** (#776), severity 4, for a fixed-point or Y-type constant
+  that does not fit its field: `F'2147483648'`, `H'65535'`, `FL1'128'`,
+  `Y(32768)`. The signed range of the field decides, A-type is never flagged,
+  and the bytes stay the low-order ones as before. Measured on IFOX00: of the
+  27 values it flags in `as370/tests/ifo203.s`, as370 flags the same 26; the
+  27th, `FE9'3'`, waits for the exponent modifier.
+
 ### Fixed
 - **A fullword constant is emitted signed** (#776). The words of a floating
   constant reached the backend unsigned on a 64-bit host, so the low word of

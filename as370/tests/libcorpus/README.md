@@ -62,7 +62,7 @@ those modules are byte-identical too.
 | identical to IFOX00 | **752** (3 of them with the IFOX00 date/time stamp) |
 | excluded | 1: `L0001 attic/asm/ssireq01.asm`, an MVS/ESA source both assemblers reject (IFOX00 rc 8); per the rule of #160/#241 an rc-8 deck is an oracle only where the diagnostics agree, and they were not captured |
 | IFOX00 rc 0 | 751 |
-| IFOX00 rc 4 | 1: `L0694 src/stdlib/strtod.s`. The deck is identical, but IFOX00 warns IFO203 twice (`DC F'3558193243'`, a fullword constant above 2^31-1) where as370 is silent (JOB00342, listing captured separately) |
+| IFOX00 rc 4 | 1: `L0694 src/stdlib/strtod.s`. The deck is identical; IFOX00 warns IFO203 twice (`DC F'3558193243'`, a fullword constant above 2^31-1; JOB00342, listing captured separately). as370 was silent at the snapshot and warns the same since #776. cc370 no longer emits the unsigned form (#778), so a renewed snapshot will not carry it |
 
 ## Renewing the snapshot
 

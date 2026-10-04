@@ -900,6 +900,24 @@ static long scaled_fixed(const char *t, int scale) {
     double d = strtod(t, NULL) * f;
     return (long)(d >= 0 ? d + 0.5 : d - 0.5);
 }
+/* IFO203, severity 4: a fixed-point or Y-type constant whose value does not
+ * fit its field.  The low-order bytes are kept -- put() already does that --
+ * and only the message is new (#776).  Measured on IFOX00 (MVSTK5-REF
+ * JOB00343, tests/ifo203.s):
+ *   F, H, FLn/HLn and Y take the SIGNED range of the field: F'2147483648'
+ *     and F'-2147483649' are flagged, F'-2147483648' is not; FL1'128' and
+ *     Y(32768) are flagged, Y(-32768) is not;
+ *   A-type is never flagged (AL1(256), AL2(65536));
+ *   one message per nominal value (F'1,2147483648,4294967296' gives two), and
+ *     one per statement however large the duplication factor (2F'...').
+ * The callers check only the first copy of a duplicated operand. */
+static void note_trunc203(long v, int blen, int line) {
+    if (blen < 1 || blen > 7) return;
+    long lo = -(1L << (8 * blen - 1));
+    long hi = (1L << (8 * blen - 1)) - 1;
+    if (v < lo || v > hi)
+        note_operr("L, D, E, F, H, or Y-type constant truncated, high order digits lost (IFOX00 IFO203)", 4, line);
+}
 static void bits_put(unsigned char *buf, int bufsz, int *nbits, unsigned long v, int n) {
     int k;
     for (k = n - 1; k >= 0; k--) {
@@ -7458,7 +7476,9 @@ static void do_pass(int pass, char **lines, int nlines) {
                                        * AYREL..YCHK; MVSTK5-REF JOB00302, tests/xrefcov.s case 4;
                                        * #582). YL1 is IFO204 and not handled here. */
                                       if (ty == 'Y' && blen >= 2 && !in_dsect && (rc != 0 || nz))
-                                          note_operr("Relocatable Y-type constant, value truncated to rightmost 2 bytes (IFOX00 IFO205)", 4, i); } }   /* AL3 address -> 3-byte relocation, etc. */
+                                          note_operr("Relocatable Y-type constant, value truncated to rightmost 2 bytes (IFOX00 IFO205)", 4, i);
+                                      else if (ty == 'Y' && blen == 2 && !in_dsect && k == 0)
+                                          note_trunc203(v, blen, i); } }   /* AL3 address -> 3-byte relocation, etc. */
                             }
                             lc += blen;
                         } }
@@ -7481,6 +7501,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                             if (nv < 1) { nv = 1; fv[0][0] = 0; }
                             for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
                                 val = fv[vi][0] ? (hasscale ? scaled_fixed(fv[vi], scale) : strtol(fv[vi], NULL, 10)) : 0;
+                                if (emit_dc && k == 0 && !in_dsect) note_trunc203(val, blen, i);
                                 if (emit_dc) put(lc, val, blen);
                                 lc += blen;
                             }

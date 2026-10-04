@@ -4804,5 +4804,38 @@ if [ "$got" = "$want" ]; then echo "equwidth: OK (ADDR2 of an EQU five to eight 
 else echo "equwidth: MISMATCH"; printf '%s\n' "$got"; fail=1; fi
 rm -f $ew.s $ew.lst
 
+# --- issue #776: IFO203, a fixed-point or Y constant that does not fit -------
+# tests/ifo203.s is an ORACLE INPUT (MVSTK5-REF JOB00343, snapshots
+# -20261004-1610 either side); tests/listref/ifox-listing-ifo203.txt is IFOX00's
+# listing, and the statement numbers below are read from its diagnostics page,
+# so fixture and listing move together or not at all.  F, H, FLn/HLn and Y take
+# the signed range of the field, A is never flagged, one message per nominal
+# value and one per duplicated operand; severity 4, bytes = the low-order bytes.
+# Known gap: statement 44, FE9'3', is flagged by IFOX00 only because it applies
+# the exponent modifier (3E9), which as370 does not yet; statements 43-44 and
+# 49-52 (exponent modifier, floating overflow/underflow) are left out of the
+# byte comparison for the same reason.  Before #776 as370 was silent, rc 0.
+./as370 tests/ifo203.s -a -o /tmp/_i203$$.obj >/tmp/_i203$$.lst 2>&1; i203rc=$?
+want=$(grep -E '^ +[0-9]+  IFO203' tests/listref/ifox-listing-ifo203.txt | awk '$1 != 44 {print $1}' | tr '\n' ' ')
+got=$(grep -oE 'IFO203\) in line [0-9]+' /tmp/_i203$$.lst | awk '{print $4}' | tr '\n' ' ')
+bytes=$(python3 - tests/listref/ifox-listing-ifo203.txt /tmp/_i203$$.lst <<'PY203'
+import re, sys
+def objs(path):
+    d = {}
+    for l in open(path, errors="replace"):
+        m = re.match(r"^([0-9A-F]{6}) ([0-9A-F ]{14}) .{14} *(\d+) ", l)
+        if m: d[int(m.group(3))] = (m.group(1), m.group(2).strip())
+    return d
+r, a = objs(sys.argv[1]), objs(sys.argv[2])
+skip = {43, 44, 49, 50, 51, 52}
+bad = [n for n in range(8, 53) if n not in skip and r.get(n) != a.get(n)]
+print("ok" if not bad and len(r) > 40 else "differ at %s" % bad)
+PY203
+)
+if [ "$i203rc" = 4 ] && [ "$got" = "$want" ] && [ "$bytes" = ok ]; then
+    echo "ifo203: OK (IFO203 on the same $(echo $want | wc -w | tr -d ' ') values as IFOX00, rc 4, bytes identical)"
+else echo "ifo203: FAIL -- rc $i203rc; IFOX00 [$want] as370 [$got]; bytes $bytes"; fail=1; fi
+rm -f /tmp/_i203$$.obj /tmp/_i203$$.lst
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
