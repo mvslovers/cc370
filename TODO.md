@@ -172,8 +172,8 @@ as370 order inside it.**
 - New: #761 (float DC scale modifier ignored).
 - ~~#776~~ **done**: cc370 emits a double's words signed (#778); as370 raises
   IFO203 (#780, JOB00343: signed range for F/H/Y, never A; 26 of 27, the 27th
-  needs the exponent modifier). From the same job: #782 (`FE9'2'` ignores the
-  exponent modifier) and #783 (`E'1E76'` IFO201 / `E'1E-80'` IFO239 silent,
+  needs the exponent modifier). From the same job: ~~#782~~ **done** (#790,
+  JOB00345: 10**n half away from zero, E before S) and #783 (`E'1E76'` IFO201 / `E'1E-80'` IFO239 silent,
   other bytes); both no known user.
 - #160 Decision A **applied** (comments 2026-10-04): of 933 rc>=8 decks, 453
   agree with IFOX00 statement by statement and all 453 are identical; 178 agree
