@@ -2491,9 +2491,12 @@ i370_hlasm_assemble_integer (rtx x, unsigned int size, int aligned_p)
       case 4:
         if (GET_CODE (x) == CONST_INT)
         {
-          fputs ("\tDC\tF'", asm_out_file);
-          output_addr_const (asm_out_file, x);
-          fputs ("'\n", asm_out_file);
+          /* Signed, as the =F literals are: assemble_real hands over the
+             words of a floating constant through GEN_INT, so on a 64-bit
+             host a word with bit 31 set arrives positive, and IFOX00
+             flags F'3558193243' with IFO203 (#776).  */
+          fprintf (asm_out_file, "\tDC\tF'%d'\n",
+                   (int) (INTVAL (x) & 0xffffffff));
         }
         else
         {

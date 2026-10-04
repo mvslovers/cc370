@@ -20,6 +20,13 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Fixed
+- **A fullword constant is emitted signed** (#776). The words of a floating
+  constant reached the backend unsigned on a 64-bit host, so the low word of
+  `1e32` came out as `DC F'3558193243'`, which IFOX00 flags IFO203 (rc 4).
+  Now `DC F'-736774053'`: the same bits, so the deck does not change. Of
+  libc370's 724 C sources only `strtod.c` was affected.
+
 ## [1.2.0] - 2026-10-04
 
 ### Added
