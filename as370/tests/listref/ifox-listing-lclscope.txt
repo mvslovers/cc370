@@ -1,0 +1,106 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 16.54 10/04/26
+LCLSCOPE  SD  0001 000000 000018
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 16.54 10/04/26
+                                      1 * A LOCAL SET SYMBOL SHADOWS A GLOBAL OF THE SAME NAME, AND ONLY IN
+                                      2 * THE CONTEXT THAT DECLARES IT LOCAL.  EVERY DC BELOW NAMES THE VALUE
+                                      3 * IT SHOULD HOLD IN ITS REMARK.
+                                      4          MACRO
+                                      5          MA
+                                      6          LCLA  &A
+                                      7          DC    Y(&A)                   0 - LOCAL, FRESH
+                                      8 &A       SETA  7
+                                      9          DC    Y(&A)                   7
+                                     10          MEND
+                                     11          MACRO
+                                     12          MB
+                                     13          GBLA  &B
+                                     14 &B       SETA  9
+                                     15          DC    Y(&B)                   9
+                                     16          MEND
+                                     17          MACRO
+                                     18          MB2
+                                     19          GBLA  &B
+                                     20          DC    Y(&B)                   9 - THE GLOBAL MB SET
+                                     21          MEND
+                                     22          MACRO
+                                     23          MCX
+                                     24          LCLA  &C(3)
+                                     25 &C(2)    SETA  8
+                                     26          DC    Y(&C(2))                8
+                                     27          MEND
+                                     28          MACRO
+                                     29          MD1
+                                     30          GBLA  &D
+                                     31 &D       SETA  6
+                                     32          MEND
+                                     33          MACRO
+                                     34          MD2
+                                     35          LCLA  &D
+                                     36 &D       SETA  1
+                                     37          DC    Y(&D)                   1
+                                     38          MEND
+                                     39          MACRO
+                                     40          MD3
+                                     41          GBLA  &D
+                                     42          DC    Y(&D)                   6
+                                     43          MEND
+                                     44          MACRO
+                                     45          MEX
+                                     46          LCLC  &E
+                                     47 &E       SETC  'ZZ'
+                                     48          DC    C'&E'                   ZZ
+                                     49          MEND
+000000                               50 LCLSCOPE CSECT
+                                     51          GBLA  &A
+                                     52 &A       SETA  3
+                                     53          MA
+000000 0000                          54+         DC    Y(0)                    0 - LOCAL, FRESH
+000002 0007                          55+         DC    Y(7)                    7
+                                                                                                               PAGE    3
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 16.54 10/04/26
+                                     56          DC    Y(&A)                   3 - THE GLOBAL SURVIVES
+000004 0003                          57+         DC    Y(3)                    3 - THE GLOBAL SURVIVES
+                                     58          LCLA  &B
+                                     59 &B       SETA  4
+                                     60          MB
+000006 0009                          61+         DC    Y(9)                    9
+                                     62          DC    Y(&B)                   4 - OPEN-CODE LOCAL
+000008 0004                          63+         DC    Y(4)                    4 - OPEN-CODE LOCAL
+                                     64          MB2
+00000A 0009                          65+         DC    Y(9)                    9 - THE GLOBAL MB SET
+                                     66          GBLA  &C(3)
+                                     67 &C(2)    SETA  5
+                                     68          MCX
+00000C 0008                          69+         DC    Y(8)                    8
+                                     70          DC    Y(&C(2))                5
+00000E 0005                          71+         DC    Y(5)                    5
+                                     72          MD1
+                                     73          MD2
+000010 0001                          74+         DC    Y(1)                    1
+                                     75          MD3
+000012 0006                          76+         DC    Y(6)                    6
+                                     77          GBLC  &E
+                                     78 &E       SETC  'XY'
+                                     79          MEX
+000014 E9E9                          80+         DC    C'ZZ'                   ZZ
+                                     81          DC    C'&E'                   XY
+000016 E7E8                          82+         DC    C'XY'                   XY
+                                     83          END
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 16.54 10/04/26
+LCLSCOPE 00001 00000000 00050
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    5
+                                                                                                 ASM 0201 16.54 10/04/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         71
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                       106
