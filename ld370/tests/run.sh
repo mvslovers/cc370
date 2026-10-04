@@ -716,7 +716,7 @@ else echo "  FAIL: --pack did not preserve --reus (ATR1=$pa)"; fails=$((fails + 
 # and IEHLIST's own ATTRIBUTE INDEX: bit 0 RENT, bit 1 REUS, bit 6 EXEC,
 # bit 7 "1 TXT", bit 11 "NO RLD", **bit 15 REFR** -- the low bit of the SECOND
 # byte.  So REFR is PDS2ATR2, ud[9] 0x01, and IHAPDS agrees (PDS2REFR EQU BIT7
-# under PDS2ATR2).  cc370#100's text and docs/ld370-iewl-divergences.md both
+# under PDS2ATR2).  cc370#100's text and internals/ld370-iewl-divergences.md both
 # said PDS2ATR1; writing it there would have set 0x01 of ATR1, which is
 # PDS21BLK and already on -- a --refr that changes nothing and looks done.
 #
@@ -948,7 +948,7 @@ python3 ld370/tests/track_check.py --pack-cap --max-tracks 4 "$TMP/geodense.iebc
 # tree-wide run over 5,252 real DLIB members found 22 that carry one, almost all
 # ICK*, and every one of them was unreadable.
 #
-# docs/load-module-format.md section 8: byte 0 = X'10', bytes 1-3 = the DATA
+# internals/load-module-format.md section 8: byte 0 = X'10', bytes 1-3 = the DATA
 # byte count, 4-byte header, so the record is 4 + count.  The fixture is built
 # here rather than committed, by splicing a record of that exact shape into a
 # real IEWL member after its IDRs -- the position section 2 gives it.
@@ -1030,7 +1030,7 @@ for f in altb altm altc altlib many manyp manyr; do
 done
 alk() { "$@" 2>/dev/null; r=$?; if [ "$r" != 0 ]; then echo "  FAIL: rc $r from: $*" | sed "s|$TMP/||g"; fails=$((fails + 1)); fi; }
 "$AS" -o "$TMP/alt.o" "$FIX/altest.s" 2>/dev/null
-# The oracle was linked LIST,MAP,XREF,NCAL,RENT,REUS (docs/load-module-format.md),
+# The oracle was linked LIST,MAP,XREF,NCAL,RENT,REUS (internals/load-module-format.md),
 # so these ask for RENT and REUS too -- ld370's default is neither since #100.
 alk "$LD" --rent --reus -o "$TMP/altb" --name BREXX --alias RX1 --alias RX2 "$TMP/alt.o" -iebcopy
 alk "$LD" --rent --reus -o "$TMP/altm" --name ALTM --alias ALT2 "$TMP/alt.o" -iebcopy

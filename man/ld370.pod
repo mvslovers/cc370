@@ -151,7 +151,7 @@ long-running address space, other subpools, and a module large enough to take a
 different allocation path are B<unmeasured>. Any C program depends on this
 holding wherever it runs, because C requires static storage to start at zero.
 
-Both measurements, and what they did not cover, are in F<docs/measurements/>.
+Both measurements, and what they did not cover, are in F<internals/measurements/>.
 
 =item B<--rent>, B<--reus>, B<--refr>
 

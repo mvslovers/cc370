@@ -167,7 +167,7 @@ void lmod_iter_init(struct lmod_iter *it, const unsigned char *m, long n);
  * The walk ENDS at the MODEND control record (and the text record it announces)
  * rather than at the physical end of the image, because that is where the
  * module ends -- there is no end-of-module record, the last control record
- * carries X'08' (docs/load-module-format.md section 2), and IEWFETCH stops
+ * carries X'08' (internals/load-module-format.md section 2), and IEWFETCH stops
  * there too.  One member of TK5's 2,396 carries 28 bytes past it, and walking
  * on turned those into "malformed load-module record stream" for all 22 of
  * HEWLF064's CSECTs -- a refusal to read a module that is perfectly readable.

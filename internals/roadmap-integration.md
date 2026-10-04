@@ -88,7 +88,7 @@ unsupported.
 - [`entry-point-resolution.md`](entry-point-resolution.md) — how a program gets
   its entry point, and how a multi-program project can get the wrong one.
 - [`ld370-iewl-divergences.md`](ld370-iewl-divergences.md),
-  [`../as370/docs/ifox-option-parity.md`](../as370/docs/ifox-option-parity.md) —
+  [`../as370/internals/ifox-option-parity.md`](../as370/internals/ifox-option-parity.md) —
   where our tools differ from the IBM originals, and why.
 - [`multitext-fetch-truncation.md`](multitext-fetch-truncation.md) — a solved
   blocker, kept because the lesson generalises.

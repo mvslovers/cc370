@@ -723,7 +723,7 @@ int main(int argc, char **argv)
     else die("neither a load module nor an object deck", fa);
 
     /* A bound member leads with its CESD, or with a SYM record when it was
-     * linked with TEST (docs/load-module-format.md section 2). */
+     * linked with TEST (internals/load-module-format.md section 2). */
     if (nb >= 1 && ((bb[0] & 0xf0) == 0x20 || (nb >= 8 && (bb[0] & 0xf0) == 0x40)))
         load_lmod(&B, bb, nb);
     else if (nb >= 4 && obj_card_type(bb) != OBJ_OTHER) load_deck(&B, bb, nb);

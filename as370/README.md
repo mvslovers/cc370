@@ -79,5 +79,5 @@ form, i.e. Latin-1 for a decoded UTF-8 source. See mvslovers/cc370#483.
 - Derive the real `PARM=` option set + RC/severity semantics from the IFOX00
   source.
 
-See `../docs/object-module-format.md` for the OBJ format as370 emits, and
-`../docs/roadmap-integration.md` for the whole-suite roadmap.
+See `../internals/object-module-format.md` for the OBJ format as370 emits, and
+`../internals/roadmap-integration.md` for the whole-suite roadmap.

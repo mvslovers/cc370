@@ -35,7 +35,7 @@ run IFOX00 itself abandoned above severity 4, on the ground that a *case* needs
 a diagnosable reference. This file's number deliberately keeps them, because
 reproducing a flagged run's deck means reproducing its error behaviour. Both are
 right and neither may be quoted for the other's population; their
-`docs/cc370-cases.md` says so from the other side. Last reconciled against the
+`internals/cc370-cases.md` says so from the other side. Last reconciled against the
 tracker: 2026-09-11 — `as370 == IFOX00` stood at
 **5,431 of 5,528 (98.2 %)** at `a1b101d`, 97 modules still differing — **and
 4,558 of those 5,431 are against a reference IFOX00 produced at rc ≤ 4**. The
@@ -101,8 +101,8 @@ before this one was 2026-08-30, 26 open, eight of them filed
 that day: #99–#104 out of two working notes — `TODO-LD370.md` and
 `TODO-ASM370.md`, which this file replaces — #106 out of closing #13, which went
 the same day, and #107 out of the entry-point decision below. What was reference material rather than open work moved to
-[`docs/ld370-iewl-divergences.md`](docs/ld370-iewl-divergences.md) and
-[`as370/docs/ifox-option-parity.md`](as370/docs/ifox-option-parity.md); what was
+[`internals/ld370-iewl-divergences.md`](internals/ld370-iewl-divergences.md) and
+[`as370/internals/ifox-option-parity.md`](as370/internals/ifox-option-parity.md); what was
 already fixed was dropped).*
 
 **The ranking rule, and it is the project's own:** *silent wrong output* beats
@@ -195,7 +195,7 @@ as370 order inside it.**
 
 ## The runtime and release plan — the maintainer's order, ahead of the table below
 
-**The plan is `docs/runtime-and-release-plan.md` (PR #690, merged); the decisions
+**The plan is `internals/runtime-and-release-plan.md` (PR #690, merged); the decisions
 are in #523.** Its phases are a sequence, not a ranking, and the table below
 does not compete with them: it orders defects, this orders the release.
 
@@ -336,7 +336,7 @@ this file that is a joint plan rather than our own ranking:**
 
 | | Issue | Why here |
 |---|---|---|
-| A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `docs/opencode-gate.md`. |
+| A | ~~#141~~ | **Fixed on `fix/as370-open-code-setc`; the `mvs38src` tree-wide gate says go — 844 → 874 modules byte-identical to IBM's object, none lost.** Substitution in open code, the model/generated listing pair, and `IFO115`/`IFO116`/`IFO117` from `eval_setc` so the macro path reports too, which is where the issue's named case lives. **Read the credit correctly: 29 of the 30 new identities belong to the `&&` commit, one (`HMBLKXRF`) to #141 itself** — and 16 of the 30 came out of the *length* bucket both projects had written off as blocked on macro provenance. The two module counts in the thread disagree because the baselines do: 33 moved decks and 32 newly assembling are the #141 commit alone, 63 and 33 are the whole branch. The `52 modules / 13 assembling` figure is **withdrawn at source** — there was never a list behind it; `mvs38src`'s rebuilt scan says 258 / 148, and my own 67-68 undercounts for want of continuation joining. Their write-up: `internals/opencode-gate.md`. |
 | B | ~~#140~~ | **Closed 2026-10-02** after the re-derivation below: nothing as370-owned left but binary-REPRO transport (`capture.py`). The silent-success class: modules where IFOX00 flags and as370 does not. **Re-derived at `fd287d3` from the recorded IFOX00 return codes: `as370 alone flags` is 0, `IFOX00 alone flags` is 5** — `IBCDASDI`, `IBCDMPRS`, `IEAVEXS`, `IEAVRTI0` at severity 8, and `BLSR3270` at severity 4. The issue's headline count of four is still exactly right; the fifth is the severity-4 module the thread already knows about. It is larger than the five, and #165 proved how: 48 modules were returning rc 0 with a wrong deck from the `IPK`/`PTLB` defect alone, and only a *byte* sweep could see them — a rc-based gate cannot. **`dc_split` is measured and closed** (#218): it read every apostrophe as a string quote, so `DC AL1(L'FLD),X'FF'` dropped the `X'FF'` — at rc 0, and **IFOX00 assembles the same statement at rc 0 with no diagnostics either**, which is the cleanest argument in this file for why the deck is the instrument. `EQU` (`:3413`) and `SYM+(expr)` (`:761`) remain suspected and unscoped. |
 | C | **#109 adoption** | as370, ld370 and ar370 onto the `obj370` readers. **Re-read at `fd287d3`, and the acceptance list in the issue is now literally satisfied while the work in its title is not**: all six tools compile with `-Icommon/include` and link `common/src/{mvs370,obj370}.c`, so "they build against the library" is true and says nothing. What is actually left is four reader sites — ld370, ar370 and file370 still carry their own ESD walk. A refactor that must change nothing, so it wants the sharpest available measurement: `mvs38src` has agreed to run the tree-wide gate as acceptance, **one tool at a time**, so a divergence names the tool. |
 | D | **Paket A — closed except #184** | The 2026-09-07 hand-over was eleven issues, one per diagnostic class, each measured by assembling all 5,528 `MVSBLD` modules twice — as370 here, the real Assembler XF under MVS/CE, same source and same seven macro libraries. **Ten of the eleven are closed**; #153, #154, #155, #157, #158, #159 and #161 each ended on a re-derivation that measured its own class at 0 or 1. What is left is **#184**, the attribute apostrophe in the three scans that decide *diagnostics* rather than bytes — PR #347 says in its own body that it does not close it. The decks are recorded, so the gate runs on this host in about 90 seconds per binary (`mvs38src/tools/gate.sh` + `retest.py`); no MVS, no waiting on the other session. Read the class files as *populations*, not as causes: they overlap, and most of what looks like a cascade is not. |
@@ -476,7 +476,7 @@ nothing arrives.
 PR #463. Two things from it belong here rather than only in the thread.
 
 **This section said `REFR` was "another `PDS2ATR1` bit" and that was wrong**; so
-did `docs/ld370-iewl-divergences.md`. REFR is `PDS2ATR2`. The correction is kept
+did `internals/ld370-iewl-divergences.md`. REFR is `PDS2ATR2`. The correction is kept
 rather than quietly applied because of how it would have failed: `0x01` of ATR1
 is `PDS21BLK`, which the template already sets, so a `--refr` written from this
 paragraph would have changed no byte, raised nothing, and looked implemented.
@@ -695,7 +695,7 @@ they are indistinguishable by name, so the linker picks one and produces a modul
 that links RC 0 with the wrong entry and faults at runtime. httpd works around it
 by keeping the launcher out of the shared archive. The full analysis, with the
 measured 52-versus-35-CESD evidence, is in
-[`docs/entry-point-resolution.md`](docs/entry-point-resolution.md).
+[`internals/entry-point-resolution.md`](internals/entry-point-resolution.md).
 
 **The same shape one level down.** The startup *objects* are forked the way the
 startup *symbol* is: `@@crt0.asm` and `@@crt1.asm` are 319 and 322 lines that
@@ -777,7 +777,7 @@ and #394 is closed by #399.
 control record carrying both an ID/length list and RLD info holds the **RLD info
 first**; `dasm370` and `cmplmd370` both read the list first and so began the RLD
 parse four bytes late, taking the first item's flag and address for an R/P pair.
-`docs/load-module-format.md` §4 said off 16 unconditionally — right for every
+`internals/load-module-format.md` §4 said off 16 unconditionally — right for every
 record with no RLD info, which is exactly the case where the two orders produce
 identical bytes, so both tools got the same bug from the same prose. The document
 is corrected. The arbiter needs no second tool: the ID/length list's lengths must
@@ -984,7 +984,7 @@ it in the three places that state it — the `#note` header, the man page and th
 fixture's checker — and adds the two controls that answer the EQU on the old
 rule. The scan is `sect`, `defined=1`, **type not `ABS`**, nearest value at or
 below the target, and that clause belongs in `mvs38src`'s
-`docs/dasm370-interface.md` too.
+`internals/dasm370-interface.md` too.
 
 **The gate's two halves no longer agree about the environment, and that is worth
 more than this change's own number.** `gate.sh` defaults to the per-module
@@ -1284,7 +1284,7 @@ followed on 2026-10-01 (PR #616), and the listing gaps #609 and #603 the same
 day (PRs #618, #624). Nothing from this family is open; #619 and #623 were
 found on the way.
 
-`docs/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
+`internals/assembler-g-comparison.md` §6 compares G 27A with XF, and the XF side
 turned up twelve divergences. Every one is confirmed against IFOX00 (MVSTK5-REF,
 JOB00281–00288, 2026-09-30) and has its own issue. **Three are silent:** #525,
 #527 and #528, all three fixed the same day. Nothing in the corpus used the
@@ -1572,7 +1572,7 @@ source work concentrated in two or three years, with SMP's 82 same-length
 differences the most tractable block they have found anywhere. `HMASMTMD` above
 is the single exception and it is an ESD/card-count case, not a code one. So the
 priority does **not** re-rank this file's queue — it tells us where not to spend
-time looking. Their profile: `docs/tso-and-smp.md`.
+time looking. Their profile: `internals/tso-and-smp.md`.
 
 ---
 
@@ -1598,7 +1598,7 @@ time looking. Their profile: `docs/tso-and-smp.md`.
 *waiting on a measurement nobody has a reason to make yet*
 
 `ld370 --sparse-text` (#447) omits text records no TXT card covered. It is off,
-and the reason is in [`docs/measurements/fetch-zeroing.md`](docs/measurements/fetch-zeroing.md):
+and the reason is in [`internals/measurements/fetch-zeroing.md`](internals/measurements/fetch-zeroing.md):
 program fetch was measured delivering a zeroed area for such a record, twice,
 with independent apparatus — but both runs are batch steps on one system with
 storage to spare. Fragmentation, a long-running address space over hours, other
@@ -1720,7 +1720,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   release.yml 37077763660 green): stripped release binaries (#718, PR #722;
   Linux tarballs 5.1 -> 1.95 MB). libc370's pair.yml against it
   (mvslovers/libc370 run 37078069749): debian amd64/arm64 + fedora x86_64
-  green with libc370 2.1.0. Also #720 docs/releasing.md (shared with libc370's
+  green with libc370 2.1.0. Also #720 internals/releasing.md (shared with libc370's
   doc/releasing.md) and #721 VERSION 1.1.1-dev.
 
 - **2026-10-03 — cc370 1.1.0 RELEASED** (tag `v1.1.0` on `65a2e15`, PR #717,
@@ -2147,7 +2147,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   `DC X'00'` as readily as a reservation, which `ld370/tests` caught on its own
   `DC 8000F'0'` fixture.
 
-  What is worth keeping is in [`docs/measurements/`](docs/measurements/): IFOX00
+  What is worth keeping is in [`internals/measurements/`](internals/measurements/): IFOX00
   reserves and IEWL fills it in with non-zero residue, so "as IEWL-linked
   assembler `DS` has always behaved" is not a thing to reason from; and program
   fetch does deliver zeros for an uncovered record, which is a different claim
@@ -3133,7 +3133,7 @@ Pointers only. The reasoning lives in the issues and their PRs.
   untouched since 2026-08-13.
 - **`obj370` scatter record / PR #126** — 22 of 5,252 real DLIB members carry a
   record with byte 0 `X'10'`, and both walkers stopped dead at it. The answer had
-  been in `docs/load-module-format.md` §8 since it was written: byte 0 `X'10'`,
+  been in `internals/load-module-format.md` §8 since it was written: byte 0 `X'10'`,
   bytes 1-3 the data count, 4-byte header. It went unimplemented because a module
   only carries one when bound SCTR or OVLY, and neither cc370 nor as370 ever
   emits one — **the same story as `rld[512]` and `dir[256]`: the corpus never
@@ -3261,11 +3261,11 @@ Small things with no issue, recorded here so they are not lost twice.
   it bites, and those cannot arbitrate it: their IFOX00 references come from rc 12
   runs. Waiting on a capture against the pinned oracle, not on a decision.
 - **`ld370 --help` does not exist** — it is parsed as a filename. as370 has one.
-  Noted in `docs/ld370-iewl-divergences.md`.
+  Noted in `internals/ld370-iewl-divergences.md`.
 - **as370 has no `YFLAG` equivalent** — it emits Y-cons with no range check, the
   same silent-truncation shape as the rest of that class. Noted in
-  `as370/docs/ifox-option-parity.md`.
-- **[`docs/tool-roadmap.md`](docs/tool-roadmap.md)** is the roadmap for *new*
+  `as370/internals/ifox-option-parity.md`.
+- **[`internals/tool-roadmap.md`](internals/tool-roadmap.md)** is the roadmap for *new*
   tools (`objdump370`, `nm370`, `iebcopy370`, …). It used to say here that the
   roadmap was not open work and needed a decision before it became any — **that
   decision was made on 2026-09-04**: #109 through #113 are filed, and the band
