@@ -74,6 +74,7 @@ static int  opt_recfm   = MVS_RECFM_FB;
 static int  opt_stats   = 1;
 static int  opt_tabs    = 8;         /* 0 = reject tabs */
 static int  opt_latin1  = 0;         /* map bytes >= 0x80 through CP037 */
+static int  blksize_given = 0;       /* --blocksize was given: RECFM=F does not default it */
 static int  verbose     = 0;
 static char opt_userid[9];
 static int  have_stats_date = 0;
@@ -83,7 +84,7 @@ static const char **excl;
 static int nexcl;
 
 /* explicit NAME=FILE mappings */
-struct mapping { const char *name, *path; };
+struct mapping { char *name; const char *path; };   /* name points into argv, upper-cased in place */
 static struct mapping *maps;
 static int nmaps;
 
@@ -145,8 +146,10 @@ static int valid_member_name(const char *s)
     return 1;
 }
 
-/* basename, minus one trailing extension, uppercased */
-static void member_from_path(char out[9], const char *path)
+/* basename, minus one trailing extension, uppercased -- and NOT cut to 8: a
+ * longer name is reported by valid_member_name.  verylongname.txt silently
+ * became VERYLONG, and only a resulting collision was noticed (#804). */
+static void member_from_path(char out[64], const char *path)
 {
     const char *b = strrchr(path, '/');
     const char *dot;
@@ -155,7 +158,7 @@ static void member_from_path(char out[9], const char *path)
     b = b ? b + 1 : path;
     dot = strrchr(b, '.');
     n = dot && dot != b ? (size_t)(dot - b) : strlen(b);
-    if (n > 8) n = 8;
+    if (n > 63) n = 63;
     for (i = 0; i < (int)n; i++) out[i] = (char)toupper((unsigned char)b[i]);
     out[n] = 0;
 }
@@ -175,6 +178,12 @@ static void member_from_path(char out[9], const char *path)
  * simply have no EBCDIC equivalent (the fix is to clean the file), whereas an
  * ill-formed sequence means the bytes are single-byte Latin-1 -- which CP037
  * does cover, and which --latin1 maps losslessly. */
+static int has_high_byte(const unsigned char *b, long n)
+{
+    for (long k = 0; k < n; k++) if (b[k] >= 0x80) return 1;
+    return 0;
+}
+
 static int is_utf8(const unsigned char *b, long n)
 {
     long i = 0;
@@ -203,6 +212,13 @@ static int text_to_records(struct member *m, const char *path)
     raw = mvs_read_file(path, &rlen);
     if (!raw) { fprintf(stderr, "xmit370: %s: cannot read\n", path); return 1; }
     utf8 = is_utf8(raw, rlen);
+    /* --latin1 maps every byte >= 0x80 through CP037, which turns a UTF-8
+     * file's multi-byte characters into two or three wrong ones.  It skipped
+     * the UTF-8 test and said nothing (#804); the bytes are still mapped as
+     * asked, but the file is named. */
+    if (opt_latin1 && utf8 && has_high_byte(raw, rlen))
+        fprintf(stderr, "xmit370: %s: warning: the file is UTF-8, and --latin1 maps each of its "
+                        "bytes on its own; its non-ASCII characters will not survive\n", path);
 #define MAXDIAG 8            /* a binary file would otherwise flood the terminal */
 #define DIAG(...) do { if (errs < MAXDIAG) fprintf(stderr, __VA_ARGS__); } while (0)
 
@@ -662,7 +678,7 @@ static int scan_dir(const char *dir)
         char path[4096];
         struct stat st;
         struct member *m;
-        char name[9];
+        char name[64];
         if (de->d_name[0] == '.') continue;
         if (excluded(de->d_name)) continue;
         snprintf(path, sizeof path, "%s/%s", dir, de->d_name);
@@ -698,31 +714,37 @@ static int do_create(const char *dir)
     int i, errs = 0;
 
     if (!opt_out) die("create: -o OUT.xmit is required");
+    if (opt_recfm == MVS_RECFM_F && !blksize_given) opt_blksize = opt_lrecl;   /* unblocked: one record a block */
     if (!opt_dsn) die("create: --dsn NAME is required");
     if (opt_lrecl < 1 || opt_lrecl > 32760) die("--lrecl %ld out of range (1..32760)", opt_lrecl);
     if (opt_blksize < opt_lrecl || opt_blksize > 32760)
         die("--blocksize %ld out of range (%ld..32760)", opt_blksize, opt_lrecl);
     if (opt_blksize % opt_lrecl)
         die("--blocksize %ld is not a multiple of --lrecl %ld", opt_blksize, opt_lrecl);
+    if (opt_recfm == MVS_RECFM_F && opt_blksize != opt_lrecl)   /* unblocked: one record a block (#804) */
+        die("--recfm f is unblocked: --blocksize must equal --lrecl (%ld), not %ld", opt_lrecl, opt_blksize);
     if (opt_blksize > MVS_TRK_MAXBLK_3350)
         die("--blocksize %ld exceeds %d, the largest block that fits one track",
             opt_blksize, MVS_TRK_MAXBLK_3350);
 
+    /* The userid defaults to the high-level qualifier of --dsn, which is
+     * required; the $USER fallback the manual named could not be reached. */
     if (!opt_userid[0]) {
-        const char *u = getenv("USER");
         int n = 0;
-        if (opt_dsn) { while (opt_dsn[n] && opt_dsn[n] != '.' && n < 8) n++; }
-        if (n > 0) memcpy(opt_userid, opt_dsn, (size_t)n);
-        else if (u) { n = (int)strlen(u); if (n > 8) n = 8; memcpy(opt_userid, u, (size_t)n); }
+        while (opt_dsn[n] && opt_dsn[n] != '.' && n < 8) n++;
+        memcpy(opt_userid, opt_dsn, (size_t)n);
         opt_userid[n] = 0;
-        for (i = 0; opt_userid[i]; i++) opt_userid[i] = (char)toupper((unsigned char)opt_userid[i]);
     }
+    for (i = 0; opt_userid[i]; i++) opt_userid[i] = (char)toupper((unsigned char)opt_userid[i]);
 
     if (dir) errs += scan_dir(dir);
     for (i = 0; i < nmaps; i++) {
         struct stat st;
         struct member *m;
         size_t nl = strlen(maps[i].name);
+        /* upper-cased as a derived name is: `lower' was stored lowercase and
+         * sorted ahead of every other member (#804) */
+        for (char *c = maps[i].name; *c; c++) *c = (char)toupper((unsigned char)*c);
         if (nl < 1 || nl > 8)
             die("--member: '%s' is %d characters, a member name is 1-8",
                 maps[i].name, (int)nl);
@@ -799,6 +821,13 @@ static struct logrec *read_xmit(const char *path, int *nrec_out, long *flen)
 
     d = mvs_read_file(path, &n);
     if (!d) { fprintf(stderr, "xmit370: %s: cannot read\n", path); return NULL; }
+    /* A transmission begins with the INMR01 control record.  Anything else
+     * ended list and extract at rc 1 with no message (#804). */
+    if (n < 8 || d[2] != 0xC9 || d[3] != 0xD5 || d[4] != 0xD4 || d[5] != 0xD9 || d[6] != 0xF0 || d[7] != 0xF1) {
+        fprintf(stderr, "xmit370: %s: not a TSO transmission (it does not begin with INMR01)\n", path);
+        free(d);
+        return NULL;
+    }
     *flen = n;
     while (p + 2 <= n) {
         int len = d[p], flags = d[p + 1];
@@ -828,17 +857,7 @@ static struct logrec *read_xmit(const char *path, int *nrec_out, long *flen)
 static const char *recfm_str(int rf)
 {
     static char b[8];
-    int i = 0;
-    if ((rf & 0xc0) == 0xc0) b[i++] = 'U';
-    else if (rf & 0x80) b[i++] = 'F';
-    else if (rf & 0x40) b[i++] = 'V';
-    else b[i++] = '?';
-    if (rf & 0x10) b[i++] = 'B';
-    if (rf & 0x08) b[i++] = 'S';
-    if (rf & 0x04) b[i++] = 'A';
-    if (rf & 0x02) b[i++] = 'M';
-    b[i] = 0;
-    return b;
+    return mvs_recfm_name(rf, b);
 }
 
 static const char *tu_name(int key)
@@ -885,8 +904,10 @@ static void show_textunits(const struct logrec *r)
                 if (key == INM_DSORG)
                     printf("      %-10s %s\n", label, val == MVS_DSORG_PO ? "PO" :
                            val == MVS_DSORG_PS ? "PS" : "?");
-                else if (key == INM_RECFM)
-                    printf("      %-10s %s\n", label, recfm_str((int)(val >> 8)));
+                else if (key == INM_RECFM) {        /* X'0001': INMR03's transmission form (#804) */
+                    char nm[32];
+                    printf("      %-10s %s (X'%04lX')\n", label, mvs_inmrecfm_name((int)val, nm), val);
+                }
                 else
                     printf("      %-10s %ld\n", label, val);
             }
@@ -1193,7 +1214,15 @@ static void usage(FILE *f)
 "  --exclude GLOB      skip matching files (repeatable)\n"
 "  --tabs N            expand tabs to N columns (default 8; 0 rejects tabs)\n"
 "  --latin1            map bytes >= 0x80 through CP037 instead of refusing them\n"
-"  -v                  list members as they are packed\n", f);
+"\n"
+"extract options:\n"
+"  -C DIR              directory to extract into (default: the current one)\n"
+"\n"
+"all commands:\n"
+"  -v, --verbose       list members as they are packed or extracted\n"
+"  -h, --help          this text\n"
+"  -V, --version       toolchain version + commit\n"
+"An option belongs to its command; given to another it is an error.\n", f);
 }
 
 static int parse_date(const char *s)
@@ -1203,6 +1232,15 @@ static int parse_date(const char *s)
     struct tm t;
     time_t tv;
     if (n < 3) return 0;
+    /* refused out of range rather than normalised: 2026-13-45 became 2027/045
+     * and T25:00:00 was taken (#804).  ISPF's packed date holds 1900-2099. */
+    {
+        static const int mdays[12] = { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+        int leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+        if (y < 1900 || y > 2099 || mo < 1 || mo > 12) return 0;
+        if (d < 1 || d > mdays[mo - 1] || (mo == 2 && d == 29 && !leap)) return 0;
+        if (h < 0 || h > 23 || mi < 0 || mi > 59 || se < 0 || se > 59) return 0;
+    }
     memset(&t, 0, sizeof t);
     t.tm_year = y - 1900; t.tm_mon = mo - 1; t.tm_mday = d;
     t.tm_hour = h; t.tm_min = mi; t.tm_sec = se;
@@ -1214,15 +1252,54 @@ static int parse_date(const char *s)
     return 1;
 }
 
+/* Which command an option belongs to, and whether it takes a value. */
+static int option_applies(const char *cmd, const char *a)
+{
+    static const char *const create_only[] = { "-o", "--dsn", "--lrecl", "--blocksize", "--tabs",
+        "--no-tabs", "--latin1", "--stats", "--no-stats", "--userid", "--stats-date", "--recfm",
+        "--member", "--exclude", NULL };
+    if (!strcmp(a, "-v") || !strcmp(a, "--verbose")) return 1;
+    if (!strcmp(a, "-C")) return !strcmp(cmd, "extract");
+    for (int k = 0; create_only[k]; k++)
+        if (!strcmp(a, create_only[k])) return !strcmp(cmd, "create");
+    return 1;                                   /* unknown: reported as such */
+}
+
+static int takes_value(const char *a)
+{
+    static const char *const v[] = { "-o", "--dsn", "-C", "--lrecl", "--blocksize", "--tabs",
+        "--userid", "--stats-date", "--recfm", "--member", "--exclude", NULL };
+    for (int k = 0; v[k]; k++) if (!strcmp(a, v[k])) return 1;
+    return 0;
+}
+
+/* A whole non-negative number, or die naming the option. */
+static long number_arg(const char *opt, const char *val)
+{
+    char *end;
+    long n = strtol(val, &end, 10);
+    if (!*val || *end || n < 0) die("%s takes a number, not '%s'", opt, val);
+    return n;
+}
+
 int main(int argc, char **argv)
 {
     const char *cmd, *arg = NULL;
     int i;
 
     if (argc < 2) { usage(stderr); return 2; }
+    /* --help and --version anywhere, as every other tool takes them; they
+     * worked only as the first argument (#804). */
+    for (i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(stdout); return 0; }
+        if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-V")) { puts(VERSION_STR); return 0; }
+    }
     cmd = argv[1];
-    if (!strcmp(cmd, "--help") || !strcmp(cmd, "-h")) { usage(stdout); return 0; }
-    if (!strcmp(cmd, "--version") || !strcmp(cmd, "-V")) { puts(VERSION_STR); return 0; }
+    if (strcmp(cmd, "create") && strcmp(cmd, "list") && strcmp(cmd, "extract")) {
+        fprintf(stderr, "xmit370: unknown command '%s'\n", cmd);
+        usage(stderr);
+        return 2;
+    }
 
     excl = malloc((size_t)argc * sizeof *excl);
     maps = malloc((size_t)argc * sizeof *maps);
@@ -1230,34 +1307,42 @@ int main(int argc, char **argv)
 
     for (i = 2; i < argc; i++) {
         const char *a = argv[i];
-        if (!strcmp(a, "-o") && i + 1 < argc) opt_out = argv[++i];
-        else if (!strcmp(a, "--dsn") && i + 1 < argc) opt_dsn = argv[++i];
-        else if (!strcmp(a, "-C") && i + 1 < argc) opt_outdir = argv[++i];
-        else if (!strcmp(a, "--lrecl") && i + 1 < argc) opt_lrecl = strtol(argv[++i], NULL, 10);
-        else if (!strcmp(a, "--blocksize") && i + 1 < argc) opt_blksize = strtol(argv[++i], NULL, 10);
-        else if (!strcmp(a, "--tabs") && i + 1 < argc) opt_tabs = (int)strtol(argv[++i], NULL, 10);
+        /* One parser serves all three commands, and an option that does not
+         * apply was accepted and ignored -- -C on create, --dsn on list (#804). */
+        if (a[0] == '-' && !option_applies(cmd, a))
+            die("%s does not apply to '%s' (xmit370 --help)", a, cmd);
+        if (takes_value(a) && i + 1 >= argc) die("%s needs a value", a);
+        if (!strcmp(a, "-o")) opt_out = argv[++i];
+        else if (!strcmp(a, "--dsn")) opt_dsn = argv[++i];
+        else if (!strcmp(a, "-C")) opt_outdir = argv[++i];
+        else if (!strcmp(a, "--lrecl")) opt_lrecl = number_arg(a, argv[++i]);
+        else if (!strcmp(a, "--blocksize")) { opt_blksize = number_arg(a, argv[++i]); blksize_given = 1; }
+        else if (!strcmp(a, "--tabs")) opt_tabs = (int)number_arg(a, argv[++i]);   /* "abc" was 0 (#804) */
         else if (!strcmp(a, "--no-tabs")) opt_tabs = 0;
         else if (!strcmp(a, "--latin1")) opt_latin1 = 1;
         else if (!strcmp(a, "--stats")) opt_stats = 1;
         else if (!strcmp(a, "--no-stats")) opt_stats = 0;
-        else if (!strcmp(a, "--userid") && i + 1 < argc) {
-            strncpy(opt_userid, argv[++i], 8); opt_userid[8] = 0;
-        } else if (!strcmp(a, "--stats-date") && i + 1 < argc) {
-            if (!parse_date(argv[++i])) die("--stats-date: cannot parse '%s'", argv[i]);
-        } else if (!strcmp(a, "--recfm") && i + 1 < argc) {
+        else if (!strcmp(a, "--userid")) {
+            const char *u = argv[++i];
+            /* cut to 8 without a word (#804) */
+            if (strlen(u) < 1 || strlen(u) > 8) die("--userid '%s' is %d characters, a userid is 1-8", u, (int)strlen(u));
+            strcpy(opt_userid, u);
+        } else if (!strcmp(a, "--stats-date")) {
+            if (!parse_date(argv[++i]))
+                die("--stats-date: '%s' is not a date YYYY-MM-DD[THH:MM:SS] between 1900 and 2099", argv[i]);
+        } else if (!strcmp(a, "--recfm")) {
             const char *v = argv[++i];
             if (!strcasecmp(v, "fb")) opt_recfm = MVS_RECFM_FB;
             else if (!strcasecmp(v, "f")) opt_recfm = MVS_RECFM_F;
             else die("--recfm: only 'f' and 'fb' are supported");
-        } else if (!strcmp(a, "--member") && i + 1 < argc) {
-            char *s = argv[++i], *eq = strchr(s, '=');
-            if (!eq) die("--member: expected NAME=FILE, got '%s'", s);
+        } else if (!strcmp(a, "--member")) {
+            char *sp = argv[++i], *eq = strchr(sp, '=');
+            if (!eq) die("--member: expected NAME=FILE, got '%s'", sp);
             *eq = 0;
-            maps[nmaps].name = s; maps[nmaps].path = eq + 1; nmaps++;
-        } else if (!strcmp(a, "--exclude") && i + 1 < argc) {
+            maps[nmaps].name = sp; maps[nmaps].path = eq + 1; nmaps++;
+        } else if (!strcmp(a, "--exclude")) {
             excl[nexcl++] = argv[++i];
         } else if (!strcmp(a, "-v") || !strcmp(a, "--verbose")) verbose = 1;
-        else if (!strcmp(a, "--help") || !strcmp(a, "-h")) { usage(stdout); return 0; }
         else if (a[0] == '-') { fprintf(stderr, "xmit370: unknown option '%s'\n", a); usage(stderr); return 2; }
         else if (!arg) arg = a;
         else die("unexpected argument '%s'", a);
@@ -1265,8 +1350,6 @@ int main(int argc, char **argv)
 
     if (!strcmp(cmd, "create"))  return do_create(arg);
     if (!strcmp(cmd, "list"))    { if (!arg) die("list: need a file"); return do_list(arg); }
-    if (!strcmp(cmd, "extract")) { if (!arg) die("extract: need a file"); return do_extract(arg); }
-    fprintf(stderr, "xmit370: unknown command '%s'\n", cmd);
-    usage(stderr);
-    return 2;
+    if (!arg) die("extract: need a file");
+    return do_extract(arg);
 }

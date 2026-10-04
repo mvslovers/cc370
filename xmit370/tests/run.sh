@@ -254,6 +254,40 @@ else
     fail "geometry: fixture create failed"
 fi
 
+# ---------------------------------------------------------------- #804
+# The Command Reference findings; each check fails on 1.2.0.
+echo "=== #804: names, values, options, non-XMIT input, --latin1 ==="
+D4="$TMP/d804"; mkdir -p "$D4/one" "$D4/long" "$D4/utf"
+printf 'LINE\n' > "$D4/one/a.txt"
+x4() {   # NAME WANT-RC PATTERN ARGS...
+    nm=$1; want=$2; pat=$3; shift 3
+    "$X" "$@" >"$TMP/x4.out" 2>"$TMP/x4.err"; r=$?
+    if [ "$r" = "$want" ] && { [ -z "$pat" ] || grep -qE -e "$pat" "$TMP/x4.err" "$TMP/x4.out"; }; then pass "$nm (rc $r)"
+    else fail "$nm: rc $r (want $want), $(head -1 "$TMP/x4.err")"; fi
+}
+printf 'x\n' > "$D4/long/verylongname.txt"
+x4 "a 12-character derived name is refused, not cut" 1 "'VERYLONGNAME' is not a valid member name" create -o "$D4/l.xmit" --dsn A.B "$D4/long"
+x4 "--member lower is upper-cased" 0 "" create -o "$D4/m.xmit" --dsn A.B --member lower="$D4/one/a.txt" "$D4/long" --exclude 'verylong*'
+"$X" list "$D4/m.xmit" | grep -qE '^ +LOWER ' && pass "the member is LOWER in the directory" || fail "--member lower not upper-cased"
+x4 "--userid longer than 8 is refused" 2 "--userid 'abcdefghij' is 10 characters" create -o "$D4/u.xmit" --dsn A.B --userid abcdefghij "$D4/one"
+x4 "--userid is upper-cased" 0 "" create -o "$D4/u.xmit" --dsn A.B --userid tester --stats-date 2026-10-04 "$D4/one"
+"$X" list "$D4/u.xmit" | grep -q ' TESTER' && pass "the statistics say TESTER" || fail "--userid not upper-cased"
+x4 "--recfm f with --blocksize 3120 is refused" 2 "--recfm f is unblocked" create --recfm f --blocksize 3120 -o "$D4/f.xmit" --dsn A.B "$D4/one"
+x4 "--recfm f alone takes BLKSIZE = LRECL" 0 "" create --recfm f -o "$D4/f.xmit" --dsn A.B "$D4/one"
+x4 "--stats-date 2026-13-45 is refused" 2 "is not a date" create --stats-date 2026-13-45 -o "$D4/s.xmit" --dsn A.B "$D4/one"
+x4 "--stats-date T25:00:00 is refused" 2 "is not a date" create --stats-date 2026-10-04T25:00:00 -o "$D4/s.xmit" --dsn A.B "$D4/one"
+x4 "--tabs abc is refused" 2 "--tabs takes a number, not 'abc'" create --tabs abc -o "$D4/t.xmit" --dsn A.B "$D4/one"
+x4 "list on a text file says why" 1 "not a TSO transmission" list "$D4/one/a.txt"
+x4 "extract on a text file says why" 1 "not a TSO transmission" extract -C "$D4" "$D4/one/a.txt"
+printf 'caf\303\251\n' > "$D4/utf/u.txt"
+x4 "--latin1 on a UTF-8 file warns" 0 "the file is UTF-8, and --latin1" create --latin1 -o "$D4/x.xmit" --dsn A.B "$D4/utf"
+x4 "-C on create is refused" 2 "-C does not apply to 'create'" create -C "$D4" -o "$D4/c.xmit" --dsn A.B "$D4/one"
+x4 "--dsn on list is refused" 2 "--dsn does not apply to 'list'" list --dsn A.B "$D4/u.xmit"
+x4 "--version after the command" 0 "xmit370 " list "$D4/u.xmit" --version
+x4 "--help after the command" 0 "-V, --version" create --help
+"$X" list "$D4/u.xmit" | grep -qE "INMRECFM +VBS, transmission records \(X'0001'\)" \
+    && pass "list names INMR03's INMRECFM" || fail "INMR03 INMRECFM: $("$X" list "$D4/u.xmit" | grep INMRECFM | tr '\n' '|')"
+
 echo
 echo "$fails failure(s)"
 exit $fails

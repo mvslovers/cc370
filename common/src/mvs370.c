@@ -257,3 +257,26 @@ void mvs_netdata_seg(unsigned char *o, long *p, const unsigned char *rec,
         off += n;
     } while (off < len);
 }
+
+const char *mvs_recfm_name(int rf, char out[8])
+{
+    int i = 0;
+    if ((rf & 0xc0) == 0xc0) out[i++] = 'U';
+    else if (rf & 0x80) out[i++] = 'F';
+    else if (rf & 0x40) out[i++] = 'V';
+    else out[i++] = '?';
+    if (rf & 0x10) out[i++] = 'B';
+    if (rf & 0x08) out[i++] = 'S';
+    if (rf & 0x04) out[i++] = 'A';
+    if (rf & 0x02) out[i++] = 'M';
+    out[i] = 0;
+    return out;
+}
+
+const char *mvs_inmrecfm_name(int code, char out[32])
+{
+    char r[8];
+    if (code == 0x0001) snprintf(out, 32, "VBS, transmission records");
+    else snprintf(out, 32, "%s", mvs_recfm_name((code >> 8) & 0xff, r));
+    return out;
+}
