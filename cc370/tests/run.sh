@@ -683,5 +683,25 @@ if compile fw "$WORK/fw.c" "-O1"; then
 else echo "fullword: FAIL -- does not compile"; fwfail=1; fi
 if [ $fwfail = 0 ]; then echo "fullword: OK (a double's words are emitted signed, like an unsigned int)"; else fail=1; fi
 
+# --- issue #813: the eyecatcher in front of @@MAIN is cc370's, with its version -
+# GCCMVS's C'GCCMVS!!' became C'CC370' and the version in three binary bytes,
+# from VERSION (a pre-release suffix dropped), keeping the 8 bytes and @@MAIN
+# at offset 8.
+vparts=$(sed 's/-.*//' "$ROOT/VERSION" | tr -d ' \t\r\n' | tr '.' ',')
+cat > "$WORK/ey.c" <<'EOF'
+int main(void) { return 7; }
+EOF
+eyfail=0
+if compile ey "$WORK/ey.c" "-O1"; then
+    grep -q "GCCMVS" "$WORK/ey.s" && { echo "eyecatcher: FAIL -- GCCMVS is back"; eyfail=1; }
+    grep -qE "^ +DC +C'CC370',AL1\($vparts\)$" "$WORK/ey.s" || { echo "eyecatcher: FAIL -- no DC C'CC370',AL1($vparts)"; eyfail=1; }
+    hx=$(printf '%02X%02X%02X' $(echo "$vparts" | tr ',' ' '))
+    if [ -x "$AS370" ]; then
+        "$AS370" "$WORK/ey.s" -a -o "$WORK/ey.o" > "$WORK/ey.lst" 2>&1
+        grep -qE "^000000 C3C3F3F7F0$hx " "$WORK/ey.lst" || { echo "eyecatcher: FAIL -- not C3C3F3F7F0$hx at offset 0"; eyfail=1; }
+    fi
+else echo "eyecatcher: FAIL -- does not compile"; eyfail=1; fi
+if [ $eyfail = 0 ]; then echo "eyecatcher: OK (C'CC370',AL1($vparts) in front of @@MAIN)"; else fail=1; fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail

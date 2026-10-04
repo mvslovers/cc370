@@ -24,9 +24,16 @@ neither number is mistaken for the other.
 - **as370: IFO203** (#776), severity 4, for a fixed-point or Y-type constant
   that does not fit its field: `F'2147483648'`, `H'65535'`, `FL1'128'`,
   `Y(32768)`. The signed range of the field decides, A-type is never flagged,
-  and the bytes stay the low-order ones as before. Measured on IFOX00: of the
-  27 values it flags in `as370/tests/ifo203.s`, as370 flags the same 26; the
-  27th, `FE9'3'`, waits for the exponent modifier.
+  and the bytes stay the low-order ones as before. Measured on IFOX00: as370
+  flags the same 27 values in `as370/tests/ifo203.s` (`FE9'3'` since the
+  exponent modifier, #782).
+
+### Changed
+- **The eyecatcher in front of `main` names cc370** (#813). A program's
+  `main` module carried `DC C'GCCMVS!!'`, after the compiler cc370 descends
+  from; it is now `DC C'CC370',AL1(major,minor,patch)` -- in a dump
+  `C3C3F3F7F0 010201` for 1.2.1 -- so a module shows which cc370 built it.
+  Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
 - **as370: an open-code MNOTE substitutes its variable symbols** (#799).

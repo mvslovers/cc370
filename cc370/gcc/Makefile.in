@@ -402,10 +402,10 @@ gcc_version_trigger=@gcc_version_trigger@
 CC370_VERSION_FILE = $(srcdir)/../../VERSION
 CC370_VERSION_H = $(srcdir)/../../common/include/cc370-version.h
 version := $(shell tr -d ' \t\r\n' < $(CC370_VERSION_FILE))
-# The same version as numbers, for the predefined __CC370__ (#704).  Passed to
-# c-cppbuiltin.o ALONE: it is the one file that expands TARGET_OS_CPP_BUILTINS,
-# and a header would put the version into tm.h and recompile all of cc1 on a
-# bump.  A pre-release suffix (1.1.0-dev) is dropped -- the macro orders
+# The same version as numbers, for the predefined __CC370__ (#704) and the
+# eyecatcher in front of @@MAIN (#813).  Passed to c-cppbuiltin.o and the target
+# object (i370.o) ALONE: they are the two files that use them, and a header
+# would put the version into tm.h and recompile all of cc1 on a bump.  A pre-release suffix (1.1.0-dev) is dropped -- the macro orders
 # releases, and 1.1.0-dev builds want the checks 1.1.0 will pass.
 cc370_vparts := $(subst ., ,$(firstword $(subst -, ,$(version))))
 CC370_VERSION_DEFINES = -DCC370_VERSION_MAJOR=$(word 1,$(cc370_vparts)) \
@@ -1891,8 +1891,8 @@ $(out_object_file): $(out_file) $(CONFIG_H) coretypes.h $(TM_H) $(TREE_H) $(GGC_
    $(RTL_H) $(REGS_H) hard-reg-set.h real.h insn-config.h conditions.h \
    output.h $(INSN_ATTR_H) $(SYSTEM_H) toplev.h $(TARGET_H) libfuncs.h \
    $(TARGET_DEF_H) function.h sched-int.h $(TM_P_H) $(EXPR_H) $(OPTABS_H) \
-   langhooks.h
-	$(CC) -c $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) \
+   langhooks.h $(CC370_VERSION_FILE)
+	$(CC) -c $(ALL_CFLAGS) $(ALL_CPPFLAGS) $(INCLUDES) $(CC370_VERSION_DEFINES) \
 		$(out_file) $(OUTPUT_OPTION)
 
 # Build auxiliary files that support ecoff format.

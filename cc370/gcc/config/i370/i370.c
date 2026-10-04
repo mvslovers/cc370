@@ -43,6 +43,17 @@ Boston, MA 02111-1307, USA.  */
 #include "ggc.h"
 #include "cpplib.h"
 #include "tm_p.h"
+/* The eyecatcher in front of @@MAIN carries the version in three AL1 bytes
+   (#813), so each part must fit in one.  mvspdp.h already holds MINOR and PATCH
+   below 100; MAJOR is bounded here.  Built outside gcc/Makefile.in the numbers
+   are missing, which is an error rather than an eyecatcher without them.  */
+#ifndef CC370_VERSION_MAJOR
+#error "CC370_VERSION_MAJOR is not defined: i370.o is built with CC370_VERSION_DEFINES"
+#endif
+#if CC370_VERSION_MAJOR > 255
+#error "VERSION: MAJOR must stay below 256 for the eyecatcher"
+#endif
+
 #include "target.h"
 #include "target-def.h"
 #include "optabs.h"
@@ -3044,7 +3055,12 @@ i370_globalize_label (FILE *stream, const char *name)
   char temp[MAX_MVS_LABEL_SIZE + 1];
   if (!strcmp (name, "main"))
     {
-      fputs ("\tDC\tC'GCCMVS!!'\n", stream);
+      /* The eyecatcher: which compiler built this module, readable in a dump
+         as C3C3F3F7F0 followed by major, minor and patch in binary (#813).
+         It replaced GCCMVS's C'GCCMVS!!' and keeps its 8 bytes.  The numbers
+         come from VERSION through CC370_VERSION_DEFINES (gcc/Makefile.in).  */
+      fprintf (stream, "\tDC\tC'CC370',AL1(%d,%d,%d)\n",
+               CC370_VERSION_MAJOR, CC370_VERSION_MINOR, CC370_VERSION_PATCH);
       fputs ("\tEXTRN\t@@CRT0\n", stream);
       fputs ("\tENTRY\t@@MAIN\n", stream);
       fputs ("@@MAIN\tDS\t0H\n", stream);
