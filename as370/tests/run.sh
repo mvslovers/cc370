@@ -4915,5 +4915,19 @@ else:
 sys.exit(0 if ok else 1)
 PY783
 
+# --- #824: negative relocation terms ------------------------------------------
+# A unary minus was not counted and an external fell in with whatever section
+# its sym held, so A(-RLNEG), A(-X) and AL3(-X) were relocated POSITIVELY and
+# A(X-RLNEG), A(-RLNEG+X), A(RLNEG-X) got NO entry -- wrong addresses at rc 0,
+# the text byte-identical.  Oracle: MVSTK5-REF JOB00348, tests/ref/rlneg.obj
+# (snapshots -2333 either side), listing tests/listref/ifox-listing-rlneg.txt.
+./as370 tests/rlneg.s -o /tmp/_rn$$.obj >/tmp/_rn$$.out 2>&1; r=$?
+rnref=tests/ref/rlneg.obj; rnn=$(( ($(wc -c < "$rnref") / 80 - 1) * 80 ))
+head -c "$rnn" /tmp/_rn$$.obj > /tmp/_rn$$a; head -c "$rnn" "$rnref" > /tmp/_rn$$b
+if [ "$r" = 0 ] && [ "$(wc -c < /tmp/_rn$$.obj)" = "$(wc -c < "$rnref")" ] && cmp -s /tmp/_rn$$a /tmp/_rn$$b; then
+    echo "rlneg: OK (negative and mixed-sign terms, sections and externals -- deck == IFOX00)"
+else echo "rlneg: FAIL (rc $r, deck vs tests/ref/rlneg.obj)"; fail=1; fi
+rm -f /tmp/_rn$$.obj /tmp/_rn$$.out /tmp/_rn$$a /tmp/_rn$$b
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
