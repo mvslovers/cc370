@@ -53,8 +53,12 @@ static size_t bcat(char *d, size_t dsz, size_t at, const char *s) {
  * a drift nobody would see (cc370#374).  `optab' comes in with it. */
 #include "opc_table.h"
 
-enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS };
-struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; int eq_to; int declared_extrn; int defln; };
+enum stype { S_REL, S_SD, S_PC, S_ER, S_LD, S_ABS, S_XD, S_CM };
+struct sym { char name[9]; long val; int type; int defined; int esdid; int is_entry; int sect; int len; int is_weak; int opened; int eq_to; int declared_extrn; int defln; long xdlen; int xdalgn; };
+/* `xdlen'/`xdalgn' belong to an external dummy section (XD, #810): the length
+ * the pseudo register needs and its alignment as IFOX00 writes it into the ESD
+ * flag byte -- 0, 1, 3 or 7, one less than the boundary.  A DXD sets both; a
+ * DSECT named by a Q-type constant takes its own length and 7. */
 /* `defln` is 1 + the lines[] index of the statement that defined the symbol --
  * the DEFN column of the -a cross-reference. 0 = not defined by any statement. */
 /* `eq_to` is 1 + the index of the symbol this one was EQU'd to, when the EQU
@@ -103,7 +107,7 @@ static int nsym;
 #define STMTSZ 8192
 #define FLDW 256
 
-enum esdrole { ESD_SECT, ESD_LD, ESD_ER };
+enum esdrole { ESD_SECT, ESD_LD, ESD_ER, ESD_XD, ESD_CM };
 struct esdent { struct sym *s; int role;  int esdid; };
 static struct esdent esdord[MAXSYM]; static int nesdord;
 /* An ESDID belongs to the ESD ENTRY, not to the symbol. One name can hold two
@@ -224,6 +228,11 @@ static int  txl_on;        /* logging active (pass 2 only) */
 static int  txl_revisit;   /* a put() wrote below the high-water mark -> overlap (ORG overlay etc.) */
 static long lc, modlen;
 static long org_hwm;          /* highest lc reached in the current section (for ORG with no operand) */
+/* in_com: the current section is a COMMON section (COM, #810).  Like a DSECT it
+ * has its own counter from zero, is never chained and generates no text; unlike
+ * one, its symbols are relocatable -- A(CF1) relocates against the CM entry --
+ * so it is a flag of its own and not in_dsect. */
+static int  in_com;
 static int  in_dsect; static long main_lc; static int main_sect_id;   /* DSECT: dummy section, own counter, no TXT; main_* save the control section on first DSECT entry */
 struct uent { int reg; long base; int sect; int isabs; };   /* active USING ranges; isabs = the base operand was ABSOLUTE */
 static struct uent usings[32]; static int nusing;
@@ -318,6 +327,13 @@ static void sect_lc_of(int sect, long end) {
     if (!pool_placing && sect > 0 && sect == first_ctl_sect && end > first_content) first_content = end;
 }
 static void note_sect_lc(long end) { sect_lc_of(cur_sect_id, end); }
+/* A DSECT's extent, kept apart from sect_hwm because nothing else may see a
+ * dummy section grow.  Its one reader is the XD entry a Q-type constant makes of
+ * a DSECT, whose length is this figure (MAP: F + CL3 = 7, JOB00350, #810). */
+static long dsect_hwm[MAXSECT];
+static void note_dsect_lc(long end) {
+    if (cur_sect_id > 0 && cur_sect_id < MAXSECT && end > dsect_hwm[cur_sect_id]) dsect_hwm[cur_sect_id] = end;
+}
 /* Per-section location counters, and the origins chained from them.
  *
  * IFOX00 gives each control section its own counter from zero (BLDESD,
@@ -1369,7 +1385,7 @@ static int using_reg(const char *e) {
     return (int)v;
 }
 static void put(long at, long v, int n) {
-    if (in_dsect) return;                       /* a DSECT generates no object text */
+    if (in_dsect || in_com) return;             /* a DSECT or a COMMON section generates no object text */
     if (at < 0) { fprintf(stderr, "as370: text at a negative location %ld\n", at); exit(2); }
     txt_reserve(at + n);
     int i; for (i = n - 1; i >= 0; i--) { text[at + i] = (unsigned char)(v & 0xff); defn[at + i] = 1; v >>= 8; }
@@ -2074,7 +2090,7 @@ static const struct opc *op_find(const char *n) {
 static int sect_esdid_of(int sect) {
     int k; if (!sect) return 0;
     for (k = 0; k < nesdord; k++)
-        if (esdord[k].role == ESD_SECT && esdord[k].s->sect == sect) return esdord[k].s->esdid;
+        if ((esdord[k].role == ESD_SECT || esdord[k].role == ESD_CM) && esdord[k].s->sect == sect) return esdord[k].s->esdid;
     return 0;
 }
 static int sect_esdid(int sect) {                   /* ESDID of the control section with this internal id (for an LD's owning section), else the module's first */
@@ -2095,7 +2111,7 @@ static int sect_esdid(int sect) {                   /* ESDID of the control sect
  * deck, on 173 modules, and almost always the LAST entry because the clobber
  * target is always rels[nrel-1] (cc370#186). */
 static void add_reloc(long at, const char *target, int isV, int len) {
-    if (in_dsect) return;                       /* a dummy section generates no relocations */
+    if (in_dsect || in_com) return;             /* a dummy or common section generates no relocations */
     struct sym *s = sym_find(target);
     /* R, the relocation ESDID, names the section whose origin the linkage editor
      * adds to the stored value -- so it must be the section the TARGET lives in,
@@ -2141,7 +2157,7 @@ static void add_reloc(long at, const char *target, int isV, int len) {
  * section named in the expression is relocated in its own direction, so the
  * caller has section ids and a sign, not a name (cc370#209). */
 static void add_reloc_sect(long at, int sect, int len, int neg) {
-    if (in_dsect) return;                       /* a dummy section generates no relocations */
+    if (in_dsect || in_com) return;             /* a dummy or common section generates no relocations */
     if (dsect_sect[sect & 255]) return;         /* nor does a term that lives in one */
     int rel = sect_esdid_of(sect);
     if (!rel) rel = cur_sect_esdid;
@@ -2151,10 +2167,21 @@ static void add_reloc_sect(long at, int sect, int len, int neg) {
 }
 /* One relocation against an external reference, with a direction (#824). */
 static void add_reloc_er(long at, const struct sym *s, int len, int neg) {
-    if (in_dsect) return;                       /* a dummy section generates no relocations */
+    if (in_dsect || in_com) return;             /* a dummy or common section generates no relocations */
     if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
     rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = s->esdid; rels[nrel].isV = 0;
     rels[nrel].len = len; rels[nrel].neg = neg; nrel++;
+}
+/* A pseudo-register relocation (#810): `kind' is the RLD type, 2 for a Q-type
+ * constant (R = the XD entry) and 3 for a CXD (R = 0).  `isV' carries the type
+ * for every entry -- 0 A, 1 V, 2 Q, 3 CXD -- and goes into the flag byte's high
+ * nibble as it stands.  Measured (MVSTK5-REF JOB00349/JOB00350): Q(DA) flag
+ * 2C, QL2(DB) 24, CXD 3C with R 0. */
+static void add_reloc_pr(long at, int rel, int kind, int len) {
+    if (in_dsect || in_com) return;
+    if (nrel >= MAXREL) { fprintf(stderr, "as370: reloc table full\n"); exit(2); }
+    rels[nrel].addr = at; rels[nrel].pos = cur_sect_esdid; rels[nrel].rel = rel; rels[nrel].isV = kind;
+    rels[nrel].len = len; rels[nrel].neg = 0; nrel++;
 }
 static int ins_len(int fmt) { return (fmt == F_RR || fmt == F_BR || fmt == F_SVC) ? 2 : (fmt == F_SS || fmt == F_SSE) ? 6 : 4; }
 
@@ -6430,16 +6457,110 @@ static void assign_origins(void) {
 static int entry_unlinkable(const struct sym *s) {
     return s->type != S_ER && (!s->defined || s->type == S_ABS);
 }
+/* The storage a DXD operand list describes: each operand a duplication factor,
+ * a type, an optional length modifier and an optional nominal value, laid out
+ * from offset 0 with the type's own alignment where no length is given -- the
+ * DS rules.  The XD's length is the end of the last operand, its alignment the
+ * FIRST operand's boundary less one (JOB00350: H,F -> 1 and 8, not 3).
+ * Only self-defining terms in the factor and the modifier are measured. */
+/* One Q-type value (#810): the constant is zero and the linkage editor puts the
+ * pseudo register's offset there, so all it produces here is the RLD entry --
+ * type 2, R the XD entry of the DXD or DSECT it names.  QKON (ifnx5d.asm:833)
+ * logs IFO231 for a name not defined before this statement and carries on, so
+ * a DXD defined later still gets its entry (JOB00349: Q(DX) ahead of `DX DXD
+ * 2F', R 0002, flag 2C); a name that is neither a DXD nor a DSECT is IFO207,
+ * severity 8, and no entry.  A name never defined at all is not measured. */
+/* Pass 1 notes each Q-type name not defined yet at its statement, the only
+ * point where "defined later" can still be told from "defined before". */
+static int qfwd_ln[256]; static char qfwd_sym[256][9]; static int nqfwd;
+static void note_qfwd(int line, const char *v) {
+    if (nqfwd < 256) { qfwd_ln[nqfwd] = line; scopy(qfwd_sym[nqfwd], v, 8); nqfwd++; }
+}
+static int is_qfwd(int line, const char *v) {
+    int k; for (k = 0; k < nqfwd; k++) if (qfwd_ln[k] == line && !strncmp(qfwd_sym[k], v, 8)) return 1;
+    return 0;
+}
+static void dc_qcon(long at, const char *v, int len, int line) {
+    struct sym *s = sym_find(v); int k, rel = 0; char m[112];
+    if (s) for (k = 0; k < nesdord; k++) if (esdord[k].s == s && esdord[k].role == ESD_XD) { rel = esdord[k].esdid; break; }
+    if (!s || !s->defined || is_qfwd(line, v)) {
+        snprintf(m, sizeof m, "Symbol not previously defined (IFOX00 IFO231) - %.20s", v);
+        note_operr(m, 8, line);
+    }
+    if (rel) add_reloc_pr(at, rel, 2, len);
+    else if (s && s->defined) {
+        snprintf(m, sizeof m, "Operand of Q-type constant does not name a DSECT or DXD (IFOX00 IFO207) - %.20s", v);
+        note_operr(m, 8, line);
+    }
+}
+/* A DXD factor or length modifier: `(expr)' or a decimal number. */
+static long dxd_term(const char **pp) {
+    const char *p = *pp; long v = 0;
+    if (*p == '(') {
+        const char *st = ++p; int d = 1, n; char ex[256];
+        while (*p && !(*p == ')' && --d == 0)) { if (*p == '(') d++; p++; }
+        n = (int)(p - st); if (n > 255) n = 255;
+        memcpy(ex, st, (size_t)n); ex[n] = 0;
+        v = expr_val_full(ex, NULL); if (*p) p++;
+    } else if (isdigit((unsigned char)*p)) {
+        char *e; v = strtol(p, &e, 10); p = e;
+    }
+    *pp = p; return v;
+}
+/* Skip a nominal value; return its length in characters (a doubled quote
+ * counts once), or -1 when there is none or it is not quoted. */
+static long dxd_nominal(const char **pp) {
+    const char *p = *pp; long n = 0;
+    if (*p == '(') { int d = 0; for (; *p; p++) { if (*p == '(') d++; else if (*p == ')' && --d == 0) { p++; break; } } *pp = p; return -1; }
+    if (*p != '\'') return -1;
+    for (p++; *p; p++, n++) { if (*p == '\'') { if (p[1] != '\'') break; p++; } }
+    if (*p) p++;
+    *pp = p; return n;
+}
+/* A type's implied length and boundary, as DS lays it out. */
+static long dxd_type(int ty, int *bound) {
+    switch (ty) {
+    case 'F': case 'A': case 'V': case 'Q': case 'E': *bound = 4; return 4;
+    case 'H': case 'Y': case 'S': *bound = 2; return 2;
+    case 'D': *bound = 8; return 8;
+    case 'L': *bound = 8; return 16;
+    default: *bound = 1; return 1;
+    }
+}
+/* The storage a DXD operand list describes: each operand a duplication factor,
+ * a type, an optional length modifier and an optional nominal value, laid out
+ * from offset 0 with the type's own alignment where no length is given -- the
+ * DS rules.  The XD's length is the end of the last operand, its alignment the
+ * FIRST operand's boundary less one (JOB00350: H,F -> 1 and 8, not 3).
+ * Only self-defining terms in the factor and the modifier are measured. */
+static void dxd_extent(const char *opnd, long *len, int *algn) {
+    const char *p = opnd; long off = 0; int first = 1;
+    *len = 0; *algn = 0;
+    while (*p && *p != ' ') {
+        long dup = 1, l, n; int ty, bound, haslen = 0;
+        if (*p == '(' || isdigit((unsigned char)*p)) dup = dxd_term(&p);
+        ty = toupper((unsigned char)*p); if (*p) p++;
+        l = dxd_type(ty, &bound);
+        if (toupper((unsigned char)*p) == 'L') { p++; haslen = 1; bound = 1; l = dxd_term(&p); }
+        n = dxd_nominal(&p);   /* a nominal value sizes C and X when no modifier does */
+        if (n >= 0 && !haslen && (ty == 'C' || ty == 'X')) l = ty == 'C' ? n : (n + 1) / 2;
+        if (first) { *algn = bound - 1; first = 0; }
+        off = (off + bound - 1) / bound * bound + (dup > 0 ? dup : 0) * l;
+        if (*p != ',') break;
+        p++;
+    }
+    *len = off;
+}
 static void do_pass(int pass, char **lines, int nlines) {
     int i; litpool = 0; g_pass = pass;
     if (pass == 1) nxe = 0;
     if (pass == 2) { npunch = 0; g_sect_seen = 0; }
     long prev_lc = 0; const char *prev_src = NULL; int have_prev = 0;
-    lc = 0; in_dsect = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
+    lc = 0; in_dsect = 0; in_com = 0; nusing = 0; cur_sect_id = 0; org_hwm = 0;
     /* Section extents are re-derived by each pass, not accumulated across them:
      * the END pool moves between sections between pass 1's placement and pass 2's,
      * so a carried-over high-water mark would place it twice (#68). */
-    first_ctl_sect = 0; pool_defer = 0; pool_org = 0; pool_hwm0 = 0; pool_end = 0; first_content = 0; modlen = 0; memset(sect_hwm, 0, sizeof sect_hwm);
+    first_ctl_sect = 0; pool_defer = 0; pool_org = 0; pool_hwm0 = 0; pool_end = 0; first_content = 0; modlen = 0; memset(sect_hwm, 0, sizeof sect_hwm); memset(dsect_hwm, 0, sizeof dsect_hwm);
     /* Each pass rebuilds every section's own counter from scratch; the ORIGINS
      * (sect_org) must survive, since pass 2 runs against the chain assigned
      * from pass 1's lengths. The chaining order is likewise built once. */
@@ -6539,7 +6660,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                  * to none; the deck still differs in how the text is FILED across
                  * ESD entries, which is a second defect in the same module
                  * (cc370#282). */
-                if (!in_dsect) note_sect_lc(lc);
+                if (!in_dsect) note_sect_lc(lc); else note_dsect_lc(lc);
             } else if (has_overlong_term(opnd)) {   /* operand symbol term >8 -> IFOX IFO236: zero the whole instruction (as IFO228/IFO209 do) */
                 note_ovlref(op, i); int L = ins_len(o->fmt); put(lc, 0, L); lc += L;
                 lrecs[i].a1 = 0; lrecs[i].hasa1 = 1;
@@ -6768,7 +6889,7 @@ static void do_pass(int pass, char **lines, int nlines) {
             /* Leaving whatever is current: park its own counter, relative to
              * its origin, so resuming it later picks up exactly there. */
             if (cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = lc - sect_base(cur_sect_id);
-            in_dsect = 0; org_hwm = 0;
+            in_dsect = 0; in_com = 0; org_hwm = 0;
             if (!strcmp(op, "START") && !first_ctl_sect && opnd[0] && opnd[0] != ',')
                 start_base = align8(expr_val(opnd, NULL));   /* only the FIRST section can be placed; the chain starts there */
             if (pass == 1 && lbl[0] && pre_csect) {    /* statements preceded this named CSECT -> implicit unnamed PC is esdid1 */
@@ -6856,14 +6977,48 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (!first_ctl_sect) first_ctl_sect = cur_sect_id;   /* IFOX FSTCSECT: the first section that is not a DSECT (nor COM) */
             if (pass == 1 && !s->defined) { s->type = (lbl[0] && !rejected) ? S_SD : S_PC; s->val = 0; s->defined = 1; esd_add(s, ESD_SECT); }   /* relative origin; assign_origins() makes it absolute; a rejected name opens PRIVATE code, so the type follows the section and not the label */
             if (pass == 2) { cur_sect_esdid = s->esdid; lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }   /* the listing shows the section's OWN counter, not the one it left (#227) */
+        } else if (!strcmp(op, "COM")) {
+            /* A common section (#810): its own counter from zero, resumed by a
+             * later COM of the same name, never chained into the module and no
+             * text -- the linkage editor allocates it.  The ESD entry is CM,
+             * address 0, the extent as its length, numbered in source order
+             * with the others.  Measured (MVSTK5-REF JOB00350, tests/comq.s):
+             * CBLK CM 0006 length 00000A after F, a GBLK in between and CL6 on
+             * resumption at 000004; A(CF1,CG1,CF2) relocates against the CM
+             * entries with the offsets 0, 0 and 4.  An unnamed COM is a blank
+             * common section, which as370 does not yet produce. */
+            if (!lbl[0]) { if (pass == 1) note_notimpl("unnamed COM", i); continue; }
+            if (!in_dsect && !in_com) { main_lc = lc; main_sect_id = cur_sect_id; }
+            if (cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = lc - sect_base(cur_sect_id);
+            in_dsect = 0; in_com = 1; org_hwm = 0;
+            struct sym *s = sym_get(lbl);
+            if (!s->sect) s->sect = ++g_sectid;
+            note_sect_owner(s);
+            cur_sect_id = s->sect;
+            if (++s->opened == 1 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;
+            lc = (cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;
+            if (pass == 1 && !s->defined) { s->type = S_CM; s->val = 0; s->defined = 1; esd_add(s, ESD_CM); }
+            if (pass == 2) { lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }
+        } else if (!strcmp(op, "DXD")) {
+            /* An external dummy section (#810): no storage here, an XD entry
+             * carrying the pseudo register's length and alignment, numbered at
+             * this statement in source order (JOB00350: DA CL5 -> align 0 len 5,
+             * DB 2D -> 7 and 16, DH H,F -> 1 and 8 -- the FIRST operand aligns). */
+            if (pass == 1 && lbl[0]) {
+                struct sym *s = sym_get(lbl);
+                if (!s->defined) {
+                    dxd_extent(opnd, &s->xdlen, &s->xdalgn);
+                    s->type = S_XD; s->val = 0; s->defined = 1; s->sect = 0; s->len = 1; esd_add(s, ESD_XD);
+                }
+            }
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
             /* A DSECT is just another section with its own counter -- the save
              * and restore this used to do by hand for the enclosing control
              * section is now what every section gets. main_lc/main_sect_id are
              * kept because the DSECT-to-END path still restores through them. */
-            if (!in_dsect) { main_lc = lc; main_sect_id = cur_sect_id; }
+            if (!in_dsect && !in_com) { main_lc = lc; main_sect_id = cur_sect_id; }
             if (cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = lc - sect_base(cur_sect_id);
-            in_dsect = 1; org_hwm = 0;
+            in_dsect = 1; in_com = 0; org_hwm = 0;
             /* An unnamed DSECT gets a symbol of its own. It used to take `""',
              * which is the IMPLICIT PRIVATE CODE's symbol, and the two are not
              * the same section: the line below then marked the private code as
@@ -7319,7 +7474,7 @@ static void do_pass(int pass, char **lines, int nlines) {
              * the second section wrong with them, at rc 0 (cc370#279).
              * A backward ORG cannot shrink anything: sect_lc_of only raises. */
             if (lc > org_hwm) org_hwm = lc;
-            if (!in_dsect) { if (org_hwm > modlen) modlen = org_hwm; note_sect_lc(org_hwm); }
+            if (!in_dsect) { if (org_hwm > modlen) modlen = org_hwm; note_sect_lc(org_hwm); } else note_dsect_lc(org_hwm);
         } else if (!strcmp(op, "CCW")) {                       /* channel command word: cmd, AL3 address, flags, AL2 count (doubleword aligned) */
             { long old = lc; while (lc & 7) lc++; if (pass == 2) while (old < lc) put(old++, 0, 1); }
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 8; }
@@ -7346,7 +7501,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                 put(lc + 4, nf >= 3 ? expr_val(F[2], 0) & 0xff : 0, 1); put(lc + 5, 0, 1);
                 put(lc + 6, nf >= 4 ? expr_val(F[3], 0) & 0xffff : 0, 2); }
             lc += 8;
-            if (!in_dsect) note_sect_lc(lc);   /* pass 1 too, for the same reason the instruction path does */
+            if (!in_dsect) note_sect_lc(lc); else note_dsect_lc(lc);   /* pass 1 too, for the same reason the instruction path does */
         } else if (!strcmp(op, "DS") || !strcmp(op, "DC")) {
             static char ops[256][1024]; int nops = dc_split(opnd, ops, 256), oi;
             int emit_dc = (pass == 2 && !strcmp(op, "DC"));
@@ -7644,13 +7799,13 @@ static void do_pass(int pass, char **lines, int nlines) {
                             lc += flen;
                         }
                     }
-                } else if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'Y' || ty == 'V' || ty == 'S') {
+                } else if (ty == 'F' || ty == 'A' || ty == 'H' || ty == 'Y' || ty == 'V' || ty == 'S' || ty == 'Q') {
                     int base = (ty == 'H' || ty == 'Y' || ty == 'S') ? 2 : 4;
                     if (!haslen) { blen = base; long oldlc = lc; lc = (base == 8) ? align8(lc) : (base == 2) ? ((lc + 1) & ~1L) : align4(lc);
                         if (emit_dc) while (oldlc < lc) put(oldlc++, 0, 1); }   /* DC alignment padding is emitted as zero TXT (IFOX-compatible) */
                     if (setlbl) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = blen ? blen : 1; }
-                    long val = 0; int isvcon = (ty == 'V'), isscon = (ty == 'S');
-                    int isaddr = (ty == 'A' || ty == 'Y' || isvcon || isscon);
+                    long val = 0; int isvcon = (ty == 'V'), isscon = (ty == 'S'), isqcon = (ty == 'Q');
+                    int isaddr = (ty == 'A' || ty == 'Y' || isvcon || isscon || isqcon);
                     if (isaddr) {                                  /* address constant, possibly a value list A(v1,v2,..) */
                         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
                         char inside[DCINSIDE] = "";
@@ -7674,6 +7829,15 @@ static void do_pass(int pass, char **lines, int nlines) {
                         if (isvcon && pass == 1 && !in_dsect && cnt > 0) { int vj; for (vj = 0; vj < nv; vj++) {   /* register each V-con ER */
                             char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                             if (r[0]) { struct sym *s = sym_get(r); if (!s->defined) s->type = S_ER; esd_add(s, ESD_ER); } } }
+                        /* A Q-type constant naming a DSECT makes it an external dummy
+                         * section: its XD entry is numbered here, at the first such
+                         * reference -- MAP, defined at statement 2, is XD 0005
+                         * behind the DXDs of statements 8-10 (JOB00350, #810). */
+                        if (isqcon && pass == 1 && !in_dsect && !in_com && cnt > 0) { int vj; for (vj = 0; vj < nv; vj++) {
+                            struct sym *qs = sym_find(vals[vj]);
+                            if (!qs || !qs->defined) note_qfwd(i, vals[vj]);
+                            if (qs && qs->defined && qs->type != S_XD && is_dsect_id(qs->sect) && sect_owner[qs->sect] == 1 + (int)(qs - syms))
+                                esd_add(qs, ESD_XD); } }
                         for (k = 0; k < cnt; k++) { int vj; for (vj = 0; vj < nv; vj++) {
                             if (emit_dc) {
                                 if (isscon) {
@@ -7745,6 +7909,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                                 }
                                 else if (isvcon) { char r[64]; int sn = 0; const char *se = vals[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                                     put(lc, 0, blen); add_reloc(lc, r, 1, blen); }
+                                else if (isqcon) { put(lc, 0, blen); dc_qcon(lc, vals[vj], blen, i); }
                                 else { char rsym[64]; reloc_sym(vals[vj], rsym, sizeof rsym); int rc = 0;
                                     /* expr_val_full, not expr_val: a nominal value IS an
                                      * expression, and expr_val reads a LEADING '(' as a
@@ -7920,7 +8085,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                     /* No storage produced. Say which of the two it is, once per
                      * operand, in pass 1 -- pass 2 walks the same statements. */
                     if (pass == 1) {
-                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* the fifteen valid Assembler XF types; all but Q are handled above */
+                        if (ty && strchr("CXBPZLDEFHAYVQS", ty)) { char w[24]; snprintf(w, sizeof w, "DC/DS type %c", ty); note_notimpl(w, i); }   /* the fifteen valid Assembler XF types; all are handled above */
                         else note_badtype(ty, i);
                     }
                     /* The label is still defined, as before: withholding it would
@@ -7935,15 +8100,19 @@ static void do_pass(int pass, char **lines, int nlines) {
                 for (z3 = 0; z3 < nb3; z3++) { if (emit_dc) put(lc, bitbuf[z3], 1); lc++; }
                 bitn = 0;
             }
-            if (!in_dsect) { if (lc > modlen) modlen = lc; note_sect_lc(lc); }   /* a DS reserves space that extends the section length even though it writes no TXT */
+            if (!in_dsect) { if (lc > modlen) modlen = lc; note_sect_lc(lc); } else note_dsect_lc(lc);   /* a DS reserves space that extends the section length even though it writes no TXT */
         } else if (!strcmp(op, "CXD")) {
-            /* CXD generates one fullword-aligned fullword, the cumulative length
-             * of all pseudo registers. as370 reserves nothing for it, so it is
-             * flagged rather than skipped. Pseudo registers are unimplemented --
-             * they tie into the Q-type constant and, on the other side, ld370's
-             * PR collection rules -- so all three land together or not at all. */
-            if (pass == 1) { note_notimpl("CXD", i);
-                if (lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 4; } }
+            /* CXD: one fullword on a fullword boundary that the linkage editor
+             * fills with the total length of the pseudo registers (#810).
+             * Measured (MVSTK5-REF JOB00349/JOB00350): the alignment pad is
+             * text like any DC's, the fullword itself is NOT -- the TXT card
+             * stops in front of it -- and the RLD entry has R 0, flag 3C.  The
+             * listing still shows 00000000 as its object code. */
+            { long oldlc = lc; lc = align4(lc); while (oldlc < lc) put(oldlc++, 0, 1); }
+            if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); s->val = lc; s->defined = 1; s->sect = cur_sect_id; s->len = 4; }
+            if (pass == 2) add_reloc_pr(lc, 0, 3, 4);
+            lc += 4;
+            if (!in_dsect) { if (lc > modlen) modlen = lc; note_sect_lc(lc); } else note_dsect_lc(lc);
         } else if (!strcmp(op, "EQU")) {
             if (pass == 1 && lbl[0]) { struct sym *s = sym_get(lbl); int rc = 0;
                 char F[4][FLDW]; int nf = split_fields(opnd, F, 4);
@@ -8051,8 +8220,8 @@ static void do_pass(int pass, char **lines, int nlines) {
                         end_esdid = s->esdid ? s->esdid : sect_esdid(s->sect); } }
                 }
             }
-            if (!strcmp(op, "END") && in_dsect) {   /* a trailing DSECT must not capture the pending literal pool: flush it into the control section */
-                in_dsect = 0; lc = main_lc; cur_sect_id = main_sect_id; cur_sect_esdid = main_sect_esdid;
+            if (!strcmp(op, "END") && (in_dsect || in_com)) {   /* a trailing DSECT must not capture the pending literal pool: flush it into the control section */
+                in_dsect = 0; in_com = 0; lc = main_lc; cur_sect_id = main_sect_id; cur_sect_esdid = main_sect_esdid;
             }
             /* Register each =V literal's external reference in the ESD now, when the
              * pool is FLUSHED (not at first use), in first-reference order -- this is
@@ -8182,6 +8351,10 @@ static void emit_obj(FILE *f) {
                 if (issect || entry_unlinkable(s)) continue; }   /* IFO189: no LD (cc370#559) */
             if (role == ESD_SECT) { esd_ent(c, slot, s->name, s->type == S_PC ? 0x04 : 0x00, s->val, sect_length(ei), 0); if (!cardfirst) cardfirst = esdord[ei].esdid; }
             else if (role == ESD_ER) { esd_ent(c, slot, s->name, s->is_weak ? 0x0a : 0x02, 0, 0, 1); if (!cardfirst) cardfirst = esdord[ei].esdid; }
+            /* XD: address 0, the alignment in the flag byte, the length; CM:
+             * address 0 and the section's extent (JOB00350, #810). */
+            else if (role == ESD_XD) { esd_ent(c, slot, s->name, 0x06, 0, s->xdlen, 0); c[slot + 12] = (unsigned char)s->xdalgn; if (!cardfirst) cardfirst = esdord[ei].esdid; }
+            else if (role == ESD_CM) { esd_ent(c, slot, s->name, 0x05, 0, sect_length(ei), 0); if (!cardfirst) cardfirst = esdord[ei].esdid; }
             /* LD: the last field is the ESDID of the section the symbol is DEFINED
              * IN, not the module's first section -- which is what it used to be,
              * so every entry in a second or later CSECT named the wrong one
@@ -8271,11 +8444,11 @@ static void emit_obj(FILE *f) {
             if (off + need > 72) break;                        /* card full -> flush */
             if (reuse) {
                 c[prevflag] |= 0x01;                           /* predecessor: next omits R/P */
-                c[off] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0); cbe(c, off + 1, rels[k].addr, 3);
+                c[off] = ((rels[k].isV & 3) << 4) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0); cbe(c, off + 1, rels[k].addr, 3);
                 prevflag = off; off += 4;
             } else {
                 cbe(c, off, rels[k].rel, 2); cbe(c, off + 2, rels[k].pos, 2);
-                c[off + 4] = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0); cbe(c, off + 5, rels[k].addr, 3);
+                c[off + 4] = ((rels[k].isV & 3) << 4) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0); cbe(c, off + 5, rels[k].addr, 3);
                 prevflag = off + 4; off += 8; pr = rels[k].rel; pp = rels[k].pos;
             }
             k++;
@@ -8341,6 +8514,13 @@ static void a_esd_section(void) {
             memcpy(ln + 10, "LD", 2);
             snprintf(b, sizeof b, "%06lX", s->val & 0xffffffL); memcpy(ln + 19, b, 6);
             snprintf(b, sizeof b, "%04X", sect_esdid(s->sect)); memcpy(ln + 33, b, 4);   /* LDID col 34 */
+        } else if (role == ESD_XD || role == ESD_CM) {
+            /* The listing puts an XD's alignment in the ADDR column, where the
+             * deck has it in the flag byte (JOB00350, #810). */
+            memcpy(ln + 10, role == ESD_XD ? "XD" : "CM", 2);
+            snprintf(b, sizeof b, "%04X", esdord[k].esdid); memcpy(ln + 14, b, 4);
+            snprintf(b, sizeof b, "%06X", role == ESD_XD ? s->xdalgn : 0); memcpy(ln + 19, b, 6);
+            snprintf(b, sizeof b, "%06lX", (role == ESD_XD ? s->xdlen : sect_length(k)) & 0xffffffL); memcpy(ln + 26, b, 6);
         } else {
             memcpy(ln + 10, s->is_weak ? "WX" : "ER", 2);
             snprintf(b, sizeof b, "%04X", s->esdid); memcpy(ln + 14, b, 4);
@@ -8356,7 +8536,7 @@ static void a_rld_section(void) {
         rels[b2 + 1] = t; } }
     a_newpage("RELOCATION DICTIONARY", "POS.ID   REL.ID   FLAGS   ADDRESS");
     for (k = 0; k < nrel; k++) {
-        int flag = (rels[k].isV ? 0x10 : 0) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0);
+        int flag = ((rels[k].isV & 3) << 4) | (((rels[k].len - 1) & 3) << 2) | (rels[k].neg ? 0x02 : 0);
         memset(ln, ' ', 120); ln[120] = 0;
         snprintf(b, sizeof b, "%04X", rels[k].pos); memcpy(ln + 1, b, 4);     /* POS.ID col 2 */
         snprintf(b, sizeof b, "%04X", rels[k].rel); memcpy(ln + 10, b, 4);    /* REL.ID col 11 */
@@ -8568,6 +8748,7 @@ static int a_has_print(const char *opnd) {
 static int a_first_align(const char *op, const char *opnd) {
     const char *p = opnd;
     if (!strncmp(op, "CCW", 3)) return 8;
+    if (!strcmp(op, "CXD")) return 4;
     if (strcmp(op, "DC") && strcmp(op, "DS")) return 1;
     while (*p == ' ') p++;
     if (*p == '(') { int d = 1; p++; while (*p && d) { if (*p == '(') d++; else if (*p == ')') d--; p++; } }
@@ -8575,7 +8756,7 @@ static int a_first_align(const char *op, const char *opnd) {
     int ty = toupper((unsigned char)*p), b;
     if (!ty) return 1;
     p++;
-    b = strchr("FAVE", ty) ? 4 : strchr("HYS", ty) ? 2 : strchr("DL", ty) ? 8 : 1;
+    b = strchr("FAVEQ", ty) ? 4 : strchr("HYS", ty) ? 2 : strchr("DL", ty) ? 8 : 1;
     if (*p == 'S') { p++; if (*p == '+' || *p == '-') p++; while (isdigit((unsigned char)*p)) p++; }
     if (*p == 'L') return 1;
     return b;
@@ -8672,7 +8853,7 @@ static void a_src_section(char **lines, int nl) {
              * whatever text lay at that offset -- in a DSECT the enclosing
              * section's, in a later section another one's (#24). */
             else if (!strcmp(op, "DS")) { show_loc = 1; }
-            else if (!strcmp(op, "DC") || !strcmp(op, "CCW") || !strcmp(op, "CNOP")) { show_loc = show_obj = 1; }
+            else if (!strcmp(op, "DC") || !strcmp(op, "CCW") || !strcmp(op, "CNOP") || !strcmp(op, "CXD")) { show_loc = show_obj = 1; }
             else if (!strcmp(op, "CSECT") || !strcmp(op, "DSECT") || !strcmp(op, "COM")) { show_loc = 1; }
             /* An EQU does not sit at the location counter -- it names a value --
              * and IFOX00 lists it that way: LOC blank, the symbol's value in
@@ -8727,7 +8908,9 @@ static void a_src_section(char **lines, int nl) {
         for (j = 0; j < 255; j++) { ln[j] = ' '; } ln[255] = 0;
         if (show_loc && !strcmp(op, "LTORG")) loc = align8(loc);   /* LOC is where the pool starts: the counter after the doubleword alignment (tests/listref, litdup and pool) */
         if (show_loc) { char b[16]; sprintf(b, "%06lX", loc & 0xffffffL); memcpy(ln, b, 6); }
-        if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex); if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
+        if (show_obj) { char hex[40]; a_objcode(loc, len, is_instr, hex);
+            if (!hex[0] && !strcmp(op, "CXD") && !noasm) strcpy(hex, "00000000");   /* listed, though never punched (JOB00350) */
+            if (hex[0]) memcpy(ln + 7, hex, strlen(hex)); }
         if (!noasm && lrecs[i].hasa1) { char b[16]; sprintf(b, "%05lX", lrecs[i].a1 & 0xfffffL); memcpy(ln + 22, b, 5); }
         if (!noasm && lrecs[i].hasa2) { char b[16]; sprintf(b, "%05lX", lrecs[i].a2 & 0xfffffL); memcpy(ln + 28, b, 5); }
         /* A duplicate EQU (IFO196) prints ITS OWN value, not the surviving
@@ -9620,7 +9803,7 @@ int main(int argc, char **argv) {
     prescan_literals(lines, nl);   /* the END pool has to be known before pass 1 lays the first control section out (#68) */
     do_pass(1, lines, nl);
     { int k, id = 0; for (k = 0; k < nesdord; k++) {         /* SD/PC sections and ER refs get an ESDID; LD entries do not */
-        if (esdord[k].role != ESD_SECT && esdord[k].role != ESD_ER) continue;
+        if (esdord[k].role == ESD_LD) continue;   /* SD/PC, ER, XD and CM are numbered in source order (JOB00350) */
         esdord[k].esdid = ++id;
         /* FIRST entry wins for the symbol's own id -- among ERs. s->esdid feeds
          * cur_sect_esdid and so the TXT's id and the RLD's P, and last-wins put
@@ -9636,7 +9819,7 @@ int main(int argc, char **argv) {
        * section's bytes could see it. AMASPZAP files 6,700 bytes that way
        * (cc370#281). */
       for (k = 0; k < nesdord; k++)
-        if (esdord[k].role == ESD_SECT) esdord[k].s->esdid = esdord[k].esdid; }
+        if (esdord[k].role == ESD_SECT || esdord[k].role == ESD_CM) esdord[k].s->esdid = esdord[k].esdid; }
     { int k; main_sect_esdid = 0;            /* the content section: first named SD, else first section */
       for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT && esdord[k].s->type == S_SD) { main_sect_esdid = esdord[k].s->esdid; break; }
       if (!main_sect_esdid) for (k = 0; k < nesdord; k++) if (esdord[k].role == ESD_SECT) { main_sect_esdid = esdord[k].s->esdid; break; } }
@@ -9644,6 +9827,9 @@ int main(int argc, char **argv) {
     { int k; for (k = 0; k < nsym; k++) syms[k].opened = 0; }   /* `opened` counts within a pass: pass 2 must see the same sections begin */
     assign_origins();
     do_pass(2, lines, nl);
+    { int k; for (k = 0; k < nesdord; k++) {   /* a DSECT made XD by a Q-type constant: its extent, on a doubleword (JOB00350) */
+        struct sym *xs = esdord[k].s;
+        if (esdord[k].role == ESD_XD && is_dsect_id(xs->sect)) { xs->xdlen = dsect_hwm[xs->sect]; xs->xdalgn = 7; } } }
     g_pass = 0;   /* everything below (emit_obj, emit_listing_a) is past the point where a diagnostic could still be printed */
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
     if (nsrcw_seen) {   /* source characters with no EBCDIC image (#483): severity 4, raised to 8 per statement where one reaches a constant */

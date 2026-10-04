@@ -2316,28 +2316,29 @@ rm -f /tmp/_o68.obj /tmp/_o68.out
 # calling those invalid would be as misleading as the silence it replaces.
 q="'"
 dcfail=0
-# (a) valid Assembler XF, still unimplemented -> RC 8, "not implemented" wording.
-# P and Z left this list when step 2 implemented them, E and L when step 3 did,
-# and S when #108 did.  Q remains, and stays until the pseudo-register feature
-# lands with it (#76).
-for t in "Q(T)"; do
-    printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
-    ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
-    if [ $? -ne 8 ]; then echo "dc_types: FAIL (DC $t did not give RC 8)"; dcfail=1
-    elif ! grep -q "not implemented by as370" /tmp/_d53.out; then
-        echo "dc_types: FAIL (DC $t flagged, but not as unimplemented)"; dcfail=1; fi
-done
+# (a) every valid Assembler XF type is implemented now: Q and CXD were the last
+# (#810, the as370 half of #76).  Q naming something that is not a DXD or a
+# DSECT is IFOX00's IFO207 (QKON, ifnx5d.asm:833), and CXD assembles silently.
+printf 'T        CSECT\nD1       DC    Q(T)\n         END\n' > /tmp/_d53.s
+./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+if [ $? -ne 8 ] || ! grep -q "IFO207" /tmp/_d53.out; then
+    echo "dc_types: FAIL (DC Q(T) on a CSECT name is not IFO207)"; dcfail=1; fi
+printf 'T        CSECT\nD1       DC    Q(X)\nX        DXD   F\n         END\n' > /tmp/_d53.s
+./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+if [ $? -ne 8 ] || ! grep -q "IFO231" /tmp/_d53.out; then
+    echo "dc_types: FAIL (DC Q of a later DXD is not IFO231)"; dcfail=1; fi
+printf 'T        CSECT\nX        DXD   F\nD1       DC    Q(X)\n         END\n' > /tmp/_d53.s
+./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
+if [ $? -ne 0 ]; then echo "dc_types: FAIL (DC Q of an earlier DXD must assemble silently)"; dcfail=1; fi
 # ...and the other direction, which is what #108 actually changed: S must no
-# longer be reported at all.  Without this the loop above could be emptied by
-# accident and nothing would notice.
+# longer be reported at all.
 printf 'T        CSECT\n         USING T,12\nD1       DC    S(T)\n         END\n' > /tmp/_d53.s
 ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
 if [ $? -ne 0 ] || grep -q "not implemented by as370" /tmp/_d53.out; then
     echo "dc_types: FAIL (DC S is implemented now; it must assemble silently)"; dcfail=1; fi
 printf 'T        CSECT\nX1       CXD\n         END\n' > /tmp/_d53.s
 ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/tmp/_d53.out 2>&1
-if [ $? -ne 8 ] || ! grep -q "CXD is valid Assembler XF but not implemented" /tmp/_d53.out; then
-    echo "dc_types: FAIL (CXD still silent -- it was exempted in skip[])"; dcfail=1; fi
+if [ $? -ne 0 ]; then echo "dc_types: FAIL (CXD must assemble silently)"; dcfail=1; fi
 # (b) letters outside the fifteen -> RC 8, ERR198 wording
 for t in "W${q}99${q}" "G${q}1${q}"; do
     printf 'T        CSECT\nD1       DC    %s\n         END\n' "$t" > /tmp/_d53.s
@@ -2372,7 +2373,7 @@ for t in "C${q}A${q}" "X${q}01${q}" "B${q}1${q}" "F${q}1${q}" "H${q}1${q}" "D${q
     if ! ./as370 /tmp/_d53.s -o /tmp/_d53.obj >/dev/null 2>&1; then
         echo "dc_types: FAIL (implemented type $t wrongly rejected)"; dcfail=1; fi
 done
-[ $dcfail = 0 ] && echo "dc_types: OK (Q + CXD loud as unimplemented, S no longer; W/G as ERR198; implemented types unmoved)"
+[ $dcfail = 0 ] && echo "dc_types: OK (Q: IFO207/IFO231 as IFOX00, CXD and S silent; W/G as ERR198; implemented types unmoved)"
 fail=$((fail + dcfail))
 rm -f /tmp/_d53.s /tmp/_d53.obj /tmp/_d53.out
 
@@ -4928,6 +4929,23 @@ if [ "$r" = 0 ] && [ "$(wc -c < /tmp/_rn$$.obj)" = "$(wc -c < "$rnref")" ] && cm
     echo "rlneg: OK (negative and mixed-sign terms, sections and externals -- deck == IFOX00)"
 else echo "rlneg: FAIL (rc $r, deck vs tests/ref/rlneg.obj)"; fail=1; fi
 rm -f /tmp/_rn$$.obj /tmp/_rn$$.out /tmp/_rn$$a /tmp/_rn$$b
+
+# --- #810/#229: COM, DXD, CXD and Q-type constants ----------------------------
+# None of the four existed: COM and DXD were undefined operation codes, CXD and
+# Q "not implemented".  Oracles on MVSTK5-REF: comdxd (JOB00349) has Q ahead of
+# its DXD, which is IFO231 at rc 8 with the entry still written; comq (JOB00350,
+# snapshots -0045/-0055, 2789 unchanged) has the clean cases and one IFO158 of
+# its own, A(M2) on a DSECT label.  Both decks == IFOX00 up to the END card;
+# both listings are compared by tests/listref.
+for qc in comdxd comq; do
+    ./as370 tests/$qc.s -o /tmp/_qc$$.obj >/tmp/_qc$$.out 2>&1; r=$?
+    qref=tests/ref/$qc.obj; qn=$(( ($(wc -c < "$qref") / 80 - 1) * 80 ))
+    head -c "$qn" /tmp/_qc$$.obj > /tmp/_qc$$a; head -c "$qn" "$qref" > /tmp/_qc$$b
+    if [ "$r" = 8 ] && [ "$(wc -c < /tmp/_qc$$.obj)" = "$(wc -c < "$qref")" ] && cmp -s /tmp/_qc$$a /tmp/_qc$$b; then
+        echo "$qc: OK (COM/DXD/CXD/Q -- rc 8 as IFOX00, deck == IFOX00)"
+    else echo "$qc: FAIL (rc $r, deck vs $qref)"; fail=1; fi
+done
+rm -f /tmp/_qc$$.obj /tmp/_qc$$.out /tmp/_qc$$a /tmp/_qc$$b
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
