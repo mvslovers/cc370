@@ -662,5 +662,26 @@ if compile nt "$WORK/nt.c" "-O1 -std=gnu99"; then
 else echo "nested: FAIL -- the trampoline case does not compile"; ndfail=1; fi
 if [ $ndfail = 0 ]; then echo "nested: OK (chain in R0; trampoline @@LTR0, R15-based, copied with MEMCPY, assembles)"; else fail=1; fi
 
+# --- issue #776: a fullword constant is emitted signed ------------------------
+# assemble_real hands a floating constant's words over through GEN_INT, so on a
+# 64-bit host a word with bit 31 set reached the backend positive and came out
+# as DC F'3558193243' (the low word of 1e32) -- IFOX00 flags that IFO203, rc 4.
+# The bits are right either way; every DC F must lie in the signed range.
+cat > "$WORK/fw.c" <<'EOF'
+const double a = 1e32;
+const double b = 1e64;
+const double c = -2.5;
+unsigned int u = 3558193243u;
+EOF
+fwfail=0
+if compile fw "$WORK/fw.c" "-O1"; then
+    big=$(grep -oE "DC +F'-?[0-9]+'" "$WORK/fw.s" | grep -oE -- "-?[0-9]+" |
+          awk '$1 > 2147483647 || $1 < -2147483648' | head -1)
+    [ -z "$big" ] || { echo "fullword: FAIL -- DC F'$big' is outside the signed range"; fwfail=1; }
+    grep -q "DC    F'-736774053'" "$WORK/fw.s" || { echo "fullword: FAIL -- the low word of 1e32 is not F'-736774053'"; fwfail=1; }
+    [ "$(grep -c "DC    F'-736774053'" "$WORK/fw.s")" = 2 ] || { echo "fullword: FAIL -- 1e32's low word and the unsigned int differ"; fwfail=1; }
+else echo "fullword: FAIL -- does not compile"; fwfail=1; fi
+if [ $fwfail = 0 ]; then echo "fullword: OK (a double's words are emitted signed, like an unsigned int)"; else fail=1; fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail
