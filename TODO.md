@@ -169,11 +169,13 @@ as370 order inside it.**
 - #118 **done** (#769): declare max(blocksize+20, **296**) -- measured: 288 is
   refused by NJE38 RECEIVE (JOB01342), 296 RECEIVEs PO/F/80/80 (JOB01343).
 - #478: **done, #764** (IEWL JOB01639: IEW0241, first kept).
-- New: #761 (float DC scale modifier ignored).
+- ~~#761~~ **done** (#792): E/D/L scale + exponent modifiers, IFO202 only when
+  no bit survives the shift (JOB00345, JOB00347); emit_float split for the
+  SonarCloud gate (fuzz + tree hash identical).
 - ~~#776~~ **done**: cc370 emits a double's words signed (#778); as370 raises
   IFO203 (#780, JOB00343: signed range for F/H/Y, never A; 26 of 27, the 27th
   needs the exponent modifier). From the same job: ~~#782~~ **done** (#790,
-  JOB00345: 10**n half away from zero, E before S) and #783 (`E'1E76'` IFO201 / `E'1E-80'` IFO239 silent,
+  JOB00345: 10**n half away from zero, E before S) and #783 (next) (`E'1E76'` IFO201 / `E'1E-80'` IFO239 silent,
   other bytes); both no known user.
 - #160 Decision A **applied** (comments 2026-10-04): of 933 rc>=8 decks, 453
   agree with IFOX00 statement by statement and all 453 are identical; 178 agree
