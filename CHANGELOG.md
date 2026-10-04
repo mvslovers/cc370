@@ -36,6 +36,16 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **file370 reads source libraries and large transmissions right** (#806).
+  The directory of a source library (as `xmit370 create` writes it) was
+  decoded as a load library's, its ISPF statistics shown as entry point,
+  length and attributes; COPYR1's RECFM now decides, and the heading names
+  it. Data of a transmission past 4 MB was cut without a word; it is kept
+  whole. `--json` over several files is one JSON array (one file still one
+  object), names are escaped, and a file without a CESD reports its format;
+  `--json` implies `--csects`. INMR03's record format is named, `-` reads
+  standard input, and a text file beginning with a space or `@`..`O` is no
+  longer taken for a load module.
 - **ar370 no longer drops or cuts anything silently** (#805). More than 2048
   objects or 16384 symbols were dropped at rc 0; they have no limit now. A
   member name longer than 15 characters was cut to 16 bytes; it goes into a

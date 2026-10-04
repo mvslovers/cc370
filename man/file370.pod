@@ -4,7 +4,7 @@ file370 - identify and analyze the MVS formats produced by the cc370 toolchain
 
 =head1 SYNOPSIS
 
-B<file370> [B<-v>] I<file>...
+B<file370> [B<-v>] [B<--csects>] [B<--json>] I<file>...
 
 B<file370> B<--help> | B<--version>
 
@@ -32,18 +32,25 @@ B<ar370 archive> (L<ar370(1)>) - the C<!E<lt>archE<gt>> magic.
 =item *
 
 B<MVS load module member> (L<ld370(1)> B<-o>) - the first record is a composite
-ESD (byte 0 C<X'20'>/C<X'28'>).
+ESD (byte 0 C<X'20'>/C<X'28'>) or, for a module linked with TEST, a SYM record
+(C<X'4>I<n>C<'>); the walk must then find a CESD or a control record, so a text
+file beginning with one of those bytes is not taken for a module.
 
 =item *
 
-B<IEBCOPY unloaded PDS> (L<ld370(1)> B<-iebcopy>) - the COPYR1 eye-catcher
-C<X'CA6D0F'>.
+B<IEBCOPY unloaded PDS> (L<ld370(1)> B<-iebcopy>, L<xmit370(1)>) - the COPYR1
+eye-catcher C<X'CA6D0F'>. The library's own RECFM, from COPYR1, decides how the
+directory is read: a RECFM=U load library's user data as PDS2 fields, a source
+library's as ISPF statistics (version, changed date and time, lines, userid).
 
 =item *
 
-B<TSO XMIT / NETDATA> (L<ld370(1)> B<-xmit>) - EBCDIC C<INMR01> at offset 2.
+B<TSO XMIT / NETDATA> (L<ld370(1)> B<-xmit>, L<xmit370(1)> B<create>) - EBCDIC
+C<INMR01> at offset 2. The wrapped data has no size limit.
 
 =back
+
+A I<file> of B<-> is standard input.
 
 An XMIT wraps an IEBCOPY unload, which wraps a load-module member; B<-v> peels
 the layers and decodes each one (NETDATA text units, the unloaded directory, and
@@ -52,6 +59,9 @@ B<RENT>, B<REUS>, B<REFR>, the APF authorization code B<AC>=I<n>, etc.).
 
 =head1 OPTIONS
 
+Options apply to the files named after them: in C<file370 a -v b>, only B<b>
+gets the dump.
+
 =over 4
 
 =item B<-v>
@@ -59,6 +69,20 @@ B<RENT>, B<REUS>, B<REFR>, the APF authorization code B<AC>=I<n>, etc.).
 Verbose: dump the full structure - the ESD entries of an object deck, the record
 stream of a load module, the directory of an unload, the INMRxx control records
 and text units of an XMIT (plus the wrapped unload and member).
+
+=item B<--csects>
+
+List the external symbol dictionary and nothing else: a load module's CESD, an
+object deck's ESD.
+
+=item B<--json>
+
+The machine-readable form of B<--csects>; implies it. For one file the output is
+one JSON object: C<file>, C<format>, and for a load module C<csects> (each with
+C<esdid>, C<name>, C<type> and, as they apply, C<addr>, C<len>, C<owner>, C<seg>,
+C<typebyte>) and C<count>. A file without a CESD gives C<file> and C<format>
+only. For several files the output is one JSON array of those objects. Strings
+are JSON-escaped.
 
 =item B<--help>
 
@@ -73,11 +97,12 @@ Print the toolchain version and the commit it was built from, and exit.
 =head1 EXIT STATUS
 
 C<0> when every file was recognized, C<2> when a file was not a recognized
-toolchain format, C<1> on a read error.
+toolchain format, C<1> on a read error. With several files the highest applies,
+so C<2> outranks C<1>.
 
 =head1 SEE ALSO
 
-L<cc370(1)>, L<as370(1)>, L<ld370(1)>, L<ar370(1)>, L<file(1)>
+L<cc370(1)>, L<as370(1)>, L<ld370(1)>, L<ar370(1)>, L<xmit370(1)>, L<file(1)>
 
 =head1 AUTHOR
 
