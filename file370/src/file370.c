@@ -476,6 +476,26 @@ static void show_ispf_stats(const unsigned char *ud)
            ((ud[10] & 0xf) << 4) | (ud[11] >> 4), ud[12], ud[13], mvs_be16(ud + 14), uid);
 }
 
+/* A load-library member's PDS2 user data: entry point, length, the member an
+ * alias names, the attributes, and with -v the raw attribute bytes. */
+static void show_pds2(const unsigned char *ud, int nud, int alias, const char *indent, int v)
+{
+    long modlen = mvs_be24(ud + 10);
+    long entry = mvs_be24(ud + 15);
+    int apf = pds2_apf_off(ud, nud, alias);
+    int als = 21 + ((ud[8] & 0x04) ? 8 : 0);        /* PDSS02, after any PDSS01 */
+    int names = alias && als + 11 <= nud;            /* PDS2MNM / PDS2EPM present */
+    char attrs[96];
+    pds2_attrs(ud, nud, alias, attrs, sizeof attrs);
+    printf("  entry=%06lX  modlen=%ld", entry, modlen);
+    if (names) printf("  of %s", mvs_nm(ud + als + 3));   /* the member it names */
+    if (attrs[0]) printf("  [%s]", attrs);
+    if (!v) return;
+    printf("\n%s         ATR1=%02X ATR2=%02X  AC=%02X  PDS2TTRT=%06lX",
+           indent, ud[8], ud[9], (apf >= 0) ? ud[apf + 1] : 0, mvs_be24(ud));
+    if (names) printf("  PDS2EPM=%06lX", mvs_be24(ud + als));
+}
+
 /* LOADLIB: the library is RECFM=U, so the user data is PDS2's.  Otherwise it is
  * a source library's, ISPF statistics when 30 bytes (#806: an xmit370 source
  * library's statistics were printed as entry, modlen and attributes). */
@@ -499,21 +519,7 @@ static int show_dir_block(const unsigned char *blk, const char *indent, int v, i
             if (nud == 30) show_ispf_stats(ud);
             else if (nud) printf("  userdata=%d bytes", nud);
         } else if (nud >= 18) {                     /* load-module PDS2 user data */
-            long modlen = mvs_be24(ud + 10), entry = mvs_be24(ud + 15);
-            int apf = pds2_apf_off(ud, nud, alias);
-            int als = 21 + ((ud[8] & 0x04) ? 8 : 0);    /* PDSS02, after any PDSS01 */
-            char attrs[96];
-            pds2_attrs(ud, nud, alias, attrs, sizeof attrs);
-            printf("  entry=%06lX  modlen=%ld", entry, modlen);
-            if (alias && als + 11 <= nud)           /* PDS2MNM: the member it names */
-                printf("  of %s", mvs_nm(ud + als + 3));
-            if (attrs[0]) printf("  [%s]", attrs);
-            if (v) {
-                printf("\n%s         ATR1=%02X ATR2=%02X  AC=%02X  PDS2TTRT=%06lX",
-                       indent, ud[8], ud[9], (apf >= 0) ? ud[apf + 1] : 0, mvs_be24(ud));
-                if (alias && als + 11 <= nud)
-                    printf("  PDS2EPM=%06lX", mvs_be24(ud + als));
-            }
+            show_pds2(ud, nud, alias, indent, v);
         }
         printf("\n");
         p += 12 + nud;
@@ -539,6 +545,35 @@ static const char *recfm_name(int r)
     return "?";
 }
 
+/* The one-line form: name the member(s) inline, across all directory blocks. */
+static int iebcopy_block_names(const unsigned char *blk, int *first)
+{
+    int used = mvs_be16(blk);
+    int members = 0;
+    if (used < 2 || used > 256) used = 256;
+    for (int p = 2; p + 12 <= used; ) {
+        const unsigned char *e = blk + p;
+        if (memcmp(e, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF", 8) == 0) break;
+        printf("%s member %s", *first ? "" : ",", mvs_nm(e));
+        *first = 0;
+        members++;
+        p += 12 + (e[11] & 0x1f) * 2;
+    }
+    return members;
+}
+
+static void show_iebcopy_names(const unsigned char *b, long n)
+{
+    int first = 1;
+    int members = 0;
+    printf(" --");
+    for (long dp = UNLOAD_ENVHDR; dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && mvs_be16(b + dp + 10) == 256;
+         dp += 12 + 8 + 256)
+        members += iebcopy_block_names(b + dp + 20, &first);
+    if (!members) printf(" (no member entries found)");
+    printf("\n");
+}
+
 static void show_iebcopy(const char *path, const unsigned char *b, long n, int v)
 {
     int members = 0;
@@ -551,25 +586,7 @@ static void show_iebcopy(const char *path, const unsigned char *b, long n, int v
     else printf("%s: IEBCOPY unloaded PDS (RECFM=%s, LRECL=%d source library)", path,
                 recfm_name(recfm), n > MVS_XC1LRECL + 1 ? mvs_be16(b + MVS_XC1LRECL) : 0);
     if (!v) {
-        /* one-liner: name the member(s) inline, across all directory blocks */
-        long dp = UNLOAD_ENVHDR; int first = 1;
-        printf(" --");
-        while (dp + 12 + 8 + 256 <= n && b[dp + 9] == 8 && mvs_be16(b + dp + 10) == 256) {
-            const unsigned char *blk = b + dp + 20;
-            int used = mvs_be16(blk), p = 2;
-            if (used < 2 || used > 256) used = 256;
-            while (p + 12 <= used) {
-                const unsigned char *e = blk + p; int c, nud;
-                if (memcmp(e, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF", 8) == 0) break;
-                c = e[11]; nud = (c & 0x1f) * 2;
-                printf("%s member %s", first ? "" : ",", mvs_nm(e));
-                first = 0; members++;
-                p += 12 + nud;
-            }
-            dp += 12 + 8 + 256;
-        }
-        if (!members) printf(" (no member entries found)");
-        printf("\n");
+        show_iebcopy_names(b, n);
         return;
     }
 
@@ -588,6 +605,18 @@ static void show_iebcopy(const char *path, const unsigned char *b, long n, int v
         else if (nblk > 1) printf("    %d directory block(s)\n", nblk);
     }
     printf("    %d directory member entr(y/ies)\n", members);
+}
+
+/* INMRECFM's name: the RECFM in the high byte, or X'0001', the shortened VBS
+ * form of the transmission records themselves, which INMR03 carries. */
+static const char *inmrecfm_name(int code)
+{
+    if (code == 0x0001) return "VBS, transmission records";
+    if ((code & 0xC000) == 0xC000) return "U";
+    if ((code & 0x4800) == 0x4800) return "VS";
+    if (code & 0x8000) return "F";
+    if (code & 0x4000) return "V";
+    return "?";
 }
 
 /* ====================================================================== */
@@ -628,10 +657,7 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
                  * records themselves -- what INMR03 carries; it decoded as
                  * "data" (#806).  The value is shown beside its name. */
                 int code = mvs_be16(r + vp + 2);
-                printf("%sINMRECFM   %s (X'%04X')\n", indent,
-                       code == 0x0001 ? "VBS, transmission records" :
-                       (code & 0xC000) == 0xC000 ? "U" : (code & 0x4800) == 0x4800 ? "VS" :
-                       (code & 0x8000) ? "F" : (code & 0x4000) ? "V" : "?", code);
+                printf("%sINMRECFM   %s (X'%04X')\n", indent, inmrecfm_name(code), code);
             } else if ((key == 0x0030 || key == 0x0042 || key == 0x003c ||
                         key == 0x102c || key == 0x000c) && vp + 2 <= len) {
                 /* integer DCB / allocation text units: BLKSIZE, LRECL, DSORG,
@@ -650,6 +676,22 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
         }
         { int j; long q = vp; for (j = 0; j < num && q + 2 <= len; j++) { int l = mvs_be16(r + q); q += 2 + l; } p = q; }
     }
+}
+
+/* Append a data segment to the wrapped image, growing it as needed. */
+static void data_append(unsigned char **data, long *len, long *cap, const unsigned char *src, long add)
+{
+    if (add <= 0) return;
+    if (*len + add > *cap) {
+        long nc = *cap ? *cap * 2 : 1L << 20;
+        while (nc < *len + add) nc *= 2;
+        unsigned char *nd = realloc(*data, (size_t)nc);
+        if (!nd) { fprintf(stderr, "file370: out of memory\n"); free(*data); exit(1); }
+        *data = nd;
+        *cap = nc;
+    }
+    memcpy(*data + *len, src, (size_t)add);
+    *len += add;
 }
 
 static void show_xmit(const char *path, const unsigned char *b, long n, int v)
@@ -709,16 +751,7 @@ static void show_xmit(const char *path, const unsigned char *b, long n, int v)
                 }
             }
         } else {                                        /* data segment */
-            if (datalen + (seglen - 2) > datacap) {
-                long nc = datacap ? datacap * 2 : 1L << 20;
-                unsigned char *nd;
-                while (nc < datalen + (seglen - 2)) nc *= 2;
-                nd = realloc(data, (size_t)nc);
-                if (!nd) { fprintf(stderr, "file370: out of memory\n"); free(data); exit(1); }
-                data = nd; datacap = nc;
-            }
-            memcpy(data + datalen, b + p + 2, seglen - 2);
-            datalen += seglen - 2;
+            data_append(&data, &datalen, &datacap, b + p + 2, seglen - 2);
         }
         p += seglen;
     }
@@ -872,26 +905,43 @@ static void usage(FILE *f)
         "outranks 1), 1 a file that could not be read.\n");
 }
 
+/* One option: 1 = taken, 0 = not an option, or 100 + the exit status for one
+ * that ends the run (--help, --version, an unknown option). */
+static int option(const char *a, int *v, int *csects, int *json)
+{
+    if (!strcmp(a, "-v")) { *v = 1; return 1; }
+    if (!strcmp(a, "--csects")) { *csects = 1; return 1; }
+    if (!strcmp(a, "--json")) { *json = 1; *csects = 1; return 1; }
+    if (!strcmp(a, "--help") || !strcmp(a, "-h")) { usage(stdout); return 100; }
+    if (!strcmp(a, "--version") || !strcmp(a, "-V")) { printf("%s\n", VERSION_STR); return 100; }
+    if (a[0] == '-' && a[1]) {
+        fprintf(stderr, "file370: unknown option '%s'\n", a);
+        usage(stderr);
+        return 102;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    int v = 0, i, rc = 0, nfiles = 0;
-    int csects = 0, json = 0, json_open = 0, nargs = 0;
-    for (i = 1; i < argc; i++)             /* how many files: one object, or an array */
+    int v = 0;
+    int rc = 0;
+    int nfiles = 0;
+    int csects = 0;
+    int json = 0;
+    int json_open = 0;
+    int nargs = 0;
+    for (int i = 1; i < argc; i++)          /* how many files: one object, or an array */
         if (argv[i][0] != '-' || !argv[i][1]) nargs++;
     json_array = nargs > 1;
-    for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-v")) v = 1;
-        else if (!strcmp(argv[i], "--csects")) csects = 1;
-        else if (!strcmp(argv[i], "--json")) { json = 1; csects = 1; }
-        else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(stdout); return 0; }
-        else if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-V")) { printf("%s\n", VERSION_STR); return 0; }
-        else if (argv[i][0] == '-' && argv[i][1]) { fprintf(stderr, "file370: unknown option '%s'\n", argv[i]); usage(stderr); return 2; }
-        else {
-            if (json && json_array && !json_open) { printf("[\n"); json_open = 1; }
-            int r = inspect(argv[i], v, csects, json);
-            if (r > rc) rc = r;
-            nfiles++;
-        }
+    for (int i = 1; i < argc; i++) {
+        int o = option(argv[i], &v, &csects, &json);
+        if (o >= 100) return o - 100;
+        if (o) continue;
+        if (json && json_array && !json_open) { printf("[\n"); json_open = 1; }
+        int r = inspect(argv[i], v, csects, json);
+        if (r > rc) rc = r;
+        nfiles++;
     }
     if (json_open) printf("\n]\n");
     else if (json && json_items) printf("\n");
