@@ -1736,11 +1736,18 @@ static void section_reset(void)
 enum { MAXSECS_NOTED = 64 };
 static struct { char name[9]; long len; } secs[MAXSECS_NOTED];
 static int nsecs;
+/* The return code follows IFOX00's convention (JERMSGCD: 0 clean, 4 warning):
+ * the note above is information and leaves it at 0, but taking a section of 0
+ * bytes when another has content is a warning -- rc 4, and the output is still
+ * written, as an assembler still punches its deck at severity 4. */
+static int warn_rc;
 static void note_sections(const char *src)
 {
-    int i;
-    fprintf(stderr, "dasm370: %s has %d control sections; disassembling the first, %s (%ld bytes) -- "
-            "choose another with --csect NAME:\n", src, nsecs,
+    int i, other = 0;
+    for (i = 0; i < nsecs && i < MAXSECS_NOTED; i++) if (secs[i].len > 0) other = 1;
+    if (sect_len == 0 && other) warn_rc = 4;
+    fprintf(stderr, "dasm370: %s%s has %d control sections; disassembling the first, %s (%ld bytes) -- "
+            "choose another with --csect NAME:\n", warn_rc ? "WARNING: " : "", src, nsecs,
             sect_name[0] ? sect_name : "(unnamed)", sect_len);
     for (i = 0; i < nsecs && i < MAXSECS_NOTED; i++)
         fprintf(stderr, "dasm370:   %-8s %ld bytes\n", secs[i].name[0] ? secs[i].name : "(unnamed)", secs[i].len);
@@ -4267,7 +4274,8 @@ static void usage(FILE *o)
 "Usage: dasm370 [options...] deck.obj\n"
 " Options:\n"
 "  --csect NAME       disassemble this control section (default: the first;\n"
-"                     a deck with several lists them on stderr)\n"
+"                     a deck with several lists them on stderr; rc 4 when\n"
+"                     the first is empty and another is not)\n"
 "  --derive-hints SRC assemble SRC with as370 and write out what it found as a\n"
 "                     hint file: its labels, and its base registers with the\n"
 "                     lifetimes the assembly gave them.  Takes -I, and records\n"
@@ -4749,7 +4757,7 @@ int main(int argc, char **argv)
         emit("", "END", "", "");
     }
     if (outf != stdout) fclose(outf);
-    return 0;
+    return warn_rc;
 }
 
 /* Collected, not acted on: the run above decides what a section is. */

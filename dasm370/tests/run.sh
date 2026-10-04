@@ -1708,15 +1708,22 @@ fi
 printf '         CSECT\nREAL     CSECT\n         SR    15,15\n         BR    14\n         END\n' > "$T/ms.s"
 "$A" "$T/ms.s" -o "$T/ms.obj" >/dev/null 2>&1
 "$D" "$T/ms.obj" -o /dev/null 2>"$T/ms.err"; r=$?
-if [ $r = 0 ] && grep -q 'has 2 control sections; disassembling the first, (unnamed) (0 bytes)' "$T/ms.err" \
+if [ $r = 4 ] && grep -q 'WARNING: .* has 2 control sections; disassembling the first, (unnamed) (0 bytes)' "$T/ms.err" \
    && grep -q '^dasm370:   REAL     4 bytes$' "$T/ms.err"; then
-    pass "a two-section deck names both sections on stderr, the empty first one included"
+    pass "a two-section deck with an empty first section: both named on stderr, rc 4 (a warning, as in IFOX00)"
 else
     fail "a two-section deck names both sections on stderr (rc $r: $(cat "$T/ms.err"))"
 fi
 "$D" --csect REAL "$T/ms.obj" -o /dev/null 2>"$T/ms2.err"
 [ ! -s "$T/ms2.err" ] && pass "with --csect the section note is not printed" \
                      || fail "with --csect the section note is not printed ($(cat "$T/ms2.err"))"
+# a first section WITH content: the note is information only, rc stays 0
+printf 'FIRST    CSECT\n         BR    14\nREAL     CSECT\n         SR    15,15\n         END\n' > "$T/ms4.s"
+"$A" "$T/ms4.s" -o "$T/ms4.obj" >/dev/null 2>&1
+"$D" "$T/ms4.obj" -o /dev/null 2>"$T/ms4.err"; r=$?
+[ $r = 0 ] && grep -q '^dasm370: .* has 2 control sections; disassembling the first, FIRST' "$T/ms4.err" \
+    && pass "a two-section deck whose first section has content: noted, rc 0" \
+    || fail "a two-section deck whose first section has content: noted, rc 0 (rc $r: $(cat "$T/ms4.err"))"
 "$D" "$T/a.obj" -o /dev/null 2>"$T/ms3.err"
 [ ! -s "$T/ms3.err" ] && pass "a one-section deck prints no section note" \
                      || fail "a one-section deck prints no section note ($(cat "$T/ms3.err"))"
