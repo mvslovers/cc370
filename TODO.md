@@ -1650,6 +1650,12 @@ Pointers only. The reasoning lives in the issues and their PRs.
   IRXVTOC drops four PCLMAIN copies. Open from its plan: an IEWL link of IRXVTOC
   on MVS (needs an OK). #103 split off: CM placement must come first.
 
+- **2026-10-04 — #102 confirmed by IEWL; #439 rc settled (PR #757).** IRXVTOC's
+  8 decks linked by IEWL on MVSCE-LAB (JOB01635): every section origin/length
+  and the total (4FE0) equal ld370's. dasm370: a 0-byte first section with
+  another non-empty is a warning, rc 4, per IFOX00's convention (340 of 5,538
+  obj_ctrl decks; stdout unchanged).
+
 - **2026-10-03 — #726 second sysroot, MERGED as `8e35f4e` (PR #731).**
   cc370 also searches `cc370/libc370/{include,lib,macros}` (cc1, driver
   startfiles, as370); `make test-sysroot` 4/4, all fail against main. The
