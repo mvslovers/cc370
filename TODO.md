@@ -175,6 +175,15 @@ as370 order inside it.**
   needs the exponent modifier). From the same job: #782 (`FE9'2'` ignores the
   exponent modifier) and #783 (`E'1E76'` IFO201 / `E'1E-80'` IFO239 silent,
   other bytes); both no known user.
+- #160 Decision A **applied** (comments 2026-10-04): of 933 rc>=8 decks, 453
+  agree with IFOX00 statement by statement and all 453 are identical; 178 agree
+  in codes (all identical once stamps match -- 11 differed only by
+  `asmdate.tsv` stamps, IFNX5M was #786); 302 stay "oracle not usable".
+  Open: the `asmdate.tsv` stamps vs the IFOX00 run's own (an `ifox-run`
+  comparability question, like SYSPARM in #241).
+- ~~#786~~ **done** (#787): a macro's LCLx overwrote the open code's global of
+  the same name; IFNX5M identical, the only deck in the tree that moved.
+  Unfiled: as370 does not substitute `&M` in an open-code MNOTE text.
 
 **After 1.2.0:** #518 (with the driver and mbt), #106, #78, #684, #345, #113,
 #601, #109; research and design #76, #229 (parked), #386, #112, #383, #698,
