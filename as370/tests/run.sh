@@ -1114,6 +1114,19 @@ for m in TPROT IPTE; do
         echo "opcodes_370: OK ($m still rejected RC 8 -- documented gap, not silent bytes)"
     fi
 done
+# BRXH and BRXLE are ESA/390 and IFOX00 does not know them (genop.asm has
+# WRD/RDD at X'84'/X'85', no BRX*).  as370 took them as F_SI -- R1 dropped,
+# the target written as a base and displacement, rc 0 -- until #56 dropped the
+# rows.  They are undefined operation codes, as under IFOX00.
+for m in BRXH BRXLE; do
+    printf 'T        CSECT\n         %s 2,4,T\n         END\n' "$m" > /tmp/_x51.s
+    ./as370 /tmp/_x51.s -o /tmp/_x51.obj >/tmp/_x51.out 2>&1
+    if [ $? -ne 8 ] || ! grep -q "Undefined operation code" /tmp/_x51.out; then
+        echo "opcodes_370: FAIL ($m is ESA/390, IFOX00 rejects it -- as370 must too, RC 8)"; fail=1
+    else
+        echo "opcodes_370: OK ($m rejected RC 8, as IFOX00 does)"
+    fi
+done
 rm -f /tmp/_x51.s /tmp/_x51.obj /tmp/_x51.out
 
 # --- issue #52: a symbol's owning control section, in the ESD and the RLD -----

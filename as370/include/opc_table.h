@@ -52,12 +52,14 @@
  * wins, and for masks 3, 5, 6, 9, 10 and 12 -- which no pseudo names -- they
  * are the only entry left and the decoder falls through to them.
  *
- * BRXH and BRXLE are NEVER.  X'84' and X'85' are WRD and RDD on System/370
- * and BRXH/BRXLE on ESA/390; the target is MVS 3.8j, and the corpus contains
- * zero of either ESA mnemonic against zero WRD/RDD as well -- neither is
- * written in this source, but only one pair can be right for a module a
- * System/370 ran.  Decoding X'84' as BRXH would be an instruction from an
- * architecture the module predates.
+ * BRXH and BRXLE are not in the table at all (#56).  X'84' and X'85' are
+ * WRD and RDD on System/370 and BRXH/BRXLE on ESA/390; the target is MVS
+ * 3.8j, and Assembler XF does not know the ESA mnemonics -- IFOX00 rejects
+ * them as undefined operation codes.  They used to sit here as NEVER for the
+ * decoder, but the assembler took them, as F_SI: R1 dropped, the target
+ * written as a base and displacement, rc 0.  An encoding invented for an
+ * instruction IFOX00 refuses is the one thing this table must not do, so
+ * they go, and the decoder reads X'84'/X'85' as WRD/RDD as before.
  *
  * The deliberate gaps stay gaps: some IFOX00 mnemonics are absent rather than
  * guessed (cc370#51 has the delta).
@@ -99,7 +101,8 @@ enum opc_dec { OPD_PRIMARY, OPD_ALIAS, OPD_NEVER };
  *   OPC_PRIV  30  problem-state programs cannot execute them
  *   OPC_IO    10  the channel instructions
  *   OPC_DEC   16  packed decimal, and the two zone/numeric moves with it
- *   OPC_APP  128  everything else, and what `--isa app' keeps
+ *   OPC_APP  126  everything else, and what `--isa app' keeps (128 until
+ *                 #56 dropped BRXH/BRXLE, which IFOX00 does not know)
  *
  * MVCK, MVCP AND MVCS ARE OPC_PRIV ON THE CLASS RULE AND NOT ON THEIR RARITY.
  * They are semi-privileged -- MVCK moves under a source key and MVCP/MVCS across
@@ -336,8 +339,6 @@ static const struct opc optab[] = {
     { "SRDA", F_RS, 0x8E, 0, 1, OPD_PRIMARY, OPC_APP },
     { "SRDL", F_RS, 0x8C, 0, 1, OPD_PRIMARY, OPC_APP },
     { "SRL", F_RS, 0x88, 0, 1, OPD_PRIMARY, OPC_APP },
-    { "BRXH", F_SI, 0x84, 0, 1, OPD_NEVER, OPC_APP },
-    { "BRXLE", F_SI, 0x85, 0, 1, OPD_NEVER, OPC_APP },
     { "CLI", F_SI, 0x95, 0, 1, OPD_PRIMARY, OPC_APP },
     { "MC", F_SI, 0xAF, 0, 1, OPD_PRIMARY, OPC_PRIV },
     { "MVI", F_SI, 0x92, 0, 1, OPD_PRIMARY, OPC_APP },

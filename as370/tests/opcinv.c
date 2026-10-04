@@ -10,7 +10,7 @@
  *
  *   every entry OPD_PRIMARY -- the information the table carried before #374:
  *     52 failures.  The twelve mask-alias pairs are one each; WRD/RDD against
- *     BRXH/BRXLE are sixteen each, because an entry that carries no mask is a
+ *     BRXH/BRXLE (rows since dropped, #56) were sixteen each, because an entry that carries no mask is a
  *     candidate for all sixteen, which is exactly what a decoder faces.
  *   the duplicate BCT put back:
  *     17 failures -- the name reported twice, and the encoding once per mask.
@@ -101,7 +101,7 @@ int main(void)
      * These are the reconciliation of two independent passes (cc370#395). */
     {
         int c[5] = { 0, 0, 0, 0, 0 };
-        static const int want[5] = { 128, 52, 16, 10, 30 };
+        static const int want[5] = { 126, 52, 16, 10, 30 };   /* APP: 128 before #56 dropped BRXH/BRXLE */
         static const char *nm[5] = { "APP", "FP", "DEC", "IO", "PRIV" };
         for (i = 0; i < n; i++)
             if (optab[i].cls >= 0 && optab[i].cls <= OPC_PRIV) c[optab[i].cls]++;
@@ -146,6 +146,6 @@ int main(void)
 
     if (fails) { printf("opcinv: %d FAILURE(S) over %d entries\n", fails, n); return 1; }
     printf("opcinv: OK (%d entries, every encoding inverts to one mnemonic --\n"
-           "        under the whole table and under the --isa app cut of 128)\n", n);
+           "        under the whole table and under the --isa app cut of 126)\n", n);
     return 0;
 }
