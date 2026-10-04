@@ -90,6 +90,9 @@ jobs:
       - name: as370 listing references (IFOX00 SYSPRINT, column-exact)
         run: make test-listref
 
+      - name: as370 on the frozen libc370 corpus (752 IFOX00 decks, #23)
+        run: make test-libcorpus
+
       # cc370's prologue macros against libc370's originals: no deck moves (#688)
       - name: prologue macros
         run: make test-macros

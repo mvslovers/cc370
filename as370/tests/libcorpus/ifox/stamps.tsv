@@ -1,0 +1,6 @@
+# &SYSDATE/&SYSTIME IFOX00 stamped into these decks (MVSTK5-REF clock);
+# check.sh assembles them with ASMDATE/ASMTIME set to the same values.
+# member	ASMDATE	ASMTIME
+L0174	10/04/26	13.38
+L0175	10/04/26	13.38
+L0426	10/04/26	13.41
