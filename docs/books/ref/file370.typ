@@ -38,7 +38,8 @@ what ld370 is about to send to MVS (see @ld370).
     #cmd("-v"). For the other formats it has no effect.],
   [#cmd("--json")], [writes the output of #cmd("--csects") in JSON, and
     implies #cmd("--csects"). For a load module member that is its composite
-    ESD\; for any other file it is the format alone. See
+    ESD, for an object module its ESD\; for any other file it is the format
+    alone. See
     @file370-json.],
   [#cmd("--help"), #cmd("-h")], [displays a summary of the options on
     standard output and ends with return code 0.],
@@ -308,12 +309,24 @@ byte are set, which a finished module should not have, the byte is shown as
 members #cmd("file"), the name as given, and #cmd("format"), one of
 #cmd("\"object deck\""), #cmd("\"ar370 archive\""),
 #cmd("\"load module\""), #cmd("\"IEBCOPY unload\""), #cmd("\"XMIT\""),
-#cmd("\"data\"") and #cmd("\"empty\""). For a load module member, the
-members #cmd("csects") and #cmd("count") follow. Each element of
-#cmd("csects") has #cmd("esdid"), #cmd("name") and #cmd("type"), and as
-the type requires #cmd("addr") and #cmd("len"), #cmd("addr") and
-#cmd("owner"), #cmd("seg") and #cmd("typebyte"). Addresses and lengths are
-decimal numbers, and strings are escaped as JSON requires.
+#cmd("\"data\"") and #cmd("\"empty\""). For a load module member and
+for an object module, the members #cmd("csects") and #cmd("count") follow,
+in the same shape for both. Each element of #cmd("csects") has
+#cmd("name") and #cmd("type"), and as the type requires:
+
+#deflist(width: 1.6in,
+  [sections (#cmd("SD"), #cmd("PC"), #cmd("CM"))], [#cmd("esdid"),
+    #cmd("addr") and #cmd("len")],
+  [#cmd("LR") in a load module], [#cmd("esdid"), #cmd("addr") and
+    #cmd("owner"), the ESD identifier of the section that holds the label],
+  [#cmd("LD") in an object module], [#cmd("addr") and #cmd("owner") but no
+    #cmd("esdid"), since an LD entry has no ESD identifier of its own],
+  [#cmd("ER"), #cmd("WX")], [#cmd("esdid") only],
+)
+
+A load module entry also carries #cmd("seg"), and #cmd("typebyte") when the
+high-order bits of its type byte are set. Addresses and lengths are decimal
+numbers, and strings are escaped as JSON requires.
 
 For one file the output is that object. For several files it is a JSON
 array of them, as in @file370-json-fig. A file that cannot be read is

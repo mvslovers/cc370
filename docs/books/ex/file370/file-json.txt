@@ -6,7 +6,11 @@ $ file370 --json main.lm main.o notes.txt
       {"esdid": 3, "name": "ADD2", "type": "LR", "addr": 22, "owner": 2, "seg": 1}
   ],
    "count": 3},
-  {"file": "main.o", "format": "object deck"},
+  {"file": "main.o", "format": "object deck", "csects": [
+      {"esdid": 1, "name": "MAIN", "type": "SD", "addr": 0, "len": 12},
+      {"esdid": 2, "name": "ADD1", "type": "ER"}
+  ],
+   "count": 2},
   {"file": "notes.txt", "format": "data"}
 ]
 $ echo $?
