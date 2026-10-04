@@ -29,6 +29,13 @@ neither number is mistaken for the other.
   27th, `FE9'3'`, waits for the exponent modifier.
 
 ### Fixed
+- **as370: the scale and exponent modifiers on E, D and L** (#761). `DS2'1.5'`
+  was written normalised (`41180000…`); it is `43001800…`. The fraction is
+  rounded at its normalised precision, shifted right S hex digits with the
+  characteristic raised by S, and the shifted-out digits are dropped;
+  IFO202 (severity 8) when no bit of the fraction is left, as ifnx5f tests
+  it. `En` adds to the value's exponent. Measured on IFOX00
+  (`as370/tests/dcmod.s`, `as370/tests/dcscale.s`).
 - **as370: the exponent modifier on F and H** (#782). `FE9'2'` assembled as
   2; it is 2E9. The value is mantissa x 10**(value exponent + modifier) x
   2**scale in exact arithmetic, rounded half away from zero, the exponent

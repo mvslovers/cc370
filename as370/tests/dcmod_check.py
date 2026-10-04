@@ -14,7 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REGIONS = {                          # name: (first, last+1, what)
     "fixed": (0x34, 0x68, "F/H exponent modifier (#782)"),
     "fscale": (0x00, 0x34, "E/D/L scale modifier (#761)"),
-    "fexp": (0x68, 0x88, "E/D/L exponent modifier"),
+    "fexp": (0x68, 0x88, "E/D/L exponent modifier (#761)"),
 }
 
 

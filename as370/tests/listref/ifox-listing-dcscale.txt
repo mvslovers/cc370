@@ -1,0 +1,35 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 18.40 10/04/26
+DCSCALE   SD  0001 000000 000010
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 18.40 10/04/26
+                                      1 * WHEN DOES THE SCALE MODIFIER ROUND, WHEN IS IT IFO202 (CC370#761)
+                                      2 * THREE RULES: R = ROUND TO 6 DIGITS, THEN SHIFT AND TRUNCATE;
+                                      3 * T = SHIFT EXACTLY AND TRUNCATE; N = SHIFT EXACTLY AND ROUND.
+000000                                4 DCSCALE  CSECT
+000000 42012345                       5 A        DC    ES1'1.13777923583984375'    .123458  R,T 012345 N 012346
+000004 42012345                       6 B        DC    ES1'1.13777828216552734375' .123457  ALL 012345
+000008 42012345                       7 C        DC    ES1'1.1377716064453125'     .123450  ALL 012345, NO LOSS
+00000C 42012346                       8 E        DC    ES1'1.137786388397216796875' .12345F8 R 012346 NO LOSS
+                                      9 * E UNDER T: 012345, UNDER N: 012346, BOTH WITH A LOSS
+                                     10          END
+                                                  CROSS-REFERENCE                                              PAGE    3
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 18.40 10/04/26
+A        00004 00000000 00005
+B        00004 00000004 00006
+C        00004 00000008 00007
+DCSCALE  00001 00000000 00004
+E        00004 0000000C 00008
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    4
+                                                                                                 ASM 0201 18.40 10/04/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         10
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         3
+TOTAL RECORDS PRINTED                        35

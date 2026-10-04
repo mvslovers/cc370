@@ -793,6 +793,7 @@ static void lit_classify(struct lit *l) {
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {
         int base = (ty == 'E') ? 4 : (ty == 'D') ? 8 : 16;
         l->size = haslen ? len : base; l->algn = haslen ? 1 : (base == 16 ? 8 : base);
+        l->scale = scale; l->scaled = hasscale; l->expo = expo;   /* #761 */
     /* P and Z had no arm at all, so a packed or zoned literal fell into the
      * default below and reserved FOUR bytes: `=P'0'' is one byte, X'0C'. That
      * is not only three bytes too many -- the pool is segmented by the alignment
@@ -5840,7 +5841,10 @@ static unsigned long long bn_divmod(const struct bn *N, const struct bn *D, stru
     }
     *Rr = R; return Q;
 }
-static void emit_float(long at, const char *vstr, int bytes) {
+/* SCALE and EXPO are the constant's modifiers (#761): EXPO adds to the value's
+ * own exponent, SCALE unnormalises the result by that many hex digits.  LINE is
+ * the statement a precision loss is charged to. */
+static void emit_float(long at, const char *vstr, int bytes, int scale, int expo, int line) {
     const char *p = vstr; int sign = 0;
     if (*p == '+') p++; else if (*p == '-') { sign = 1; p++; }
     struct bn M; bn_set(&M, 0); int nfrac = 0, seenpoint = 0;
@@ -5863,7 +5867,7 @@ static void emit_float(long at, const char *vstr, int bytes) {
     int ext = (bytes > 8), hb = ext ? 8 : bytes, lb = ext ? bytes - 8 : 0;
     int fracbits = (hb - 1) * 8; if (fracbits > 56) fracbits = 56;
     int lofrac = ext ? (lb - 1) * 8 : 0; if (lofrac > 56) lofrac = 56;
-    int P = eexp - nfrac, k;                 /* value = M * 10^P */
+    int P = eexp + expo - nfrac, k;          /* value = M * 10^P */
     struct bn num = M, den; bn_set(&den, 1);
     if (P >= 0) for (k = 0; k < P; k++) bn_mul_small(&num, 10);
     else for (k = 0; k < -P; k++) bn_mul_small(&den, 10);
@@ -5886,6 +5890,32 @@ static void emit_float(long at, const char *vstr, int bytes) {
         F >>= 4;
         if (ext && lofrac >= 4) G = (G >> 4) | (carry << (lofrac - 4));
         exp++;
+    }
+    /* The scale modifier (#761): the fraction is shifted right SCALE hex digits
+     * and the characteristic raised by as many, so the value is unchanged and the
+     * constant unnormalised.  The fraction is rounded at its normalised
+     * precision first, as without a modifier, and the digits shifted out are
+     * then dropped, not rounded.  IFO202 (severity 8) only when the shift
+     * leaves NO bit of the fraction: ifnx5f tests the shifted result for zero
+     * ("ZERO IF SHIFTED OUT ALL BITS"), not the bits it lost.  Measured on IFOX00
+     * (MVSTK5-REF JOB00345, tests/dcmod.s): ES1'1.5' 42018000, ES2'1.5'
+     * 43001800, DS2'1.5' 4300180000000000, LS2'1.5' 43001800... with the low
+     * half's characteristic 14 below the high one (35000000...), EL3S1'1.5'
+     * 420180, ES1'-1.5' C2018000, ES6'1.5' 47000000 with IFO202; and JOB00347,
+     * tests/dcscale.s, which separates the rules: .123458 shifted one digit is
+     * 012345 (dropped, not rounded), .12345F8 is 012346 (rounded to six digits
+     * before the shift), and neither is IFO202 although both lose a digit. */
+    if (scale > 0) {
+        typedef unsigned __int128 u128;
+        int tot = fracbits + lofrac, sh = 4 * scale;
+        u128 c = ((u128)F << lofrac) | (u128)G, lost;
+        if (sh >= tot) { lost = c; c = 0; }
+        else { lost = c & (((u128)1 << sh) - 1); c >>= sh; }
+        if (lost && c == 0 && g_pass == 2)
+            note_operr("Arithmetic precision of floating-point constant lost (IFOX00 IFO202)", 8, line);
+        F = (unsigned long long)(c >> lofrac);
+        G = lofrac ? (unsigned long long)(c & (((u128)1 << lofrac) - 1)) : 0;
+        exp += scale;
     }
     /* The exponent is excess-64 in seven bits and is NOT range-checked: a value
      * needing an exponent outside 0..127 wraps silently, as it did before. IFOX00
@@ -5929,7 +5959,7 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
          * the integer route and assembled as 0000000000000002 and 00000000 where
          * IFOX00 says 4120000000000000 and 41100000 (#53). */
         const char *q = strchr(p, '\'');
-        if (q) emit_float(loc, q + 1, size);
+        if (q) emit_float(loc, q + 1, size, l->scaled ? l->scale : 0, l->expo, l->defln);
         else { int j; for (j = 0; j < size; j++) put(loc + j, 0, 1); }
     } else if (ty == 'P' || ty == 'Z') {
         char body[VALSZ]; lit_body(p, body, sizeof body);
@@ -7395,7 +7425,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         static char fvals[512][FLDW]; int nv = split_fields(body, fvals, 512), vi;
                         if (nv < 1) { nv = 1; fvals[0][0] = 0; }
                         for (k = 0; k < cnt; k++) for (vi = 0; vi < nv; vi++) {
-                            if (emit_dc) emit_float(lc, fvals[vi], flen);
+                            if (emit_dc) emit_float(lc, fvals[vi], flen, hasscale ? scale : 0, expo, i);
                             lc += flen;
                         }
                     }
