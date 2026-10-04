@@ -149,11 +149,13 @@ silent wrong results first. After each merge, one line to Book (session
 4b. #827 `#pragma pack` ignored -- joint decision with libc370 (theirs:
    drop the 9 pragmas, layout proven identical; `pack(reset)` is not GCC
    syntax and would leak if cc370 enabled the pragma).
-5. #808 cc370 driver -- a severity-4 as370 warning fails the build; `-c`/`-S`
-   with several sources and `-o`; `-o` name check; 8-character collisions in
-   one unit. `#pragma map`, `-mpickax`, `-pipe`, trigraphs and `-b` go to
-   issues of their own (decided).
-6. #810 as370 `COM` -- needs an IFOX00 capture (approved).
+5. ~~#808 cc370 driver~~ **done** (#835): as370 rc 4 keeps the object;
+   `-c`/`-S` + several sources + `-o` refused; `--target-help` cc1 only;
+   `-flinker-output=` checked; libcc370rt.a and the cc370 bug URL; references
+   join the 8-character collision check; `make test-driver` (local only, CI
+   builds no compiler). Split out: #830 `#pragma map`, #831 `-pipe`, #832
+   trigraphs, #833 `-b`, #834 `-mpickax`.
+6. #810 as370 `COM` -- needs an IFOX00 capture (approved). **Next.**
 7. #811 flags everywhere: `--version`/`-V`, `-v` verbose (also as370 and
    dasm370 -- decided, "Read this first" in the next release), `--help`.
 8. #809 dasm370 / cmplmd370 / idrdump370 details.
