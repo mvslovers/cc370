@@ -178,6 +178,10 @@ convention of IFOX00. @as370-rc-tab lists the values.
   #table(columns: (0.9in, 1fr),
     [Code], [Meaning],
     [0], [The assembly completed without messages.],
+    [2], [The assembly was abandoned because a limit of as370 was reached:
+      one of its tables (symbols, literals, relocations) is full, a section
+      would extend beyond 16 MB, or storage ran out. A message beginning
+      #cmd("as370:") names the limit. No object module is written.],
     [4], [Warnings only. The object module is complete.],
     [8], [Errors. At least one statement could not be assembled as
       written, for example an undefined operation code. The object module is

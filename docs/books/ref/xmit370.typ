@@ -407,7 +407,9 @@ code other than 0, it has not written the transmission.
     [2], [The command was in error and nothing was done: no subcommand, an
       unknown subcommand or option, a missing #cmd("-o") or #cmd("--dsn"),
       an option value out of range, a malformed #cmd("--member"), two
-      files with the same member name, or no members at all.],
+      files with the same member name, or no members at all. The same
+      code ends a #cmd("create") whose output file cannot be written
+      (#var("file")#cmd(": cannot write")).],
   )
 ] <xmit370-rc-tab>
 

@@ -1,0 +1,20 @@
+$ cat diag.s
+DIAG     CSECT
+         USING DIAG,15
+X        DC    H'99999'
+X        DC    F'1'
+         FOO   1,2
+         L     1,UNDEF
+         END
+$ as370 diag.s -o diag.o
+X        DC    H'99999'
+ WARNING: L, D, E, F, H, or Y-type constant truncated, high order digits lost (IFOX00 IFO203) in line 3
+X        DC    F'1'
+ ERROR: Symbol previously defined (IFOX00 IFO196) - X in line 4
+         FOO   1,2
+ ERROR: Undefined operation code in line 5 - FOO
+         L     1,UNDEF
+ ERROR: Undefined symbol in line 6 - UNDEF
+ Assembler Done   4 Statements Flagged /   8 was Highest Severity
+$ echo $?
+8
