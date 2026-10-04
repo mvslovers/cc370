@@ -1,0 +1,16 @@
+$ cat collide.c
+int counter_alpha = 1;
+int counter_beta = 2;
+$ cc370 -c collide.c
+collide.c:2: warning: external symbol `counter_beta' collides with `counter_alpha': both map to the MVS name `COUNTER@'
+COUNTER@ EQU   *
+ ERROR: Symbol previously defined (IFOX00 IFO196) - COUNTER@ in line 12 (statement 101)
+ Assembler Done   1 Statement Flagged /   8 was Highest Severity
+$ echo $?
+1
+$ cat euro.c
+const char *euro = "€";
+$ cc370 -c euro.c
+euro.c:1:20: character U+20AC has no equivalent in the execution character set (ISO-8859-1, mapped to EBCDIC)
+$ echo $?
+1

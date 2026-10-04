@@ -1,0 +1,569 @@
+#import "../bookmaster/bookmaster.typ": *
+
+= The ld370 Command <ld370>
+
+#idx("ld370")
+#idx("linkage editor")
+The ld370 command is the linkage editor of the toolchain. It reads object
+modules, resolves the references between them, searches object libraries
+for the modules a program needs but does not supply, and writes the result
+as a load module: one member of a load library, in the record format that
+program fetch reads on MVS. It takes the place of the MVS linkage editor
+(IEWL) and runs on the workstation.
+#idx("IEWL", "compared with ld370")
+
+A load module cannot be copied to MVS as an ordinary file, because a load
+library is a partitioned data set with undefined-length records. ld370
+therefore also writes the module in two transport formats: the unloaded form
+that IEBCOPY writes, and a TSO TRANSMIT file that holds that unloaded form.
+The TRANSMIT file is uploaded to MVS and received into a load library;
+@ld370-transport describes how.
+
+ld370 is the last step of the chain cc370, as370, ld370. The cc370 driver
+runs it for you when you compile and link a C program in one command (see
+@cc)\; you call it yourself to link assembler programs, to choose
+attributes or aliases, or to pack several modules into one library.
+
+== What ld370 Produces <ld370-output>
+
+#idx("load module", "written by ld370")
+A link writes one load module member to the file named by #cmd("-o"), or to
+#cmd("a.out") when #cmd("-o") is omitted. The file holds the records of the
+member in the order program fetch expects them:
+
+- the composite external symbol dictionary (CESD): one entry for each
+  control section, each entry point and each external reference left
+  unresolved\;
+- two identification records (IDRs), described in @ld370-idr\;
+- the text of the module, in pairs of a control record and a text record\;
+- the relocation dictionary, when the module contains address constants.
+
+The member file is always written. The options #cmd("-iebcopy") and
+#cmd("-xmit") add the transport files beside it, named after the
+#cmd("-o") file with #cmd(".iebcopy") or #cmd(".xmit") appended:
+#cmd("-o build/app.lm -xmit") writes #cmd("build/app.lm") and
+#cmd("build/app.lm.xmit").
+
+#idx("directory entry")
+Some properties of a load module are not stored in the member at all but in
+its entry in the library directory: the entry point, the module length, the
+attributes, such as reentrant, and the authorization code. A member file
+has no directory, so these properties exist only in the transport files.
+*Two links that differ only in these properties write identical member
+files.* Keep this in mind when you compare outputs, and see @ld370-pack for
+what it means when a member file is packed later.
+
+== Invoking ld370 <ld370-invoke>
+
+#idx("ld370", "syntax")
+ld370 has three forms. The first links object modules into a load module:
+
+#syntax(read("../syntax/ld370-main.txt"))
+
+#syntax(title: "Link option:", read("../syntax/ld370-option.txt"))
+
+The second, described in @ld370-pack, packs load modules that are already
+linked into one transport file, without linking:
+
+#syntax(read("../syntax/ld370-pack.txt"))
+
+#syntax(title: "Pack option:", read("../syntax/ld370-packopt.txt"))
+
+The third displays the version:
+
+#syntax(read("../syntax/ld370-version.txt"))
+
+Options and input files may be given in any order, with one exception: a
+#cmd("-l") option is resolved when it is read, so the #cmd("-L") directories
+it is to search must come before it.
+
+#note[ld370 does not reject an operand it does not recognize. Any operand
+that is not an option is taken as an input file, so a misspelled option, or
+an option such as #cmd("-e") placed last without its value, ends the link
+with #cmd("ld370: cannot open") followed by the operand and return code 1.
+For the same reason ld370 has no #cmd("--help") option. Called with no input
+files, it writes a usage summary to standard error and ends with return
+code 2.]
+
+=== Operands
+
+#deflist(width: 1.45in,
+  [#var("object-file")], [is an object module written by as370, by cc370
+    with #cmd("-c"), or by the MVS assembler. Object modules are placed in
+    the module in the order given. The file is not checked: a file that
+    contains no object records is accepted and contributes nothing.],
+  [#var("library-file")], [is an object library written by ar370. An
+    operand is taken as a library when its name ends in #cmd(".a"). A library
+    is not included as a whole\; it is searched by the automatic library
+    call (see @ld370-autocall).],
+  [#cmd("-o") #var("file")], [names the member file to write. The default is
+    #cmd("a.out").],
+  [#cmd("--name") #var("member")], [sets the member name used in the
+    directory of the transport files. Without it, the name is taken from the
+    #cmd("-o") file: the base name up to its first period, cut to eight
+    characters. Either name is changed to uppercase.],
+  [#cmd("-e"), #cmd("--entry") #var("symbol")], [sets the entry point to
+    #var("symbol"), the name of a control section or an entry point in the
+    module. See @ld370-entry.],
+  [#cmd("-L") #var("directory")], [adds #var("directory") to the
+    directories searched by the #cmd("-l") options that follow it. The
+    directory may also be attached: #cmd("-Llib").],
+  [#cmd("-l") #var("name")], [searches for the library
+    #cmd("lib")#var("name")#cmd(".a"), first in the #cmd("-L") directories
+    given so far, in the order given, and then in the current directory, and
+    uses the first one found. The name may also be attached: #cmd("-lc").],
+  [#cmd("-i"), #cmd("--include") #var("name")], [includes a module from a
+    library whether or not anything refers to it, as the #cmd("INCLUDE")
+    statement of IEWL does. See @ld370-autocall.],
+  [#cmd("--allow-unresolved")], [writes the module even when external
+    references remain unresolved. They are listed, and their address
+    constants are left zero.],
+  [#cmd("--warn-shadow")], [also reports a symbol that a later library
+    defines again. See @ld370-autocall.],
+  [#cmd("--alias") #var("name")], [adds an alias for the member. Repeat the
+    option for several aliases. See @ld370-alias.],
+  [#cmd("--rent"), #cmd("--reus"), #cmd("--refr")], [mark the module
+    reentrant, reusable or refreshable. See @ld370-attr.],
+  [#cmd("--norent"), #cmd("--noreus")], [state that the module is not
+    reentrant or not reusable. Since neither attribute is set by default,
+    they change nothing on their own. Given together with #cmd("--rent") or
+    #cmd("--reus") respectively, they are refused.],
+  [#cmd("--ac") #var("code")], [sets the APF authorization code, as
+    #cmd("SETCODE AC(")#var("code")#cmd(")") does. The default is 0.],
+  [#cmd("--blocksize") #var("bytes")], [names the block size of the load
+    library the module is going to. The default is 15040. See
+    @ld370-blksize.],
+  [#cmd("--sparse-text")], [leaves out text records that no part of the
+    input defined. See @ld370-sparse.],
+  [#cmd("--map") #var("file")], [writes a load map to #var("file"), or to
+    standard output when #var("file") is #cmd("-"). See @ld370-map.],
+  [#cmd("--xref")], [adds the cross-reference to the load map. It requires
+    #cmd("--map").],
+  [#cmd("-iebcopy")], [also writes the module as an IEBCOPY unloaded
+    library to #var("file")#cmd(".iebcopy").],
+  [#cmd("-xmit")], [also writes the module as a TSO TRANSMIT file to
+    #var("file")#cmd(".xmit").],
+  [#cmd("--dsn") #var("data-set-name")], [sets the data set name recorded
+    in the TRANSMIT file. The default is #cmd("IBMUSER.HOST.LOAD").],
+  [#cmd("-v"), #cmd("--verbose")], [traces the phases of the link on
+    standard error, one line each, beginning with #cmd("[ld370]"): the
+    objects read, the modules taken from libraries, the origin of each
+    section and each relocated address constant. Unlike as370, ld370 does
+    not display its version for #cmd("-v").],
+  [#cmd("--pack")], [selects the second form. See @ld370-pack.],
+  [#cmd("--version")], [displays the toolchain version and the commit from
+    which ld370 was built, for example #cmd("ld370 1.2.0 (b17cd14)"), and
+    ends.],
+)
+
+== Building the Module <ld370-layout>
+
+#idx("load module", "layout")
+ld370 places the object modules one after another, each on a doubleword
+boundary, in the order in which they were read: first the object files from
+the command line, then the modules named by #cmd("--include"), then the
+modules taken by the automatic library call. Within an object module the
+sections keep the positions the assembler gave them. The module length is
+rounded up to a multiple of eight. A module longer than 16 MB is refused.
+
+Each address constant is then relocated to the final address of the symbol
+it names, and an entry in the relocation dictionary is written for it, so
+that program fetch can relocate it again when the module is loaded.
+
+#idx("doubly defined symbol")
+When two object modules define the same name, the first definition is kept:
+
+- An entry point defined a second time is reported with a warning, and every
+  reference goes to the first definition.
+- A control section defined a second time is dropped without a message,
+  together with its text and its address constants, and the sections after
+  it in the same object module move up to close the gap. IEWL does the
+  same.
+
+#idx("unresolved reference")
+An external reference that nothing defines ends the link with return code 1.
+ld370 lists the names and writes no member: the address constant would be
+zero, and the program would fail at the first call through it. With
+#cmd("--allow-unresolved") the names are listed and the module is written.
+
+== Automatic Library Call <ld370-autocall>
+
+#idx("automatic library call")
+#idx("object library", "search by ld370")
+When the object modules refer to a symbol that none of them defines, ld370
+searches the libraries for a module that does, and includes it. That module
+may refer to further symbols, which are searched in turn, until no
+reference can be resolved from the libraries any more. The libraries are
+those given by #cmd("-l") and those named as files ending in #cmd(".a"), at
+most 32 in one link.
+
+The search uses the symbol index that ar370 writes into every library (see
+@ar370). The index lists the control sections _and the entry points_ of each
+member, so a reference to an entry point inside a library module is resolved
+as readily as a reference to a section. A C function is an entry point of its
+compilation unit, so this is how calls into the C library are resolved.
+
+The libraries are searched in the order they were given, and the first that
+defines the symbol is used. When a library holds several members that define
+the symbol, ld370 prefers a member that does not define again a symbol that
+the link already has. A definition that is passed over is reported with a
+warning:
+
+- always, when it is in the same library, because then the order of the
+  members decides, which is seldom intended\;
+- only with #cmd("--warn-shadow"), when it is in a later library. A later
+  library usually provides fallbacks, and IEWL is silent in that case too.
+
+#idx("INCLUDE", "--include option")
+#cmd("--include") #var("name") takes a module from the libraries before the
+search begins, whether or not anything refers to it. ld370 looks for a member
+whose file name, without #cmd(".o"), is #var("name") in any mix of case, and
+then for a member that defines #var("name"). Use it to choose one of several
+variants of a module, for example a different C start-up routine, before the
+search can pick another.
+
+== The Entry Point <ld370-entry>
+
+#idx("entry point", "of a load module")
+The entry point is taken, in this order of priority:
+
++ from #cmd("--entry") #var("symbol"). When no module of the link defines
+  #var("symbol") after the library search, ld370 looks it up in the
+  libraries by name and includes the module that defines it. A name that is
+  still not defined ends the link with return code 1.
++ from the END record of the first object module that names an entry point,
+  as #cmd("END MAIN") does in assembler language\;
++ otherwise, the beginning of the module.
+
+A C program enters at #cmd("@@CRT0"), the start-up routine of the C library,
+not at the #cmd("@@MAIN") stub that the compiler names on the END record.
+The cc370 driver passes #cmd("--entry @@CRT0") when it links\; when you link
+a C program yourself, pass it too.
+
+== Module Attributes <ld370-attr>
+
+#idx("attributes", "of a load module")
+#idx("RENT")#idx("REUS")#idx("REFR")
+The attributes are stored in the directory entry and reach MVS only through
+the transport files. @ld370-attr-tab lists the ones the options set. *A
+module is neither reentrant nor reusable unless you say so*, which is also the
+default of IEWL. Each option sets exactly the attribute it names:
+#cmd("--rent") does not imply #cmd("--reus"), so give both for what IEWL
+calls #cmd("RENT").
+
+#tab(caption: [Attributes set by ld370 options])[
+  #table(columns: (1.3in, 1fr),
+    [Option], [Effect],
+    [#cmd("--rent")], [Marks the module reentrant. Give it only for a module
+      that does not change its own storage. A C program compiled by cc370
+      keeps its static variables in the module, so it is not reentrant if
+      it changes them.],
+    [#cmd("--reus")], [Marks the module serially reusable.],
+    [#cmd("--refr")], [Marks the module refreshable.],
+    [#cmd("--ac") #var("code")], [Sets the authorization code. A module that
+      is to run authorized needs #cmd("--ac 1") and must be in an
+      APF-authorized library.],
+  )
+] <ld370-attr-tab>
+
+The other attribute bits, such as executable, follow from the module itself
+and are set by ld370.
+
+#note[The authorization code is stored in one byte and is not checked:
+#cmd("--ac 300") is stored as 44. Give 0 or 1.]
+
+== Aliases <ld370-alias>
+
+#idx("alias", "of a load module")
+#cmd("--alias") #var("name") adds a second directory entry for the member,
+under #var("name"), as the IEWL #cmd("ALIAS") statement does. The entry point
+of an alias follows the IEWL rule: an alias that is the name of a section or
+entry point in the module enters there\; any other alias enters where the
+member does. So an alias spelled like an entry point inside the module does
+not start the program at its main entry.
+
+An alias name has one to eight characters, the first a letter or one of
+#cmd("@"), #cmd("#") and #cmd("$"), the others letters, digits or the same
+three characters. A name may appear only once in a library, as a member or as
+an alias\; a second use is refused. A member file has no directory, so an
+alias given without #cmd("-iebcopy") or #cmd("-xmit") has no effect, and
+ld370 warns.
+
+== Block Size <ld370-blksize>
+
+#idx("block size", "--blocksize option")
+A load library has a block size, and no record of a module may be longer
+than the block size of the library it is stored in. #cmd("--blocksize")
+#var("bytes") names that block size\; the value must be between 1024 and
+32740. It decides:
+
+- the length of the text records. ld370 splits the text into records no
+  longer than the largest of the IEWL text record lengths 18432, 13312,
+  12288, 7680, 6144, 5120, 4096, 3072, 2048 and 1024 that does not exceed
+  #var("bytes"), as @ld370-blksize-tab shows\;
+- the block size that the transport files record for the library, and the
+  block size of the unloaded form, which is #var("bytes") + 20.
+
+#tab(caption: [Longest text record for some block sizes])[
+  #table(columns: (1.3in, 1.5in, 1fr),
+    [#cmd("--blocksize")], [Longest text record], [Library],
+    [6144], [6144], [a small or older device],
+    [15040], [13312], [the default],
+    [19069], [18432], [a full 3350 track],
+    [32000], [18432], [],
+  )
+] <ld370-blksize-tab>
+
+A module built for a block size fits every library whose block size is at
+least as large. The default of 15040 therefore fits libraries of 15040 and of
+19069 alike.
+
+#note[Use the same value when you build a module and when you pack it.
+#cmd("--pack") does not split records again, and it refuses a module with a
+record longer than its own #cmd("--blocksize"), naming the member and the
+record length.]
+
+== Sparse Text <ld370-sparse>
+
+#idx("--sparse-text option")
+A #cmd("DS") statement reserves storage without defining its content, and the
+object module carries no text for it. ld370 nevertheless writes that storage
+into the load module as zeros, as IEWL does. With #cmd("--sparse-text") a
+text record that no part of the input defined is left out, which can make a
+module with large reserved areas much smaller: a section that reserves 40000
+bytes with #cmd("DS") becomes a member of 13721 bytes instead of 40385.
+
+The option is off by default, for two reasons. The module is no longer the
+one IEWL would write. And the reserved storage then holds whatever program
+fetch leaves in it: the module relies on fetch providing zeros for the
+records that are not there, and a C program relies on its static storage
+starting at zero.
+
+== The Load Map <ld370-map>
+
+#idx("load map")
+#cmd("--map") #var("file") writes a load map after the member has been
+written. It lists every section in the order of its origin, with its type,
+origin, length and the input it came from: the object file as named on the
+command line, or #var("library")#cmd("(")#var("member")#cmd(")") followed by
+#cmd("include") or #cmd("autocall"). The entry points of each section follow
+it, indented, and unresolved names are listed at the end. The first line
+gives the member name, the entry point and where it came from, and the module
+length.
+
+#cmd("--xref") adds, under each section, every address constant that names
+an external symbol: its offset in the section, its type (#cmd("A") or
+#cmd("V")), the symbol, and the address and section it resolved to, or
+#cmd("unresolved").
+
+The map does not follow the IEWL format. It carries no date, time or page
+headings, so that the maps of two links can be compared line by line with
+#cmd("diff"). @ld370-map-fig shows the map of the program in @ld370-ex,
+with the cross-reference.
+
+#fig(caption: [Load map with cross-reference])[
+  #screen(raw(read("../ex/ld370/xref.txt")))
+] <ld370-map-fig>
+
+== Transport to MVS <ld370-transport>
+
+#idx("transport files")
+#idx("IEBCOPY", "unloaded form")
+#idx("TRANSMIT", "file written by ld370")
+#cmd("-iebcopy") writes the module as IEBCOPY writes a load library when it
+unloads it: a sequential image of the library, with its directory and the
+records of each member. #cmd("-xmit") wraps that image into a TSO TRANSMIT
+(NETDATA) file of 80-byte fixed-length records. The TRANSMIT file is the one
+to send to MVS: a file of fixed-length records can be uploaded byte for
+byte, where the variable-length records of the unloaded image cannot.
+
+The TRANSMIT file records, for the receiving side, the data set name given by
+#cmd("--dsn"), the organization of a load library (partitioned, record format
+U) with the block size given by #cmd("--blocksize"), and the space the
+library needs. To install the module:
+
++ Upload the #cmd(".xmit") file in binary to a sequential data set with
+  #cmd("RECFM=FB") and #cmd("LRECL=80"), for example through the mvsMF REST
+  API or FTP. No character translation may take place.
++ Receive it with the TSO #cmd("RECEIVE") command, at a terminal or in a
+  batch TSO step (#cmd("PGM=IKJEFT01")):
+  ```
+  RECEIVE INDSN('USER1.APP.XMIT') DATASET('USER1.APP.LOADLIB')
+  ```
+  #cmd("DATASET") names the load library to create, in place of the name
+  recorded by #cmd("--dsn"). #cmd("RECEIVE") allocates the library from the
+  attributes recorded in the file, which is why #cmd("--blocksize") must
+  describe the library you want.
++ Run the program from that library, for example through the
+  #cmd("STEPLIB") of the job. A module linked with #cmd("--ac 1") runs
+  authorized only from an APF-authorized library.
+
+#note[Receive into a library that does not exist yet. To replace the modules
+of an existing library, delete it first, or receive into a new library and
+copy the members with IEBCOPY.]
+
+The mbt build tool performs these steps with #cmd("make deploy"): it packs
+the modules of a project into one TRANSMIT file, uploads it and receives it.
+
+== Packing Several Members <ld370-pack>
+
+#idx("--pack option")
+#idx("load library", "with several members")
+#cmd("--pack") builds a transport file from modules that are already linked,
+without linking them again. With several modules it makes a library of
+several members, which is how a whole project is sent to MVS in one file. The
+output is the TRANSMIT file, #var("name")#cmd(".xmit"), unless
+#cmd("-iebcopy") is given\; #cmd("-o") #var("name") is required.
+
+Each #var("file") is one of two kinds:
+
+- *The #cmd(".iebcopy") file of a single module*, written by a link with
+  #cmd("-iebcopy"). It carries the directory entry of the module, and the
+  whole entry is kept: entry point, length, attributes, authorization code
+  and aliases. The member name is the one in that directory.
+- *A member file*, written by #cmd("-o"). It carries no directory: ld370
+  computes the module length, but the module is packed with entry point 0,
+  with the attributes and authorization code given on the #cmd("--pack")
+  command itself, and without aliases. ld370 warns about every such file.
+  The member name is the base name of the file without its extension, in
+  uppercase.
+
+#var("member")#cmd("=")#var("file") gives the member a name of your own\; a
+renamed #cmd(".iebcopy") module keeps its aliases, which then point at the
+new name.
+
+*Pack the #cmd(".iebcopy") file of each module, not its member file.* The
+entry point in particular cannot be given again: #cmd("--entry") is ignored
+by #cmd("--pack"), with a warning, and the attribute options apply only to
+member files. The usual sequence is therefore:
+
+```
+ld370 -o MAIN --name MAIN main.o -L. -ldemo -iebcopy --rent --reus
+ld370 -o ADDER --name ADDER add1.o -iebcopy -e ADD2 --ac 1
+ld370 --pack MAIN.iebcopy ADDER.iebcopy -o mylib
+```
+
+which writes #cmd("mylib.xmit"), a library with the members #cmd("ADDER") and
+#cmd("MAIN"), each with its own entry point, attributes and authorization
+code. A name used twice in one pack, as a member or as an alias, is refused.
+#cmd("--alias") and #cmd("--map") apply to a link and are refused with
+#cmd("--pack")\; the other link options are accepted with #cmd("--pack")
+and have no effect.
+
+== Identification Records <ld370-idr>
+
+#idx("IDR", "written by ld370")
+#idx("identification record")
+Every member written by ld370 carries two identification records:
+
+- an HMASPZAP record of 251 bytes with no entries, the record in which
+  AMASPZAP notes the changes it makes to the module on MVS\;
+- a linkage editor record of 22 bytes, which names #cmd("LD370") as the
+  program, with version 01 and modification level 00, and holds the date and
+  time of the link.
+
+The translator records that IEWL copies from the END records of the object
+modules are not written.
+
+#idx("LDDATE")#idx("LDTIME")
+#idx("reproducible output")
+The date and time come from the clock of the workstation, so two links of the
+same input are not byte for byte the same. Two environment variables fix
+them:
+
+#deflist(width: 1.45in,
+  [#cmd("LDDATE=")#var("yyddd")], [the date: two digits of the year and the
+    day of the year, 001 to 366. #cmd("26277") is 4 October 2026.],
+  [#cmd("LDTIME=")#var("hhmmss")], [the time, on the 24-hour clock.],
+)
+
+Each is read on its own\; set both for a reproducible link. They also fix the
+time stamp in the TRANSMIT file. A value of the wrong form ends ld370 with
+return code 2.
+
+== Return Codes <ld370-rc>
+
+#idx("ld370", "return codes")
+@ld370-rc-tab lists the values. Messages are written to standard error and
+begin with #cmd("ld370:")\; a warning begins with #cmd("ld370: warning:").
+
+#tab(caption: [ld370 return codes])[
+  #table(columns: (0.9in, 1fr),
+    [Code], [Meaning],
+    [0], [The module or the transport file was written. *Warnings also end
+      with 0*: a doubly defined entry point, a definition passed over by the
+      library search, an alias without a directory, a member file packed
+      without its directory, #cmd("--entry") given with #cmd("--pack").],
+    [1], [The link or the pack failed: an unresolved external reference, an
+      input file or library that cannot be read or is not a library,
+      #cmd("-l") or #cmd("--include") not found, an entry point not defined,
+      more than 32 libraries, a name used twice in one library, a record
+      longer than the block size, a file given to #cmd("--pack") that is
+      neither a member file nor an unloaded library.],
+    [2], [The command is not valid and nothing was written: no input files,
+      #cmd("--pack") without #cmd("-o"), #cmd("--rent") with
+      #cmd("--norent") or #cmd("--reus") with #cmd("--noreus"),
+      #cmd("--xref") without #cmd("--map"), #cmd("--alias") or #cmd("--map")
+      with #cmd("--pack"), a block size out of range, an alias or member name
+      that is not valid, an unloaded library given to #cmd("--pack") that
+      has several members or cannot be read, or a wrong #cmd("LDDATE") or
+      #cmd("LDTIME").],
+  )
+] <ld370-rc-tab>
+
+== Differences from IEWL <ld370-iewl>
+
+#idx("IEWL", "differences")
+For the inputs it has been checked against, ld370 writes the same member as
+IEWL apart from the identification records. The differences that remain are
+these:
+
+- ld370 has no control statements. #cmd("INCLUDE"), #cmd("ENTRY"),
+  #cmd("ALIAS"), #cmd("NAME") and #cmd("SETCODE") are options:
+  #cmd("--include"), #cmd("--entry"), #cmd("--alias"), #cmd("--name") and
+  #cmd("--ac"). Overlay structures and the IEWL options that have no
+  counterpart in this chapter are not supported.
+- The automatic library call finds entry points as well as members (see
+  @ld370-autocall). IEWL finds only the member names and aliases in the
+  library directory.
+- An unresolved reference ends the link unless #cmd("--allow-unresolved") is
+  given.
+- Warnings end with return code 0, where IEWL ends with 4.
+- #cmd("--rent") sets only the reentrant attribute\; the #cmd("RENT")
+  option of IEWL sets reusable as well.
+- The identification records differ, as @ld370-idr describes.
+- The load map has a format of its own (see @ld370-map).
+
+== Example <ld370-ex>
+
+The program in @ld370-ex-src calls #cmd("ADD1") through a V-type address
+constant. #cmd("ADD1") is in a separate source and has a second entry point,
+#cmd("ADD2").
+
+#fig(caption: [MAIN and ADD1, two assembler programs])[
+  #grid(columns: (1fr, 1fr), column-gutter: 1em,
+    code(read("../ex/ld370/main.asm")),
+    code(read("../ex/ld370/add1.asm")))
+] <ld370-ex-src>
+
+@ld370-session assembles both, puts #cmd("ADD1") into a library, links
+#cmd("MAIN") against it with a load map and a TRANSMIT file, and examines the
+results with file370. The map shows that #cmd("ADD1") was taken from the
+library by the automatic library call.
+
+#fig(caption: [Linking MAIN against a library])[
+  #screen(raw(read("../ex/ld370/link.txt")))
+] <ld370-session>
+
+@ld370-errors shows one outcome for each return code. The object module
+#cmd("dup2.o"), assembled from the source in @ld370-dup2, defines
+#cmd("ADD2") a second time\; the link warns and ends with 0. Long messages
+are shown on several lines.
+
+#fig(caption: [DUP, a second definition of ADD2])[
+  #code(read("../ex/ld370/dup2.asm"))
+] <ld370-dup2>
+
+#fig(caption: [A warning and two failed links])[
+  #screen(raw(read("../ex/ld370/errors.txt")))
+] <ld370-errors>

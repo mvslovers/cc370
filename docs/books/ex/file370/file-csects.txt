@@ -1,0 +1,12 @@
+$ file370 --csects main.lm
+main.lm:
+    CESD   1  MAIN      SD   addr=000000  len=00000C  seg=1
+    CESD   2  ADD1      SD   addr=000010  len=00000C  seg=1
+    CESD   3  ADD2      LR   addr=000016  owner=2  seg=1
+$ file370 --csects --json main.lm
+  {"file": "main.lm", "csects": [
+      {"esdid": 1, "name": "MAIN", "type": "SD", "addr": 0, "len": 12, "seg": 1},
+      {"esdid": 2, "name": "ADD1", "type": "SD", "addr": 16, "len": 12, "seg": 1},
+      {"esdid": 3, "name": "ADD2", "type": "LR", "addr": 22, "owner": 2, "seg": 1}
+  ],
+   "count": 3}

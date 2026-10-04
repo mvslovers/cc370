@@ -1,0 +1,10 @@
+$ mkdir out
+$ xmit370 extract -v -C out hello.xmit
+out/HELLO (400 bytes)
+out/PARMS (320 bytes)
+out/RUNHELLO (640 bytes)
+$ diff samplib/hello.asm out/HELLO
+$ diff samplib/parms out/PARMS
+$ diff samplib/runhello.jcl out/RUNHELLO
+$ echo $?
+0

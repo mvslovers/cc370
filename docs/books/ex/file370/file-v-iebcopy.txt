@@ -1,0 +1,10 @@
+$ file370 -v demolib.iebcopy
+demolib.iebcopy: IEBCOPY unloaded PDS (RECFM=U source)
+    env header 328 bytes (COPYR1 X'CA6D0F' + COPYR2)
+    member ADD2     (alias)  ttr=000001  entry=000016  modlen=32  of MAIN  [RENT REUS EXEC AC=0]
+             ATR1=C2 ATR2=E2  AC=00  PDS2TTRT=000005  PDS2EPM=000000
+    member MAIN      ttr=000001  entry=000000  modlen=32  [RENT REUS EXEC AC=0]
+             ATR1=C2 ATR2=E2  AC=00  PDS2TTRT=000005
+    member SUB1      ttr=000008  entry=000000  modlen=8  [EXEC 1BLK NRLD AC=1]
+             ATR1=03 ATR2=F2  AC=01  PDS2TTRT=00000C
+    3 directory member entr(y/ies)

@@ -1,0 +1,8 @@
+$ file370 -v libdemo.a
+libdemo.a: ar370 archive -- 2 object member(s), 3 symbol(s)
+    member  add1.o            240 bytes
+    member  sub1.o            240 bytes
+    symbol table (3):
+      ADD1
+      ADD2
+      SUB1

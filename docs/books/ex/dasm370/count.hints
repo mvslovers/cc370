@@ -1,0 +1,17 @@
+# COUNT: names and the base register
+[[label]]
+at = 0x12
+name = "LOOP"
+[[label]]
+at = 0x28
+name = "TABLEA"
+[[label]]
+at = 0x2C
+name = "TABLE"
+[[data]]
+at = 0x2C
+len = 16
+[[base]]
+reg = 12
+value = 6
+from = 6

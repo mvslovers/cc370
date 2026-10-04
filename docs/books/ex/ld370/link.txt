@@ -1,0 +1,15 @@
+$ as370 -o main.o main.asm
+$ as370 -o add1.o add1.asm
+$ ar370 rc libdemo.a add1.o
+$ ld370 -o MAIN main.o -L. -ldemo --map - -xmit
+LD370 MAP  MAIN  ENTRY 000000 (END card)  LENGTH 000030
+
+SECTION   TYPE  ORIGIN  LENGTH  SOURCE
+MAIN      SD    000000  00001C  main.o
+ADD1      SD    000020  00000C  ./libdemo.a(add1.o) autocall
+  ADD2          000026
+$ echo $?
+0
+$ file370 MAIN MAIN.xmit
+MAIN: MVS load module member -- 1 CESD, 2 IDR, 1 text record(s), 2 control, 1 w/RLD, MODEND, 425 bytes
+MAIN.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unload (member MAIN)

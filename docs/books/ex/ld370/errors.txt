@@ -1,0 +1,18 @@
+$ ld370 -o MAIN main.o add1.o dup2.o
+ld370: warning: 'ADD2' doubly defined: dup2.o defines it again
+  (first definition kept)
+$ echo $?
+0
+$ ld370 -o MAIN main.o
+ld370: unresolved external reference(s):
+    ADD1
+ld370: 1 unresolved external(s) -- the module would S0C4 at runtime
+  (each is a NULL adcon); add the defining object/archive, or pass
+  --allow-unresolved to override
+$ echo $?
+1
+$ ld370 -o MAIN main.o add1.o --rent --norent
+ld370: --rent given with --norent; the two ask for opposite attributes
+  and ld370 will not choose between them
+$ echo $?
+2
