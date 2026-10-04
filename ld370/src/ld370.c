@@ -739,7 +739,13 @@ static void emitb(int b) { out = grow_arr(out, &ocap, olen + 1, 1); out[olen++] 
 /* The LKED IDR's version and modification level are the toolchain's own, from
  * VERSION -- they were a fixed 01 / 00, which a 1.2 tool still claimed (#807). */
 static int idr_vv(void) { int v = 0; sscanf(CC370_VERSION, "%d", &v); return v % 100; }
-static int idr_mm(void) { int v = 0, m = 0; sscanf(CC370_VERSION, "%d.%d", &v, &m); return m % 100; }
+static int idr_mm(void)
+{
+    int v = 0;
+    int m = 0;
+    sscanf(CC370_VERSION, "%d.%d", &v, &m);
+    return m % 100;
+}
 
 static int decfield(const char *s, int n)
 {
@@ -1992,6 +1998,17 @@ static void usage(FILE *f)
                 "         3.8j, but not under storage pressure.  internals/measurements/.\n");
 }
 
+/* What a --pack input is when it is not a member: an archive, an object deck
+ * or an XMIT, or NULL. */
+static const char *pack_not_member(const unsigned char *b, long n)
+{
+    if (n < 8) return NULL;
+    if (!memcmp(b, "!<arch>\n", 8)) return "an archive";
+    if (b[0] == 0x02) return "an object deck (link it first)";
+    if (b[2] == 0xC9 && b[3] == 0xD5 && b[4] == 0xD4 && b[5] == 0xD9) return "a TSO transmission (XMIT)";
+    return NULL;
+}
+
 /* The options that take a value.  One given last used to fall through to the
  * input list -- `-e' last reported "cannot open -e" (#807). */
 static int takes_value(const char *a)
@@ -2217,13 +2234,13 @@ int main(int argc, char **argv)
              *    in a bare member, so assume 0 (start of module). */
             /* An XMIT, an archive or an object deck is not a member: it used to
              * fail later with "cannot split member (unknown record)" (#807). */
-            if (n >= 8 && (!memcmp(buf, "!<arch>\n", 8) || buf[0] == 0x02 ||
-                           (buf[2] == 0xC9 && buf[3] == 0xD5 && buf[4] == 0xD4 && buf[5] == 0xD9))) {
-                fprintf(stderr, "ld370: --pack: '%s' is %s, not a load module; pack the member "
-                                "or its -iebcopy\n", file,
-                        buf[0] == 0x02 ? "an object deck (link it first)" :
-                        buf[0] == '!' ? "an archive" : "a TSO transmission (XMIT)");
-                free(buf); return 2;
+            {
+                const char *what = pack_not_member(buf, n);
+                if (what) {
+                    fprintf(stderr, "ld370: --pack: '%s' is %s, not a load module; pack the member "
+                                    "or its -iebcopy\n", file, what);
+                    free(buf); return 2;
+                }
             }
             if (n >= 4 && buf[1] == 0xCA && buf[2] == 0x6D && buf[3] == 0x0F) {
                 int r2 = read_iebcopy_member(buf, n, &m[i]);
@@ -2296,7 +2313,8 @@ int main(int argc, char **argv)
      * `verylongname' silently became VERYLONG (#807).  A bare -o member carries
      * no name, so a host-only link is not held to it. */
     if (want_xmit || want_unload || mapfile) {
-        const char *nm = mname ? mname : member_from_path(outfile ? outfile : "a.out");
+        const char *nm = mname;
+        if (!nm) nm = member_from_path(outfile ? outfile : "a.out");
         if (!valid_member_name(nm)) {
             fprintf(stderr, "ld370: '%s' (%s) is not a valid MVS member name (1-8 chars, letter "
                             "or @#$ first, then letters/digits/@#$)%s\n", nm,
