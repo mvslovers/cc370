@@ -3,13 +3,15 @@
 
 TYPST ?= typst
 BM    := bookmaster
-BOOKS := ml01-0002.pdf
+# The PDF carries the edition: ml01-0002-0.pdf is the first edition of
+# ML01-0002.  Bump the suffix together with the number on the title page.
+BOOKS := ml01-0002-0.pdf
 
 .PHONY: all check clean
 
 all: check $(BOOKS)
 
-%.pdf: %.typ $(wildcard ref/*.typ ex/*/* syntax/*.txt) $(BM)/bookmaster.typ
+ml01-0002-%.pdf: ml01-0002.typ $(wildcard ref/*.typ ex/*/* syntax/*.txt) $(BM)/bookmaster.typ
 	$(TYPST) compile --root . --font-path $(BM)/fonts --ignore-system-fonts $< $@
 
 check:
