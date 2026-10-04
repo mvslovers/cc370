@@ -83,10 +83,10 @@ neither number is mistaken for the other.
   With this release the formula links libc370 with one symlink, and that
   restriction is gone (#732).
 - **as370: `TPROT` and `IPTE`**, in the formats IFOX00 gives them (#56,
-  measured on MVSTK5-REF JOB00321): TPROT is SSE `D1(B1),D2(B2)`, IPTE the
+  measured against IFOX00): TPROT is SSE `D1(B1),D2(B2)`, IPTE the
   S-format `D2(B2)` -- not RRE.
 - **as370: `S'` and `I'`** are evaluated in conditional assembly (#258); every
-  value IFOX00-confirmed (JOB00320).
+  value confirmed against IFOX00.
 - **ld370: `--entry` seeds automatic library call** (#107), so the CRT can live
   inside an archive: an entry still undefined after the fixpoint is pulled by
   name.
@@ -103,33 +103,32 @@ neither number is mistaken for the other.
 ### Changed
 - **ld370 links modules neither RENT nor REUS by default** (#100) -- IEWL's
   default (a plain IEWL link lists ATTR `03F2`); until now every module was
-  marked RENT+REUS unless told otherwise. That claim had consequences: httpd
-  shares one copy of a RENT module between concurrent requests (measured on
-  mvsdev, `CDUSE` 3), and cc370 keeps writable statics in the CSECT. Ask for
-  the attributes with `--rent`, `--reus` and `--refr` -- orthogonal, so IEWL's
-  RENT is `--rent --reus`; mbt v2.1.x passes them from `project.toml`
-  (`rent`/`reus`/`refr`). `--norent`/`--noreus` are still accepted and now
-  change nothing on their own. **Projects not yet on mbt v2.1.x get modules
-  without RENT/REUS from this release**: httplua, httprexx, lua370 and nsf370
-  at the time of writing. A `--pack` of a pre-built `-iebcopy` keeps that
-  member's own attributes.
+  marked RENT+REUS unless told otherwise. That claim had consequences: a
+  server that loads a module once shares one copy of a RENT module between
+  concurrent requests (measured on MVS: use count 3), and cc370 keeps
+  writable statics in the CSECT. **A module that declares no attributes is
+  now linked with neither RENT nor REUS; declare them** with `--rent`,
+  `--reus` and `--refr` -- orthogonal, so IEWL's RENT is `--rent --reus`.
+  `--norent`/`--noreus` are still accepted and now change nothing on their
+  own. A `--pack` of a pre-built `-iebcopy` keeps that member's own
+  attributes.
 - **ld370 keeps the first definition of a duplicate CSECT** (#102), as IEWL
   does: the later copy is dropped with its text, space, RLDs and entries, and
-  the sections after it move up (IEWL layouts JOB01409, IRXVTOC JOB01635).
+  the sections after it move up, as in IEWL's layouts (measured on MVS).
   Until now the last copy won and every copy's text stayed in the module.
 - **dasm370 names every section of a multi-section deck on stderr** (#439),
   and returns rc 4 when the section it took is empty while another is not.
 - **xmit370: the unloaded form declares at least BLKSIZE 296** (#118), so a
-  RECFM=F library with BLKSIZE 80 RECEIVEs (mvsdev JOB01343).
+  RECFM=F library with BLKSIZE 80 RECEIVEs (measured on MVS; 288 is refused).
 
 ### Fixed
 - **Nested functions** (#686): the static chain was passed in R10, which every
   prologue reloads with the page table, so a nested function read its parent's
   variables through the wrong address -- silently. It is now R0; the
   trampoline no longer clobbers R14, its label fits in 8 characters, and it is
-  copied with `memcpy`. MVS JOB01338.
+  copied with `memcpy`. Measured on MVS.
 - **xmit370: INMR02 #2 INMRECFM is 4802** (#117), as every real transmission
-  carries (RECEIVE on mvsdev JOB01316).
+  carries (a RECEIVE on MVS accepts it).
 - **as370: the return code no longer depends on the 128-entry diagnostic
   lists** (#86); `MNOTE 0` counts among the flagged statements (#682);
   `BRXH`/`BRXLE` are undefined operation codes, as in IFOX00 (#56).
@@ -158,10 +157,10 @@ libc370 2.1.0 is the matching release: it drops its copies and requires
 `cc370 >= 1.1.0` (checked at compile time through `__CC370__`). From this
 release cc370 is also published prebuilt for Linux and macOS.
 
-**Upgrading:** projects built with mbt need an mbt that links `-lcc370rt`
-(mbt#138) before they move to libc370 2.1. An installed libc370 2.0 keeps
-working with cc370 1.1.0: the runtime is linked first and wins over its
-copies.
+**Upgrading:** the cc370 driver links `-lcc370rt` itself; a build system that
+calls ld370 directly must link `-lcc370rt` ahead of `-lc` before it moves to
+libc370 2.1. An installed libc370 2.0 keeps working with cc370 1.1.0: the
+runtime is linked first and wins over its copies.
 
 ### Added
 - **Prebuilt releases** (#523): `cc370-<v>-{linux-amd64,linux-arm64,
@@ -180,8 +179,8 @@ copies.
   abort on overflow) and `__ffssi2` (`@@FFSSI2`), which `__builtin_ffs(int)`
   now calls instead of libc's `ffs()`. Installed as `<sysroot>/lib/libcc370rt.a`;
   the driver links `-lcc370rt` ahead of `-lc`, so it wins over the copies
-  libc370 before 2.1 still carries. mbt links it when the file exists
-  (mbt#138).
+  libc370 before 2.1 still carries. A build system that calls ld370 itself
+  links it the same way, when the file exists.
 - **The prologue macros ship with cc370** (#688): `PDPTOP`, `PDPPRLG` and
   `PDPEPIL`, the members every `.s` the compiler writes depends on, install
   into `<sysroot>/macros` with the compiler, so its output assembles without
@@ -201,9 +200,9 @@ copies.
 
 ## [1.0.0] - 2026-10-02
 
-The first release: the toolchain eleven ecosystem projects already build with,
-given a version they can name. A libc370 release can now require
-`cc370 >= 1.0.0` instead of a commit, and mbt can pin it.
+The first release: the toolchain as it already stood, given a version a
+project can name. A libc370 release can now require `cc370 >= 1.0.0` instead
+of a commit, and a build system can pin it.
 
 ### Added
 - **The toolchain**, as it stands on `main`:
