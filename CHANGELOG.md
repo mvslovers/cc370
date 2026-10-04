@@ -46,6 +46,18 @@ runtime and the macros are unchanged, so nothing changes for libc370 or for
 what compiles and links.
 
 ### Changed
+- **ld370 links modules neither RENT nor REUS by default** (#100) -- IEWL's
+  default (a plain IEWL link lists ATTR `03F2`); until now every module was
+  marked RENT+REUS unless told otherwise. That claim had consequences: httpd
+  shares one copy of a RENT module between concurrent requests (measured on
+  mvsdev, `CDUSE` 3), and cc370 keeps writable statics in the CSECT. Ask for
+  the attributes with `--rent`, `--reus` and `--refr` -- orthogonal, so IEWL's
+  RENT is `--rent --reus`; mbt v2.1.x passes them from `project.toml`
+  (`rent`/`reus`/`refr`). `--norent`/`--noreus` are still accepted and now
+  change nothing on their own. **Projects not yet on mbt v2.1.x get modules
+  without RENT/REUS from this release**: httplua, httprexx, lua370 and nsf370
+  at the time of writing. A `--pack` of a pre-built `-iebcopy` keeps that
+  member's own attributes.
 - **The release binaries are stripped** (#718): `make dist` strips the
   driver, `cc1` and the tools after installing the tree, so the release
   tarballs and packages carry no symbol tables or debug info; the Linux smoke

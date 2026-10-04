@@ -660,15 +660,15 @@ else
     echo "  FAIL: could not assemble or link the sparse fixture"; fails=$((fails + 1))
 fi
 
-# --norent / --noreus: clear the PDS2ATR1 reentrant / reusable attributes for a
-# module that must not be marked RENT (a REXX370 module needs this).  The template
-# marks every module RENT+REUS; RENT (0x80) implies REUS (0x40).  --norent clears
-# RENT (-> serially reusable), --noreus clears REUS, both clear both.  Applied at
-# build like --ac; a --pack of a -iebcopy preserves the member's OWN attributes
-# (set at ITS build), so per-member attributes mix in one library.  ATR1 = ud[8] =
-# first dir entry (env 328 + count12 + key8 + used2 + name8+ttr3+c1).  tiny is a
-# single-block no-RLD module so 1BLK (0x01) is set too: default C3, not C2.
-printf '\n=== --norent / --noreus: PDS2ATR1 attribute overrides ===\n'
+# PDS2ATR1 reentrant / reusable attributes.  Since cc370#100 the default is
+# IEWL's: NEITHER (ATR1 03 -- EXEC|1BLK; IEWL's plain link lists 03F2).  The
+# set-flags are orthogonal: --rent sets RENT (83), --reus REUS (43), IEWL's RENT
+# is --rent --reus (C3); --norent/--noreus clear, and against the new default
+# change nothing.  Applied at build like --ac; a --pack of a -iebcopy preserves the
+# member's OWN attributes (set at ITS build), so per-member attributes mix in
+# one library.  ATR1 = ud[8] = first dir entry (env 328 + count12 + key8 +
+# used2 + name8+ttr3+c1).  tiny is single-block no-RLD, so 1BLK (0x01) is set.
+printf '\n=== PDS2ATR1: default neither, --rent / --reus / --norent / --noreus ===\n'
 "$AS" -o "$TMP/attr.o" "$FIX/tiny.s" 2>/dev/null
 get_atr1() {                                   # $1 = flags -> echo first member's ATR1 (hex)
     # shellcheck disable=SC2086
@@ -684,20 +684,23 @@ expect_atr1() {                                # $1=flags $2=want $3=label
     if [ "$got" = "$2" ]; then echo "  OK: $3 -> ATR1=$got"
     else echo "  FAIL: $3 ATR1=$got (want $2)"; fails=$((fails + 1)); fi
 }
-expect_atr1 ""                  c3 "default           (RENT REUS)"
-expect_atr1 "--norent"          43 "--norent          (REUS, not RENT)"
-expect_atr1 "--noreus"          83 "--noreus          (RENT, not REUS)"
+expect_atr1 ""                  03 "default           (neither -- IEWL's default)"
+expect_atr1 "--rent"            83 "--rent            (RENT only -- the flags are orthogonal)"
+expect_atr1 "--rent --reus"     c3 "--rent --reus     (RENT REUS, IEWL's RENT)"
+expect_atr1 "--reus"            43 "--reus            (REUS, not RENT)"
+expect_atr1 "--norent --reus"   43 "--norent --reus   (REUS, not RENT)"
+expect_atr1 "--norent"          03 "--norent          (neither)"
 expect_atr1 "--norent --noreus" 03 "--norent --noreus (neither)"
-# a --pack of the pre-built -iebcopy must PRESERVE the member's cleared RENT
-"$LD" --norent -o "$TMP/nrb" --name NRB "$TMP/attr.o" -iebcopy 2>/dev/null
+# a --pack of the pre-built -iebcopy must PRESERVE the member's own attributes
+"$LD" --reus -o "$TMP/nrb" --name NRB "$TMP/attr.o" -iebcopy 2>/dev/null
 "$LD" --pack "NRB=$TMP/nrb.iebcopy" -o "$TMP/nrpack" -iebcopy 2>/dev/null
 pa=$(python3 - "$TMP/nrpack.iebcopy" <<'PY'
 import sys
 b = open(sys.argv[1], 'rb').read(); print("%02x" % b[328 + 12 + 8 + 2 + 20])
 PY
 )
-if [ "$pa" = "43" ]; then echo "  OK: --pack preserves the member's cleared RENT (ATR1=$pa)"
-else echo "  FAIL: --pack did not preserve --norent (ATR1=$pa)"; fails=$((fails + 1)); fi
+if [ "$pa" = "43" ]; then echo "  OK: --pack preserves the member's own REUS (ATR1=$pa)"
+else echo "  FAIL: --pack did not preserve --reus (ATR1=$pa)"; fails=$((fails + 1)); fi
 
 # ---- --rent / --reus / --refr: SET the attributes (cc370#100) --------------
 # Measured against IEWL itself on MVS 3.8j (mvsdev, 2026-09-23), because a bit
@@ -722,10 +725,8 @@ else echo "  FAIL: --pack did not preserve --norent (ATR1=$pa)"; fails=$((fails 
 #   --norent --noreus          03F2   == IEWL's PLAIN
 #   --norent --noreus --refr   03F3   == IEWL's WITHREFR
 #
-# --rent/--reus are idempotent against today's template (which already sets
-# both), so the assertions for them are weak ON PURPOSE and say so: they exist
-# so the default can be inverted later without a flag day, and they become
-# meaningful then.  --refr and the contradiction refusal are the real tests.
+# The default is inverted now (cc370#100), so the plain link is IEWL's PLAIN
+# byte for byte and --rent/--reus are no longer idempotent.
 printf '\n=== --rent / --reus / --refr: PDS2 attribute set-flags ===\n'
 get_atr() {                                    # $1 = flags -> "ATR1 ATR2" in hex
     # shellcheck disable=SC2086
@@ -743,11 +744,11 @@ expect_atr() {                                 # $1=flags $2=want $3=label
     if [ "$got" = "$2" ]; then echo "  OK: $3 -> $got"
     else echo "  FAIL: $3 got '$got' (want '$2')"; fails=$((fails + 1)); fi
 }
-expect_atr ""                            "c3 f2" "default                  (no REFR)"
-expect_atr "--refr"                      "c3 f3" "--refr                   (ATR2 bit 0x01)"
-expect_atr "--norent --noreus"           "03 f2" "--norent --noreus        == IEWL default"
-expect_atr "--norent --noreus --refr"    "03 f3" "--norent --noreus --refr == IEWL REFR"
-expect_atr "--rent --reus"               "c3 f2" "--rent --reus            (idempotent today)"
+expect_atr ""                            "03 f2" "default                  == IEWL's PLAIN"
+expect_atr "--refr"                      "03 f3" "--refr                   == IEWL's WITHREFR"
+expect_atr "--norent --noreus"           "03 f2" "--norent --noreus        == IEWL's PLAIN"
+expect_atr "--rent --reus --refr"        "c3 f3" "--rent --reus --refr     == IEWL's RENTREFR"
+expect_atr "--rent --reus"               "c3 f2" "--rent --reus            (RENT REUS)"
 # A set/clear pair is refused, and nothing is written -- there is no half-built
 # member to mistake for output.
 # The MESSAGE is asserted, not just the failure.  A build that does not know
@@ -1029,9 +1030,11 @@ for f in altb altm altc altlib many manyp manyr; do
 done
 alk() { "$@" 2>/dev/null; r=$?; if [ "$r" != 0 ]; then echo "  FAIL: rc $r from: $*" | sed "s|$TMP/||g"; fails=$((fails + 1)); fi; }
 "$AS" -o "$TMP/alt.o" "$FIX/altest.s" 2>/dev/null
-alk "$LD" -o "$TMP/altb" --name BREXX --alias RX1 --alias RX2 "$TMP/alt.o" -iebcopy
-alk "$LD" -o "$TMP/altm" --name ALTM --alias ALT2 "$TMP/alt.o" -iebcopy
-alk "$LD" -o "$TMP/altc" --name ACM --ac 1 --alias ACA "$TMP/alt.o" -iebcopy
+# The oracle was linked LIST,MAP,XREF,NCAL,RENT,REUS (docs/load-module-format.md),
+# so these ask for RENT and REUS too -- ld370's default is neither since #100.
+alk "$LD" --rent --reus -o "$TMP/altb" --name BREXX --alias RX1 --alias RX2 "$TMP/alt.o" -iebcopy
+alk "$LD" --rent --reus -o "$TMP/altm" --name ALTM --alias ALT2 "$TMP/alt.o" -iebcopy
+alk "$LD" --rent --reus -o "$TMP/altc" --name ACM --ac 1 --alias ACA "$TMP/alt.o" -iebcopy
 for f in altb altm altc; do
     python3 ld370/tests/alias_check.py "$FIX/alias.iewl.xmit" "$TMP/$f.iebcopy" --subset \
         || fails=$((fails + 1))

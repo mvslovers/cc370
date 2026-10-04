@@ -12,7 +12,7 @@ reproducer and the code citation:
 | | finding | state |
 |---|---|---|
 | [#99](https://github.com/mvslovers/cc370/issues/99) | a WX parsed before an ER leaves a hard unresolved reference unreported | **fixed**, `62e4f1a` |
-| [#100](https://github.com/mvslovers/cc370/issues/100) | every linked module is marked RENT+REUS; IEWL defaults to neither | read from both sources |
+| [#100](https://github.com/mvslovers/cc370/issues/100) | every linked module is marked RENT+REUS; IEWL defaults to neither | **fixed**: default neither since #100 (measured IEWL `03F2`); `--rent`/`--reus`/`--refr` set them |
 | [#101](https://github.com/mvslovers/cc370/issues/101) | the module image buffer is a fixed 1 MB static with no bounds check | latent, not active |
 | [#102](https://github.com/mvslovers/cc370/issues/102) | a duplicate CSECT keeps the last definition; IEWL keeps the first | **fixed**: IEWL measured (JOB01408, JOB01409), ld370 drops the later copy and compacts as IEWL does |
 | [#103](https://github.com/mvslovers/cc370/issues/103) | a second COMMON takes the last length; IEWL takes the maximum | derived, needs a fixture |
