@@ -151,8 +151,8 @@ as370 order inside it.**
 - #100: ld370's default becomes IEWL's (no RENT/REUS). RENT bites today: httpd
   shares one copy of a RENT module between concurrent requests (CDUSE=3), and
   cc370 keeps statics in the CSECT. mbt v2.1.0 passes rent/reus/refr both ways
-  (step 1 done); consumers declare (step 2, coordinated by mbt-4c); **the ld370
-  flip waits for mbt-4c's "step 2 complete" on the issue.**
+  (step 1 done); consumers declare (step 2 done); **flip done, #770** (default
+  neither; flags orthogonal). httplua, httprexx, lua370, nsf370 not yet ported.
 - rc-12 IFOX00 decks (#160, #241): an oracle only where both assemblers report
   the same diagnostics; otherwise "oracle not usable". Next: compare per module.
 - #23: freeze the 753 libc370 inputs (29 hand-written + 724 cc370-generated)
@@ -161,10 +161,11 @@ as370 order inside it.**
 - #56 **done** (#763, #766): BRX* rows dropped; TPROT is SSE, IPTE is S-format
   (MVSTK5-REF JOB00321 -- not RRE as the issue assumed); an S instruction with
   a second operand is now IFO211.
-- #686: repair (8-char label, memcpy), confirm once on MVS.
-- #118: decided "refuse below 268", but that would forbid `--recfm f` with
-  blocksize 80 (BLKSIZE must equal LRECL); **proposed instead: declare
-  max(blocksize+20, 288)** -- waiting for the maintainer.
+- #686 **done** (#768): the static chain was clobbered (R10 = page table) --
+  silently wrong code for any nested function reading a parent variable; now
+  R0. Trampoline R15-based, @@LTR0, MEMCPY. MVS JOB01338 rc 33.
+- #118 **done** (#769): declare max(blocksize+20, **296**) -- measured: 288 is
+  refused by NJE38 RECEIVE (JOB01342), 296 RECEIVEs PO/F/80/80 (JOB01343).
 - #478: **done, #764** (IEWL JOB01639: IEW0241, first kept).
 - New: #761 (float DC scale modifier ignored).
 
