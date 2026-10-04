@@ -607,16 +607,18 @@ static void show_iebcopy(const char *path, const unsigned char *b, long n, int v
     printf("    %d directory member entr(y/ies)\n", members);
 }
 
-/* INMRECFM's name: the RECFM in the high byte, or X'0001', the shortened VBS
- * form of the transmission records themselves, which INMR03 carries. */
-static const char *inmrecfm_name(int code)
+
+/* The integer text units' names.  INMNUMF (the number of files, INMR01) was
+ * not among them and was left out of the dump (#804). */
+static const char *int_tu_name(int key)
 {
-    if (code == 0x0001) return "VBS, transmission records";
-    if ((code & 0xC000) == 0xC000) return "U";
-    if ((code & 0x4800) == 0x4800) return "VS";
-    if (code & 0x8000) return "F";
-    if (code & 0x4000) return "V";
-    return "?";
+    switch (key) {
+        case 0x0030: return "INMBLKSZ";
+        case 0x0042: return "INMLRECL";
+        case 0x102c: return "INMSIZE ";
+        case 0x102f: return "INMNUMF ";
+        default:     return "INMDIR  ";
+    }
 }
 
 /* ====================================================================== */
@@ -657,9 +659,10 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
                  * records themselves -- what INMR03 carries; it decoded as
                  * "data" (#806).  The value is shown beside its name. */
                 int code = mvs_be16(r + vp + 2);
-                printf("%sINMRECFM   %s (X'%04X')\n", indent, inmrecfm_name(code), code);
+                char nm[32];
+                printf("%sINMRECFM   %s (X'%04X')\n", indent, mvs_inmrecfm_name(code, nm), code);
             } else if ((key == 0x0030 || key == 0x0042 || key == 0x003c ||
-                        key == 0x102c || key == 0x000c) && vp + 2 <= len) {
+                        key == 0x102c || key == 0x000c || key == 0x102f) && vp + 2 <= len) {
                 /* integer DCB / allocation text units: BLKSIZE, LRECL, DSORG,
                  * INMSIZE (alloc size hint), INMDIR (directory blocks) */
                 int vl = mvs_be16(r + vp), z; long val = 0;
@@ -669,9 +672,7 @@ static void show_textunits(const unsigned char *r, long len, const char *indent)
                            val == 0x0200 ? "PO" : val == 0x4000 ? "PS" :
                            val == 0x0040 ? "DA" : "?");
                 else
-                    printf("%s%s   %ld\n", indent,
-                           key == 0x0030 ? "INMBLKSZ" : key == 0x0042 ? "INMLRECL" :
-                           key == 0x102c ? "INMSIZE " : "INMDIR  ", val);
+                    printf("%s%s   %ld\n", indent, int_tu_name(key), val);
             }
         }
         { int j; long q = vp; for (j = 0; j < num && q + 2 <= len; j++) { int l = mvs_be16(r + q); q += 2 + l; } p = q; }

@@ -147,6 +147,13 @@ enum { MVS_RECFM_U = 0xc0, MVS_RECFM_F = 0x80, MVS_RECFM_FB = 0x90,
 enum { MVS_INMRECFM_X02 = 0x02 };
 #define MVS_INMRECFM_INMCOPY ((MVS_RECFM_VS << 8) | MVS_INMRECFM_X02)
 
+/* A RECFM byte's name -- "FB", "VBS", "U", "FBA" -- into out (8 bytes). */
+const char *mvs_recfm_name(int recfm, char out[8]);
+/* An INMRECFM text unit's name: the RECFM in its high byte, or, for X'0001',
+ * the shortened VBS form of the transmission records themselves, which INMR03
+ * carries.  file370 and xmit370 decoded it apart and differently (#804). */
+const char *mvs_inmrecfm_name(int inmrecfm, char out[32]);
+
 /* one text unit: key(2) + count(2) + length(2) + value */
 void mvs_tu(unsigned char *b, long *p, int key, const unsigned char *val, int len);
 void mvs_tui(unsigned char *b, long *p, int key, long v, int n);   /* integer value */
