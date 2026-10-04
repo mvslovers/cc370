@@ -99,6 +99,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           v=$(gh release view --json tagName -q .tagName | sed 's/^v//')
+          # A release PR changes the template for a version not yet published:
+          # the tap still carries the previous release, and release.yml renders
+          # and pushes the new formula after the tag. Compare only when VERSION
+          # is the latest release.
+          if [ "$(tr -d ' \n' < VERSION)" != "$v" ]; then
+            echo "VERSION $(cat VERSION) is not the latest release ($v): the tap is updated by release.yml"
+            exit 0
+          fi
           gh release download "v$v" -p SHA256SUMS -O sums
           sh packaging/homebrew/render.sh "$v" sums > cc370.rb
           curl -fsSL https://raw.githubusercontent.com/mvslovers/homebrew-tap/main/Formula/cc370.rb -o tap.rb

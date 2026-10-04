@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-04
+
 ### Added
 - **A second sysroot** (#726): besides its own `cc370/{include,lib,macros}`,
   cc370 searches `cc370/libc370/{include,lib,macros}` -- headers in cc1,
@@ -38,12 +40,25 @@ neither number is mistaken for the other.
   only); `homebrew.yml` then installs it from the tap on all four hosts. A
   file a later libc370 adds is seen after `brew reinstall cc370` until cc370
   searches a second sysroot (#726).
-
-## [1.1.1] - 2026-10-03
-
-A packaging release: the prebuilt toolchains are stripped. The compiler, the
-runtime and the macros are unchanged, so nothing changes for libc370 or for
-what compiles and links.
+  With this release the formula links libc370 with one symlink, and that
+  restriction is gone (#732).
+- **as370: `TPROT` and `IPTE`**, in the formats IFOX00 gives them (#56,
+  measured on MVSTK5-REF JOB00321): TPROT is SSE `D1(B1),D2(B2)`, IPTE the
+  S-format `D2(B2)` -- not RRE.
+- **as370: `S'` and `I'`** are evaluated in conditional assembly (#258); every
+  value IFOX00-confirmed (JOB00320).
+- **ld370: `--entry` seeds automatic library call** (#107), so the CRT can live
+  inside an archive: an entry still undefined after the fixpoint is pulled by
+  name.
+- **New as370 diagnostics, as IFOX00 raises them:** IFO025 for an
+  out-of-sequence card under ISEQ (#128), IFO043 for a macro prototype named
+  after an operation (#297), IFO254 for an ill-formed second operand of END
+  (#441), IFO085 for a library member without a MACRO header (#427), IFO168
+  for an expression of more than 20 terms (#272), IFO211 for an S instruction
+  with a second operand (#56), IFO123/IFO124 for `S'`/`I'` without a scale
+  (#258).
+- **ld370 warns when two explicit objects define the same entry** (#478), as
+  IEWL does (IEW0241); the first definition is kept, as before.
 
 ### Changed
 - **ld370 links modules neither RENT nor REUS by default** (#100) -- IEWL's
@@ -58,6 +73,35 @@ what compiles and links.
   without RENT/REUS from this release**: httplua, httprexx, lua370 and nsf370
   at the time of writing. A `--pack` of a pre-built `-iebcopy` keeps that
   member's own attributes.
+- **ld370 keeps the first definition of a duplicate CSECT** (#102), as IEWL
+  does: the later copy is dropped with its text, space, RLDs and entries, and
+  the sections after it move up (IEWL layouts JOB01409, IRXVTOC JOB01635).
+  Until now the last copy won and every copy's text stayed in the module.
+- **dasm370 names every section of a multi-section deck on stderr** (#439),
+  and returns rc 4 when the section it took is empty while another is not.
+- **xmit370: the unloaded form declares at least BLKSIZE 296** (#118), so a
+  RECFM=F library with BLKSIZE 80 RECEIVEs (mvsdev JOB01343).
+
+### Fixed
+- **Nested functions** (#686): the static chain was passed in R10, which every
+  prologue reloads with the page table, so a nested function read its parent's
+  variables through the wrong address -- silently. It is now R0; the
+  trampoline no longer clobbers R14, its label fits in 8 characters, and it is
+  copied with `memcpy`. MVS JOB01338.
+- **xmit370: INMR02 #2 INMRECFM is 4802** (#117), as every real transmission
+  carries (RECEIVE on mvsdev JOB01316).
+- **as370: the return code no longer depends on the 128-entry diagnostic
+  lists** (#86); `MNOTE 0` counts among the flagged statements (#682);
+  `BRXH`/`BRXLE` are undefined operation codes, as in IFOX00 (#56).
+- **`make test-corpus` builds its baseline again** (#744).
+
+## [1.1.1] - 2026-10-03
+
+A packaging release: the prebuilt toolchains are stripped. The compiler, the
+runtime and the macros are unchanged, so nothing changes for libc370 or for
+what compiles and links.
+
+### Changed
 - **The release binaries are stripped** (#718): `make dist` strips the
   driver, `cc1` and the tools after installing the tree, so the release
   tarballs and packages carry no symbol tables or debug info; the Linux smoke
