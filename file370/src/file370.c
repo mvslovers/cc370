@@ -169,22 +169,56 @@ static void show_obj(const char *path, const unsigned char *b, long n, int v)
 /* ====================================================================== */
 /* ar370 archive                                                          */
 /* ====================================================================== */
+/* An archive member's name as its header gives it: "name/" short, or "/NNN",
+ * an offset into the GNU long-name member, which ar370 writes since #805.
+ * Empty for the symbol table and the long-name member themselves. */
+static void ar_member_name(const unsigned char *h, const unsigned char *ln, long lnlen, char *name, size_t namesz)
+{
+    size_t len = 0;
+    if (h[0] == '/' && h[1] >= '0' && h[1] <= '9' && ln) {
+        long o = atol((const char *)h + 1);
+        while (o < lnlen && ln[o] != '/' && ln[o] != '\n' && len + 1 < namesz) name[len++] = (char)ln[o++];
+    } else {
+        while (len < 16 && h[len] != '/' && h[len] != ' ' && len + 1 < namesz) { name[len] = (char)h[len]; len++; }
+    }
+    name[len] = 0;
+}
+
+/* the member list, with long names resolved */
+static void show_ar_members(const unsigned char *b, long n)
+{
+    const unsigned char *ln = NULL;
+    long lnlen = 0;
+    for (long p = 8; p + 60 <= n; ) {
+        long size = atol((const char *)b + p + 48);
+        if (b[p] == '/' && b[p + 1] == '/') { ln = b + p + 60; lnlen = size; }
+        p += 60 + size + (size & 1);
+    }
+    for (long p = 8; p + 60 <= n; ) {
+        long size = atol((const char *)b + p + 48);
+        char name[64];
+        ar_member_name(b + p, ln, lnlen, name, sizeof name);
+        if (name[0]) printf("    member  %-16s  %ld bytes\n", name, size);
+        p += 60 + size + (size & 1);
+    }
+}
+
 static void show_ar(const char *path, const unsigned char *b, long n, int v)
 {
-    long p = 8, nmem = 0, nsym = 0;
-    const unsigned char *symtab = NULL; long symsize = 0;
+    long nmem = 0;
+    long nsym = 0;
+    const unsigned char *symtab = NULL;
+    long symsize = 0;
 
-    /* first pass: count members + locate the "/" symbol table */
-    while (p + 60 <= n) {
-        char name[17]; long size;
-        memcpy(name, b + p, 16); name[16] = 0;
-        size = atol((const char *)b + p + 48);
-        if (name[0] == '/' && (name[1] == ' ' || name[1] == 0)) {     /* "/" symtab */
-            symtab = b + p + 60; symsize = size;
+    /* first pass: count members + locate the "/" symbol table; the GNU
+     * long-name member is not counted as an object member */
+    for (long p = 8; p + 60 <= n; ) {
+        long size = atol((const char *)b + p + 48);
+        if (b[p] == '/' && (b[p + 1] == ' ' || b[p + 1] == 0)) {
+            symtab = b + p + 60;
+            symsize = size;
             if (size >= 4) nsym = (long)mvs_be32(b + p + 60);
-        } else if (name[0] == '/' && name[1] == '/') {                /* "//" longnames */
-            /* GNU long-name table -- not counted as an object member */
-        } else {
+        } else if (b[p] != '/' || b[p + 1] != '/') {
             nmem++;
         }
         p += 60 + size + (size & 1);
@@ -193,40 +227,15 @@ static void show_ar(const char *path, const unsigned char *b, long n, int v)
     printf("%s: ar370 archive -- %ld object member(s), %ld symbol(s)\n",
            path, nmem, nsym);
     if (!v) return;
-
-    /* member list.  A name that did not fit the header is "/NNN", an offset
-     * into the "//" long-name member, which ar370 writes since #805. */
-    {
-        const unsigned char *ln = NULL; long lnlen = 0;
-        for (p = 8; p + 60 <= n; ) {
-            long size = atol((const char *)b + p + 48);
-            if (b[p] == '/' && b[p + 1] == '/') { ln = b + p + 60; lnlen = size; }
-            p += 60 + size + (size & 1);
-        }
-        p = 8;
-        while (p + 60 <= n) {
-            char name[64]; long size; int i, L = 0;
-            size = atol((const char *)b + p + 48);
-            if (b[p] == '/' && b[p + 1] >= '0' && b[p + 1] <= '9' && ln) {
-                long o = atol((const char *)b + p + 1);
-                while (o < lnlen && ln[o] != '/' && ln[o] != '\n' && L < 63) name[L++] = (char)ln[o++];
-                name[L] = 0;
-            } else {
-                memcpy(name, b + p, 16); name[16] = 0;
-                for (i = 15; i >= 0 && (name[i] == ' ' || name[i] == '/'); i--) name[i] = 0;
-            }
-            if (name[0]) printf("    member  %-16s  %ld bytes\n", name, size);
-            p += 60 + size + (size & 1);
-        }
-    }
+    show_ar_members(b, n);
     /* symbol names: count(4) + count*offset(4) + NUL-terminated names */
     if (symtab && nsym > 0) {
-        long base = 4 + nsym * 4, q = base; long s = 0;
+        long q = 4 + nsym * 4;
         printf("    symbol table (%ld):\n", nsym);
-        while (q < symsize && s < nsym) {
+        for (long s = 0; q < symsize && s < nsym; s++) {
             const char *name = (const char *)symtab + q;
             printf("      %s\n", name);
-            q += (long)strlen(name) + 1; s++;
+            q += (long)strlen(name) + 1;
         }
     }
 }

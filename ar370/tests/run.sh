@@ -5,8 +5,8 @@
 cd "$(dirname "$0")/../.." || exit 2
 AR=${AR370:-./ar370/ar370}; AS=./as370/as370; LD=./ld370/ld370
 pass=0; fail=0
-ok()  { echo "PASS: $1"; pass=$((pass+1)); }
-bad() { echo "FAIL: $1"; fail=$((fail+1)); }
+ok()  { echo "PASS: $1"; pass=$((pass+1)); return 0; }
+bad() { echo "FAIL: $1"; fail=$((fail+1)); return 0; }
 case "$AR" in /*) ;; *) AR="$PWD/$AR" ;; esac
 for t in "$AR" "$AS" "$LD"; do [ -x "$t" ] || { echo "ar370 suite: $t not built"; exit 2; }; done
 W=$(mktemp -d) || exit 2
