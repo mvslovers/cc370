@@ -9,8 +9,13 @@ int main(void)
     char line[81];
     long n = 0;
 
-    if (in == NULL || out == NULL)
+    if (in == NULL || out == NULL) {
+        if (in != NULL)
+            fclose(in);
+        if (out != NULL)
+            fclose(out);
         return 8;
+    }
 
     while (fgets(line, sizeof line, in) != NULL) {
         char *p;
