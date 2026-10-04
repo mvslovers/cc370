@@ -95,11 +95,13 @@ are not LD items.
       code.],
     [8], [1], [The type of the item, from @apx-objfmt-esd-types.],
     [9], [3], [SD, PC, CM: the address of the section. LD: the address of
-      the entry point. ER, WX: zero.],
-    [12], [1], [Blank.],
-    [13], [3], [SD, PC, CM: the length of the section. LD: the ESD
-      identifier of the section that contains the entry point. ER, WX:
-      blank.],
+      the entry point. ER, WX, XD: zero.],
+    [12], [1], [XD: the alignment, less one: #cmd("X'00'") byte,
+      #cmd("X'01'") halfword, #cmd("X'03'") fullword, #cmd("X'07'")
+      doubleword. All other types: blank.],
+    [13], [3], [SD, PC, CM, XD: the length of the section or of the
+      external dummy section. LD: the ESD identifier of the section that
+      contains the entry point. ER, WX: blank.],
   )
 ] <apx-objfmt-esd-item>
 
@@ -119,9 +121,14 @@ padding that follows it.
     [ER], [#cmd("X'02'")], [External reference: a symbol named by
       #cmd("EXTRN") or in a #cmd("V")-type address constant.],
     [PC], [#cmd("X'04'")], [Private code: an unnamed control section.],
-    [CM], [#cmd("X'05'")], [Common section. as370 does not write it: it does
-      not accept the #cmd("COM") instruction. ld370 reads it and places it
-      like a control section.],
+    [CM], [#cmd("X'05'")], [Common section, named by #cmd("COM"). It
+      carries no text: the address is 0 and the length is the size the
+      #cmd("DS") statements of the section reserve, over all the
+      #cmd("COM") statements of the same name.],
+    [XD], [#cmd("X'06'")], [External dummy section (in linkage editor terms,
+      a pseudo register): a name defined by #cmd("DXD"), or a
+      #cmd("DSECT") named in a #cmd("Q")-type address constant. file370
+      shows it as #cmd("PR").],
     [WX], [#cmd("X'0A'")], [Weak external reference, named by
       #cmd("WXTRN"). The link does not fail when nothing defines it.],
   )
@@ -201,7 +208,8 @@ item can leave them out, which the previous item announces in its flag byte.
     [Offset], [Length], [Contents],
     [0], [2], [The relocation pointer: the ESD identifier of the symbol.
       For a symbol that is an LD item, it is the identifier of the section
-      that contains it.],
+      that contains it. For a #cmd("Q")-type constant, the XD item. For a
+      #cmd("CXD"), zero.],
     [2], [2], [The position pointer: the ESD identifier of the section that
       contains the constant.],
     [4], [1], [The flag byte, described in @apx-objfmt-rld-flag.],
@@ -220,7 +228,9 @@ item, so that each record can be read by itself.
     [Bits], [Meaning],
     [#cmd("X'F0'")], [The type of the constant. #cmd("X'00'"): an
       #cmd("A")-type constant. #cmd("X'10'"): a #cmd("V")-type constant.
-      as370 writes no other value.],
+      #cmd("X'20'"): a #cmd("Q")-type constant, the offset of an external
+      dummy section. #cmd("X'30'"): a #cmd("CXD"), the total length of all
+      external dummy sections.],
     [#cmd("X'0C'")], [The length of the constant, less one:
       #cmd("X'04'") 2 bytes, #cmd("X'08'") 3 bytes, #cmd("X'0C'") 4 bytes.],
     [#cmd("X'02'")], [Negative relocation: the address is subtracted, as in
@@ -236,6 +246,64 @@ The usual flag bytes are therefore #cmd("X'0C'") for
 #cmd("DC AL3(")#var("x")#cmd(")") and #cmd("X'04'") for
 #cmd("DC AL2(")#var("x")#cmd(")"), each with #cmd("X'01'") added when a
 short item follows.
+
+== Common and External Dummy Sections <apx-objfmt-pr>
+
+#idx("COM")#idx("DXD")#idx("CXD")#idx("Q-type address constant")
+#idx("common section")#idx("external dummy section")#idx("pseudo register")
+Three kinds of storage are described in the object module without being
+part of its text:
+
+- *A common section* (#cmd("COM")) is storage that several modules share
+  by name. as370 gives it a location counter of its own, starting at 0, and
+  a later #cmd("COM") statement with the same name continues it. Only
+  #cmd("DS") belongs there\; the section has a CM item and no TXT records.
+- *An external dummy section* (#cmd("DXD")) is a piece of storage whose
+  place the linkage editor decides: it adds up the lengths of all external
+  dummy sections of the program, aligning each, and assigns each an offset.
+  The operand of #cmd("DXD") is written like that of #cmd("DS"), and the
+  length and alignment it gives become the XD item. A #cmd("DSECT") named
+  in a #cmd("Q")-type constant becomes an XD item as well.
+- #cmd("DC Q(")#var("name")#cmd(")") is a 4-byte constant that receives the
+  offset of the external dummy section #var("name"), and #cmd("CXD") a
+  fullword that receives the total length of all of them. The
+  #cmd("Q")-type constant is written as zeros, the #cmd("CXD") field is
+  not written at all\; the RLD item, with type #cmd("X'20'") or
+  #cmd("X'30'"), tells the linkage editor what to put there.
+
+@apx-objfmt-pr-dump shows the object module of the source in
+@apx-objfmt-pr-src.
+
+#fig(caption: [PR, a source with a common section and external dummy
+  sections])[
+  #code(read("../ex/apx-objfmt/pr.asm"))
+] <apx-objfmt-pr-src>
+
+#fig(caption: [The object module pr.o])[
+  #code(read("../ex/apx-objfmt/pr-o.txt"))
+] <apx-objfmt-pr-dump>
+
+#deflist(width: 1.3in,
+  [Record 1, ESD], [#cmd("WORK"), type #cmd("06"), alignment #cmd("03")
+    and length 8 (#cmd("2F"))\; #cmd("FLAG"), alignment #cmd("00") and
+    length 1\; #cmd("AREA"), type #cmd("05"), address 0, length
+    #cmd("2A"): the 40 bytes of the first #cmd("COM") statement and the 2 of
+    the second.],
+  [Record 2, ESD], [The SD item #cmd("PROG"), identifier 4, length
+    #cmd("0C"): the two #cmd("Q")-type constants and the #cmd("CXD").],
+  [Record 3, TXT], [Only the 8 bytes of the two #cmd("Q")-type constants,
+    as zeros. The #cmd("CXD") at offset 8 is not written.],
+  [Record 4, RLD], [#cmd("00 00 00 04 3C 00 00 08"): the #cmd("CXD"),
+    relocation pointer 0, type #cmd("X'30'"), length 4.
+    #cmd("00 01 00 04 2C 00 00 00") and #cmd("00 02 00 04 2C 00 00 04"):
+    the two #cmd("Q")-type constants, for #cmd("WORK") and #cmd("FLAG").],
+)
+
+The #cmd("Q")-type operand must name a #cmd("DXD") or a #cmd("DSECT")
+defined before it: a name that is defined later is flagged with IFO231, a
+name that is neither with IFO207. A #cmd("COM") statement without a name
+is not supported by as370. See @ld370-layout for what ld370 does with these
+items.
 
 == End Record <apx-objfmt-end>
 
@@ -303,7 +371,7 @@ lengths 2, 3 and 4. It was assembled with
 ASMDATE=10/04/26 as370 -o fmt.o fmt.asm
 ```
 
-#fig(caption: [FMT, a source that uses every item as370 writes])[
+#fig(caption: [FMT, a source with the usual items of a module])[
   #code(read("../ex/apx-objfmt/fmt.asm"))
 ] <apx-objfmt-src>
 

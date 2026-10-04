@@ -278,6 +278,7 @@ the message as printed.
     [IFO203], [4], [#mc("L, D, E, F, H, or Y-type constant truncated, high order digits lost")],
     [IFO205], [4], [#mc("Relocatable Y-type constant, value truncated to rightmost 2 bytes")],
     [IFO206], [8], [#mc("Duplication factor error - no storage reserved") \ #mc("Duplication factor error - the terms are not from one section") \ #mc("Negative duplication factor")],
+    [IFO207], [8], [#mc("Operand of Q-type constant does not name a DSECT or DXD - ")#mv("sym")],
     [IFO211], [12], [#mc("too many operands")],
     [IFO213], [12], [#mc("Complexly relocatable expression (... instruction zeroed) - ")#mv("x")],
     [IFO217], [12], [#mc("Relocatable operand of a multiply or divide (... instruction zeroed) - ")#mv("x") \ #mc("USING base not absolute or simply relocatable - ")#mv("x") \ #mc("Relocatable duplication factor - an absolute expression is required")],
@@ -348,10 +349,10 @@ IFOX00. The severity is given with each.
 
 #msg[#mc("ERROR: ")#mv("what")#mc(" is valid Assembler XF but not implemented by as370 - no storage reserved, every later symbol in the section would move, in line ")#mv("n")][
   The statement is correct for IFOX00, but as370 does not assemble it.
-  #mv("what") is #mc("DC/DS type ")#mv("c") for a constant type that
-  as370 does not implement, or #mc("CXD"). Nothing is reserved, so the
-  section is shorter than IFOX00 would make it. Severity 8.
-][Write the constant in another form, or assemble the module with IFOX00.]
+  #mv("what") is #mc("unnamed COM"), a #mc("COM") statement without a
+  name. Nothing is reserved, so the section is shorter than IFOX00 would
+  make it. Severity 8.
+][Give the common section a name, or assemble the module with IFOX00.]
 
 #msg[#mc("ERROR: OPSYN with a blank operand (deleting an operation code) is valid Assembler XF but not implemented by as370") \
 #mc("ERROR: ICTL with columns other than 1,71,16 is valid Assembler XF but not implemented by as370 - the cards are read with the standard columns")][

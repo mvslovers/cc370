@@ -79,7 +79,8 @@ defines:
   #cmd("ENTRY") in assembler language.
 
 External references (ER) and weak external references (WX) are not entered,
-nor is unnamed private code (PC), since it has no name. The names are
+nor is unnamed private code (PC), since it has no name, nor are external
+dummy sections (XD). The names are
 translated from EBCDIC and the trailing blanks removed. They appear in the
 index in member order, and within a member in ESD order.
 

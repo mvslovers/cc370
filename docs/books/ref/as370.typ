@@ -24,6 +24,16 @@ link-edited on the workstation with ld370 (see Chapter 3) or uploaded and
 link-edited on MVS with IEWL; both accept it. Appendix A describes the
 format.
 
+#idx("COM")#idx("DXD")#idx("CXD")#idx("Q-type address constant")
+Besides control sections, entry points and external references, the object
+module can describe common sections (#cmd("COM")), external dummy sections
+(#cmd("DXD"), and a #cmd("DSECT") named in a #cmd("Q")-type constant), and
+the constants that refer to them: #cmd("DC Q(")#var("name")#cmd(")") and
+#cmd("CXD"). as370 assembles all of these, except a
+#cmd("COM") statement without a name, which it reports as not implemented.
+ld370 does not yet resolve them (see @ld370-layout)\; a module that uses
+them is link-edited with IEWL on MVS.
+
 The one difference from IFOX00 is the translator identification on the END
 record, which reads #cmd("ASM370") where IFOX00 writes its own program number. It does not affect the
 linkage editor.
