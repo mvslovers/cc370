@@ -39,18 +39,10 @@ class Cc370 < Formula
     # directories from a keg -- without it no header and no -lc is found.
     (lib/"cc370"/version.to_s/".keepme").write ""
 
-    # cc370 searches its sysroot only in its own tree (cc370/), so libc370's
-    # files are linked in from its stable opt path: include/ whole, lib/ and
-    # macros/ file by file beside cc370's own libcc370rt.a and prologue
-    # macros. A file a later libc370 adds is seen after `brew reinstall cc370`
-    # (cc370#726 removes the need).
-    libc = Formula["mvslovers/tap/libc370"].opt_libexec
-    sysroot = prefix/"cc370"
-    sysroot.install_symlink libc/"include"
-    Dir[libc/"lib/*", libc/"macros/*"].each do |f|
-      dir = sysroot/File.basename(File.dirname(f))
-      dir.install_symlink f unless (dir/File.basename(f)).exist?
-    end
+    # cc370 also searches a second sysroot, cc370/libc370/{include,lib,macros}
+    # (cc370#726), so libc370 is linked in whole with one symlink to its
+    # stable opt path; a file a later libc370 adds is seen at once (#732).
+    (prefix/"cc370").install_symlink Formula["mvslovers/tap/libc370"].opt_libexec => "libc370"
   end
 
   test do
