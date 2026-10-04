@@ -539,7 +539,18 @@ extern const unsigned char i370_ebcdic_to_ascii[256];
         }
  */
 
+#if defined(TARGET_PDPMAC)
+/* NOT R10 on MVS: R10 is the page-table register, and every function's own
+   prologue loads it (`L 10,=A(@@PGTn)') before the body can copy the chain
+   out -- so a nested function read its parent's variables through the page
+   table's address, silently (cc370#686).  PDPPRLG touches only R12, R13 and
+   R15, the generated prologue then R11 and R10; R0 reaches the body intact,
+   is fixed (never allocated) and call-clobbered, and nothing in a call
+   sequence touches it between setting the chain and the BALR.  */
+#define STATIC_CHAIN_REGNUM 0
+#else
 #define STATIC_CHAIN_REGNUM 10
+#endif
 
 /* R1 is register in which address to store a structure value is passed to
    a function.  This is used only when returning 64-bit long-long in a 32-bit arch
@@ -908,14 +919,24 @@ enum reg_class
    do this ... especially since BASR should probably be substituted for BALR.
  */
 
+/* The trampoline is entered by BALR 14,15 with R15 = its own address -- the
+   OS linkage convention every call here follows -- so R15 is its base and R14,
+   the caller's return address, is left alone.  The old template began with
+   BALR 14,0 to get a base, which overwrote R14: the nested function returned
+   into the trampoline instead of to its caller (cc370#686).
+       L    chain,12(15)     static chain -> STATIC_CHAIN_REGNUM
+       L    15,16(15)        the nested function
+       BR   15
+       DC   H'0'             pad; +12 chain and +16 address are stored by
+                             INITIALIZE_TRAMPOLINE  */
 #define TRAMPOLINE_TEMPLATE(FILE)					\
 {									\
-  assemble_aligned_integer (2, GEN_INT (0x05E0));			\
   assemble_aligned_integer (2, GEN_INT (0x5800 | STATIC_CHAIN_REGNUM << 4)); \
-  assemble_aligned_integer (2, GEN_INT (0xE00A));			\
+  assemble_aligned_integer (2, GEN_INT (0xF00C));			\
   assemble_aligned_integer (2, GEN_INT (0x58F0)); 			\
-  assemble_aligned_integer (2, GEN_INT (0xE00E));			\
+  assemble_aligned_integer (2, GEN_INT (0xF010));			\
   assemble_aligned_integer (2, GEN_INT (0x07FF));			\
+  assemble_aligned_integer (2, const0_rtx);				\
   assemble_aligned_integer (2, const0_rtx);				\
   assemble_aligned_integer (2, const0_rtx);				\
   assemble_aligned_integer (2, const0_rtx);				\
@@ -1442,8 +1463,14 @@ enum reg_class
 
 #endif /* TARGET_ALIASES */
 
+/* An MVS symbol is at most 8 characters, and "@@" + prefix + number must fit.
+   Every prefix GCC uses does, except varasm.c's trampoline template label
+   "LTRAMP": `@@LTRAMP0' is nine, and as370/IFOX00 reject it, so a nested
+   function whose address is taken could not assemble (cc370#686).  It is
+   spelled LTR here; no other GCC prefix begins with LTR, and the internal-label
+   hook and every reference both go through this macro.  */
 #define ASM_GENERATE_INTERNAL_LABEL(LABEL, PREFIX, NUM)			\
-  sprintf (LABEL, "*@@%s%d", PREFIX, NUM)
+  sprintf (LABEL, "*@@%s%d", strcmp (PREFIX, "LTRAMP") ? (PREFIX) : "LTR", NUM)
 
 /* Generate case label.  For HLASM we can change to the data CSECT
    and put the vectors out of the code body. The assembler just

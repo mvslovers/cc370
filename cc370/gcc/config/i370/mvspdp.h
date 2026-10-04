@@ -34,6 +34,14 @@ Boston, MA 02111-1307, USA.  */
 
 #define TARGET_PDPMAC 1
 
+/* Implicit library calls -- a block move or clear GCC does not expand inline --
+   use memcpy/memset/memcmp, which libc370 has, not bcopy/bzero/bcmp, which it
+   does not.  The definition in i370.h sits under TARGET_ELF_ABI and never
+   reached this target, so a trampoline's template copy called BCOPY
+   (cc370#686).  No ecosystem object references BCOPY, BZERO or BCMP today
+   (1,286 built objects scanned), so nothing else is reached.  */
+#define TARGET_MEM_FUNCTIONS
+
 /* One-shot link (cc370 foo.c -o foo.lm): the driver invokes ld370 (the target
    `ld`).  Pull the crt0 startup as the first object (so the @@CRT0 startup is at
    module offset 0) and set the entry to @@CRT0.  crt0.o and libc.a live in the
