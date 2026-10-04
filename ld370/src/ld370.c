@@ -2287,15 +2287,27 @@ int main(int argc, char **argv)
              * before autocall, the app's entry is seen first and kept. */
             if (G[gi].type == 0x03 && G[gi].owner >= 0) {
                 trace("  duplicate entry '%s' ignored (first definition kept)", mvs_nm(o->ld[j].name));
-                /* IEWL reports this for an autocalled member (IEW0241 DOUBLY
-                 * DEFINED, RC 4 -- MVSCE-LAB JOB01408, test TC).  Two explicit
-                 * or --include'd objects are cc370#478's case. */
-                if (o->autocalled) {
+                /* IEWL reports this whichever way the second definition came
+                 * in: IEW0241 DOUBLY DEFINED, RC 4, first definition kept --
+                 * for an autocalled member (MVSCE-LAB JOB01408, test TC) and
+                 * for two explicitly included decks (JOB01639, cc370#478),
+                 * where a reference from a third deck binds to the first.
+                 * The case that matters: cc370 cuts external names to 8
+                 * characters, so two different C functions in two objects can
+                 * land on one name, and every caller then gets the first. */
+                if (o->autocalled)
                     fprintf(stderr, "ld370: warning: '%s' doubly defined: autocalled member %s in %s "
                                     "defines it again (first definition kept)\n",
                             mvs_nm(o->ld[j].name), member_label(o->ac_ar, o->ac_off), AR[o->ac_ar].path);
-                    nwarn++;
-                }
+                else if (o->src_kind == SRC_INCLUDE)
+                    fprintf(stderr, "ld370: warning: '%s' doubly defined: included member %s in %s "
+                                    "defines it again (first definition kept)\n",
+                            mvs_nm(o->ld[j].name), member_label(o->src_ar, o->src_off), AR[o->src_ar].path);
+                else
+                    fprintf(stderr, "ld370: warning: '%s' doubly defined: %s defines it again "
+                                    "(first definition kept)\n", mvs_nm(o->ld[j].name),
+                            o->src_path ? o->src_path : "an object");
+                nwarn++;
                 continue;
             }
             /* An LD's address in the deck is object-relative; every consumer
