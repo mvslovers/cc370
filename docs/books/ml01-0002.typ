@@ -108,5 +108,10 @@ variable, for which you supply a value, appears in _italics_.
 #include "ref/cmplmd370.typ"
 #include "ref/idrdump370.typ"
 
+#show: appendices
+#include "ref/apx-objfmt.typ"
+#include "ref/apx-lmodfmt.typ"
+#include "ref/apx-messages.typ"
+
 #heading(numbering: none)[Index]
 #make-index()
