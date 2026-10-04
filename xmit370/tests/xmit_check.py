@@ -169,9 +169,24 @@ def main():
     want_rf = 0x90 if want["recfm"] == "FB" else 0x80
     if u[10] != want_rf:
         fail("COPYR1 RECFM (off 10) is %02X, expected %02X" % (u[10], want_rf))
-    if be16(u, 14) != want["blocksize"] + 20:
-        fail("COPYR1 unloaded BLKSIZE (off 14) is %d, expected %d"
-             % (be16(u, 14), want["blocksize"] + 20))
+    # The unloaded form's declared blocksize is the library's + 20, but never
+    # below 296: the 288-byte directory record plus its RDW must fit LRECL =
+    # BLKSIZE - 4 (#118).
+    want_ub = max(want["blocksize"] + 20, 296)
+    if be16(u, 14) != want_ub:
+        fail("COPYR1 unloaded BLKSIZE (off 14) is %d, expected %d" % (be16(u, 14), want_ub))
+    # ... and every logical record of the unloaded form, with its 4-byte RDW,
+    # must fit the LRECL INMR02 #2 declares: RECEIVE allocates SYSUT1 from it
+    # and refuses a longer record (NJE38: "logical records that exceed the
+    # LRECL", mvsdev JOB01342).  --recfm f --blocksize 80 declared 96 and sent
+    # 288 until #118.
+    if tu2 is not None:
+        declared = rdval(tu2[INMBLKSZ][0]); dlrecl = rdval(tu2[INMLRECL][0])
+        if declared != be16(u, 14):
+            fail("INMR02#2 INMBLKSZ %d differs from COPYR1 off 14 %d" % (declared, be16(u, 14)))
+        big = max(len(r) for r in data)
+        if big + 4 > dlrecl:
+            fail("a transmitted record of %d bytes (+4 RDW) exceeds the declared LRECL %d" % (big, dlrecl))
 
     # 5. directory: entry size must agree with the C byte
     entsz = 12 + (30 if want["stats"] else 0)

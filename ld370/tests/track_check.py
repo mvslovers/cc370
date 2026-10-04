@@ -166,9 +166,13 @@ def check(path, data_cc, trkpercyl, template, recfm, from_xmit, pack_cap, max_tr
     if u[XC1KEYLN] != 0:
         fail("COPYR1 KEYLEN is %d, expected 0" % u[XC1KEYLN])
     blk = be16(u, XC1BLKSZ)
-    if be16(u, XC1TBLKS) != blk + 20:
-        fail("COPYR1 off %d is %d, expected BLKSIZE+20 = %d"
-             % (XC1TBLKS, be16(u, XC1TBLKS), blk + 20))
+    # BLKSIZE + 20, but never below 296: a 288-byte directory record plus its
+    # RDW must fit LRECL = BLKSIZE - 4 (xmit370 #118; ld370's blocksizes start
+    # at 1024, so the floor never applies there).
+    want_t = max(blk + 20, 296)
+    if be16(u, XC1TBLKS) != want_t:
+        fail("COPYR1 off %d is %d, expected max(BLKSIZE+20, 296) = %d"
+             % (XC1TBLKS, be16(u, XC1TBLKS), want_t))
 
     # 1b. every byte the emitter does not stamp must still be the template's.
     if template is not None:
