@@ -69,7 +69,7 @@ linked into one transport file, without linking:
 
 #syntax(title: "Pack option:", read("../syntax/ld370-packopt.txt"))
 
-The third displays the version:
+The third displays the version or a summary of the options:
 
 #syntax(read("../syntax/ld370-version.txt"))
 
@@ -77,21 +77,23 @@ Options and input files may be given in any order, with one exception: a
 #cmd("-l") option is resolved when it is read, so the #cmd("-L") directories
 it is to search must come before it.
 
-#note[ld370 does not reject an operand it does not recognize. Any operand
-that is not an option is taken as an input file, so a misspelled option, or
-an option such as #cmd("-e") placed last without its value, ends the link
-with #cmd("ld370: cannot open") followed by the operand and return code 1.
-For the same reason ld370 has no #cmd("--help") option. Called with no input
-files, it writes a usage summary to standard error and ends with return
-code 2.]
+An operand that begins with #cmd("-") and is not an option is refused with
+#cmd("ld370: unknown option '")#var("operand")#cmd("' (ld370 --help)"), and an
+option that needs a value but is the last operand with
+#cmd("ld370: -e needs a value")\; both end with return code 2. Called with no
+input files, ld370 writes the usage summary to standard error and ends with
+return code 2.
 
 === Operands
 
 #deflist(width: 1.45in,
   [#var("object-file")], [is an object module written by as370, by cc370
     with #cmd("-c"), or by the MVS assembler. Object modules are placed in
-    the module in the order given. The file is not checked: a file that
-    contains no object records is accepted and contributes nothing.],
+    the module in the order given. A file that is not an object module, that
+    is, not a sequence of 80-byte records each beginning with #cmd("X'02'")
+    and ending with an END record, is refused with
+    #cmd("ld370: ")#var("file")#cmd(" is not an object deck") and the
+    reason, return code 1, and no member is written.],
   [#var("library-file")], [is an object library written by ar370. An
     operand is taken as a library when its name ends in #cmd(".a"). A library
     is not included as a whole\; it is searched by the automatic library
@@ -100,8 +102,12 @@ code 2.]
     #cmd("a.out").],
   [#cmd("--name") #var("member")], [sets the member name used in the
     directory of the transport files. Without it, the name is taken from the
-    #cmd("-o") file: the base name up to its first period, cut to eight
-    characters. Either name is changed to uppercase.],
+    #cmd("-o") file: the base name up to its first period. Either name is
+    changed to uppercase. When the name is used, that is with
+    #cmd("-iebcopy"), #cmd("-xmit") or #cmd("--map"), it must be a valid
+    member name, one to eight characters as described for aliases in
+    @ld370-alias\; otherwise ld370 ends with return code 2. A name is never
+    cut to eight characters.],
   [#cmd("-e"), #cmd("--entry") #var("symbol")], [sets the entry point to
     #var("symbol"), the name of a control section or an entry point in the
     module. See @ld370-entry.],
@@ -125,13 +131,15 @@ code 2.]
   [#cmd("--rent"), #cmd("--reus"), #cmd("--refr")], [mark the module
     reentrant, reusable or refreshable. See @ld370-attr.],
   [#cmd("--norent"), #cmd("--noreus")], [state that the module is not
-    reentrant or not reusable. Since neither attribute is set by default,
-    they change nothing on their own. Given together with #cmd("--rent") or
+    reentrant or not reusable. A module declares neither attribute by
+    default, so they are accepted and change nothing on their own. Given together with #cmd("--rent") or
     #cmd("--reus") respectively, they are refused.],
   [#cmd("--ac") #var("code")], [sets the APF authorization code, as
-    #cmd("SETCODE AC(")#var("code")#cmd(")") does. The default is 0.],
+    #cmd("SETCODE AC(")#var("code")#cmd(")") does: a number from 0 to 255.
+    The default is 0.],
   [#cmd("--blocksize") #var("bytes")], [names the block size of the load
-    library the module is going to. The default is 15040. See
+    library the module is going to, a number from 1024 to 32740. The default
+    is 15040. See
     @ld370-blksize.],
   [#cmd("--sparse-text")], [leaves out text records that no part of the
     input defined. See @ld370-sparse.],
@@ -148,10 +156,14 @@ code 2.]
   [#cmd("-v"), #cmd("--verbose")], [traces the phases of the link on
     standard error, one line each, beginning with #cmd("[ld370]"): the
     objects read, the modules taken from libraries, the origin of each
-    section and each relocated address constant. Unlike as370, ld370 does
-    not display its version for #cmd("-v").],
+    section, the counts of sections, entry points (LR) and unresolved
+    references (ER) in the CESD, and each relocated address constant.
+    Unlike as370, ld370 does not display its version for #cmd("-v")\; use
+    #cmd("-V").],
   [#cmd("--pack")], [selects the second form. See @ld370-pack.],
-  [#cmd("--version")], [displays the toolchain version and the commit from
+  [#cmd("-h"), #cmd("--help")], [writes a summary of the options to
+    standard output and ends with return code 0.],
+  [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the commit from
     which ld370 was built, for example #cmd("ld370 1.2.0 (b17cd14)"), and
     ends.],
 )
@@ -175,10 +187,12 @@ When two object modules define the same name, the first definition is kept:
 
 - An entry point defined a second time is reported with a warning, and every
   reference goes to the first definition.
-- A control section defined a second time is dropped without a message,
-  together with its text and its address constants, and the sections after
-  it in the same object module move up to close the gap. IEWL does the
-  same.
+- A control section defined a second time is dropped, together with its
+  text and its address constants, and the sections after it in the same
+  object module move up to close the gap. IEWL does the same, without a
+  message\; ld370 writes a note, #cmd("ld370: note: CSECT ADD1 defined
+  again in add1b.o; the first definition is kept and this one dropped, as
+  IEWL does"), and the link ends with return code 0.
 
 #idx("unresolved reference")
 An external reference that nothing defines ends the link with return code 1.
@@ -268,9 +282,6 @@ calls #cmd("RENT").
 
 The other attribute bits, such as executable, follow from the module itself
 and are set by ld370.
-
-#note[The authorization code is stored in one byte and is not checked:
-#cmd("--ac 300") is stored as 44. Give 0 or 1.]
 
 == Aliases <ld370-alias>
 
@@ -380,7 +391,10 @@ byte, where the variable-length records of the unloaded image cannot.
 The TRANSMIT file records, for the receiving side, the data set name given by
 #cmd("--dsn"), the organization of a load library (partitioned, record format
 U) with the block size given by #cmd("--blocksize"), and the space the
-library needs. To install the module:
+library needs. Its header also names the sending and receiving node and user
+as #cmd("ORIGNODE"), #cmd("IBMUSER"), #cmd("IBMUSER") and #cmd("DUMMY"), as
+the TRANSMIT file it was checked against does\; #cmd("RECEIVE") does not use
+these fields. To install the module:
 
 + Upload the #cmd(".xmit") file in binary to a sequential data set with
   #cmd("RECFM=FB") and #cmd("LRECL=80"), for example through the mvsMF REST
@@ -447,8 +461,15 @@ which writes #cmd("mylib.xmit"), a library with the members #cmd("ADDER") and
 #cmd("MAIN"), each with its own entry point, attributes and authorization
 code. A name used twice in one pack, as a member or as an alias, is refused.
 #cmd("--alias") and #cmd("--map") apply to a link and are refused with
-#cmd("--pack")\; the other link options are accepted with #cmd("--pack")
-and have no effect.
+#cmd("--pack"), and so is #cmd("--name"): a packed member is named with
+#var("member")#cmd("=")#var("file"). #cmd("--sparse-text"),
+#cmd("--allow-unresolved") and #cmd("--entry") are ignored with a warning,
+since a pack neither shapes nor resolves anything.
+
+A #var("file") that is a TRANSMIT file, an object library or an object
+module is refused with return code 2 and a message naming what it is: an
+object module has to be linked first, and a TRANSMIT file has to be packed
+from the modules it was made of.
 
 == Identification Records <ld370-idr>
 
@@ -459,8 +480,9 @@ Every member written by ld370 carries two identification records:
 - an HMASPZAP record of 251 bytes with no entries, the record in which
   AMASPZAP notes the changes it makes to the module on MVS\;
 - a linkage editor record of 22 bytes, which names #cmd("LD370") as the
-  program, with version 01 and modification level 00, and holds the date and
-  time of the link.
+  program, with the version and release of the toolchain as version and
+  modification level (01 and 02 for cc370 1.2), and holds the date and time
+  of the link.
 
 The translator records that IEWL copies from the END records of the object
 modules are not written.
@@ -490,23 +512,28 @@ begin with #cmd("ld370:")\; a warning begins with #cmd("ld370: warning:").
 #tab(caption: [ld370 return codes])[
   #table(columns: (0.9in, 1fr),
     [Code], [Meaning],
-    [0], [The module or the transport file was written. *Warnings also end
-      with 0*: a doubly defined entry point, a definition passed over by the
-      library search, an alias without a directory, a member file packed
-      without its directory, #cmd("--entry") given with #cmd("--pack").],
-    [1], [The link or the pack failed: an unresolved external reference, an
-      input file or library that cannot be read or is not a library,
-      #cmd("-l") or #cmd("--include") not found, an entry point not defined,
-      more than 32 libraries, a name used twice in one library, a record
-      longer than the block size, a file given to #cmd("--pack") that is
-      neither a member file nor an unloaded library.],
-    [2], [The command is not valid and nothing was written: no input files,
-      #cmd("--pack") without #cmd("-o"), #cmd("--rent") with
-      #cmd("--norent") or #cmd("--reus") with #cmd("--noreus"),
-      #cmd("--xref") without #cmd("--map"), #cmd("--alias") or #cmd("--map")
-      with #cmd("--pack"), a block size out of range, an alias or member name
-      that is not valid, an unloaded library given to #cmd("--pack") that
-      has several members or cannot be read, or a wrong #cmd("LDDATE") or
+    [0], [The module or the transport file was written. *Warnings and notes
+      also end with 0*: a doubly defined entry point, a control section
+      dropped as a duplicate, a definition passed over by the library
+      search, an alias without a directory, a member file packed without
+      its directory, an option that #cmd("--pack") ignores. #cmd("--help")
+      and #cmd("--version") also end with 0.],
+    [1], [The link or the pack failed: an input file that cannot be read or
+      is not an object module, a library that cannot be read or is not a
+      library, #cmd("-l") or #cmd("--include") not found, an unresolved
+      external reference, an entry point not defined, more than 32
+      libraries, a name used twice in one library, a record longer than the
+      block size, a file given to #cmd("--pack") that cannot be split into
+      load module records, an output file that cannot be written.],
+    [2], [The command is not valid, and nothing was written: an unknown
+      option, an option without its value, no input files, #cmd("--pack")
+      without #cmd("-o"), #cmd("--rent") with #cmd("--norent") or
+      #cmd("--reus") with #cmd("--noreus"), #cmd("--xref") without
+      #cmd("--map"), #cmd("--alias"), #cmd("--map") or #cmd("--name") with
+      #cmd("--pack"), a number that is not a number or out of range, a member
+      or alias name that is not valid, a TRANSMIT file, object library,
+      object module or unloaded library with several members given to
+      #cmd("--pack") as a member, or a wrong #cmd("LDDATE") or
       #cmd("LDTIME").],
   )
 ] <ld370-rc-tab>
