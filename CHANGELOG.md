@@ -84,8 +84,12 @@ neither number is mistaken for the other.
     over, so a module linked from several C objects compared with ITSELF was
     "not in the reference" throughout. An unnamed section now pairs by its
     first entry point and is reported under it, as `(ADDUP)`.
+  - The entry-point pairing works both ways: a named section, such as the SD
+    of `cc370 -mcsect`, also pairs with the unnamed section that owns the
+    same entry.
   - An empty section is left out of the comparison.
-  - A refusal (`--csect` naming no section, an incomplete image) comes before
+  - A refusal (`--csect` naming no section, an incomplete image, nothing to
+    compare) comes before
     anything is written to stdout; `--json` keeps its shape and `--difout`
     still carries every range.
   - The usage calls the operands NEW and REFERENCE, each an object deck or a

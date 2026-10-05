@@ -732,6 +732,12 @@ static const char *sect_label(const struct sect *a, const struct sect *b)
     if (a->ent[0]) { snprintf(buf, sizeof buf, "(%s)", a->ent); return buf; }
     return "(private)";
 }
+/* Has the new side anything to compare -- a section that is not empty? */
+static int has_text_section(const struct side *a)
+{
+    for (int i = 0; i < a->n; i++) if (a->s[i].len) return 1;
+    return 0;
+}
 /* Does --csect NAME name a non-empty section of the new side? */
 static int csect_named(const struct side *a, const struct side *b, const int *pair, const char *only)
 {
@@ -821,10 +827,15 @@ int main(int argc, char **argv)
                     pair[i] = k; bused[k] = 1; break;
                 }
         }
+        /* By entry point, in both directions: an unnamed section on either
+         * side pairs with the section on the other that owns the same first
+         * entry -- a -mcsect SUMUP against the unnamed PC it was linked into,
+         * and the reverse (#809). */
         for (i = 0; i < A.n; i++) {
-            if (pair[i] >= 0 || A.s[i].name[0] || !A.s[i].len || !A.s[i].ent[0]) continue;
+            if (pair[i] >= 0 || !A.s[i].len || !A.s[i].ent[0]) continue;
             for (k = 0; k < B.n; k++)
-                if (!bused[k] && !strcmp(B.s[k].ent, A.s[i].ent)) { pair[i] = k; bused[k] = 1; break; }
+                if (!bused[k] && (!A.s[i].name[0] || !B.s[k].name[0])
+                    && !strcmp(B.s[k].ent, A.s[i].ent)) { pair[i] = k; bused[k] = 1; break; }
         }
         for (i = 0; i < A.n; i++) {
             int cand = -1, ncand = 0;
@@ -850,6 +861,8 @@ int main(int argc, char **argv)
         } else if (only && !csect_named(&A, &B, pair, only)) {
             snprintf(ebuf, sizeof ebuf, "no section named %s", only);
             early = ebuf;
+        } else if (!has_text_section(&A)) {
+            early = "no sections paired";   /* nothing to compare: refused before output too */
         }
         if (early) {
             /* What the run could not judge is carried, not dropped: a
