@@ -70,7 +70,8 @@ tab-separated data files that describe the assembly for other programs (see
     The sub-options #cmd("g"), #cmd("i"), #cmd("m") and #cmd("x") are
     accepted and have no effect yet. The listing goes to standard output
     unless #cmd("=")#var("file") follows the sub-options; it must be the last
-    of them.#idx("listing", "requesting")],
+    of them. A #var("file") that cannot be written is a command-line error
+    (return code 16, no object module).#idx("listing", "requesting")],
   [#cmd("-I") #var("directory")], [adds #var("directory") to the macro and
     COPY library search. Repeat the option to add several directories; they
     are searched in the order given. See @as370-maclib.],
@@ -205,11 +206,12 @@ convention of IFOX00. @as370-rc-tab lists the values.
       written, for example an undefined operation code. The object module is
       written, but it is not expected to run.],
     [12], [Severe errors.],
-    [16], [Terminal error. A file could not be opened or written, and the
-      assembly was not completed\; or the command was in error, for
-      example an unknown option (#cmd("IFO258"), the option is ignored) or a
-      second source file. In the second case the assembly is still made and
-      the object module written.],
+    [16], [Terminal error: the source or the object module could not be
+      opened or written, or the command line is wrong -- an unknown option
+      (#cmd("IFO258")), a second source file, or a listing file named by
+      #cmd("-a=")#var("file") that cannot be written. On a wrong command line
+      the assembly still runs and reports its messages, but no object
+      module is written.],
   )
 ] <as370-rc-tab>
 
