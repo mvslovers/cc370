@@ -132,9 +132,10 @@ if $CC1 -quiet -mpickax "$WORK/pm.c" -o "$WORK/pk.s" 2>/dev/null; then
     echo "mpickax: FAIL (still accepted)"; fail=1
 else echo "mpickax: OK (refused)"; fi
 
-# (3g) weak references: a WXTRN ahead of the first V-con, ESD type WX; an
-# unreferenced weak declaration emits nothing; a weak definition stays an
-# ordinary one and says so (libc370#10's __premain hook).
+# (3g) weak references: one WXTRN at the end of the assembly (IFOX00 makes it
+# a WX after the V-cons too, JOB00354), ESD type WX; an unreferenced weak
+# declaration emits nothing; a weak definition stays an ordinary one, says so,
+# and is EXPORTED (1.3.0 left it unexported, found by the Book session).
 cat > "$WORK/wk.c" <<'EOF'
 extern void __premain(void) __attribute__((weak));
 extern int unused_weak __attribute__((weak));
@@ -145,8 +146,8 @@ EOF
 $CC1 -quiet -O1 "$WORK/wk.c" -o "$WORK/wk.s" 2>"$WORK/wk.err"
 wx=$(grep -n 'WXTRN @@PREMAI' "$WORK/wk.s" | cut -d: -f1 | head -1)
 vc=$(grep -n '=V(@@PREMAI)' "$WORK/wk.s" | cut -d: -f1 | head -1)
-if [ -n "$wx" ] && [ -n "$vc" ] && [ "$wx" -lt "$vc" ] && [ "$(grep -c 'WXTRN' "$WORK/wk.s")" = 1 ]; then
-    echo "weak-ref: OK (one WXTRN, ahead of the first V-con)"
+if [ -n "$wx" ] && [ -n "$vc" ] && [ "$wx" -gt "$vc" ] && [ "$(grep -c 'WXTRN' "$WORK/wk.s")" = 1 ]; then
+    echo "weak-ref: OK (one WXTRN, at the end)"
 else echo "weak-ref: FAIL (WXTRN line $wx, V-con line $vc, $(grep -c WXTRN "$WORK/wk.s") WXTRN)"; fail=1; fi
 grep -q 'weak definition of .defd. is an ordinary definition' "$WORK/wk.err" \
     && echo "weak-def: OK (warned, ordinary definition)" || { echo "weak-def: FAIL ($(head -2 "$WORK/wk.err"))"; fail=1; }
@@ -157,6 +158,23 @@ if $ROOT/as370/as370 -I $ROOT/macros -o "$WORK/wk.o" "$WORK/wk.s" >/dev/null 2>&
    && ! $ROOT/file370/file370 --csects "$WORK/wk.o" | grep -q 'UNUSED'; then
     echo "weak-esd: OK (@@PREMAI is WX; the unreferenced one is absent)"
 else echo "weak-esd: FAIL ($($ROOT/file370/file370 --csects "$WORK/wk.o" | grep ESD | tr '\n' '|'))"; fail=1; fi
+# the weak definition defd is exported (an LD), as an ordinary definition is
+$ROOT/file370/file370 --csects "$WORK/wk.o" | grep -q 'DEFD      LD' \
+    && echo "weak-def-export: OK (DEFD is an LD)" || { echo "weak-def-export: FAIL (DEFD not exported)"; fail=1; }
+# used before its definition in the same unit: no WXTRN for it, no IFO196
+cat > "$WORK/wl.c" <<'EOF'
+extern int late(void) __attribute__((weak));
+int use(void) { return late ? late() : 0; }
+int late(void) { return 7; }
+int weak_var __attribute__((weak)) = 5;
+EOF
+$CC1 -quiet -O1 -Wno-weak-definition "$WORK/wl.c" -o "$WORK/wl.s" 2>/dev/null
+if $ROOT/as370/as370 -I $ROOT/macros -o "$WORK/wl.o" "$WORK/wl.s" >/dev/null 2>&1 \
+   && ! grep -q 'WXTRN' "$WORK/wl.s" \
+   && $ROOT/file370/file370 --csects "$WORK/wl.o" | grep -q 'LATE      LD' \
+   && $ROOT/file370/file370 --csects "$WORK/wl.o" | grep -q 'WEAK@VAR  LD'; then
+    echo "weak-late-def: OK (used, then defined: rc 0, exported, no WXTRN)"
+else echo "weak-late-def: FAIL"; fail=1; fi
 
 # (4) the __asm__ workaround: two 8-char linkage names that differ are distinct
 # object-deck symbols -> must NOT warn (no false positive on the workaround).

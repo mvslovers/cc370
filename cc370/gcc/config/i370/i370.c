@@ -235,7 +235,6 @@ static void i370_output_function_epilogue (FILE *, HOST_WIDE_INT);
 static void i370_file_start (void);
 static void i370_file_end (void);
 void i370_weaken_decl (FILE *, tree, const char *);
-void i370_weak_external (FILE *, tree, const char *);
 
 static void i370_internal_label (FILE *, const char *, unsigned long);
 static bool i370_rtx_costs (rtx, int, int, int *);
@@ -3391,41 +3390,33 @@ i370_file_start (void)
    a WX -- 0 when unresolved, never pulled by autocall (IEWL, and ld370's
    autocall walks ER only).  A weak DEFINITION has no MVS counterpart: it is
    written as an ordinary definition and the user is told so.  */
-/* The WXTRN goes out at the FIRST reference, ahead of the code that holds the
-   V-con -- the order every hand-written MVS module uses (WXTRN @@STKLEN) --
-   and weak_finish adds it only for a weak name never referenced.  Each name
-   once; the list is short-lived and small.  */
+/* The WXTRN goes out at the END of the assembly, from weak_finish, for each
+   weak name that was used and never defined in this unit.  At the first
+   reference it would precede a definition that may still follow -- `extern
+   int f(void) __attribute__((weak));' used, then defined, was IFO196 at rc 8
+   in 1.3.0.  After the V-cons is fine: IFOX00 makes the same WX entry
+   (MVSTK5-REF JOB00354, as370 equal).  Each name once.  */
 static char **weak_done;
 static int nweak_done;
 
 static int
-weak_written (const char *name, int mark)
+weak_written (const char *name)
 {
   int k;
   for (k = 0; k < nweak_done; k++)
     if (!strcmp (weak_done[k], name)) return 1;
-  if (mark)
-    {
-      weak_done = xrealloc (weak_done, (nweak_done + 1) * sizeof *weak_done);
-      weak_done[nweak_done++] = xstrdup (name);
-    }
+  weak_done = xrealloc (weak_done, (nweak_done + 1) * sizeof *weak_done);
+  weak_done[nweak_done++] = xstrdup (name);
   return 0;
 }
 
 static void
 weak_wxtrn (FILE *f, const char *name)
 {
-  if (weak_written (name, 1)) return;
+  if (weak_written (name)) return;
   fputs ("\tWXTRN\t", f);
   assemble_name (f, name);
   fputc ('\n', f);
-}
-
-void
-i370_weak_external (FILE *f, tree decl, const char *name)
-{
-  if (decl && DECL_WEAK (decl) && DECL_EXTERNAL (decl))
-    weak_wxtrn (f, name);
 }
 
 void
@@ -3438,6 +3429,12 @@ i370_weaken_decl (FILE *f, tree decl, const char *name)
 	warning ("%Jweak definition of '%D' is an ordinary definition on MVS; "
 		 "only a weak reference (WXTRN) exists [-Wweak-definition]",
 		 decl, decl);
+      /* ...and an ordinary definition is exported.  globalize_decl hands a
+	 DECL_WEAK name to this hook INSTEAD of globalizing it, so returning
+	 here left it unexported -- ENTRY=NO, no LD (1.3.0, found by the Book
+	 session).  */
+      if (TREE_PUBLIC (decl))
+	i370_globalize_label (f, name);
       return;
     }
   weak_wxtrn (f, name);

@@ -492,7 +492,7 @@ import re, os, subprocess
 NAMES = """
 absrx absssub absundef absusing actr adcon aifcond aliasext align amp_fold
 amp_selfdef amp_subst attrapos attrapos_remark attrdup attre basereg
-basereg2 bitlen blank_csect blankcont brmnem ccwstar cmprule cnop collate comdxd comq comref
+basereg2 bitlen blank_csect blankcont brmnem ccwstar cmprule cnop collate comdxd comq comref wxlate
 cont72 contattr contparen contrem contsev csect_resume csect_resume2
 csect_resume3 dcattr dcvals dcvlist droplist dsectpool dupfac emptydc
 emptyopnd endpool endstop entryprobe entsd equfwd equlen equlist eququote
