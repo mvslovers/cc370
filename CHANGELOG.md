@@ -70,6 +70,18 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **ld370 leftovers of #807** (#821).
+  - `--pack` warns that `--warn-shadow` is ignored and refuses `--include`.
+  - A `--pack` input that is not a load module (a C source, say) is rc 2,
+    where it was warned about as a bare module and then failed rc 1.
+  - Write errors carry the `ld370:` prefix.
+  - An unwritable `--map` is reported before the member is written.
+  - The return codes follow one rule: rc 2 when the command line is wrong
+    whatever the files hold, rc 1 when a file or the link fails. A name used
+    twice in a library (a member, or an alias naming the member or given
+    twice) and more than 32 archives are therefore rc 2; a library or
+    member not found, a file that is not an archive, and a member with a
+    block larger than `--blocksize` stay rc 1.
 - **idrdump370 decodes the linkage-editor and translator records** (#809).
   - LKED: program, version, modification, date and time (`5752SC104 V03 M08
     date=26170 time=045427`), where it printed stray characters.
