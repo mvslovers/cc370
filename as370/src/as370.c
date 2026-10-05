@@ -3496,8 +3496,7 @@ static char *maclib_dirs[MAXMACLIB]; static int nmaclib;
 static int g_verbose;
 static void verbose_macro(const char *name, const char *path) {
     static char seen[512][9]; static int nseen;
-    int k;
-    for (k = 0; k < nseen; k++) if (!strncmp(seen[k], name, 8)) return;
+    for (int k = 0; k < nseen; k++) if (!strncmp(seen[k], name, 8)) return;
     if (nseen < 512) { strncpy(seen[nseen], name, 8); seen[nseen][8] = 0; nseen++; }
     fprintf(stderr, "as370: macro %s from %s\n", name, path);
 }
@@ -3615,14 +3614,20 @@ static FILE *src_fopen(const char *path, const char *member) {
     return m;
 }
 static void src_fclose(FILE *f) { fclose(f); free(g_srcbuf); g_srcbuf = NULL; }
+static int lib_found(const char *name, const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    fclose(f);
+    if (g_verbose) verbose_macro(name, path);
+    return 1;
+}
 static int lib_path(const char *name, char *path) {
     const char *exts[] = { ".macro", ".copy", ".mac", ".asm", "", NULL };
     char low[40]; int i; for (i = 0; name[i] && i < 39; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
     int di, e, pass, npass = strcmp(name, low) ? 2 : 1;   /* one pass if it is already lowercase */
     for (di = 0; di < nmaclib; di++) for (pass = 0; pass < npass; pass++) for (e = 0; exts[e]; e++) {
         snprintf(path, 256, "%s/%s%s", maclib_dirs[di], pass ? low : name, exts[e]);
-        FILE *f = fopen(path, "r");
-        if (f) { fclose(f); if (g_verbose) verbose_macro(name, path); return 1; }
+        if (lib_found(name, path)) return 1;
     }
     return 0;
 }
