@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-05
+
 ### Fixed
 - **cc370: weak definitions are exported, and a weak name may be defined
   after it is used** (#872). Both were broken in 1.3.0.
