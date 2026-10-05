@@ -101,75 +101,103 @@ static void efield(char *out, const unsigned char *p, int n)
 /* X'02' linkage editor (internals/load-module-format.md 10.2): program id (10),
  * version and modification (1 + 1), date packed yyddd (3); IEWL here and ld370
  * append the time, packed 0hhmmss (4). */
+static void packed_time(char *out, size_t n, const unsigned char *p)
+{
+    /* 0h hm ms sF: the six digits between the leading 0 and the sign */
+    snprintf(out, n, "%x%x%x%x%x%x", p[0] & 0x0f, p[1] >> 4, p[1] & 0x0f,
+             p[2] >> 4, p[2] & 0x0f, p[3] >> 4);
+}
 static void show_lked(const unsigned char *r, long rlen, long off, int last, int json, int *first)
 {
-    char prog[11], date[16], tm[16] = "";
+    char prog[11];
+    char date[16];
+    char tm[16] = "";
     if (rlen < 18) return;
     efield(prog, r + 3, 10);
     packed_date(date, r + 15);
-    if (rlen >= 22) sprintf(tm, "%02x%02x%02x", ((r[18] & 0x0f) << 4) | (r[19] >> 4),
-                            ((r[19] & 0x0f) << 4) | (r[20] >> 4), ((r[20] & 0x0f) << 4) | (r[21] >> 4));
-    if (json) {
-        printf("%s\n    {\"record\": %ld, \"subtype\": \"LKED\", \"last\": %s, \"bytes\": %ld, \"program\": ",
-               *first ? "" : ",", off, last ? "true" : "false", rlen);
-        jstr(prog);
-        printf(", \"version\": \"%02X\", \"modification\": \"%02X\", \"date\": ", r[13], r[14]);
-        jstr(date);
-        printf(", \"time\": ");
-        if (tm[0]) jstr(tm); else printf("null");
-        printf("}");
-        *first = 0;
-    } else {
+    if (rlen >= 22) packed_time(tm, sizeof tm, r + 18);
+    if (!json) {
         printf("  @%06lX  LKED      %s V%02X M%02X  date=%s%s%s%s\n", off, prog, r[13], r[14], date,
                tm[0] ? "  time=" : "", tm, last ? "  [LAST]" : "");
+        return;
     }
+    printf("%s\n    {\"record\": %ld, \"subtype\": \"LKED\", \"last\": %s, \"bytes\": %ld, \"program\": ",
+           *first ? "" : ",", off, last ? "true" : "false", rlen);
+    jstr(prog);
+    printf(", \"version\": \"%02X\", \"modification\": \"%02X\", \"date\": ", r[13], r[14]);
+    jstr(date);
+    printf(", \"time\": ");
+    if (tm[0]) jstr(tm); else printf("null");
+    printf("}");
+    *first = 0;
 }
 
 /* X'04' translator (HEWLFOUT TRNSREC): items packed back to back -- the
  * CESDIDs the item applies to (2 each, the last with X'80' in its first
  * byte), a flag (0 one translator, else two), then per translator its id and
  * level (12: 10 + 2) and its date packed yyddd (3). */
+struct xitem { int ids[64]; int nid; };
+
+/* The CESDID list from q on; returns the offset past it. */
+static long xlate_ids(const unsigned char *r, long rlen, long q, struct xitem *it)
+{
+    int more = 1;
+    it->nid = 0;
+    while (more && q + 2 <= rlen) {
+        int b0 = r[q];
+        if (it->nid < 64) it->ids[it->nid++] = ((b0 & 0x7f) << 8) | r[q + 1];
+        more = !(b0 & 0x80);
+        q += 2;
+    }
+    return q;
+}
+static void xlate_owners(const struct xitem *it, int json)
+{
+    for (int k = 0; k < it->nid; k++) {
+        const char *o = sect_name(it->ids[k]);
+        if (k) fputs(json ? ", " : ",", stdout);
+        if (o && json) jstr(o);
+        else if (o) fputs(o, stdout);
+        else printf("%d", it->ids[k]);
+    }
+}
+/* One translator: id and level at t, date at t + 12. */
+static void xlate_one(const unsigned char *t, const struct xitem *it, long off, int last, int json, int *first)
+{
+    char prog[11];
+    char date[16];
+    efield(prog, t, 10);
+    packed_date(date, t + 12);
+    if (!json) {
+        printf("  @%06lX  translator %s V%02X M%02X  date=%s  csect=", off, prog, t[10], t[11], date);
+        xlate_owners(it, 0);
+        printf("%s\n", last ? "  [LAST]" : "");
+        return;
+    }
+    printf("%s\n    {\"record\": %ld, \"subtype\": \"translator\", \"last\": %s, \"csects\": [",
+           *first ? "" : ",", off, last ? "true" : "false");
+    xlate_owners(it, 1);
+    printf("], \"program\": ");
+    jstr(prog);
+    printf(", \"version\": \"%02X\", \"modification\": \"%02X\", \"date\": ", t[10], t[11]);
+    jstr(date);
+    printf("}");
+    *first = 0;
+}
 static void show_xlate(const unsigned char *r, long rlen, long off, int last, int json, int *first)
 {
     long q = 3;
+    struct xitem it;
     while (q + 2 <= rlen) {
-        int ids[64], nid = 0, k, ntr, t;
-        while (q + 2 <= rlen) {
-            int b0 = r[q], id = ((b0 & 0x7f) << 8) | r[q + 1];
-            q += 2;
-            if (nid < 64) ids[nid++] = id;
-            if (b0 & 0x80) break;
-        }
-        if (q + 1 > rlen) break;
+        int ntr;
+        q = xlate_ids(r, rlen, q, &it);
+        if (q + 1 > rlen) return;
         ntr = r[q] ? 2 : 1;
         q++;
-        if (q + 15L * ntr > rlen) break;                 /* framed short */
-        for (t = 0; t < ntr; t++, q += 15) {
-            char prog[11], date[16];
-            efield(prog, r + q, 10);
-            packed_date(date, r + q + 12);
-            if (json) {
-                printf("%s\n    {\"record\": %ld, \"subtype\": \"translator\", \"last\": %s, \"csects\": [",
-                       *first ? "" : ",", off, last ? "true" : "false");
-                for (k = 0; k < nid; k++) {
-                    const char *o = sect_name(ids[k]);
-                    if (k) printf(", ");
-                    if (o) jstr(o); else printf("%d", ids[k]);
-                }
-                printf("], \"program\": "); jstr(prog);
-                printf(", \"version\": \"%02X\", \"modification\": \"%02X\", \"date\": ", r[q + 10], r[q + 11]);
-                jstr(date); printf("}");
-                *first = 0;
-            } else {
-                printf("  @%06lX  translator %s V%02X M%02X  date=%s  csect=", off, prog, r[q + 10], r[q + 11], date);
-                for (k = 0; k < nid; k++) {
-                    const char *o = sect_name(ids[k]);
-                    if (k) putchar(',');
-                    if (o) printf("%s", o); else printf("%d", ids[k]);
-                }
-                printf("%s\n", last ? "  [LAST]" : "");
-            }
-        }
+        if (q + 15L * ntr > rlen) return;               /* framed short */
+        xlate_one(r + q, &it, off, last, json, first);
+        if (ntr == 2) xlate_one(r + q + 15, &it, off, last, json, first);
+        q += 15L * ntr;
     }
 }
 
