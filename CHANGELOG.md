@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-05
+
 ### Added
 - **cc370: weak references** (`__attribute__((weak))` on a declaration).
   - A weak reference becomes a `WXTRN` (ESD type WX), written ahead of the
