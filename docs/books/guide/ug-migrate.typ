@@ -80,7 +80,7 @@ Reference_, Chapter 3, “The ld370 Command”.
   #cmd("#pragma map") has no effect (the compiler warns)\; use an #cmd("asm") label
   (@ug-asm-asmfromc).
 - The macro #cmd("__CC370__") gives the version of the compiler as a number,
-  for example #cmd("10300") for 1.3.0. Use it to keep a source that must
+  for example #cmd("10301") for 1.3.1. Use it to keep a source that must
   also compile with another compiler:
   ```
   #ifdef __CC370__

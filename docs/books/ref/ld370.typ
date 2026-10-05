@@ -163,7 +163,7 @@ return code 2.
   [#cmd("-h"), #cmd("--help")], [writes a summary of the options to
     standard output and ends with return code 0.],
   [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the commit from
-    which ld370 was built, for example #cmd("ld370 1.3.0 (1c8181e)"), and
+    which ld370 was built, for example #cmd("ld370 1.3.1 (2c1485e)"), and
     ends.],
 )
 

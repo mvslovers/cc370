@@ -19,6 +19,7 @@ $ echo $?
 0
 $ file370 -v wdef.o
 wdef.o: OS/360 object deck -- 1 section(s) (first (private)), 80B text, 1 RLD card(s)
-    5 card(s) of 80 bytes; 0 LD entr(y/ies)
+    5 card(s) of 80 bytes; 1 LD entr(y/ies)
     ESD    1  (blank)   PC  addr=000000  len=000050
+    ESD  --   TRACE@HO  LD  addr=000000
     END  no entry point (defaults to section origin)

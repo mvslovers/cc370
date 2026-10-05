@@ -116,7 +116,7 @@ need a tool, for example file370, on a workstation where you do not compile
 C.
 
 The version of the toolchain comes from the file #cmd("VERSION") of the
-source tree: the figures in this chapter show the release 1.3.0. A build
+source tree: the figures in this chapter show the release 1.3.1. A build
 between two releases carries a version such as #cmd("1.2.1-dev").
 
 == The Installed Tree <ug-install-tree>

@@ -106,7 +106,7 @@ long forms apply to every subcommand.
     ends, wherever it appears in the command.],
   [#cmd("--version"), #cmd("-V")], [displays the toolchain version and the
     commit from which xmit370 was built, for example
-    #cmd("xmit370 1.3.0 (1c8181e)"), and ends, wherever it appears in
+    #cmd("xmit370 1.3.1 (2c1485e)"), and ends, wherever it appears in
     the command.],
 )
 

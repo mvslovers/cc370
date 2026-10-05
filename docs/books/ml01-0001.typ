@@ -10,9 +10,9 @@
   edition: [
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
-    This edition applies to Version 1 Release 3 of the cc370 cross-toolchain
-    (cc370 1.3.0) and to all subsequent releases and modifications until
-    otherwise indicated in new editions.
+    This edition applies to Version 1 Release 3 Modification 1 of the cc370
+    cross-toolchain (cc370 1.3.1) and to all subsequent releases and
+    modifications until otherwise indicated in new editions.
 
     *Draft.* The output of the examples that run on MVS has still to be
     captured; those figures are marked as such.

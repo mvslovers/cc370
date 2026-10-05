@@ -202,9 +202,9 @@ Three rules follow from how the linkage editor treats a weak reference:
 - *Never call it without the test.* An unresolved weak reference is 0, and
   a call through it branches to address 0.
 - *Declare it weak where it is referenced, not where it is defined.* MVS has
-  no weak definition. cc370 warns about one, and the function it defines
-  cannot be reached from other modules (the last command of
-  @ug-link-weak-fig). Define the function as usual.
+  no weak definition: a definition marked weak is an ordinary definition,
+  external as usual (the last command of @ug-link-weak-fig), and cc370
+  warns about the attribute. Define the function without it.
 
 #fig(caption: [A weak reference, left unresolved and resolved])[
   #screen(raw(read("../ex/cc370/weak.txt")))

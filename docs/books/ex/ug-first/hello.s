@@ -5,7 +5,7 @@
          DC    C'Hello, MVS!'
          DC    X'0'
          DS    0F
-         DC    C'CC370',AL1(1,3,0)
+         DC    C'CC370',AL1(1,3,1)
          EXTRN @@CRT0
          ENTRY @@MAIN
 @@MAIN   DS    0H
