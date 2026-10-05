@@ -40,9 +40,13 @@ for b in "$@"; do
         fail=1
     fi
     # -V is the short form in every tool, and -v is never the version (#811).
-    # The driver is GCC's: -V there takes a target version, -v is verbose.
     case $name in
-        xgcc|cc370) ;;
+        xgcc|cc370)
+            # the driver takes -V and -h too (#811); its -v is GCC's verbose
+            # mode, which shows the version among the commands it runs
+            got=$("$b" -V 2>&1)
+            if [ "$got" = "$want" ]; then echo "version: OK   $name -V"
+            else echo "version: FAIL $b -V -- got '$got', want '$want'"; fail=1; fi ;;
         *)
             got=$("$b" -V 2>&1 | head -1)
             if [ "$got" = "$want" ]; then echo "version: OK   $name -V"

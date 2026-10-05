@@ -163,9 +163,11 @@ silent wrong results first. After each merge, one line to Book (session
    objects, longest contribution, no text, in the module length -- equal to
    IEWL's AMBLIST (JOB00352). Pseudo registers in ld370 stay #76.
    Follow-up #845 done (#846): `--xref` lists adcons into a common section.
-7. #811 flags everywhere **(next)**: `--version`/`-V`, `-v` verbose (also as370 and
-   dasm370 -- decided, "Read this first" in the next release), `--help`.
-8. #809 dasm370 / cmplmd370 / idrdump370 details.
+7. ~~#811 flags everywhere~~ **done** (#848): `--version`/`-V`, `--help`/`-h`
+   in every tool, `-v` verbose (as370: macro path and origins; dasm370: the
+   section read); ar370 `rcv`. "Read this first" in the next release notes.
+8. #809 dasm370 / cmplmd370 / idrdump370 details **(next)**; plus dasm370 listing
+   CM sections as control sections (comment on the issue).
 9. #821 ld370 leftovers of #807 (--pack with --warn-shadow/-i, non-member
    --pack input, unprefixed write errors, rc 1/2 classification).
 10. #822 as370 -- rc 16 still writes the object, `-a=FILE` falls back to

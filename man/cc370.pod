@@ -92,9 +92,27 @@ them back on.
 Add a header search directory, a library search directory, or link a library
 --- as in any GCC driver.
 
-=item B<-dumpmachine>, B<-dumpversion>, B<-v>, B<--version>
+=item B<-V>, B<--version>
 
-Print the target (C<cc370>), the product version, or driver/version banners.
+Print the version and the commit it was built from, in the one line every tool
+of the chain prints: C<cc370 >I<version>C< (>I<commit>C<), based on GCC 3.4.6>.
+
+=item B<-h>, B<--help>
+
+Show the usage and exit.
+
+=item B<-v>
+
+Verbose: the driver's configuration and every command it runs, as in GCC.
+
+=item B<-dumpmachine>, B<-dumpversion>
+
+Print the target (C<cc370>) or the product version.
+
+=item B<-b> I<machine>, B<-V>I<version>
+
+Refused. In GCC they choose another installed compiler; cc370 has one target and
+one version.
 
 =item B<-print-libgcc-file-name>
 
