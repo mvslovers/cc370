@@ -380,7 +380,7 @@ gives the member name, the entry point and where it came from, and the module
 length.
 
 #cmd("--xref") adds, under each section, every address constant that names
-an external symbol: its offset in the section, its type (#cmd("A") or
+an external symbol or a common section: its offset in the section, its type (#cmd("A") or
 #cmd("V")), the symbol, and the address and section it resolved to, or
 #cmd("unresolved").
 
