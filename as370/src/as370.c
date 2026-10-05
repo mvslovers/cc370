@@ -16,6 +16,7 @@
 #include <libgen.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 #include "mvs370.h"
 #ifdef __APPLE__
@@ -5616,17 +5617,17 @@ static int emit_decimal(const char *txt, int packed, long at, int want, int emit
      * DC P' 123' and quietly truncate DC P'1 2' to 1C. */
     for (; *q; q++) {
         if (*q >= '0' && *q <= '9') { if (nd < 64) dig[nd] = (unsigned char)(*q - '0'); nd++; }
-        else if (*q == '.') { if (dot) { if (diag) note_operr("Syntax error - more than one decimal point in a decimal constant (IFOX00 ERR178)", 8, line); return 0; } dot = 1; }
-        else { if (diag) note_operr("Illegal character in a decimal constant (IFOX00 ERR236)", 8, line); return 0; }
+        else if (*q == '.') { if (dot) { if (diag) note_operr("Syntax error - more than one decimal point in a decimal constant (IFOX00 IFO178)", 8, line); return 0; } dot = 1; }
+        else { if (diag) note_operr("Illegal character in a decimal constant (IFOX00 IFO236)", 8, line); return 0; }
     }
-    if (!nd) { if (diag) note_operr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", 8, line); return 0; }
+    if (!nd) { if (diag) note_operr("Syntax error - decimal constant has no nominal value (IFOX00 IFO178)", 8, line); return 0; }
     if (nd > (packed ? 31 : 16)) {   /* PKON/ZKON compare the digit count against the DCTABLE limit and branch to LENER */
-        if (diag) note_operr(packed ? "Length error - a packed-decimal constant may have at most 31 digits (IFOX00 ERR224)"
-                                    : "Length error - a zoned-decimal constant may have at most 16 digits (IFOX00 ERR224)", 8, line);
+        if (diag) note_operr(packed ? "Length error - a packed-decimal constant may have at most 31 digits (IFOX00 IFO224)"
+                                    : "Length error - a zoned-decimal constant may have at most 16 digits (IFOX00 IFO224)", 8, line);
         return 0; }
     len = want ? want : (packed ? (nd + 2) / 2 : nd);
     if (len < 1 || len > 16) {   /* DCTABLE gives P and Z a maximum of 128 bits */
-        if (diag) note_operr("Length error - a packed- or zoned-decimal constant may not exceed 16 bytes (IFOX00 ERR224)", 8, line);
+        if (diag) note_operr("Length error - a packed- or zoned-decimal constant may not exceed 16 bytes (IFOX00 IFO224)", 8, line);
         return 0; }
     if (!emit) return len;
     if (packed) {
@@ -6924,12 +6925,12 @@ static void do_pass(int pass, char **lines, int nlines) {
                          * other diagnostics raised from it (note_badfmt, note_addrerr). */
                         if (nf >= 3 && F[2][0]) {
                             int rc3 = 0; i3 = expr_val(F[2], &rc3);
-                            if (rc3 != 0) note_operr("SRP rounding digit must be absolute (IFOX00 ERR178)", 8, i);
-                            else if (i3 < 0 || i3 > 9) note_operr("SRP rounding digit is outside 0-9 (IFOX00 ERR224)", 8, i);
+                            if (rc3 != 0) note_operr("SRP rounding digit must be absolute (IFOX00 IFO178)", 8, i);
+                            else if (i3 < 0 || i3 > 9) note_operr("SRP rounding digit is outside 0-9 (IFOX00 IFO224)", 8, i);
                         } else {
                             /* Not defaulted: SRP takes three operands, and a silent 0 is a
                              * rounding decision made on the programmer's behalf. */
-                            note_operr("SRP needs a third operand, the rounding digit (IFOX00 ERR177)", 12, i);
+                            note_operr("SRP needs a third operand, the rounding digit (IFOX00 IFO177)", 12, i);
                         }
                         lenb = (int)((((len1 ? (len1 - 1) & 0xf : 0) << 4)) | (i3 & 0xf));
                     } else
@@ -8139,7 +8140,7 @@ static void do_pass(int pass, char **lines, int nlines) {
                         /* DS reserves the length with no value; a DC without one
                          * reaches IFOX's LDELIM3 and is a syntax error. */
                         int len = haslen ? blen : 1;   /* DCTABLE default length for P and Z is 1 */
-                        if (pass == 1 && !strcmp(op, "DC")) note_operr("Syntax error - decimal constant has no nominal value (IFOX00 ERR178)", 8, i);
+                        if (pass == 1 && !strcmp(op, "DC")) note_operr("Syntax error - decimal constant has no nominal value (IFOX00 IFO178)", 8, i);
                         if (setlbl) { struct sym *s2 = sym_get(lbl); s2->val = lc; s2->defined = 1; s2->sect = cur_sect_id; s2->len = len; }
                         for (k = 0; k < cnt; k++) { int j; for (j = 0; j < len; j++) { if (emit_dc) put(lc, 0, 1); lc++; } }
                     } else {
@@ -9384,7 +9385,7 @@ static void a_xref_section(char **lines, int nl) {
 static void emit_listing_a(char **lines, int nl) {
     if (!a_on) return;
     alst = alst_fn ? fopen(alst_fn, "w") : stdout;
-    if (!alst) { perror(alst_fn); alst = stdout; }
+    if (!alst) return;   /* reported, and rc 16, when the options were read (#822) */
     a_page = 0;
     a_number(nl);
     if (a_esd) a_esd_section();
@@ -9820,6 +9821,15 @@ int main(int argc, char **argv) {
         }
         else src = argv[ai];
     }
+    /* -a=FILE that cannot be written is the invocation's error, found before
+     * the assembly: it fell back to stdout at rc 0 (#822). */
+    if (alst_fn) {
+        FILE *t = fopen(alst_fn, "w");
+        if (!t) {
+            fprintf(stderr, "as370: cannot write listing %s: %s\n", alst_fn, strerror(errno));
+            optsev = 16;
+        } else fclose(t);
+    }
     /* Macro search path, highest priority first:
      *   1. -I dirs            (added above during option parsing)
      *   2. AS370_MACLIB       (colon-separated override, like C_INCLUDE_PATH)
@@ -10128,8 +10138,11 @@ int main(int argc, char **argv) {
      * leaves. Per entry, like the operand errors, because they differ. */
     if (max_sev < mnote_maxsev) max_sev = mnote_maxsev;   /* over every MNOTE, not the 128 kept (#86) */
 
-    if (objfn) {
-        FILE *of = fopen(objfn, "wb"); if (!of) { perror(objfn); return 16; }
+    /* A wrong command line (rc 16) writes no object: the assembly still runs
+     * and reports, as IFOX00 does past IFO258, but an object beside rc 16
+     * would read as up to date to make on the next run (#822). */
+    if (objfn && optsev < 16) {
+        FILE *of = fopen(objfn, "wb"); if (!of) { fprintf(stderr, "as370: cannot write %s: %s\n", objfn, strerror(errno)); return 16; }
         emit_obj(of); fclose(of);
     }
     emit_listing_a(lines, nl);

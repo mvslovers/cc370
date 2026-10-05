@@ -70,6 +70,14 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **as370 writes no object on a wrong command line** (#822).
+  - An invalid option or a second source file ended rc 16 and still wrote
+    the object. The assembly still runs and reports, but no object is
+    written.
+  - `-a=FILE` that cannot be written fell back to stdout at rc 0. It is now
+    rc 16 ("cannot write listing"), checked before the assembly.
+  - Diagnostics name `IFO177`, `IFO178`, `IFO224` and `IFO236`, where four
+    of them said `ERR` -- IFOX00's internal label for the same number.
 - **ld370 leftovers of #807** (#821).
   - `--pack` warns that `--warn-shadow` is ignored and refuses `--include`.
   - A `--pack` input that is not a load module (a C source, say) is rc 2,
