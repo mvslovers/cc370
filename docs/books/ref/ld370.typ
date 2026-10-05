@@ -200,17 +200,22 @@ ld370 lists the names and writes no member: the address constant would be
 zero, and the program would fail at the first call through it. With
 #cmd("--allow-unresolved") the names are listed and the module is written.
 
-#idx("common section", "in ld370")#idx("external dummy section", "in ld370")
-#note[ld370 does not yet process common sections and external dummy
-sections (see @apx-objfmt-pr). A common section is placed at address 0, over
-the first control section of the module, and the module length becomes the
-larger of the two\; the map lists it with type #cmd("CM"), and the link ends
-with return code 0. An external dummy section is not resolved: the map
-lists it among the unresolved names, the link still ends with return code
-0, the #cmd("Q")-type constants and #cmd("CXD") fields stay zero, and their
+#idx("common section", "in ld370")
+Common sections (#cmd("COM"), see @apx-objfmt-pr) are allocated as IEWL
+allocates them: one area for each name, as long as the longest of the
+sections of that name, placed after all the object modules, each on a
+doubleword boundary, in the order in which the names first appear. A common
+area has no text, but it counts in the module length. The map lists each
+with type #cmd("CM") and #cmd("(common, longest contribution)") as its
+source.
+
+#idx("external dummy section", "in ld370")
+#note[ld370 does not yet resolve external dummy sections. The map lists
+them among the unresolved names, the link still ends with return code 0,
+the #cmd("Q")-type constants and #cmd("CXD") fields stay zero, and their
 relocation items are written with the unresolved flag. Do not link modules
-that use #cmd("COM"), #cmd("DXD"), #cmd("CXD") or #cmd("Q")-type
-constants with ld370 yet.]
+that use #cmd("DXD"), #cmd("CXD") or #cmd("Q")-type constants with ld370
+yet.]
 
 == Automatic Library Call <ld370-autocall>
 

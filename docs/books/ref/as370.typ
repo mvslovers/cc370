@@ -31,8 +31,9 @@ module can describe common sections (#cmd("COM")), external dummy sections
 the constants that refer to them: #cmd("DC Q(")#var("name")#cmd(")") and
 #cmd("CXD"). as370 assembles all of these, except a
 #cmd("COM") statement without a name, which it reports as not implemented.
-ld370 does not yet resolve them (see @ld370-layout)\; a module that uses
-them is link-edited with IEWL on MVS.
+ld370 allocates common sections, but does not yet resolve external dummy
+sections (see @ld370-layout)\; a module that uses them is link-edited with
+IEWL on MVS.
 
 The one difference from IFOX00 is the translator identification on the END
 record, which reads #cmd("ASM370") where IFOX00 writes its own program number. It does not affect the
