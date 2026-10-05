@@ -126,11 +126,12 @@ via a path relative to it, so it must exist. Builds on x86-64 and ARM64.
 ### Sysroot — where cc370 finds the libc
 
 cc370 searches `<prefix>/cc370/{include,lib}` by default (the `cc370` component is
-the target name, from `-dumpmachine`). [libc370](https://github.com/mvslovers/libc370)
-drops its headers, `libc.a` (which carries the C startup `@@CRT0` since 2.3.0),
-the nested startup `crtm.o` and the assembler macros all under `<prefix>/cc370/` (`include`, `lib`, `macros`); as370, whose real binary
-lives in `<prefix>/cc370/bin`, finds the macros via its `<exedir>/../macros`
-default. After that the toolchain is self-contained:
+the target name, from `-dumpmachine`).
+[libc370](https://github.com/mvslovers/libc370) drops its headers, `libc.a` (which
+carries the C startup `@@CRT0` since 2.3.0), the nested startup `crtm.o` and the
+assembler macros all under `<prefix>/cc370/` (`include`, `lib`, `macros`); as370,
+whose real binary lives in `<prefix>/cc370/bin`, finds the macros via its
+`<exedir>/../macros` default. After that the toolchain is self-contained:
 
 ```sh
 make -C ../libc370 install                   # populate the sysroot once
