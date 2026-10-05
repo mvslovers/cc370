@@ -236,9 +236,9 @@ The two comparisons that come up most often:
   under that name in parentheses, as #cmd("(@@MAIN)") in
   @ug-diag-inspect-session. To compare one section alone, name it with
   #cmd("--csect"), for example #cmd("cmplmd370 --csect '(@@MAIN)' sumup.o SUMUP").
-  An object module compiled with #cmd("-mcsect=")#var("name") is paired by
-  that name only, so compare it with a module linked from the same kind of
-  object module. For the attributes and the
+  An object module compiled with #cmd("-mcsect=")#var("name") is paired in
+  the same way with the unnamed section of a module linked without it. For
+  the attributes and the
   entry point, which cmplmd370 does not compare, look at the directory with
   #cmd("file370 -v") on the TRANSMIT file.
 - *Does a rebuilt object module still match?* After a change to the build,

@@ -1133,9 +1133,8 @@ All of these end cmplmd370 with return code 2.
 ][Correct the name.]
 
 #msg[#mc("cmplmd370: no sections paired")][
-  No section of #mv("new") was compared, for example because it has none
-  with text. The heading line of the comparison is still written to
-  standard output.
+  #mv("new") has no section with text, so nothing can be compared.
+  Nothing is written to standard output.
 ][Check the files.]
 
 #msg[#mc("cmplmd370: reference image incomplete (")#mv("anomaly")#mc("); --allow-incomplete to compare anyway")][

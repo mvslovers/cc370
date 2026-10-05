@@ -88,22 +88,22 @@ partner is not reported: comparing the object module of one control section
 against a load module that holds many is the ordinary case.
 
 #idx("private code")
-An unnamed section, which is what a #cmd("CSECT") statement without a name
+An unnamed section is what a #cmd("CSECT") statement without a name
 produces and what cc370 writes for a C source compiled without
-#cmd("-mcsect="), is paired by its first entry point instead: the entry
-point with the lowest address among those the section defines (#cmd("LD")
-entries in an object module, #cmd("LR") entries in a load module). It is
-paired with a section of the reference, named or not, whose first entry
-point has the same name. An unnamed section without entry points is paired with the
-one section of the reference that is left over, if exactly one is left.
+#cmd("-mcsect="). Where one of two sections is unnamed, they are paired by
+their first entry point instead: the entry point with the lowest address
+among those the section defines (#cmd("LD") entries in an object module,
+#cmd("LR") entries in a load module). So an unnamed section of #var("new")
+pairs with a section of the reference that has the same first entry point,
+and a named section of #var("new"), for example one compiled with
+#cmd("-mcsect="), pairs with an unnamed section of the reference in the same
+way. Two named sections are paired by name only. An unnamed section without
+entry points is paired with the one section of the reference that is left
+over, if exactly one is left.
 
 An unnamed section is reported under its partner's name, if the partner has
 one\; otherwise under the name of its first entry point in parentheses, such
 as #cmd("(@@MAIN)"), or as #cmd("(private)") when it has no entry point.
-Pairing by entry point applies to the unnamed sections of #var("new") only:
-an object module compiled with #cmd("-mcsect=") finds no partner in a load
-module linked from one compiled without it, while the opposite comparison
-succeeds.
 
 #idx("empty section")
 Sections of length zero, on either side, are not compared and not
