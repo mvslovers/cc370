@@ -6179,6 +6179,28 @@ static void emit_float(long at, const char *vstr, int bytes, int scale, int expo
 /* one copy's width: the size a single nominal value occupies, which is what the
  * per-type emitters below are written against. */
 static void dc_qcon(long at, const char *v, int len, int line);   /* fwd: #810/#840 */
+/* One A- or Y-type literal value at VLOC, PER bytes wide. */
+static void emit_lit_addr(const struct lit *l, int ty, const char *v, long vloc, int per) {
+    int rc = 0;
+    long val = v[0] ? expr_val_full(v, &rc) : 0;   /* leading '(' -- see the DC arm and cc370#167 */
+    /* IFO204 as on the DC path: a literal is assembled by the same AYKON (#840;
+     * the DC case is measured, this one follows it). */
+    int ifo204 = rc != 0 && !in_dsect && per <= (ty == 'Y' ? 1 : 2);
+    if (ifo204) {
+        val = 0;
+        note_operr("Relocatable expression in A- or Y-type address constant with the specified length not allowed (IFOX00 IFO204)", 8, l->defln);
+    }
+    put(vloc, val, per);
+    if (ifo204 || rc == 0) return;                 /* relocate only if net-relocatable */
+    char sym[64];
+    reloc_sym(v, sym, sizeof sym);                 /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
+    const struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
+    int tgtreal;
+    if (sym[0] == '*') tgtreal = !dsect_sect[cur_sect_id & 255];
+    else tgtreal = es && !dsect_sect[es->sect & 255];
+    if (!in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
+    if (tgtreal) add_reloc(vloc, sym, 0, per);     /* RLD length matches AL3/AL2 width */
+}
 static int size_unit(const struct lit *l, int dup) { int u = l->size / (dup > 0 ? dup : 1); return u > 0 ? u : 1; }
 static void emit_lit_one(struct lit *l, long loc, int size) {
     /* A literal is assembled at the pool, so g_curln here is the LTORG or the
@@ -6198,17 +6220,7 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
             if (ty == 'Q') { put(vloc, 0, per); dc_qcon(vloc, vv[vj], per, l->defln); }
             else if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                 put(vloc, 0, per); add_reloc(vloc, r, 1, per); }
-            else { int rc = 0; long v = vv[vj][0] ? expr_val_full(vv[vj], &rc) : 0;   /* leading '(' -- see the DC arm and cc370#167 */
-                /* IFO204 as on the DC path: a literal is assembled by the same
-                 * AYKON (#840; the DC case is measured, this one follows it). */
-                int ifo204 = rc != 0 && !in_dsect && per <= (ty == 'Y' ? 1 : 2);
-                if (ifo204) { v = 0; note_operr("Relocatable expression in A- or Y-type address constant with the specified length not allowed (IFOX00 IFO204)", 8, l->defln); }
-                put(vloc, v, per);
-                char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
-                struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
-                int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
-                if (!ifo204 && rc != 0 && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
-                if (!ifo204 && rc != 0 && tgtreal) { add_reloc(vloc, sym, 0, per); } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
+            else emit_lit_addr(l, ty, vv[vj], vloc, per); }
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         /* Every nominal value goes through the converter. It used to be reached
          * only when the text contained a `.`, `e` or `E`, so =D'2' and =E'1' took
@@ -7037,8 +7049,8 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (!s->sect) s->sect = ++g_sectid;
             note_sect_owner(s);
             cur_sect_id = s->sect;
-            if (++s->opened == 1 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;
-            lc = (cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;
+            if (++s->opened == 1 && cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;
+            lc = (cur_sect_id > 0 && cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;
             if (pass == 1 && !s->defined) { s->type = S_CM; s->val = 0; s->defined = 1; esd_add(s, ESD_CM); }
             if (pass == 2) { lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }
         } else if (!strcmp(op, "DXD")) {
