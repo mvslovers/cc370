@@ -997,6 +997,28 @@ static int modlen_cesd(const struct lmod_esd *e, void *ctx)
     return 1;
 }
 
+/* A bare member's entry point (#850): the address of a section or LR named
+ * WANT in its own CESD.  The member carries no directory, but the CESD holds
+ * every name the link gave an address -- @@CRT0 among them, wherever autocall
+ * put it.  Returns the number of entries with that name. */
+struct entry_find { unsigned char want[8]; long addr; int hits; };
+static int entry_cesd(const struct lmod_esd *e, void *ctx)
+{
+    struct entry_find *f = ctx;
+    if ((obj_is_section(e->type) || e->type == 0x03) && !memcmp(e->name, f->want, 8)) {
+        f->addr = e->addr; f->hits++;
+    }
+    return 1;
+}
+static int member_entry(const unsigned char *m, long n, const char *want, long *addr)
+{
+    struct entry_find f;
+    member_name(f.want, want); f.addr = 0; f.hits = 0;
+    lmod_cesd_walk(m, n, entry_cesd, &f);
+    *addr = f.addr;
+    return f.hits;
+}
+
 static long member_modlen(const unsigned char *m, long n)
 {
     long maxend = 0;
@@ -2200,15 +2222,12 @@ int main(int argc, char **argv)
      *   container, so with neither flag it defaults to -xmit. --- */
     if (npack) {
         struct umember *m = calloc((size_t)npack, sizeof *m); int rc = 0, nbare = 0;
+        const char **entry_from = calloc((size_t)npack, sizeof *entry_from);   /* where a bare member's entry came from */
+        if (!entry_from) { fprintf(stderr, "ld370: out of memory\n"); free(m); return 1; }
         if (!m) { fprintf(stderr, "ld370: out of memory\n"); return 1; }
         if (!outfile) { fprintf(stderr, "ld370: --pack needs -o OUT (base name)\n"); return 2; }
-        /* --entry is accepted by the parser and never reaches this block's exit:
-         * entry resolution runs in the link path, which --pack returns before.
-         * So `--entry NOSUCHSY' packed at rc 0 with no word said -- the same
-         * silent-drop the warning below exists for, one flag further along. */
-        if (entryname)
-            fprintf(stderr, "ld370: warning: --entry is ignored by --pack; a member's entry "
-                            "point comes from its -iebcopy directory\n");
+        /* --entry names the entry of each BARE member, looked up in its own
+         * CESD (#850); a -iebcopy member keeps the entry in its directory. */
         /* The other link-only options were dropped without a word (#807). */
         if (mname) {
             fprintf(stderr, "ld370: --name applies to a link, not to --pack; name a packed "
@@ -2263,6 +2282,9 @@ int main(int argc, char **argv)
                 if (r2 == -2) { fprintf(stderr, "ld370: --pack: '%s' is a multi-member unload; "
                                        "pass single-member -iebcopy files\n", file); return 2; }
                 if (r2 != 0)  { fprintf(stderr, "ld370: --pack: '%s' is a malformed unload\n", file); return 2; }
+                if (entryname)
+                    fprintf(stderr, "ld370: warning: --entry does not apply to '%s'; a -iebcopy member "
+                                    "keeps the entry its directory holds\n", file);
                 if (name) member_name(m[i].name, name);  /* explicit NAME= overrides the dir name */
             } else {
                 if (!name) {                             /* derive the name from the basename */
@@ -2275,7 +2297,27 @@ int main(int argc, char **argv)
                 }
                 member_name(m[i].name, name); m[i].bytes = buf; m[i].len = n;
                 m[i].modlen = member_modlen(buf, n);
-                m[i].entry = 0;
+                /* The entry was assumed at 0, which held only while the driver
+                 * linked crt0.o first; with @@CRT0 pulled by autocall it lands
+                 * elsewhere and the module started at the wrong address (#850).
+                 * Take it from the CESD: --entry NAME, else @@CRT0; a module
+                 * without @@CRT0 (plain assembler) still packs at 0, warned. */
+                {
+                    long ea = 0;
+                    const char *want = entryname ? entryname : "@@CRT0";
+                    int hits = member_entry(buf, n, want, &ea);
+                    if (!hits && entryname) {
+                        fprintf(stderr, "ld370: --pack: --entry %s is not in the CESD of '%s'\n", entryname, file);
+                        free(buf); return 1;
+                    }
+                    if (hits > 1) {
+                        fprintf(stderr, "ld370: --pack: '%s' names %s %d times in its CESD; the entry is ambiguous\n",
+                                file, want, hits);
+                        free(buf); return 1;
+                    }
+                    m[i].entry = ea;
+                    entry_from[i] = !hits ? "no @@CRT0 in its CESD" : entryname ? "--entry" : "@@CRT0";
+                }
                 /* A bare member is packed at entry 0 and at THIS command's
                  * attributes, and nothing in the output says which of those
                  * were the module's own.  An unauthorized module is
@@ -2291,25 +2333,25 @@ int main(int argc, char **argv)
                  * where the directory metadata is not what is under test. */
                 nbare++;
                 fprintf(stderr, "ld370: warning: '%s' is a bare load module: packing %s at "
-                                "entry 0, AC %d, %s\n", file, mvs_nm(m[i].name), apfcode,
+                                "entry %lX (%s), AC %d, %s\n", file, mvs_nm(m[i].name),
+                        m[i].entry, entry_from[i], apfcode,
                         (set_rent && set_reus) ? "RENT REUS" : set_rent ? "RENT, not REUS"
                                                  : set_reus ? "REUS, not RENT" : "neither RENT nor REUS");
             }
         }
-        /* Once, however many bare members there were: the entry point is the
-         * half that cannot be repaired from the command line at all.  --ac and
-         * the attribute flags can simply be given again here; --entry cannot --
-         * see the note below, it is not honoured by --pack. */
+        /* Once, however many bare members there were.  The entry is taken from
+         * the member's CESD now (#850); the attributes still come from this
+         * command, so the -iebcopy form remains the one that keeps them. */
         if (nbare)
             fprintf(stderr,
-                "ld370: note: a bare member carries no directory, so its entry point and\n"
-                "       attributes are not in it. Build it with -iebcopy and pack that:\n"
+                "ld370: note: a bare member carries no directory, so its attributes are\n"
+                "       this command's. Build it with -iebcopy and pack that:\n"
                 "           ld370 -o NAME --name NAME obj... -iebcopy\n"
                 "           ld370 --pack NAME=NAME.iebcopy -o OUT -xmit\n");
         if (want_unload) rc = write_unload_mem(with_suffix(unlbuf, sizeof unlbuf, outfile, ".iebcopy"), m, npack);
         if (!rc && want_xmit) rc = write_xmit(with_suffix(xmitbuf, sizeof xmitbuf, outfile, ".xmit"), m, npack, dsn);
         for (i = 0; i < npack; i++) { free((void *)m[i].bytes); free(m[i].alias); }
-        free(m);
+        free(m); free(entry_from);
         return rc;
     }
 
