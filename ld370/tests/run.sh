@@ -830,6 +830,29 @@ PYCM
 then echo "  OK: CM sections allocated after the objects, longest contribution, text CSECTs only (== IEWL JOB00352)"
 else echo "  FAIL: CM layout differs from IEWL JOB00352"; fails=$((fails+1)); fi
 
+printf '\n=== #821: pack options, non-member input, write errors, rc classes ===\n'
+c821_fails=0
+c821() { if [ "$2" = "$3" ]; then echo "  OK: $1"; else echo "  FAIL: $1 (rc $3, want $2)"; c821_fails=1; fi; }
+"$AS" -o "$TMP/c821.o" "$FIX/cma.s" && "$LD" -o "$TMP/c821" --name C821 --entry CMA "$TMP/c821.o" -iebcopy 2>/dev/null
+"$LD" --pack "A=$TMP/c821.iebcopy" "A=$TMP/c821.iebcopy" -o "$TMP/c821p" -iebcopy 2>/dev/null; c821 "a name used twice in one pack is rc 2" 2 $?
+"$LD" --pack "A=$TMP/c821.iebcopy" -i FOO -o "$TMP/c821i" -iebcopy 2>/dev/null; c821 "--include with --pack is rc 2" 2 $?
+w=$("$LD" --pack "A=$TMP/c821.iebcopy" --warn-shadow -o "$TMP/c821w" -iebcopy 2>&1 >/dev/null)
+case "$w" in *"--warn-shadow is ignored"*) echo "  OK: --warn-shadow with --pack warns" ;; *) echo "  FAIL: --warn-shadow silent: [$w]"; c821_fails=1 ;; esac
+printf 'int main(void) { return 0; }\n' > "$TMP/c821.c"
+"$LD" --pack "$TMP/c821.c" -o "$TMP/c821c" -iebcopy 2>"$TMP/c821c.err"; r=$?
+c821 "a C source under --pack is rc 2" 2 $r
+grep -q 'not a load module' "$TMP/c821c.err" && ! grep -q 'bare load module' "$TMP/c821c.err" \
+    && echo "  OK: ...and is called not a load module, not a bare one" || { echo "  FAIL: c-source message: $(cat "$TMP/c821c.err")"; c821_fails=1; }
+"$LD" -o /nonexist/c821 --name X "$TMP/c821.o" 2>"$TMP/c821n.err"; r=$?
+c821 "an unwritable member is rc 1" 1 $r
+grep -q '^ld370: cannot write /nonexist/c821' "$TMP/c821n.err" && echo "  OK: ...with the ld370: prefix" || { echo "  FAIL: unprefixed: $(cat "$TMP/c821n.err")"; c821_fails=1; }
+rm -f "$TMP/c821m"
+"$LD" -o "$TMP/c821m" --name X "$TMP/c821.o" --map /nonexist/c821.map 2>/dev/null; r=$?
+c821 "an unwritable --map is rc 1" 1 $r
+[ ! -e "$TMP/c821m" ] && echo "  OK: ...found before the member is written" || { echo "  FAIL: member written before the --map failure"; c821_fails=1; }
+"$LD" -o "$TMP/c821a" --name X --alias X "$TMP/c821.o" -iebcopy 2>/dev/null; c821 "--alias naming the member is rc 2" 2 $?
+[ "$c821_fails" = 0 ] || fails=$((fails + 1))
+
 printf '\n=== dropped-text: early-ref / late-def section keeps all text (S106-0F) ===\n'
 printf 'RA       CSECT\n         DC    V(RLATE)\n         BR    14\n         END\n'   > "$TMP/ra.s"
 printf 'RB       CSECT\n         DC    5000F'\''1'\''\n         BR    14\n         END\n' > "$TMP/rb.s"

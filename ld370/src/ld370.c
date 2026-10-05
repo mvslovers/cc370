@@ -437,7 +437,7 @@ static int npulled = 0;
 static int load_archive(const char *path)
 {
     long n, p; unsigned char *a; struct archive *ar;
-    if (nAR >= MAXAR) { fprintf(stderr, "ld370: too many archives\n"); return 1; }
+    if (nAR >= MAXAR) { fprintf(stderr, "ld370: more than %d archives\n", MAXAR); return 2; }   /* the command line alone (#821) */
     a = mvs_read_file(path, &n);
     if (!a) { fprintf(stderr, "ld370: cannot open %s: %s\n", path, strerror(errno)); return 1; }
     if (n < 8 || memcmp(a, "!<arch>\n", 8)) { fprintf(stderr, "ld370: %s: not an archive\n", path); free(a); return 1; }
@@ -1507,7 +1507,7 @@ static int write_unload_mem(const char *path, struct umember *mem, int nmem)
     ulen = emit_unload(unl, mem, nmem, NULL);
     if (ulen < 0) { free(unl); for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     f = fopen(path, "wb");
-    if (!f) { perror(path); free(unl); for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
+    if (!f) { fprintf(stderr, "ld370: cannot write %s: %s\n", path, strerror(errno)); free(unl); for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     fwrite(unl, 1, (size_t)ulen, f);
     fclose(f);
     free(unl);
@@ -1766,7 +1766,7 @@ static int write_xmit(const char *path, struct umember *mem, int nmem, const cha
                     for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     xlen = emit_xmit(xm, unl, bounds, dsn);
     f = fopen(path, "wb");
-    if (!f) { perror(path); free(unl); free(xm);
+    if (!f) { fprintf(stderr, "ld370: cannot write %s: %s\n", path, strerror(errno)); free(unl); free(xm);
               for (i = 0; i < nmem; i++) { free(mem[i].blk); mem[i].blk = NULL; } return 1; }
     fwrite(xm, 1, (size_t)xlen, f);
     fclose(f);
@@ -1971,7 +1971,7 @@ static int write_map(const char *path, const char *mname, const char *entryname,
     int *ld, nld = 0, i, k, kx = 0, nx = 0, nunres = 0, nloose = 0;
     struct xref *xr = NULL;
     unsigned char mn[8];
-    if (!f) { perror(path); return 1; }
+    if (!f) { fprintf(stderr, "ld370: cannot write %s: %s\n", path, strerror(errno)); return 1; }
     ld = malloc((size_t)(nG ? nG : 1) * sizeof *ld);
     if (!ld) { fprintf(stderr, "ld370: out of memory\n"); if (f != stdout) fclose(f); return 1; }
     for (i = 0; i < nG; i++)
@@ -2012,7 +2012,7 @@ static int write_map(const char *path, const char *mname, const char *entryname,
                 fprintf(f, "%-8s  %06lX\n", mvs_nm(G[i].name), G[i].in_addr);
     }
     free(ld); free(xr);
-    if (f != stdout && fclose(f)) { perror(path); return 1; }
+    if (f != stdout && fclose(f)) { fprintf(stderr, "ld370: cannot write %s: %s\n", path, strerror(errno)); return 1; }
     return 0;
 }
 
@@ -2176,14 +2176,14 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(argv[i], "-L") && i + 1 < argc) Ldir[nLdir++] = argv[++i];
         else if (!strncmp(argv[i], "-L", 2)) Ldir[nLdir++] = argv[i] + 2;
-        else if (!strcmp(argv[i], "-l") && i + 1 < argc) { if (load_lib(argv[++i], Ldir, nLdir)) return 1; }
-        else if (!strncmp(argv[i], "-l", 2)) { if (load_lib(argv[i] + 2, Ldir, nLdir)) return 1; }
+        else if (!strcmp(argv[i], "-l") && i + 1 < argc) { int r = load_lib(argv[++i], Ldir, nLdir); if (r) return r; }
+        else if (!strncmp(argv[i], "-l", 2)) { int r = load_lib(argv[i] + 2, Ldir, nLdir); if (r) return r; }
         else if (argv[i][0] == '-' && argv[i][1]) {         /* was taken as an input file (#807) */
             fprintf(stderr, "ld370: unknown option '%s' (ld370 --help)\n", argv[i]);
             return 2;
         }
         else if (pack_mode) packspec[npack++] = argv[i];   /* member to pack */
-        else if (ends_with(argv[i], ".a")) { if (load_archive(argv[i])) return 1; }
+        else if (ends_with(argv[i], ".a")) { int r = load_archive(argv[i]); if (r) return r; }
         else objfiles[nobjf++] = argv[i];
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INM_DSNAM default; RECEIVE DA(...) overrides */
@@ -2268,6 +2268,13 @@ int main(int argc, char **argv)
         if (sparse_text)
             fprintf(stderr, "ld370: warning: --sparse-text is ignored by --pack; it shapes "
                             "the text records of a link\n");
+        if (warn_shadow)
+            fprintf(stderr, "ld370: warning: --warn-shadow is ignored by --pack; it reports "
+                            "archive members a link pulls\n");
+        if (ninc) {                                 /* a link input has no place in a pack (#821) */
+            fprintf(stderr, "ld370: --include names a link input; --pack takes members only\n");
+            return 2;
+        }
         if (allow_unresolved)
             fprintf(stderr, "ld370: warning: --allow-unresolved is ignored by --pack; a pack "
                             "resolves nothing\n");
@@ -2284,7 +2291,7 @@ int main(int argc, char **argv)
                 }
             } else file = spec;
             f = fopen(file, "rb");
-            if (!f) { perror(file); return 1; }
+            if (!f) { fprintf(stderr, "ld370: cannot read %s: %s\n", file, strerror(errno)); return 1; }
             fseek(f, 0, SEEK_END); n = ftell(f); fseek(f, 0, SEEK_SET);
             buf = malloc((size_t)(n > 0 ? n : 1));
             if (!buf) { fclose(f); fprintf(stderr, "ld370: out of memory\n"); return 1; }
@@ -2304,6 +2311,12 @@ int main(int argc, char **argv)
                 if (what) {
                     fprintf(stderr, "ld370: --pack: '%s' is %s, not a load module; pack the member "
                                     "or its -iebcopy\n", file, what);
+                    free(buf); return 2;
+                }
+                /* anything else that is no member either -- a C source -- was
+                 * warned as a bare module and then failed rc 1 (#821) */
+                if (!(n >= 4 && buf[1] == 0xCA && buf[2] == 0x6D && buf[3] == 0x0F) && !lmod_plausible(buf, n)) {
+                    fprintf(stderr, "ld370: --pack: '%s' is not a load module\n", file);
                     free(buf); return 2;
                 }
             }
@@ -2352,6 +2365,14 @@ int main(int argc, char **argv)
                         (set_rent && set_reus) ? "RENT REUS" : set_rent ? "RENT, not REUS"
                                                  : set_reus ? "REUS, not RENT" : "neither RENT nor REUS");
             }
+        }
+        /* A name used twice is the command line's error, found before anything
+         * is written: rc 2 (#821).  dir_layout says which name. */
+        {
+            int nd, ndb;
+            struct dent *dd = dir_layout(m, npack, &nd, &ndb);
+            if (!dd) return 2;
+            free(dd);
         }
         /* Once, however many bare members there were.  The entry is taken from
          * the member's CESD now (#850); the attributes still come from this
@@ -2897,11 +2918,36 @@ int main(int argc, char **argv)
     }
 
     (void)entry_pt;
+    /* An alias naming the member, or one alias given twice, is the command
+     * line's error: rc 2, before anything is written (#821). */
+    if (naliasv && (want_xmit || want_unload)) {
+        unsigned char nm[8], a1[8], a2[8];
+        int x, y;
+        member_name(nm, mname ? mname : basename_member(outfile));
+        for (x = 0; x < naliasv; x++) {
+            member_name(a1, aliasv[x]);
+            if (!memcmp(a1, nm, 8)) {
+                fprintf(stderr, "ld370: --alias %s is the member's own name\n", aliasv[x]); return 2;
+            }
+            for (y = x + 1; y < naliasv; y++) {
+                member_name(a2, aliasv[y]);
+                if (!memcmp(a1, a2, 8)) { fprintf(stderr, "ld370: --alias %s is given twice\n", aliasv[x]); return 2; }
+            }
+        }
+    }
+    /* A map that cannot be written is found BEFORE the member is: it used to be
+     * reported after the member was already on disk (#821). */
+    if (mapfile && strcmp(mapfile, "-")) {
+        FILE *mf = fopen(mapfile, "w");
+        if (!mf) { fprintf(stderr, "ld370: cannot write %s: %s\n", mapfile, strerror(errno)); return 1; }
+        fclose(mf);
+    }
     if (outfile) {                              /* the load-module member (always) */
         f = fopen(outfile, "wb");
-        if (!f) { perror(outfile); return 1; }
-        fwrite(out, 1, olen, f);
-        fclose(f);
+        if (!f) { fprintf(stderr, "ld370: cannot write %s: %s\n", outfile, strerror(errno)); return 1; }
+        if (fwrite(out, 1, olen, f) != (size_t)olen || fclose(f)) {
+            fprintf(stderr, "ld370: cannot write %s: %s\n", outfile, strerror(errno)); return 1;
+        }
         trace("=== done: wrote %ld-byte load module to %s ===", olen, outfile);
     }
     /* After the member, not before: a map for a module that was never written
