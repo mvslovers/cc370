@@ -34,6 +34,19 @@ one by one; each command has one entry for them.
 In the message texts, #mv("variable") marks the part that changes from one
 occurrence to the next: a file name, a symbol, a number.
 
+Every command other than cc370 takes #mc("-V") or #mc("--version"), which
+writes the version, and #mc("-h") or #mc("--help"), which writes a summary
+of the options; both end with return code 0. Where one of these commands
+has #mc("-v"), it asks for more detail and never for the version. (cc370
+follows the GNU C driver: see @cc370-invoke.) The lines it adds are not
+messages and are not listed here: as370 names the source, each directory of
+the macro search (with #mc("(absent)") after one that does not exist) and
+each macro read from a library, and writes its summary line even when
+nothing is flagged\; dasm370 names the section read, with its origin,
+length and RLD and LD entries\; ld370 writes trace lines beginning
+#mc("[ld370]")\; #mc("ar370 rcv") lists each member, as #mc("a - ")#mv("file"),
+on standard output.
+
 Not listed are the messages that report an exhausted host resource
 (#mc("out of memory") and the like) and those that report an internal
 inconsistency of the program. They end the command with an error code; the
@@ -210,7 +223,7 @@ with a summary line
 #screen[#mc(" Assembler Done   ")#mv("n")#mc(" Statements Flagged / ")#mv("sev")#mc(" was Highest Severity")]
 
 and the return code is #mv("sev"). An assembly without flagged statements
-writes nothing at all. @apx-messages-as370-fig shows an example.
+writes nothing at all, unless #mc("-v") is given. @apx-messages-as370-fig shows an example.
 
 #fig(caption: [Messages of an as370 assembly])[
   #screen(raw(read("../ex/apx-messages/as370-diag.txt")))
@@ -496,9 +509,7 @@ the card in error and then the message, which ends with
 
 #idx("ld370", "messages")
 ld370 ends with return code 1 when the link or pack failed, and with 2 when
-the command was not valid; a warning does not change the return code. With
-#mc("-v"), ld370 also writes trace lines beginning #mc("[ld370]")\; they
-are not messages.
+the command was not valid; a warning does not change the return code.
 
 #msg[#mc("ld370: cannot open ")#mv("file")#mc(": ")#mv("reason") \
 #mv("file")#mc(": ")#mv("reason")][

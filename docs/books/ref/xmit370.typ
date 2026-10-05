@@ -107,8 +107,7 @@ long forms apply to every subcommand.
   [#cmd("--version"), #cmd("-V")], [displays the toolchain version and the
     commit from which xmit370 was built, for example
     #cmd("xmit370 1.2.1-dev (99722f1)"), and ends, wherever it appears in
-    the command. Unlike as370, xmit370 uses #cmd("-v") for verbose output,
-    not for the version.],
+    the command.],
 )
 
 #note[The value of #cmd("--lrecl"), #cmd("--blocksize") and #cmd("--tabs")

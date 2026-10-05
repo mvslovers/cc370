@@ -157,9 +157,7 @@ return code 2.
     standard error, one line each, beginning with #cmd("[ld370]"): the
     objects read, the modules taken from libraries, the origin of each
     section, the counts of sections, entry points (LR) and unresolved
-    references (ER) in the CESD, and each relocated address constant.
-    Unlike as370, ld370 does not display its version for #cmd("-v")\; use
-    #cmd("-V").],
+    references (ER) in the CESD, and each relocated address constant.],
   [#cmd("--pack")], [selects the second form. See @ld370-pack.],
   [#cmd("-h"), #cmd("--help")], [writes a summary of the options to
     standard output and ends with return code 0.],
