@@ -229,6 +229,14 @@ environment.
 Follows IFOX C<JERMSGCD>: B<0> clean, B<4> warning, B<8> error, B<12> severe,
 B<16> terminal. Silent on success.
 
+B<16> is also a wrong command line: an invalid option (IFO258), a second source
+file, a source that cannot be read, or an output that cannot be written --
+B<-a=>I<FILE> included, which is checked before the assembly. The assembly still
+runs and reports, as IFOX00 does past IFO258, but B<no object deck is written>:
+an object beside RC=16 would look up to date to a build on its next run.
+
+Diagnostics name IFOX00's message number, C<IFO>I<nnn>.
+
 =head1 SEE ALSO
 
 L<cc370(1)>, L<ld370(1)>, L<ar370(1)>

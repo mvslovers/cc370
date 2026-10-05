@@ -4976,5 +4976,23 @@ if [ $r0 = 0 ] && [ $r1 = 0 ] && [ ! -s /tmp/_v811$$a.err ] && cmp -s /tmp/_v811
 else echo "verbose: FAIL (rc $r0/$r1)"; fail=1; fi
 rm -f /tmp/_v811$$.s /tmp/_v811$$a.obj /tmp/_v811$$b.obj /tmp/_v811$$a.err /tmp/_v811$$b.err
 
+# --- #822: a wrong command line writes no object; -a=FILE; IFOnnn ---------------
+printf 'T        CSECT\n         BR    14\n         END\n' > /tmp/_822$$.s
+f822=0
+rm -f /tmp/_822$$a.obj /tmp/_822$$b.obj /tmp/_822$$c.obj
+./as370 --bogus /tmp/_822$$.s -o /tmp/_822$$a.obj >/dev/null 2>&1; r1=$?
+./as370 /tmp/_822$$.s /tmp/_822$$.s -o /tmp/_822$$b.obj >/dev/null 2>&1; r2=$?
+./as370 /tmp/_822$$.s -o /tmp/_822$$c.obj -a=/nonexist/_822.lst >/tmp/_822$$.out 2>/tmp/_822$$.err; r3=$?
+[ $r1 = 16 ] && [ ! -e /tmp/_822$$a.obj ] || { echo "inv822: FAIL (invalid option: rc $r1, or an object was written)"; f822=1; }
+[ $r2 = 16 ] && [ ! -e /tmp/_822$$b.obj ] || { echo "inv822: FAIL (second source: rc $r2, or an object was written)"; f822=1; }
+[ $r3 = 16 ] && [ ! -e /tmp/_822$$c.obj ] && [ ! -s /tmp/_822$$.out ] && grep -q 'cannot write listing' /tmp/_822$$.err \
+    || { echo "inv822: FAIL (-a=unwritable: rc $r3, stdout $(wc -l < /tmp/_822$$.out) lines)"; f822=1; }
+printf 'T        CSECT\n         SRP   0(4,1),2\n         END\n' > /tmp/_822$$.s
+./as370 /tmp/_822$$.s -o /dev/null 2>/tmp/_822$$.err
+grep -q 'IFOX00 IFO177' /tmp/_822$$.err && ! grep -q 'ERR177' /tmp/_822$$.err || { echo "inv822: FAIL (message number: $(cat /tmp/_822$$.err | head -1))"; f822=1; }
+[ $f822 = 0 ] && echo "inv822: OK (rc 16 writes no object, unwritable -a=FILE is rc 16 with no stdout fallback, IFOnnn numbers)"
+fail=$((fail + f822))
+rm -f /tmp/_822$$*
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
