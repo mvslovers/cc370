@@ -1019,6 +1019,37 @@ static int member_entry(const unsigned char *m, long n, const char *want, long *
     return f.hits;
 }
 
+/* --pack: the entry of a bare member, from --entry NAME or @@CRT0 in its
+ * CESD; *from says which, for the warning.  Non-zero: refused (#850). */
+static int bare_entry(const unsigned char *buf, long n, const char *file, const char *entryname,
+                      long *entry, const char **from)
+{
+    const char *want = entryname ? entryname : "@@CRT0";
+    long ea = 0;
+    int hits = member_entry(buf, n, want, &ea);
+    if (!hits && entryname) {
+        fprintf(stderr, "ld370: --pack: --entry %s is not in the CESD of '%s'\n", entryname, file);
+        return 1;
+    }
+    if (hits > 1) {
+        fprintf(stderr, "ld370: --pack: '%s' names %s %d times in its CESD; the entry is ambiguous\n",
+                file, want, hits);
+        return 1;
+    }
+    *entry = ea;
+    if (!hits) *from = "no @@CRT0 in its CESD";
+    else if (entryname) *from = "--entry";
+    else *from = "@@CRT0";
+    return 0;
+}
+/* --entry names a BARE member's entry; a -iebcopy member keeps its own. */
+static void warn_entry_iebcopy(const char *file, const char *entryname)
+{
+    if (entryname)
+        fprintf(stderr, "ld370: warning: --entry does not apply to '%s'; a -iebcopy member "
+                        "keeps the entry its directory holds\n", file);
+}
+
 static long member_modlen(const unsigned char *m, long n)
 {
     long maxend = 0;
@@ -2282,9 +2313,7 @@ int main(int argc, char **argv)
                 if (r2 == -2) { fprintf(stderr, "ld370: --pack: '%s' is a multi-member unload; "
                                        "pass single-member -iebcopy files\n", file); return 2; }
                 if (r2 != 0)  { fprintf(stderr, "ld370: --pack: '%s' is a malformed unload\n", file); return 2; }
-                if (entryname)
-                    fprintf(stderr, "ld370: warning: --entry does not apply to '%s'; a -iebcopy member "
-                                    "keeps the entry its directory holds\n", file);
+                warn_entry_iebcopy(file, entryname);
                 if (name) member_name(m[i].name, name);  /* explicit NAME= overrides the dir name */
             } else {
                 if (!name) {                             /* derive the name from the basename */
@@ -2302,22 +2331,7 @@ int main(int argc, char **argv)
                  * elsewhere and the module started at the wrong address (#850).
                  * Take it from the CESD: --entry NAME, else @@CRT0; a module
                  * without @@CRT0 (plain assembler) still packs at 0, warned. */
-                {
-                    long ea = 0;
-                    const char *want = entryname ? entryname : "@@CRT0";
-                    int hits = member_entry(buf, n, want, &ea);
-                    if (!hits && entryname) {
-                        fprintf(stderr, "ld370: --pack: --entry %s is not in the CESD of '%s'\n", entryname, file);
-                        free(buf); return 1;
-                    }
-                    if (hits > 1) {
-                        fprintf(stderr, "ld370: --pack: '%s' names %s %d times in its CESD; the entry is ambiguous\n",
-                                file, want, hits);
-                        free(buf); return 1;
-                    }
-                    m[i].entry = ea;
-                    entry_from[i] = !hits ? "no @@CRT0 in its CESD" : entryname ? "--entry" : "@@CRT0";
-                }
+                if (bare_entry(buf, n, file, entryname, &m[i].entry, &entry_from[i])) { free(buf); return 1; }
                 /* A bare member is packed at entry 0 and at THIS command's
                  * attributes, and nothing in the output says which of those
                  * were the module's own.  An unauthorized module is
