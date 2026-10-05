@@ -571,9 +571,8 @@ failed. Messages are written to standard error and begin with
       reference, an entry point not defined (with #cmd("--pack"): not found,
       or found twice, in the CESD of a member file), a packed member with a
       record longer than the block size, an output file that cannot be
-      written. A load map that cannot be written is found before the member
-      is written\; a transport file that cannot be written is found after
-      it, so the member file is then left behind.],
+      written. A load map or transport file that cannot be written is found
+      before the member is written, so no member file is left behind.],
     [2], [The command line is wrong, and nothing was written: an unknown
       option, an option without its value, no input files, #cmd("--pack")
       without #cmd("-o"), #cmd("--rent") with #cmd("--norent") or

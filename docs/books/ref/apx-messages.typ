@@ -81,8 +81,8 @@ each command describes them in full.
       run.],
     [], [12], [Severe errors.],
     [], [16], [The source or an output file could not be opened, or the
-      command line was in error. With an unknown option or a second source
-      file the assembly still runs and the object module is written.],
+      command line was in error. No object module is written\; on a wrong
+      command line the assembly still runs and reports its messages.],
   )
 ] <apx-messages-rc1>
 
@@ -247,8 +247,7 @@ writes nothing at all, unless #mc("-v") is given. @apx-messages-as370-fig shows 
 #idx("IFOX00", "message numbers")
 Where IFOX00 has a message for the same condition, as370 gives its number in
 parentheses, as #mc("(IFOX00 IFO")#mv("nnn")#mc(")"), and uses its
-severity. A few messages give the number as #mc("ERR")#mv("nnn")\; the
-number is the same. @apx-messages-ifo1 and @apx-messages-ifo2 list them. In
+severity. @apx-messages-ifo1 and @apx-messages-ifo2 list them. In
 the tables, the number is left out of the text; where the text ends in
 #mc("- ")#mv("x"), the symbol or operand #mv("x") follows the number in
 the message as printed.
@@ -292,8 +291,8 @@ the message as printed.
   #set par(justify: false)
   #table(columns: (0.72in, 0.35in, 1fr),
     [Number], [Sev], [Message text],
-    [ERR177], [12], [#mc("SRP needs a third operand, the rounding digit")],
-    [IFO178 \ ERR178], [8], [#mc("Syntax error in the MNOTE severity") \ #mc("Syntax error - the nominal value is empty") \ #mc("Syntax error - decimal constant has no nominal value") \ #mc("Syntax error - more than one decimal point in a decimal constant") \ #mc("SRP rounding digit must be absolute")],
+    [IFO177], [12], [#mc("SRP needs a third operand, the rounding digit")],
+    [IFO178], [8], [#mc("Syntax error in the MNOTE severity") \ #mc("Syntax error - the nominal value is empty") \ #mc("Syntax error - decimal constant has no nominal value") \ #mc("Syntax error - more than one decimal point in a decimal constant") \ #mc("SRP rounding digit must be absolute")],
     [IFO179], [8], [#mc("Length modifier must be absolute - nothing assembled")],
     [IFO189], [8], [#mc("Invalid ENTRY operand, linkage cannot be performed - ")#mv("sym")],
     [IFO195], [12], [#mc("Invalid USING or DROP statement - ")#mv("x")],
@@ -310,11 +309,11 @@ the message as printed.
     [IFO213], [12], [#mc("Complexly relocatable expression (... instruction zeroed) - ")#mv("x")],
     [IFO217], [12], [#mc("Relocatable operand of a multiply or divide (... instruction zeroed) - ")#mv("x") \ #mc("USING base not absolute or simply relocatable - ")#mv("x") \ #mc("Relocatable duplication factor - an absolute expression is required")],
     [IFO220], [4], [#mc("Alignment error - ")#mv("op")#mc(" needs a ")#mv("n")#mc("-byte boundary and the operand resolves to x'")#mv("addr")#mc("'")],
-    [ERR224], [8], [#mc("Length error - a packed-decimal constant may have at most 31 digits") \ #mc("Length error - a zoned-decimal constant may have at most 16 digits") \ #mc("Length error - a packed- or zoned-decimal constant may not exceed 16 bytes") \ #mc("SRP rounding digit is outside 0-9")],
+    [IFO224], [8], [#mc("Length error - a packed-decimal constant may have at most 31 digits") \ #mc("Length error - a zoned-decimal constant may have at most 16 digits") \ #mc("Length error - a packed- or zoned-decimal constant may not exceed 16 bytes") \ #mc("SRP rounding digit is outside 0-9")],
     [IFO231], [8], [#mc("Symbol not previously defined - ")#mv("sym") \ #mc("Duplication factor uses a symbol not previously defined - ")#mv("sym") \ #mc("Length modifier uses a symbol not previously defined - ")#mv("sym")],
     [IFO233], [8], [#mc("More than 6 levels of parentheses")],
     [IFO234], [8], [#mc("Premature end of expression - the address constant has no value")],
-    [ERR236], [8], [#mc("Illegal character in a decimal constant")],
+    [IFO236], [8], [#mc("Illegal character in a decimal constant")],
     [IFO239], [8], [#mc("Invalid floating point characteristic")],
     [IFO242], [4], [#mc("SPACE operand not a single positive decimal self-defining term")],
     [IFO254], [4], [#mc("Illegal format of second operand of END statement")],
@@ -477,15 +476,22 @@ the card in error and then the message, which ends with
   assembled.
 ][Correct the file name or the directory.]
 
+#msg[#mc("as370: cannot write listing ")#mv("file")#mc(": ")#mv("reason")][
+  The listing file named with #mc("-a=")#mv("file") cannot be written. It
+  is checked as soon as the options are read. The assembly still runs and
+  reports its messages, but no listing and no object module are written.
+  Return code 16.
+][Correct the file name or the directory.]
+
 #msg[#mc("as370: invalid option '")#mv("option")#mc("' - option ignored (IFOX00 IFO258)")][
   The option is not known. It is ignored, as IFOX00 ignores an option it does
-  not know, and the assembly is carried out: *the object module is written*.
-  Return code 16.
+  not know, and the assembly is carried out and reports its messages, but
+  *no object module is written*. Return code 16.
 ][Correct or remove the option.]
 
 #msg[#mc("as370: more than one source file - '")#mv("file2")#mc("' ignored, assembling '")#mv("file1")#mc("'")][
-  Two source files were named. The first is assembled and its object module
-  written. Return code 16.
+  Two source files were named. The first is assembled and its messages
+  reported, but no object module is written. Return code 16.
 ][Assemble one source file per call.]
 
 #msg[#mc("as370: symbol table full") \
@@ -530,8 +536,10 @@ warning or note does not change the return code (see @ld370-rc).
 #mc("ld370: cannot write ")#mv("file")#mc(": ")#mv("reason")][
   An object module or library could not be read (first form), a file given
   to #mc("--pack") could not be read (second form), or an output file could
-  not be written (third form). An unwritable load map is found before the
-  member is written\; an unwritable transport file after it. Return code 1.
+  not be written (third form). The load map and the transport files
+  (#mv("out")#mc(".xmit"), #mv("out")#mc(".iebcopy")) are checked before
+  the member is written, so when one of them cannot be written, no member
+  file is left behind. Return code 1.
 ][Correct the file name or the directory.]
 
 #msg[#mc("ld370: ")#mv("file")#mc(" is not an object deck (")#mv("reason")#mc(")") \
