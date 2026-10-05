@@ -36,7 +36,8 @@ occurrence to the next: a file name, a symbol, a number.
 
 Every command takes #mc("-V") or #mc("--version"), which writes the
 version, and #mc("-h") or #mc("--help"), which writes a summary of the
-options; both end with return code 0. Where a command has #mc("-v"), it asks
+options; both end with return code 0 and ignore any other operands, so
+nothing else is done. Where a command has #mc("-v"), it asks
 for more detail and never for the version\; for cc370 it is the verbose
 option of the GNU C driver (see @cc370-invoke). The lines it adds are not
 messages and are not listed here: as370 names the source, each directory of
