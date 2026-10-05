@@ -1060,6 +1060,12 @@ c_common_handle_option (size_t scode, const char *arg, int value)
 bool
 c_common_post_options (const char **pfilename)
 {
+#ifdef TARGET_FORCE_TRIGRAPHS
+  /* cc370: trigraphs whatever the dialect.  -std=gnu89/gnu99 turned them
+     off, so "x??!y" was x|y by default and x??!y under -std -- the same
+     source, two values (#832); libc370 spells || as ??!??!.  */
+  cpp_opts->trigraphs = 1;
+#endif
   struct cpp_callbacks *cb;
 
   /* Canonicalize the input and output filenames.  */

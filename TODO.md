@@ -176,10 +176,17 @@ silent wrong results first. After each merge, one line to Book (session
    #857): input checks and rc, COM sections, foreign LR labels, unnamed-PC
    pairing by entry, refusals before output, LKED/translator IDRs decoded;
    cc370 -mcsect without the empty PC (IFOX does the same, JOB00353).
-9. #821 ld370 leftovers **(next)** of #807 (--pack with --warn-shadow/-i, non-member
-   --pack input, unprefixed write errors, rc 1/2 classification).
-10. #822 as370 -- rc 16 still writes the object, `-a=FILE` falls back to
-    stdout at rc 0, ERRnnn beside IFOnnn.
+9. ~~#821 ld370 leftovers of #807~~ **done** (#860, #862): pack option
+   checks, non-member input rc 2, prefixed write errors, all outputs checked
+   before the member; rc rule (2 = the command line, 1 = a file or the link)
+   in man EXIT STATUS.
+10. ~~#822 as370~~ **done** (#861): rc 16 writes no object, `-a=FILE` checked
+    (rc 16), IFOnnn throughout.
+
+**The Command Reference block is done.** Open from it, lower priority:
+#827 (`#pragma pack`), #830 (`#pragma map`), #831 (`-pipe`), #832
+(trigraphs), #834 (`-mpickax`), #76's ld370 half (pseudo registers), and from
+libc370#159 the empty STARTFILE_SPEC and weak references.
 
 ## Triage of 2026-10-03 — the next block, before 1.2.0
 
