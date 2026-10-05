@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-05
+
 ### Changed
 - **The link no longer names `crt0.o`; it needs libc370 >= 2.3.0**
   (libc370#159). Since libc370 2.3.0 the startup `@@CRT0` is a member of
