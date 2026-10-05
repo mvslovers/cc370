@@ -26,6 +26,9 @@
 #   CC370_API_URL     the GitHub API root (default https://api.github.com;
 #                     for a test)
 set -eu
+# `| zsh' too: the loops below rely on word splitting, which zsh does not do
+# by default -- every range check failed and libc370 was skipped (#879)
+[ -n "${ZSH_VERSION:-}" ] && setopt shwordsplit
 
 PREFIX=${PREFIX:-$HOME/.local}
 GH=https://github.com/mvslovers

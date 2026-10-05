@@ -31,7 +31,9 @@ neither number is mistaken for the other.
   resets, any other HTTP status and a failed connection likewise, and the
   script ends with rc 1. "No release fits" is kept for a list that was read
   and had no match. `GITHUB_TOKEN` is sent to the API when set, and a
-  release list on one line is read whole.
+  release list on one line is read whole. Run by zsh (`| zsh`), the script
+  skipped libc370 with the same message, because zsh does not split words;
+  it now turns that on.
 
 ## [1.4.0] - 2026-10-05
 

@@ -49,7 +49,7 @@ run() {
     env PREFIX="$P" CC370_API_URL="http://127.0.0.1:$port/$m" \
         CC370_BASE_URL="file://$R/cc370" LIBC370_BASE_URL="file://$R/libc370" \
         GITHUB_TOKEN= CC370_VERSION= LIBC370_VERSION= LIBC370_RELEASES= NO_LIBC370= \
-        "$@" sh "$INST" > "$W/out" 2>&1
+        "$@" ${RUNSH:-sh} "$INST" > "$W/out" 2>&1
     rc=$?
     return 0
 }
@@ -60,6 +60,12 @@ run ok
 [ $rc = 0 ] && has 'cc370 9.9.9 for' && [ -f "$P/cc370/include/fake2.0.0.h" ] \
     && ok "latest cc370 from the API, newest fitting libc370 (2.0.0) installed" \
     || bad "ok: rc=$rc $(show)"
+
+if command -v zsh >/dev/null; then
+    RUNSH=zsh; run ok; RUNSH=sh
+    [ $rc = 0 ] && [ -f "$P/cc370/include/fake2.0.0.h" ] \
+        && ok "run by zsh: libc370 found as well" || bad "zsh: rc=$rc $(show)"
+fi
 
 run nofit
 [ $rc = 0 ] && has 'no libc370 release declares a range that fits cc370 9.9.9' && [ -x "$P/bin/cc370" ] \
