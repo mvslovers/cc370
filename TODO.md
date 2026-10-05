@@ -121,15 +121,19 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## cc370 1.3.1 released; 1.4.0-dev on main (2026-10-05)
+## cc370 1.4.0 released; 1.4.1-dev on main (2026-10-05)
 
+- **1.4.0** (tag on `2821ebb`, PR #877; go from mbt-4c, Mike's OK relayed):
+  no startfile, `@@CRT0` autocalled from `libc.a`, packages need libc370
+  >= 2.3.0 (#875). Verified from a clean prefix: install.sh took libc370
+  2.3.1, hello world links with entry `@@CRT0` at 0x80 from
+  `libc.a(@@crt0.o)`. Tap at 1.4.0. Release page reworked.
+- install.sh reports "no libc370 release ... fits" when the unauthenticated
+  GitHub API is rate-limited (403) -- the message names the wrong cause.
+  Worth a fix: say the API failed.
 - **1.3.1** (tag on `2c1485e`): weak definitions exported, weak name used
   then defined no longer IFO196 (#872, #873; IFOX JOB00354).
-- **main = 1.4.0-dev:** the cc370 half of libc370#159 (#875) -- no startfile,
-  `@@CRT0` autocalled from `libc.a`, packages need libc370 >= 2.3.0.
-  **1.4.0 waits for mbt#158** (mbt PR #160); then mbt-4c's go and Mike's OK.
-  libc370 mirrors the releasing.md tables and keeps its crt0.o copies until
-  its cc370 minimum is 1.4.0.
+- libc370 keeps its crt0.o copies until its cc370 minimum is 1.4.0.
 
 ## cc370 1.3.0 released (2026-10-05)
 
