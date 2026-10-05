@@ -203,6 +203,28 @@ MVS, and those of the driver itself.
 ][Replace the character, or write the byte wanted as an escape,
   #mc("\\x")#mv("hh").]
 
+#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: #pragma map is not implemented; `")#mv("name")#mc("' keeps its derived external name -- declare it with __asm__(\"NAME\") instead")][
+  The source contains #mc("#pragma map"). cc370 does not implement it: the
+  function or variable #mv("name") keeps the external name made from its C
+  name (see @cc370-names).
+][Remove the pragma and declare the name with an #mc("asm") label, as
+  #mc("extern int f(void) asm(\"NAME\");").]
+
+#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: #pragma linkage has no effect: `")#mv("name")#mc("' is called with cc370's own linkage")][
+  The source, or a header it includes from outside the sysroot, contains
+  #mc("#pragma linkage"). Calls of #mv("name") use the ordinary cc370
+  linkage, a parameter list addressed by register 1. The headers
+  #mc("<mvs/clock.h>"), #mc("<mvs/dynalloc.h>"), #mc("<mvs/idcams.h>") and
+  #mc("<mvs/storage.h>") of libc370 contain the pragma\; from the installed sysroot they are system headers, and the
+  warning is not shown.
+][Remove the pragma from your source.]
+
+#msg[#mc("cc1: error: invalid option `")#mv("name")#mc("'")][
+  #mc("-m")#mv("name") is not a target option of cc370 (see @cc370-target).
+  #mc("-mpickax") and #mc("-mno-pickax") of earlier releases give this
+  message. Return code 1.
+][Remove the option.]
+
 #msg[#mv("file")#mc(":")#mv("line")#mc(": warning: malformed #pragma ")#mv("name")#mc(", ignored")][
   A #mc("#pragma map"), #mc("#pragma linkage") or #mc("#pragma checkout")
   could not be parsed. The pragma has no effect.
@@ -213,12 +235,6 @@ MVS, and those of the driver itself.
   is followed by further text on the same line. The pragma is processed; the
   text is ignored.
 ][Remove the text after the closing parenthesis.]
-
-#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: alias name is too long - alias ignored") \
-#mv("file")#mc(":")#mv("line")#mc(": warning: real name is too long - alias ignored")][
-  In a #mc("#pragma map"), the MVS name is longer than eight characters, or
-  the C name is longer than 255. The mapping is not made.
-][Shorten the name.]
 
 == as370 Messages <apx-messages-as370>
 

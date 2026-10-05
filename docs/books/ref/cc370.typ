@@ -191,8 +191,8 @@ them.
     3.4.6 manual.],
 )
 
-#note[#cmd("-pipe") is accepted, but cannot be used: as370 reads its source
-from a file, not from a pipe, and the build fails.]
+#note[#cmd("-pipe") is accepted and has no effect: the phases always
+exchange temporary files, because as370 reads its source from a file.]
 
 == From C Source to Assembler Source <cc370-asm>
 
@@ -350,11 +350,12 @@ ecosystem compile with #cmd("-std=gnu99"). #cmd("-std=c89"), #cmd("c99"),
 GCC 3.4.6.
 
 #idx("trigraphs")
-Without #cmd("-std"), and with #cmd("-std=c89") or #cmd("-std=c99"),
-trigraphs are replaced, with a warning for each: #cmd("\"what??!\"") becomes
-#cmd("\"what|\""). #cmd("-std=gnu89") and #cmd("-std=gnu99") turn the
-replacement off (the warning then says that the trigraph was ignored), and
-#cmd("-trigraphs") turns it on again.
+Trigraphs are always replaced, whatever #cmd("-std") says:
+#cmd("\"what??!\"") becomes #cmd("\"what|\""), so a string has the same value under every
+dialect. The
+replacement is silent\; #cmd("-Wall") or #cmd("-Wtrigraphs") reports each
+trigraph with a warning. To write the characters #cmd("??!") themselves,
+escape the second question mark: #cmd("\"what?\\?!\"").#idx("trigraphs", "escaping")
 
 #idx("predefined macros")
 Besides the macros of GCC 3.4.6, cc370 defines the macros in
@@ -503,9 +504,20 @@ characters, or give one of them an #cmd("asm") label.
 The pragmas #cmd("#pragma map"), #cmd("#pragma linkage"),
 #cmd("#pragma checkout"), #cmd("#pragma nomargins") and
 #cmd("#pragma nosequence") of the MVS compilers are accepted and have no
-effect. In particular, #cmd("#pragma map") does not change an external
-name\; use an #cmd("asm") label instead. Any other pragma is ignored with a
-warning.
+effect. #cmd("#pragma map") and #cmd("#pragma linkage") say so with a
+warning: #cmd("#pragma map") does not change an external name, so use an
+#cmd("asm") label instead\; #cmd("#pragma linkage") does not change how a
+function is called. The other three are accepted silently. Any other
+pragma is ignored with a warning. Like every warning, these do not change
+the return code, but #cmd("-Werror") turns them into errors. #cmd("-w")
+suppresses them\; #cmd("-Wno-unknown-pragmas") does not.
+
+A header in the sysroot is a system header, and its warnings are not
+shown: #cmd("<mvs/clock.h>"), #cmd("<mvs/dynalloc.h>"),
+#cmd("<mvs/idcams.h>") and #cmd("<mvs/storage.h>"), which contain
+#cmd("#pragma linkage"), compile without a message, also with
+#cmd("-Wall -Werror"). Named with #cmd("-I")
+from a libc370 source tree, the same headers draw the warning.
 
 == Optimization <cc370-opt>
 
@@ -555,9 +567,10 @@ As in any GCC, #cmd("-O1") replaces some library calls by cheaper ones: a
     after #cmd("COPY PDPTOP"), so that the object module holds the one
     section #cmd("UPCASE"), type #cmd("SD"), and no other. Without the
     option the module is one section without a name, type #cmd("PC").],
-  [#cmd("-mpickax"), #cmd("-mno-pickax")], [are accepted and have no
-    effect.],
 )
+
+The options #cmd("-mpickax") and #cmd("-mno-pickax") of earlier releases are
+gone\; cc1 rejects them with #cmd("invalid option"), return code 1.
 
 #tab(caption: [Code for #cmd("p->flags |= 0x80; p->buf[0] = 'A';") at
   #cmd("-O1")])[

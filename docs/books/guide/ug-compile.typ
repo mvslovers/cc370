@@ -67,10 +67,10 @@ book.
 
 #idx("trigraphs")
 #cmd("-std=c89") and #cmd("-std=c99") select the dialects without the GNU
-extensions. They also replace trigraphs, such as #cmd("??!") for
-#cmd("|"), which the GNU dialects leave alone. A string such as
-#cmd("\"what??!\"") then changes its meaning, so prefer the GNU dialects
-unless the program must be strictly portable.
+extensions. Trigraphs, such as #cmd("??!") for #cmd("|"), are replaced in
+every dialect, without a message unless #cmd("-Wall") is given: the string
+#cmd("\"what??!\"") is #cmd("\"what|\""). Write #cmd("\"what?\\?!\"") when
+you mean the question marks.
 
 == Writing C for EBCDIC <ug-compile-ebcdic>
 
@@ -172,7 +172,8 @@ external names that differ in their first eight characters, or give each an
 #cmd("asm") label, from the start\; a static function needs neither.
 
 #note[#cmd("#pragma map"), with which other MVS compilers rename an external
-name, is accepted by cc370 but has no effect. Use an #cmd("asm") label.]
+name, has no effect in cc370, and the compiler warns about it. Use an
+#cmd("asm") label.]
 
 == Choosing the Optimization Level <ug-compile-opt>
 

@@ -77,7 +77,7 @@ Reference_, Chapter 3, “The ld370 Command”.
   character constants must be corrected.
 - The external name of a C function is made by cutting the name to
   eight characters, in upper case, with #cmd("@") for the underscore.
-  #cmd("#pragma map") has no effect\; use an #cmd("asm") label
+  #cmd("#pragma map") has no effect (the compiler warns)\; use an #cmd("asm") label
   (@ug-asm-asmfromc).
 - The macro #cmd("__CC370__") gives the version of the compiler as a number,
   for example #cmd("10200") for 1.2.0. Use it to keep a source that must
@@ -200,7 +200,8 @@ libc370:
   libc370.
 - The pragmas of other MVS compilers, #cmd("#pragma map"),
   #cmd("#pragma linkage"), #cmd("#pragma checkout"), #cmd("#pragma
-  nomargins") and #cmd("#pragma nosequence"), are accepted and ignored.
+  nomargins") and #cmd("#pragma nosequence"), have no effect\;
+  #cmd("#pragma map") and #cmd("#pragma linkage") draw a warning.
   External names come from the C names (@ug-asm-asmfromc) or from
   #cmd("asm") labels.
 - Characters are EBCDIC code page 037 and #cmd("'\\n'") is #cmd("X'15'"):
