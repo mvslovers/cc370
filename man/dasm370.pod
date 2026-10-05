@@ -66,12 +66,12 @@ table, not as a finding.
 
 =item B<--json> I<FILE>
 
-With B<--align-diff>, write the repair contract (cc370#385): one JSON record per
+With B<--align-diff>, write the repair contract: one JSON record per
 divergence, with section-relative offsets and lengths, both sides' bytes, the
 statement each side carries, the module's shift set and which C<shift(B)> case it
 is in.
 
-B<Three of the five fields #385 specifies are source facts and the object cannot
+B<Three of the five fields the contract specifies are source facts and the object cannot
 supply them> --- the owning statement's line and text, whether it is
 macro-generated and which call owns it, and whether a statement B<reserves> bytes
 (C<DS CL1>) or only B<aligns> (C<DS 0F>). In an object the last two are both
@@ -85,7 +85,7 @@ though the question had not come up. The reason is stated once because it is a
 property of the build rather than of a finding; repeating it cost two fifths of
 the corpus output.
 
-The schema is C<dasm370-repair/2>. C</1> carried C<source> on the finding; it
+The schema is C<dasm370-repair/3>. C</1> carried C<source> on the finding; it
 belongs to each B<side>, because the two sides are two maintenance levels of one
 section and have two different sources.
 
@@ -100,7 +100,7 @@ parse; C<length> carries the number.
 =item B<--ref-stmts> I<FILE>, B<--cand-stmts> I<FILE>
 
 The C<as370 --stmts> export of each side's source, which fills that side's
-C<source> in B<--json> (cc370#385, #411). Each record gives the owning
+C<source> in B<--json>. Each record gives the owning
 statement's C<org> --- the card a repair edits --- with C<cards>, C<stmt>,
 C<gen>, C<mdepth>, C<mcall_stmt>, C<mcall_name>, C<reserves> and the statement's
 own C<stmt_offset> and C<stmt_length>.
@@ -145,14 +145,14 @@ it>, and it still assembles: the label reads C<L0000A4> and now sits at
 C<X'A6'>. No diagnostic, no moved byte --- so the round trip, L<cmplmd370(1)> and
 every comparison this project has report success on it. Inserting statements is
 the repair workflow, not a hypothesis, so use C<sequential> for any disassembly
-that will be edited or deposited. cc370#396.
+that will be edited or deposited.
 
 The names change and the object does not: a section disassembled either way
 reassembles to the same bytes.
 
 =item B<--reach-report>[=I<SET>]
 
-The #383 reachability traversal's coverage, as data and without a disassembly.
+The reachability traversal's coverage, as data and without a disassembly.
 Traverses from the B<code roots> --- the C<SD> (the section origin), the C<LD>/C<LR>
 entries this section owns, the C<END> entry B<on a deck only>, and a table of
 address constants a branched-through register was loaded from --- and reports what
@@ -254,7 +254,7 @@ is a true statement about the code and B<a false one as a hint>: applying it wou
 resolve displacements against an origin the assembly never used.
 
 A data area holding C<X'0510'> is C<BALR 1,0> to anything reading bytes. Only
-reachability (issue #383) can say that nothing branches there; an opcode gate
+reachability can say that nothing branches there; an opcode gate
 cannot. The real case is worse than the hex form suggests: C<ICKTR02> carries
 C<DC F'01296'>, and B<decimal 1296 is C<X'00000510'> > --- the low half of an
 ordinary fullword constant is the idiom, on a card nobody would suspect.
@@ -324,7 +324,7 @@ B<A disassembler decides at every byte whether an instruction is there, and the
 larger the table the more nonsense is representable.> The round trip cannot
 object: it re-encodes the wrong reading to the same bytes, so a false instruction
 and a true one are equally byte-safe. Narrowing the table is the only mechanism
-that B<removes> the reading rather than reporting it. cc370#395.
+that B<removes> the reading rather than reporting it.
 
 B<app> keeps the B<128> mnemonics an application program can execute and drops
 B<108> --- floating point 52, privileged 30, packed decimal 16, I/O 10. The class
@@ -332,8 +332,8 @@ is a column in F<opc_table.h>, where L<as370(1)> reads the same table, and
 F<as370/tests/opcinv.c> gates it: the counts, and the whole inversion assertion
 re-run B<under> the cut.
 
-B<The cut is ours and is not recovered from anywhere.> #395 names Pospischil's
-C<DISOPAPP> as the precedent, but no one here has his table. Two independent
+B<The cut is ours and is not recovered from anywhere.> The precedent is Pospischil's
+C<DISOPAPP>, but no one here has his table. Two independent
 passes over the 236 entries agreed on floating point B<to the entry> --- it is a
 rule, the opcode ranges 20-3F and 60-7F --- and differed on eleven elsewhere,
 every difference an omission rather than a judgement. The corpus writes most of
@@ -535,7 +535,7 @@ which is why the value is masked on both sides rather than compared across.
 
 =head2 A shift is measured, never assumed from position
 
-#112 states the assumption this mode exists to convert as I<"the displacement
+The assumption this mode exists to convert reads I<"the displacement
 shifts following an attributed length change are consequences">. That is not the
 rule. In the first constructed case the shift is at C<000002> and the insertion
 at C<00000A>: the instruction addresses data at the end of the section, and
@@ -586,7 +586,7 @@ C<shift(B)> is 0 and the test is exact; where a change precedes the prologue the
 base moves too and the test is weaker. The report says C<base=exact>, C<base=weak> or
 C<base=none> per module rather than assuming the common case. The third is not a
 refinement of the second: a module that writes no C<BALR Rn,0> at all has no base
-to shift, and most of #112's corpus is PL/S, which largely does not write one.
+to shift, and code generated from PL/S largely does not write one.
 Over the 832-module target population: 158 exact, 347 weak, 327 none.
 
 =back
@@ -651,8 +651,8 @@ traversal arrives at them.>
 
 B<Which denominator, because FOUR are in circulation and they disagree.> The
 C<reached=> and C<dark=> fields of the report are byte counts over the B<whole
-section>, data included, and they are exact. Every percentage quoted below and in
-cc370#383 is a different quantity, and it is the one least obvious from the
+section>, data included, and they are exact. Every percentage quoted below is a
+different quantity, and it is the one least obvious from the
 name: B<the reached set INTERSECTED with the witness, over the witness> --- of
 the bytes a real source listing calls code, the fraction the traversal reached.
 Over the 30 control sections, one run, C<--reach-report=both>:
@@ -687,7 +687,7 @@ break-even.
 B<Byte-safe is not harmless.> A module whose real code becomes C<DC> reassembles
 byte-identically, so the round trip and every gate built on it report success.
 The limit is the B<base map> and not the root set: one module has four roots and
-reaches 1.1 %. cc370#383 carries the ledger.
+reaches 1.1 %.
 
 =head1 WHAT IT DOES NOT
 
@@ -721,8 +721,13 @@ the current source, with the scores recorded in F<dasm370/tests/run.sh>.
 =head1 EXIT STATUS
 
 B<0> a section was written, or B<--align-diff> compared two, B<2> no such
-section, B<4> B<--align-diff> abandoned the alignment, B<16> the invocation or
-the input is wrong.
+section with text (a name that is an entry point or a common section included),
+or no arguments at all, B<4> B<--align-diff> abandoned the alignment, B<16> the
+invocation or the input is wrong -- a file that is neither an object deck nor a
+load module included.
+
+A common (CM) section is not disassembled and not listed among a deck's
+sections: it holds no text.
 
 =head1 SEE ALSO
 

@@ -277,6 +277,18 @@ int lmod_scan(const unsigned char *m, long n, struct lmod_info *info)
     return z.anomalies;
 }
 
+int lmod_plausible(const unsigned char *b, long n)
+{
+    struct lmod_iter it;
+    struct lmod_item r;
+    if (!((n >= 1 && (b[0] == 0x20 || b[0] == 0x28)) || (n >= 8 && (b[0] & 0xf0) == 0x40)))
+        return 0;
+    lmod_iter_init(&it, b, n);
+    while (lmod_iter_next(&it, &r) == 1)
+        if (r.kind == LMOD_CESD || r.kind == LMOD_CTL) return 1;
+    return 0;
+}
+
 int lmod_cesd_walk(const unsigned char *m, long n,
                    int (*fn)(const struct lmod_esd *e, void *ctx), void *ctx)
 {

@@ -65,15 +65,7 @@ enum fmt { F_UNKNOWN, F_OBJ, F_AR, F_LMOD, F_IEBCOPY, F_XMIT };
  * sniff called such files load modules (found with #806).  One record the
  * iterator reads as a CESD or a control record decides; a truncated module
  * still has them, a text file has none. */
-static int lmod_plausible(const unsigned char *b, long n)
-{
-    struct lmod_iter it;
-    struct lmod_item r;
-    lmod_iter_init(&it, b, n);
-    while (lmod_iter_next(&it, &r) == 1)
-        if (r.kind == LMOD_CESD || r.kind == LMOD_CTL) return 1;
-    return 0;
-}
+/* lmod_plausible() lives in common/obj370 now: dasm370 and idrdump370 ask it too (#809). */
 
 static enum fmt detect(const unsigned char *b, long n)
 {
