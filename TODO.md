@@ -121,7 +121,15 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## Command Reference findings — #804-#811, the current block (2026-10-04)
+## cc370 1.3.0 released (2026-10-05)
+
+Tag `v1.3.0` on `1c8181e`; release page reworked (Read this first: -v/-V,
+as370 rc 16 without object, eyecatcher bytes, trigraphs, driver, ld370 rc
+rule, --pack entry). Verified from a clean prefix with libc370 2.3.0. `main`
+is 1.3.1-dev. It carries the whole Command Reference block below plus weak
+references (#866).
+
+## Command Reference findings — #804-#811, the block of 2026-10-04 (done, in 1.3.0)
 
 Found while writing ML01-0002 (the Command Reference); the maintainer handed
 them over through the Book session, plan decided 2026-10-04. Order by harm:
