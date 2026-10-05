@@ -45,8 +45,9 @@ The third compares two levels of a control section (see @dasm370-align):
 
 #syntax(title: "Report:", read("../syntax/dasm370-report.txt"))
 
-dasm370 with no operands displays the summary of the options, as
-#cmd("--help") does.
+dasm370 with no operands writes the summary of the options to standard
+error and ends with return code 2. Options without an #var("input-file")
+end it with return code 16.
 
 === Operands
 
@@ -88,10 +89,9 @@ dasm370 with no operands displays the summary of the options, as
   [#cmd("--reach-report")\[#cmd("=")#var("set")\]], [writes a report of the
     code reachable from the entry points, instead of a disassembly. See
     @dasm370-reach.],
-  [#cmd("--reach")], [is accepted by the option parser and refused with
-    return code 16; only #cmd("--reach-report") is available. The same
-    holds for any other option beginning #cmd("--reach") other than
-    #cmd("--reach-report").],
+  [#cmd("--reach")\[#cmd("=")#var("set")\]], [is recognized and refused
+    with return code 16: applying the traversal to the disassembly is not
+    implemented. #cmd("--reach-report") is available.],
   [#cmd("--allow-incomplete")], [reads a load module member whose records
     cannot be followed to the end. Text that could not be read is written
     as #cmd("DS"). Without this option such a member is refused with return
@@ -139,14 +139,21 @@ dasm370 with no operands displays the summary of the options, as
 #idx("dasm370", "inputs")
 #var("input-file") is either an object module, as as370 writes it, or a
 load module member, as ld370 writes it with #cmd("-o")\; dasm370 decides
-which from the contents. The #cmd(".iebcopy") and #cmd(".xmit") files are not
-read.
+which from the contents. Any other file, including the #cmd(".iebcopy")
+and #cmd(".xmit") files, is refused with the message
+#cmd("not an object deck or a load module") and return code 16.
 
 #idx("control section", "selecting")
 A run writes one control section. When an object module holds several and
 #cmd("--csect") is not given, dasm370 writes the first and lists all of them
 on standard error. If the first section is empty and another is not, the
 list is headed #cmd("WARNING") and the return code is 4.
+
+#idx("common section")
+A common section (#cmd("COM"), ESD type CM) holds no text and is not a
+section to disassemble: it is not listed and not counted. #cmd("--csect")
+naming one ends dasm370 with return code 2 and the message that it is a
+common section and holds no text.
 
 From an object module, dasm370 also writes the #cmd("ENTRY") statements of
 the section and an #cmd("END") statement naming the entry point the
@@ -183,8 +190,10 @@ The disassembly has these elements:
   of the section refers to.
 - One statement for each instruction or constant. Its remark is the offset
   of the statement in the section, in hexadecimal.
-- Labels for the start of the section, for each entry point and for each
-  location that an address constant of the section points to. A label that
+- Labels for the start of the section, for each entry point of the
+  section and for each location that an address constant of the section
+  points to. Entry points that belong to other sections of a load module
+  are not used. A label that
   the module does not name is made up from its offset (#cmd("L00002C")), or
   numbered with #cmd("--labels sequential").
 - Address constants, written from the relocation dictionary as
@@ -436,18 +445,16 @@ traversal may make: #cmd("none"), #cmd("r15"), #cmd("balr"),
   #table(columns: (0.9in, 1fr),
     [Code], [Meaning],
     [0], [The output was written.],
-    [2], [The section named by #cmd("--csect") is not in the module, or a
+    [2], [dasm370 was called without operands; or the section named by
+      #cmd("--csect") is not in the module or is a common section; or a
       load module member is incomplete and #cmd("--allow-incomplete") was
       not given.],
     [4], [The output was written, but the first section of the module is
       empty while another is not; or #cmd("--align-diff") abandoned the
       alignment.],
     [16], [The command was given incorrectly or used an option that is
-      refused, a file could not be opened, or a hint file is in error or
-      failed a check.],
+      refused, a file could not be opened or is neither an object module
+      nor a load module member, or a hint file is in error or failed a
+      check.],
   )
 ] <dasm370-rc-tab>
-
-#note[A file that is neither an object module nor a load module member is
-taken for an incomplete load module: dasm370 ends with return code 2 and the
-message #cmd("the image is incomplete").]

@@ -1,16 +1,16 @@
 $ file370 sumup
-sumup: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 27 w/RLD, MODEND, 83077 bytes
+sumup: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 27 w/RLD, MODEND, 83093 bytes
 $ idrdump370 sumup
 sumup: 147 section(s)
   @001360  HMASPZAP  no entries
-  @00145B  LKED      22 bytes  [LAST]  LD370     ????"???|
+  @00145B  LKED      22 bytes  [LAST]  LD370     ??????n??
 $ cmplmd370 addup.o sumup
 addup.o vs sumup
 IDENTICAL
 $ echo $?
 0
-$ dasm370 --format free addup.o
-ADDUP    CSECT                          40 bytes, from addup.o
+$ dasm370 --format free --csect ADDUP sumup
+ADDUP    CSECT                          40 bytes, from sumup
 L000000  STM   14,12,12(13)             000000
          LR    12,15                    000004
          LM    2,3,0(1)                 000006

@@ -117,11 +117,12 @@ each command describes them in full.
     [], [2], [The command was in error and nothing was done, or the
       transmission could not be written.],
     [dasm370], [0], [The output was written.],
-    [], [2], [The section named by #mc("--csect") is not in the module, or
-      the input is incomplete.],
+    [], [2], [No operands were given, the section named by #mc("--csect")
+      is not in the module or is a common section, or the input is
+      incomplete.],
     [], [4], [The output was written, with a warning.],
-    [], [16], [The command was in error, a file could not be opened, or a
-      hint file was refused.],
+    [], [16], [The command was in error, a file could not be opened or is
+      not an object module or a load module, or a hint file was refused.],
     [cmplmd370], [0], [Every compared section is identical.],
     [], [1], [At least one section differs.],
     [], [2], [The comparison could not be made.],
@@ -917,16 +918,23 @@ with a count of the errors.
 
 #msg[#mc("dasm370: no section named ")#mv("name")#mc(" in ")#mv("file")#mc("; it holds ")#mv("list") \
 #mc("dasm370: ")#mv("name")#mc(" is an ENTRY POINT in ")#mv("file")#mc(", not a control section; its section is ")#mv("sect")#mc(" -- try --csect ")#mv("sect") \
+#mc("dasm370: ")#mv("name")#mc(" is an ENTRY POINT (LR) in ")#mv("file")#mc(", not a control section") \
+#mc("dasm370: ")#mv("name")#mc(" is a COMMON section in ")#mv("file")#mc("; it holds no text to disassemble") \
 #mc("dasm370: ")#mv("name")#mc(" is in ")#mv("file")#mc(" only as a DELETED (null) CESD entry, not a control section") \
 #mc("dasm370: ")#mv("name")#mc(" is in ")#mv("file")#mc(" as a ")#mv("type")#mc(" entry, not a control section")][
   The name given with #mc("--csect") is not a control section of the
-  module. Return code 2.
+  module that has text. A common section holds none. Return code 2.
 ][Give the name of a control section.]
 
 #msg[#mc("dasm370: the image is incomplete (")#mv("anomaly")#mc("); --allow-incomplete to read it anyway")][
-  A load module member ends before its last record, or the file is neither
-  an object module nor a load module. Return code 2.
+  A load module member ends before its last record. Return code 2.
 ][Obtain a complete copy of the member, or give #mc("--allow-incomplete").]
+
+#msg[#mc("dasm370: ")#mv("file")#mc(" is not an object deck or a load module")][
+  The input is neither an object module nor a load module member, for
+  example a source file or an #mc(".iebcopy") or #mc(".xmit") file.
+  Return code 16.
+][Give the object module, or the member that ld370 wrote with #mc("-o").]
 
 #msg[#mc("dasm370: ")#mv("name")#mc(" is ")#mv("n")#mc(" bytes, over the ")#mv("max")#mc(" this build holds")][
   The control section is longer than dasm370 can hold. Return code 16.
@@ -940,6 +948,8 @@ with a count of the errors.
 === Messages about the Command <apx-messages-dasm370-cmd>
 
 All of these end dasm370 with return code 16, and nothing is written.
+Called with no operands at all, dasm370 writes the summary of its options to
+standard error and ends with return code 2.
 
 #msg[#mc("dasm370: invalid option '")#mv("option")#mc("'") \
 #mc("dasm370: more than one input file") \
@@ -955,8 +965,8 @@ All of these end dasm370 with return code 16, and nothing is written.
   The value of the option is not one of those listed.
 ][Give one of the values listed.]
 
-#msg[#mc("dasm370: --isa s360 is not implemented, and the corpus says why.") \
-#mc("dasm370: --reach is not implemented; --reach-report measures it.") \
+#msg[#mc("dasm370: --isa s360 is not implemented: MVS 3.8j code uses the S/370") \
+#mc("dasm370: --reach is not implemented: applied, it would turn more real") \
 #mc("dasm370: --stmts is as370's option for WRITING the export; dasm370 reads one")][
   The option is refused. Further lines explain why and what to use.
 ][Use #mc("--isa app"), #mc("s370") or #mc("full"), #mc("--reach-report"),
@@ -968,9 +978,9 @@ All of these end dasm370 with return code 16, and nothing is written.
 #mc("dasm370: --align-diff takes two objects, a reference and a candidate") \
 #mc("dasm370: --align-diff already names both objects; do not give a third") \
 #mc("dasm370: --align-diff compares two objects; it neither reads nor writes a hint file") \
-#mc("dasm370: a statement export fills the `source' field of --json (cc370#385);") \
+#mc("dasm370: a statement export fills the `source' field of --json;") \
 #mc("dasm370: --ref-stmts/--cand-stmts name the sources of the two objects --align-diff compares;") \
-#mc("dasm370: --json is the repair contract for --align-diff (cc370#385); it has nothing to describe without one")][
+#mc("dasm370: --json is the repair contract for --align-diff; it has nothing to describe without one")][
   The options given do not go together, as the text says. See
   @dasm370-derive and @dasm370-align.
 ][Correct the command.]
@@ -1084,7 +1094,7 @@ continues.
      #mc("fill would swallow the label at X'")#mv("off")#mc("'")], [A
       #mc("[[fill]]") does not describe the bytes of the module.], [],
     [#mc("replace covers bytes no TXT card defined -- patching a hole would invent text") \
-     #mc("no [[verify]] covers this replace -- an unasserted patch is what makes REPLACE unsafe (#112)")], [A #mc("[[replace]]") is refused.], [],
+     #mc("no [[verify]] covers this replace -- an unasserted patch is what makes REPLACE unsafe")], [A #mc("[[replace]]") is refused.], [],
     [#mc("base from X'")#mv("a")#mc("' to X'")#mv("b")#mc("' is outside ")#mv("sect")#mc(" (X'")#mv("len")#mc("' bytes)")], [A #mc("[[base]]") range lies
       outside the section.], [R#super[1]],
     [#mc("value = \"")#mv("name")#mc("\" is not ")#mv("sect")#mc(", an ENTRY of it, or a [[label]] in this file") \

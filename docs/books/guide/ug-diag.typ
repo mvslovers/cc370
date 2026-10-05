@@ -212,7 +212,8 @@ the source I think?
 @ug-diag-inspect-session uses each on SUMUP: file370 summarizes the load
 module, idrdump370 shows that it was written by ld370 and not changed since,
 cmplmd370 confirms that the ADDUP in the load module is the one assembled
-from #cmd("addup.asm"), and dasm370 shows ADDUP as it was assembled.
+from #cmd("addup.asm"), and dasm370 shows ADDUP as it is in the load
+module.
 
 #fig(caption: [Inspecting SUMUP])[
   #screen(raw(read("../ex/ug-diag/inspect.txt")))
