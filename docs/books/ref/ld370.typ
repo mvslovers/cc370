@@ -163,7 +163,7 @@ return code 2.
   [#cmd("-h"), #cmd("--help")], [writes a summary of the options to
     standard output and ends with return code 0.],
   [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the commit from
-    which ld370 was built, for example #cmd("ld370 1.2.0 (b17cd14)"), and
+    which ld370 was built, for example #cmd("ld370 1.3.0 (1c8181e)"), and
     ends.],
 )
 
@@ -243,6 +243,12 @@ warning:
   members decides, which is seldom intended\;
 - only with #cmd("--warn-shadow"), when it is in a later library. A later
   library usually provides fallbacks, and IEWL is silent in that case too.
+
+#idx("weak external reference", "in automatic library call")
+A weak external reference, type #cmd("WX") (#cmd("WXTRN") in assembler), is
+not searched for. It is resolved when a module that is part of the link for
+another reason defines the name\; otherwise it stays 0, is listed under
+#cmd("UNRESOLVED") in the load map, and does not fail the link.
 
 #idx("INCLUDE", "--include option")
 #cmd("--include") #var("name") takes a module from the libraries before the
@@ -525,7 +531,7 @@ Every member written by ld370 carries two identification records:
   AMASPZAP notes the changes it makes to the module on MVS\;
 - a linkage editor record of 22 bytes, which names #cmd("LD370") as the
   program, with the version and release of the toolchain as version and
-  modification level (01 and 02 for cc370 1.2), and holds the date and time
+  modification level (01 and 03 for cc370 1.3), and holds the date and time
   of the link.
 
 The translator records that IEWL copies from the END records of the object

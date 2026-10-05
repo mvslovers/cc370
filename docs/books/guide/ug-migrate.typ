@@ -80,7 +80,7 @@ Reference_, Chapter 3, “The ld370 Command”.
   #cmd("#pragma map") has no effect (the compiler warns)\; use an #cmd("asm") label
   (@ug-asm-asmfromc).
 - The macro #cmd("__CC370__") gives the version of the compiler as a number,
-  for example #cmd("10200") for 1.2.0. Use it to keep a source that must
+  for example #cmd("10300") for 1.3.0. Use it to keep a source that must
   also compile with another compiler:
   ```
   #ifdef __CC370__
@@ -199,8 +199,8 @@ libc370:
   describes them\; MVS-specific services have their own names and headers in
   libc370.
 - The pragmas of other MVS compilers, #cmd("#pragma map"),
-  #cmd("#pragma linkage"), #cmd("#pragma checkout"), #cmd("#pragma
-  nomargins") and #cmd("#pragma nosequence"), have no effect\;
+  #cmd("#pragma linkage"), #cmd("#pragma checkout"),
+  #cmd("#pragma nomargins") and #cmd("#pragma nosequence"), have no effect\;
   #cmd("#pragma map") and #cmd("#pragma linkage") draw a warning.
   External names come from the C names (@ug-asm-asmfromc) or from
   #cmd("asm") labels.

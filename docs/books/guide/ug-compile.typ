@@ -267,7 +267,7 @@ your own headers and #cmd("#include <name.h>") for the library's.
 To compile one source for both MVS and the workstation, test the macros the
 compiler predefines: #cmd("__MVS__") is defined for the MVS target, and
 #cmd("__CC370__") gives the version of the compiler, for example
-#cmd("10200") for 1.2.0. @ug-compile-portable reads its input from a DD
+#cmd("10300") for 1.3.0. @ug-compile-portable reads its input from a DD
 statement on MVS and from a file on the workstation, and refuses a compiler
 that is too old. It compiles without a warning with cc370 and with the C
 compiler of the workstation.

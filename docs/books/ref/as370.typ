@@ -94,7 +94,7 @@ tab-separated data files that describe the assembly for other programs (see
     ends.],
   [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the
     commit from which as370 was built, for example
-    #cmd("as370 1.2.0 (b17cd14)"), and ends.],
+    #cmd("as370 1.3.0 (1c8181e)"), and ends.],
 )
 
 == Macro and COPY Libraries <as370-maclib>

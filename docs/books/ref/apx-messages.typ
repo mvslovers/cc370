@@ -218,6 +218,14 @@ MVS, and those of the driver itself.
   headers, and the warning is not shown.
 ][Remove the pragma from your source.]
 
+#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: weak definition of '")#mv("name")#mc("' is an ordinary definition on MVS; only a weak reference (WXTRN) exists [-Wweak-definition]")][
+  A function or variable is defined with #mc("__attribute__((weak))"). MVS
+  has weak references only (see @cc370-weak). In cc370 1.3.0 the name is,
+  moreover, not made external: no other module can reach it. The
+  compilation continues.
+][Remove the attribute from the definition. Declare the name weak only
+  where it is referenced. #mc("-Wno-weak-definition") turns the warning off.]
+
 #msg[#mc("cc1: error: invalid option `")#mv("name")#mc("'")][
   #mc("-m")#mv("name") is not a target option of cc370 (see @cc370-target).
   #mc("-mpickax") and #mc("-mno-pickax") of earlier releases give this

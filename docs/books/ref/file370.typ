@@ -45,7 +45,7 @@ what ld370 is about to send to MVS (see @ld370).
     standard output and ends with return code 0.],
   [#cmd("--version"), #cmd("-V")], [displays the toolchain version and the
     commit from which file370 was built, for example
-    #cmd("file370 1.2.0 (b17cd14)"), and ends.],
+    #cmd("file370 1.3.0 (1c8181e)"), and ends.],
 )
 
 #idx("file370", "order of operands")

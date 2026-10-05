@@ -1,0 +1,24 @@
+$ cc370 -O1 -c opt.c hook.c
+$ ar370 rc libhook.a hook.o
+$ cc370 -o opt opt.o -L. -lhook -Wl,--map,opt.map
+$ echo $?
+0
+$ grep -A4 UNRESOLVED opt.map
+UNRESOLVED
+@@STKLEN  WX
+CTHREAD   WX
+TRACE@HO  WX
+$ cc370 -o opt opt.o hook.o -Wl,--map,opt.map
+$ grep -B1 TRACE opt.map
+          PC    000340  000080  hook.o
+  TRACE@HO      00034C
+$ cc370 -O1 -c wdef.c
+wdef.c: In function `trace_hook':
+wdef.c:4: warning: weak definition of 'trace_hook' is an ordinary definition on MVS; only a weak reference (WXTRN) exists [-Wweak-definition]
+$ echo $?
+0
+$ file370 -v wdef.o
+wdef.o: OS/360 object deck -- 1 section(s) (first (private)), 80B text, 1 RLD card(s)
+    5 card(s) of 80 bytes; 0 LD entr(y/ies)
+    ESD    1  (blank)   PC  addr=000000  len=000050
+    END  no entry point (defaults to section origin)

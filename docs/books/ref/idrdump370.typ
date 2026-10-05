@@ -168,5 +168,5 @@ then as JSON. The last command shows the result for an object module.
 
 The SPZAP record at offset #cmd("X'18'") has no entries: nothing has
 modified the module. The linkage editor record at #cmd("X'113'") ends the
-chain: ld370 version 1, modification 2, linked on day 277 of 2026 at
+chain: ld370 version 1, modification 3, linked on day 277 of 2026 at
 12:00:00, the date and time given by #cmd("LDDATE") and #cmd("LDTIME").

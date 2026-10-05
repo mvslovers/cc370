@@ -168,6 +168,52 @@ When two libraries define the same name, the first library given wins.
 Give your own libraries before the C library, which cc370 does by putting
 #cmd("-l") options of the command line ahead of its own.
 
+== Optional Functions: Weak References <ug-link-weak>
+
+#idx("weak external reference", "in C")
+Sometimes a program can use a function when it is there and do without it
+when it is not: a trace routine that only a test build links, an exit that
+an installation may supply, a component that is linked into some modules
+and not into others. Declare such a function weak where you call it, and
+test its address before the call:
+
+```
+extern int trace_hook(const char *msg) __attribute__((weak));
+
+    if (trace_hook != 0)
+        trace_hook("main entered");
+```
+
+cc370 writes a weak external reference, #cmd("WXTRN"), for it. When the link
+includes a module that defines #cmd("trace_hook"), the call reaches it\;
+when it does not, the address is 0, the link ends with return code 0, and
+the load map lists #cmd("TRACE@HO") with type #cmd("WX") under
+#cmd("UNRESOLVED"), like #cmd("@@STKLEN") in @ug-link-map.
+
+Three rules follow from how the linkage editor treats a weak reference:
+
+- *Name the defining object module in the link.* Automatic library call
+  does not search for a weak reference, so a library member that defines
+  it is not taken unless the link needs it for another reason.
+  @ug-link-weak-fig shows both links: the first, with the definition only
+  in #cmd("libhook.a"), leaves the reference unresolved\; the second, with
+  #cmd("hook.o") named, resolves it. To take the member from a library,
+  give #cmd("-Wl,--include,hook").
+- *Never call it without the test.* An unresolved weak reference is 0, and
+  a call through it branches to address 0.
+- *Declare it weak where it is referenced, not where it is defined.* MVS has
+  no weak definition. cc370 warns about one, and the function it defines
+  cannot be reached from other modules (the last command of
+  @ug-link-weak-fig). Define the function as usual.
+
+#fig(caption: [A weak reference, left unresolved and resolved])[
+  #screen(raw(read("../ex/cc370/weak.txt")))
+] <ug-link-weak-fig>
+
+#cmd("__CC370_WEAK__") is defined when the compiler supports weak
+references\; a source that must also compile with an older cc370 can test
+it with #cmd("#ifdef").
+
 == Module Attributes <ug-link-attr>
 
 #idx("attributes", "of a load module")

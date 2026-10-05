@@ -170,7 +170,7 @@ them.
     #cmd("cc1"), #cmd("as") or #cmd("ld").],
   [#cmd("-dumpmachine")], [displays the target name, #cmd("cc370").],
   [#cmd("-dumpversion")], [displays the toolchain version, for example
-    #cmd("1.2.0").],
+    #cmd("1.3.0").],
   [#cmd("-dumpspecs")], [displays the rules by which the driver builds the
     commands of the phases.],
   [#cmd("-h"), #cmd("--help")], [display a summary of the driver options
@@ -180,7 +180,7 @@ them.
     linked, even when files are named.],
   [#cmd("-V"), #cmd("--version")], [display the version, the commit the
     driver was built from and the GCC version it is based on, on one line,
-    for example #cmd("cc370 1.2.0 (b17cd14), based on GCC 3.4.6"), and end
+    for example #cmd("cc370 1.3.0 (1c8181e), based on GCC 3.4.6"), and end
     with return code 0. Nothing is compiled or linked.],
   [#cmd("-b") #var("machine")], [is refused with return code 1. In GCC it
     selects another target\; cc370 has only one. #cmd("-V") followed
@@ -361,14 +361,16 @@ escape the second question mark: #cmd("\"what?\\?!\"").#idx("trigraphs", "escapi
 Besides the macros of GCC 3.4.6, cc370 defines the macros in
 @cc370-macro-tab. #cmd("cc370 -dM -E - </dev/null") lists all of them.
 
-#tab(caption: [Macros predefined by cc370 1.2.0])[
+#tab(caption: [Macros predefined by cc370 1.3.0])[
   #table(columns: (1.6in, 0.7in, 1fr),
     [Macro], [Value], [Meaning],
-    [#cmd("__CC370__")], [#cmd("10200")], [the toolchain version: major
+    [#cmd("__CC370__")], [#cmd("10300")], [the toolchain version: major
       × 10000 + minor × 100 + patch],
     [#cmd("__CC370_MAJOR__")], [#cmd("1")], [major version],
-    [#cmd("__CC370_MINOR__")], [#cmd("2")], [minor version],
+    [#cmd("__CC370_MINOR__")], [#cmd("3")], [minor version],
     [#cmd("__CC370_PATCH__")], [#cmd("0")], [patch level],
+    [#cmd("__CC370_WEAK__")], [#cmd("1")], [weak references are supported\;
+      see @cc370-weak],
     [#cmd("__MVS__")], [#cmd("1")], [the target is MVS],
     [#cmd("__CHAR_UNSIGNED__")], [#cmd("1")], [plain #cmd("char") is
       unsigned],
@@ -516,6 +518,55 @@ A header in the sysroot is a system header, and its warnings are not
 shown, also with #cmd("-Wall -Werror"). The same header named with
 #cmd("-I") from a libc370 source tree is an ordinary header, and its
 warnings are reported.
+
+== Weak References <cc370-weak>
+
+#idx("weak external reference")#idx("WXTRN")#idx("__attribute__", "weak")
+A function or variable declared with #cmd("__attribute__((weak))") is a
+weak external reference: cc370 writes a #cmd("WXTRN") for it instead of an
+#cmd("EXTRN"), and the linkage editor treats it as optional.
+
+```
+extern int trace_hook(const char *msg) __attribute__((weak));
+```
+
+- When a module of the link defines the name, the reference is resolved
+  like any other.
+- When none does, the link still succeeds, with return code 0. The name is
+  listed with type #cmd("WX") under #cmd("UNRESOLVED") in the load map, and
+  its address is 0. Test it before you use it:
+  #cmd("if (trace_hook != 0) trace_hook(\"...\");").
+- Automatic library call does not search for a weak reference. A library
+  member that defines the name is taken only when the link needs it for
+  another reason, or with #cmd("-Wl,--include,")#var("member").
+- A weak declaration that the source does not use produces nothing.
+
+#cmd("__CC370_WEAK__") is predefined as 1 by a cc370 that supports weak
+references, so a source can test for them with #cmd("#ifdef").
+
+@cc370-weak-fig compiles the program #cmd("opt.c"), which calls
+#cmd("trace_hook") when it is present, and #cmd("hook.c"), which defines it.
+Linked against a library that holds #cmd("hook.o"), the program leaves the
+reference unresolved\; linked with #cmd("hook.o") named, it calls the
+function.
+
+#fig(caption: [A weak reference, unresolved and resolved])[
+  #grid(columns: (1fr, 1fr), column-gutter: 0.2in,
+    code(read("../ex/cc370/opt.c"), size: 7.5pt),
+    code(read("../ex/cc370/hook.c"), size: 7.5pt))
+  #screen(raw(read("../ex/cc370/weak.txt")))
+] <cc370-weak-fig>
+
+#idx("-Wweak-definition")
+MVS has no weak definition. A definition with #cmd("__attribute__((weak))")
+draws the warning
+#cmd("weak definition of '")#var("name")#cmd("' is an ordinary definition on MVS")
+(#cmd("-Wweak-definition"), on by default\;
+#cmd("-Wno-weak-definition") turns it off). Contrary to the text of the
+warning, cc370 1.3.0 does not make the name external at all: the object
+module has no entry point for it, as the last command of @cc370-weak-fig
+shows, so no other module can reach it, and a weak reference to it stays
+unresolved. Do not declare a definition weak.
 
 == Optimization <cc370-opt>
 

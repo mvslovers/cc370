@@ -210,7 +210,7 @@ the source I think?
 )
 
 @ug-diag-inspect-session uses each on SUMUP: file370 summarizes the load
-module\; idrdump370 shows that it was written by ld370, version 1.2, on day
+module\; idrdump370 shows that it was written by ld370, version 1.3, on day
 278 of 2026, and that SPZAP has not changed it since\; cmplmd370 confirms
 that the ADDUP in the load module is the one assembled from
 #cmd("addup.asm"), and that the code compiled from #cmd("sumup.c") is

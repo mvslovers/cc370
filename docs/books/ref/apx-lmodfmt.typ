@@ -167,7 +167,7 @@ linked the module:
     [3], [10], [The program: #cmd("LD370") followed by five blanks. The MVS
       linkage editor writes #cmd("5752SC104").],
     [13], [2], [The version and modification level. ld370 writes the
-      version and release of the toolchain: #cmd("X'0102'") for 1.2.],
+      version and release of the toolchain: #cmd("X'0103'") for 1.3.],
     [15], [3], [The date of the link, packed #var("yyddd").],
     [18], [4], [The time of the link, packed #var("0hhmmss").],
   )
@@ -629,7 +629,7 @@ out here.
   [#cmd("058"), IDR], [#cmd("80 FA 01 00"): HMASPZAP, 251 bytes, no
     entries, then zeros.],
   [#cmd("153"), IDR], [#cmd("80 15 82"): linkage editor, last IDR, 22 bytes.
-    #cmd("LD370"), version #cmd("01 02"), date #cmd("26 27 7F") (26277),
+    #cmd("LD370"), version #cmd("01 03"), date #cmd("26 27 7F") (26277),
     time #cmd("01 20 00 0F") (12:00:00).],
   [#cmd("169"), control], [#cmd("01"), an ID/length list of 12 bytes, no
     relocation items\; CCW #cmd("06 000000 40 00 0030"): 48 bytes of text

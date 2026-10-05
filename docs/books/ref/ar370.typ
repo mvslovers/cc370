@@ -56,7 +56,7 @@ change them; it stores each one byte for byte.
     and ends with return code 0.],
   [#cmd("--version"), #cmd("-V")], [displays the toolchain version and the
     commit from which ar370 was built, for example
-    #cmd("ar370 1.2.1-dev (6d28b20)"), and ends.],
+    #cmd("ar370 1.3.0 (1c8181e)"), and ends.],
 )
 
 #idx("ar370", "operations")
