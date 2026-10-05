@@ -153,7 +153,8 @@ them.
     #var("language"), for example #cmd("c") or #cmd("assembler"), whatever
     their extension. #cmd("-x none") returns to deciding by the
     extension.],
-  [#cmd("-v")], [displays the version and each command as it is run.],
+  [#cmd("-v")], [displays the configuration, the version and each command
+    as it is run. Unlike #cmd("-V"), it does not end the command.],
   [#cmd("-###")], [displays the commands without running them.],
   [#cmd("-save-temps")], [keeps the intermediate files.],
   [#cmd("-pass-exit-codes")], [ends with the return code of the phase that
@@ -172,12 +173,18 @@ them.
     #cmd("1.2.0").],
   [#cmd("-dumpspecs")], [displays the rules by which the driver builds the
     commands of the phases.],
-  [#cmd("--help")], [displays a summary of the driver options.],
+  [#cmd("-h"), #cmd("--help")], [display a summary of the driver options
+    and end with return code 0. Nothing is compiled or linked.],
   [#cmd("--target-help")], [displays the target options of
     @cc370-target and ends with return code 0. Nothing is compiled or
     linked, even when files are named.],
-  [#cmd("--version")], [displays the version, for example
-    #cmd("cc370 1.2.0 (b17cd14), based on GCC 3.4.6").],
+  [#cmd("-V"), #cmd("--version")], [display the version, the commit the
+    driver was built from and the GCC version it is based on, on one line,
+    for example #cmd("cc370 1.2.0 (b17cd14), based on GCC 3.4.6"), and end
+    with return code 0. Nothing is compiled or linked.],
+  [#cmd("-b") #var("machine")], [is refused with return code 1. In GCC it
+    selects another target\; cc370 has only one. #cmd("-V") followed
+    directly by a version, as in #cmd("-V3.4"), is refused the same way.],
   [#var("gcc-option")], [any other option of the GCC 3.4.6 driver and
     compiler, such as the #cmd("-W") warning options, the #cmd("-f") code
     generation options and #cmd("-g"). They behave as described in the GCC

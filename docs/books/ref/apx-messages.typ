@@ -34,11 +34,11 @@ one by one; each command has one entry for them.
 In the message texts, #mv("variable") marks the part that changes from one
 occurrence to the next: a file name, a symbol, a number.
 
-Every command other than cc370 takes #mc("-V") or #mc("--version"), which
-writes the version, and #mc("-h") or #mc("--help"), which writes a summary
-of the options; both end with return code 0. Where one of these commands
-has #mc("-v"), it asks for more detail and never for the version. (cc370
-follows the GNU C driver: see @cc370-invoke.) The lines it adds are not
+Every command takes #mc("-V") or #mc("--version"), which writes the
+version, and #mc("-h") or #mc("--help"), which writes a summary of the
+options; both end with return code 0. Where a command has #mc("-v"), it asks
+for more detail and never for the version\; for cc370 it is the verbose
+option of the GNU C driver (see @cc370-invoke). The lines it adds are not
 messages and are not listed here: as370 names the source, each directory of
 the macro search (with #mc("(absent)") after one that does not exist) and
 each macro read from a library, and writes its summary line even when
@@ -154,6 +154,14 @@ MVS, and those of the driver itself.
   An input file does not exist. It is followed by
   #mc("cc370: no input files") when it was the only one. Return code 1.
 ][Correct the file name.]
+
+#msg[#mc("cc370: `-b' selects another compiler version or target in GCC; cc370 has one of each") \
+#mc("cc370: `-V' selects another compiler version or target in GCC; cc370 has one of each")][
+  The GNU C driver option #mc("-b")#mv("machine") or #mc("-V")#mv("version")
+  was given. cc370 is a single compiler for a single target, so the command
+  is refused before any phase runs. #mc("-V") on its own is the version
+  option. Return code 1.
+][Remove the option.]
 
 #msg[#mc("cc370: cannot specify -o with -c or -S and multiple files")][
   #mc("-o") was given with #mc("-c") or #mc("-S") and more than one source.

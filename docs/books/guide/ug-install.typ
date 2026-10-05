@@ -197,8 +197,9 @@ both from their current sources.
 #idx("installation", "checking")
 Check a new installation with the commands in @ug-install-check-fig:
 
-+ #cmd("cc370 --version") shows the version of the compiler. Every tool
-  answers #cmd("--version") with the same version.
++ #cmd("cc370 --version") shows, on one line, the version of the compiler
+  and the commit it was built from. Every tool answers #cmd("--version"), or
+  #cmd("-V"), with the same version and commit.
 + #cmd("cc370 -print-file-name=libc.a") shows where the driver finds the C
   library. If it prints only #cmd("libc.a"), without a directory, libc370
   is not installed in this tree.
