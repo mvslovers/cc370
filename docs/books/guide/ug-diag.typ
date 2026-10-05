@@ -132,13 +132,13 @@ To find the statement:
   is also the address at which the module was loaded.
 + *Compute the offset in the module*: the PSW address, minus the entry
   point address, minus the instruction length. For example, with SUMUP
-  loaded at #cmd("X'0A1000'") and a PSW address of #cmd("X'0A1438'") after an
+  loaded at #cmd("X'0A1000'") and a PSW address of #cmd("X'0A1338'") after an
   instruction of 2 bytes, the failing instruction is at offset
-  #cmd("X'1438'") − #cmd("X'1000'") − 2 = #cmd("X'436'").
-+ *Find the section in the load map.* Offset #cmd("X'436'") lies in the
-  unnamed section from #cmd("sumup.o"), which begins at #cmd("X'378'") and
+  #cmd("X'1338'") − #cmd("X'1000'") − 2 = #cmd("X'336'").
++ *Find the section in the load map.* Offset #cmd("X'336'") lies in the
+  unnamed section from #cmd("sumup.o"), which begins at #cmd("X'278'") and
   is #cmd("X'F8'") bytes long. The offset in that section is
-  #cmd("X'436'") − #cmd("X'378'") = #cmd("X'BE'").
+  #cmd("X'336'") − #cmd("X'278'") = #cmd("X'BE'").
 + *Find the statement in the listing.* @ug-diag-lst shows the listing of
   #cmd("sumup.o") around #cmd("LOC 0000BE"): the instruction there is
   #cmd("DR 6,5"), a division.

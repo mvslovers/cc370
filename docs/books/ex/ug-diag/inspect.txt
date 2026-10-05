@@ -3,7 +3,7 @@ sumup: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 2
 $ idrdump370 sumup
 sumup: 147 section(s)
   @001340  HMASPZAP  no entries
-  @00143B  LKED      LD370 V01 M03  date=26278  time=115055  [LAST]
+  @00143B  LKED      LD370 V01 M03  date=26278  time=115640  [LAST]
 $ cmplmd370 addup.o sumup
 addup.o vs sumup
 IDENTICAL
