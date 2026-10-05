@@ -492,7 +492,7 @@ import re, os, subprocess
 NAMES = """
 absrx absssub absundef absusing actr adcon aifcond aliasext align amp_fold
 amp_selfdef amp_subst attrapos attrapos_remark attrdup attre basereg
-basereg2 bitlen blank_csect blankcont brmnem ccwstar cmprule cnop collate comdxd comq
+basereg2 bitlen blank_csect blankcont brmnem ccwstar cmprule cnop collate comdxd comq comref
 cont72 contattr contparen contrem contsev csect_resume csect_resume2
 csect_resume3 dcattr dcvals dcvlist droplist dsectpool dupfac emptydc
 emptyopnd endpool endstop entryprobe entsd equfwd equlen equlist eququote
@@ -545,11 +545,15 @@ raise SystemExit(1 if bad else 0)
 PYS
 
 # --- case 11: COM, DXD, CXD and Q, every page up to the diagnostics -- #810 --
+# comref (#840): COM and DXD names in A-cons and literals -- A(BLK) and =A(BLK)
+# relocate against the CM, =Q(PR1) is RLD type 2, AL2(PR1) is IFO204 and A(PR1)
+# IFO158, and the ER beside the CM lists its own id.
 # The XD entry lists its alignment in ADDR, CM its extent; CXD lists 00000000
 # that the deck never punches; Q and CXD are RLD types 2 and 3.
-for T11 in comdxd comq; do
+for T11 in comdxd comq comref; do
 OUT11=/tmp/as370-listref-q.$$
-ASMDATE=10/04/26 ASMTIME=$(sed -n 's/.* \([0-9][0-9]\.[0-9][0-9]\) 10\/04\/26.*/\1/p' tests/listref/ifox-listing-$T11.txt | head -1) \
+STAMP11=$(grep -oE ' [0-9]{2}\.[0-9]{2} [0-9]{2}/[0-9]{2}/[0-9]{2}' tests/listref/ifox-listing-$T11.txt | head -1)
+ASMTIME=$(echo $STAMP11 | cut -d' ' -f1) ASMDATE=$(echo $STAMP11 | cut -d' ' -f2) \
     ./as370 tests/$T11.s -a="$OUT11" -o /dev/null >/dev/null 2>&1
 python3 - tests/listref/ifox-listing-$T11.txt "$OUT11" <<'PYQ'
 import sys
