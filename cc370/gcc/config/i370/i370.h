@@ -76,7 +76,7 @@ extern size_t mvs_function_name_length;
 #define TARGET_CHAR_INSTRUCTIONS (target_flags & 1)
 
 /* Compile experimental position independent code */
-#define TARGET_PIC (target_flags & 2)
+/* bit 2 was -mpickax, an experimental PIC that nothing tested (#834) */
 extern int i370_enable_pic;
 
 /* Default target switches */
@@ -93,8 +93,6 @@ extern int i370_enable_pic;
 #define TARGET_SWITCHES							\
 { { "char-instructions", 1, N_("Generate char instructions")},		\
   { "no-char-instructions", -1, N_("Do not generate char instructions")}, \
-  { "pickax", 2, "Experimental i370 PIC"},				\
-  { "no-pickax", -2, "Disable experimental i370 PIC"},			\
   { "", TARGET_DEFAULT, 0} }
 
 /* The desired CSECT name */

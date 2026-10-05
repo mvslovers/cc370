@@ -45,6 +45,16 @@ neither number is mistaken for the other.
   exponent modifier, #782).
 
 ### Changed
+- **cc370: trigraphs under every `-std`** (#832). They were on by default
+  and off under `-std=gnu89`/`gnu99`, so `"x??!y"` was `x|y` in one build and
+  `x??!y` in another. They are now always on (the library spells `||` as
+  `??!??!`); write `?\?!` for a literal `??!`.
+- **cc370: `-mpickax` is gone** (#834). It set a flag nothing read.
+- **cc370: `-pipe` is accepted and ignored** (#831). As370 reads a file, so
+  `-pipe` failed rc 2 with no object; the output is the same without it.
+- **cc370: `#pragma map` and `#pragma linkage` warn that they have no effect**
+  (#830). Both were dropped silently, so the external name stayed cc370's
+  own; use `__asm__("NAME")`.
 - **`-v` is verbose and `-V` the version, in every tool** (#811). **Read this
   first:** `as370 -v` and `dasm370 -v` used to print the version and now turn
   on verbose output. Use `--version` or `-V` instead.

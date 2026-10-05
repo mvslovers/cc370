@@ -109,6 +109,29 @@ else
     echo "mcsect-none: FAIL ($(head -2 "$WORK/nmc.s" | tr '\n' '|'))"; fail=1
 fi
 
+# (3e) #832: trigraphs under every dialect -- "x??!y" is x|y with and without -std.
+cat > "$WORK/tg.c" <<'EOF'
+const char *s = "x??!y";
+EOF
+for std in "" -std=gnu89 -std=gnu99; do
+    $CC1 -quiet $std "$WORK/tg.c" -o "$WORK/tg.s" 2>/dev/null
+    if grep -q "C'x|y'" "$WORK/tg.s"; then echo "trigraph${std:+ $std}: OK (??! is |)"
+    else echo "trigraph${std:+ $std}: FAIL ($(grep -o "C'x[^']*'" "$WORK/tg.s"))"; fail=1; fi
+done
+# (3f) #830: #pragma map / linkage say they do nothing; #834: -mpickax is gone.
+cat > "$WORK/pm.c" <<'EOF'
+int longfunctionname(void) { return 1; }
+#pragma map(longfunctionname, "LFN")
+#pragma linkage(longfunctionname, OS)
+EOF
+$CC1 -quiet "$WORK/pm.c" -o "$WORK/pm.s" 2>"$WORK/pm.err"
+if grep -q '#pragma map is not implemented' "$WORK/pm.err" && grep -q '#pragma linkage has no effect' "$WORK/pm.err"; then
+    echo "pragma-map: OK (map and linkage warn)"
+else echo "pragma-map: FAIL ($(head -2 "$WORK/pm.err"))"; fail=1; fi
+if $CC1 -quiet -mpickax "$WORK/pm.c" -o "$WORK/pk.s" 2>/dev/null; then
+    echo "mpickax: FAIL (still accepted)"; fail=1
+else echo "mpickax: OK (refused)"; fi
+
 # (4) the __asm__ workaround: two 8-char linkage names that differ are distinct
 # object-deck symbols -> must NOT warn (no false positive on the workaround).
 cat > "$WORK/asm.c" <<'EOF'

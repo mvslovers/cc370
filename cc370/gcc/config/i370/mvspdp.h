@@ -97,6 +97,8 @@ Boston, MA 02111-1307, USA.  */
 /* Options for the preprocessor for this target machine.  */
 
 #define CPP_SPEC "-trigraphs"
+/* ...and kept on under any -std: see c_common_post_options (#832).  */
+#define TARGET_FORCE_TRIGRAPHS 1
 
 /* Target OS preprocessor built-ins.  Match the predefines of the c2asm370
    (gccmvs 3.2.3) compiler, which crent370 and the other runtimes key on:

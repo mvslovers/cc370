@@ -121,4 +121,8 @@ for a in -bogus -V3.4; do
         bad "$a: rc $rc: $(head -1 "$WORK/d")"
     fi
 done
+# -pipe is accepted and changes nothing: as370 reads a file (#831)
+"$CC" -pipe -c "$WORK/a.c" -o "$WORK/pp.o" >"$WORK/d" 2>&1; rc=$?
+if [ $rc -eq 0 ] && cmp -s "$WORK/pp.o" "$WORK/a.o"; then ok "-pipe: same object, rc 0"
+else bad "-pipe: rc $rc: $(head -1 "$WORK/d")"; fi
 exit $fail
