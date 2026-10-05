@@ -32,7 +32,7 @@ optimisation level, every external reference collected and link-tested.
 | 22 helper routines (`@@MULDI3`, `@@DIVDI3`, `@@FIXDFD`, `@@POPCSI`, …) | libc370 `src/s370/` | **cc370** — `libcc370rt.a` | #687 |
 | helpers emitted but provided nowhere (`-ftrapv`, `__builtin_ffs`) | missing — link fails | **cc370** — `libcc370rt.a` | #685, #687 |
 | `COPY PDPTOP`, `PDPPRLG`, `PDPEPIL` | libc370 `maclib/` | **cc370** | #688 |
-| `@@CRT0` (entry, `EXTRN` from `main`, `--entry` in the driver) | libc370 `crt0/crt1/crtm` | **libc370**, as a documented interface | libc370#159 |
+| `@@CRT0` (entry, `EXTRN` from `main`, `--entry` in the driver) | libc370 `libc.a` member since 2.3.0 (`crtm.o` stays a startfile) | **libc370**, as a documented interface | libc370#159 |
 | ordinary library calls (`abort` for `__builtin_trap`) | libc370 | **libc370** | — |
 
 ## Phases
@@ -135,6 +135,9 @@ their contracts) on one side, how a system implements them on the other.
   purpose settled first. Once one variant is left, the startup can move into
   `libc.a`: cc370 already emits a real reference (`EXTRN @@CRT0`), so autocall
   would find it.
+  **Done:** one CRT in `libc.a` since libc370 2.3.0; the driver names no
+  startfile since cc370 1.4.0, and libc370 2.4.0 installs only `crtm.o`.
+  `crtm`'s purpose is still open (Metal C, `internals/metalc.md`).
 
 ### Phase 5 — prebuilt and pinned
 

@@ -16,6 +16,18 @@ re-checked against the tree on 2026-08-30: `crt0.o` / `crt1.o` / `crtm.o` are in
 the sysroot, `@@start.o` is in `libc.a` at the 3120 bytes named below, and ld370
 still has no link map ([#9](https://github.com/mvslovers/cc370/issues/9)).*
 
+> **Status 2026-10-05 -- step 1 below is gone.** There is one CRT now, and it
+> is a member of `libc.a` (libc370 2.3.0, libc370#159): `crt0` and `crt1`
+> merged, the thread driver `CTHREAD` became a member of its own that the CRT
+> IDENTIFYs only when it is linked. `main` references `@@CRT0`, ld370 pulls
+> an entry nothing references from the archive by its name (#107), and from
+> cc370 1.4.0 the driver names no startfile (`STARTFILE_SPEC ""`); libc370
+> 2.4.0 installs no `crt0.o`/`crt1.o`, only the nested `crtm.o`. The CRT is
+> therefore no longer at module offset 0. `@@START` resolution (step 2, the
+> pitfall of section 4) is unchanged; cc370#10's `__premain()` hook is in
+> libc370. The rest of this note is kept as written, with one correction: the
+> flavours in section 2 had `crt0` and `crt1` swapped.
+
 ---
 
 ## 1. Motivation
@@ -57,8 +69,9 @@ So:
 
 - **`@@CRT0`** is the load-module entry (where MVS hands control). It is
   assembler, OS-specific: save area, runtime anchor (GRT), stack. Which CRT
-  object you link selects the runtime flavour (`crt0` simple, `crt1`
-  threading, `crtm` minimal).
+  object you link selected the runtime flavour (`crt0` with the `CTHREAD`
+  IDENTIFY, `crt1` without it, `crtm` nested) -- before libc370 2.3.0; see
+  the status note at the top.
 - **`@@START`** is the C-level startup: open `stdin`/`stdout`/`stderr`, parse
   the PARM/CPPL, then call `main()`. It lives in libc as the member
   `@@start.o` (3120 bytes).
