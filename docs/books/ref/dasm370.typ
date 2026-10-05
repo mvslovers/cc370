@@ -99,8 +99,13 @@ dasm370 with no operands displays the summary of the options, as
   [#cmd("-o") #var("file")], [writes the output to #var("file") instead of
     standard output. The file is opened only after every check has passed,
     so a run that is refused leaves no file behind.],
-  [#cmd("--help")], [displays a summary of the options and ends.],
-  [#cmd("-v"), #cmd("--version")], [displays the toolchain version and the
+  [#cmd("-v")], [writes one line to standard error that says what was read:
+    the file, the section, its origin and length, and the number of its
+    relocation dictionary and entry point (LD) entries. It has no effect
+    with #cmd("--align-diff").],
+  [#cmd("-h"), #cmd("--help")], [displays a summary of the options and
+    ends.],
+  [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the
     commit from which dasm370 was built, and ends.],
   [#cmd("--derive-hints") #var("source-file")], [assembles
     #var("source-file") with as370 and writes a hint file. It takes no

@@ -54,12 +54,11 @@ and it does not compare the identification records (see @idrdump370).
   [#cmd("--allow-incomplete")], [compares even when the record stream of a
     load module could not be read to its end. See @cmplmd370-incomplete.],
   [#cmd("-v")], [also lists the sections that are identical, and lists the
-    differing bytes of each section. Note that #cmd("-v") does not display
-    the version.],
+    differing bytes of each section.],
   [#cmd("-h"), #cmd("--help")], [displays a summary of the options and
     ends.],
-  [#cmd("--version")], [displays the toolchain version and the commit from
-    which cmplmd370 was built, and ends. There is no short form.],
+  [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the
+    commit from which cmplmd370 was built, and ends.],
 )
 
 == Inputs <cmplmd370-inputs>

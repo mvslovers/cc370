@@ -38,8 +38,7 @@ has written (see @ld370). It only reads; it never changes a module.
   [#cmd("-h"), #cmd("--help")], [displays a summary of the options and
     ends.],
   [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the
-    commit from which idrdump370 was built, and ends. The short form is a
-    capital #cmd("V").],
+    commit from which idrdump370 was built, and ends.],
 )
 
 == What idrdump370 Reads <idrdump370-input>
