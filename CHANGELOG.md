@@ -20,6 +20,21 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Fixed
+- **`install.sh` names a failed GitHub API call instead of reporting "no
+  libc370 release fits"** (#879). When the API's rate limit (60 requests an
+  hour per address) was used up, the release list came back empty and the
+  script said that no libc370 fitted, installed cc370 alone and ended with
+  rc 0. Since 1.4.0 a link needs libc370, so the result was a compiler that
+  could not link, with a message pointing at the wrong problem. Every API
+  call is now checked: a rate limit is named with the minutes until it
+  resets, any other HTTP status and a failed connection likewise, and the
+  script ends with rc 1. "No release fits" is kept for a list that was read
+  and had no match. `GITHUB_TOKEN` is sent to the API when set, and a
+  release list on one line is read whole. Run by zsh (`| zsh`), the script
+  skipped libc370 with the same message, because zsh does not split words;
+  it now turns that on.
+
 ## [1.4.0] - 2026-10-05
 
 ### Changed
