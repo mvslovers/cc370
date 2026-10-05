@@ -1728,5 +1728,19 @@ printf 'FIRST    CSECT\n         BR    14\nREAL     CSECT\n         SR    15,15\
 [ ! -s "$T/ms3.err" ] && pass "a one-section deck prints no section note" \
                      || fail "a one-section deck prints no section note ($(cat "$T/ms3.err"))"
 
+# ---- #811: -v is verbose, -V the version -------------------------------------
+# -v says what was read on stderr and leaves the disassembly as it was; and the
+# version --derive-hints records comes from `as370 --version', since -v no longer
+# answers with one.
+"$D" "$T/a.obj" -o "$T/v0.s" 2>/dev/null
+"$D" -v "$T/a.obj" -o "$T/v1.s" 2>"$T/v1.err"
+if cmp -s "$T/v0.s" "$T/v1.s" && grep -q ': section .*, origin .*, length ' "$T/v1.err"; then
+    pass "-v names the section read and leaves the disassembly unchanged"
+else fail "-v: output changed or no section line ($(head -1 "$T/v1.err"))"; fi
+"$D" --derive-hints "$T/tiny.s" --as370 "$A" -o "$T/dv.toml" 2>/dev/null
+if grep -qF "#   version  $("$A" --version)" "$T/dv.toml"; then
+    pass "--derive-hints records as370's --version"
+else fail "--derive-hints records no as370 version ($(grep '#   version' "$T/dv.toml"))"; fi
+
 [ $fails = 0 ] && echo "dasm370: all checks passed" || echo "dasm370: $fails FAILURE(S)"
 exit $fails

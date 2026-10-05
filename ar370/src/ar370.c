@@ -203,9 +203,11 @@ static void write_symtab(FILE *f, long symdata, const long *objoff)
 /* The members.  A long name's header is "/" and its offset in the long-name
  * member; the offset is below AR_SIZE_MAX because that member's size is, so
  * it takes at most ten digits (the bound also tells GCC so). */
+static int verbose;                       /* the `v' modifier: one line per member written (#811) */
 static void write_members(FILE *f)
 {
     for (int i = 0; i < nO; i++) {
+        if (verbose) printf("a - %s\n", O[i].member);   /* GNU ar's form */
         char nf[17];
         if (O[i].lnoff >= 0 && O[i].lnoff <= AR_SIZE_MAX) snprintf(nf, sizeof nf, "/%ld", O[i].lnoff);
         else snprintf(nf, sizeof nf, "%.15s/", O[i].member);
@@ -318,11 +320,13 @@ static void usage(FILE *f)
 {
     fprintf(f, "usage: ar370 rc ARCHIVE.a OBJ...   (re)create ARCHIVE.a from the object decks,\n"
                "                                    with a symbol table; an existing archive\n"
-               "                                    is replaced, not added to\n"
+               "                                    is replaced, not added to (rcv: name each\n"
+               "                                    member as it is written)\n"
                "       ar370 t  ARCHIVE.a           list the members and which defines each symbol\n"
                "       ar370 --version | -V         toolchain version + commit\n"
                "       ar370 --help | -h            this text\n"
-               "The operation is r, c, rc or cr (create) or t (list), optionally after a '-'.\n");
+               "The operation is r, c, rc or cr (create) or t (list), optionally after a '-';\n"
+               "a create takes a trailing v for verbose.\n");
 }
 
 int main(int argc, char **argv)
@@ -340,8 +344,14 @@ int main(int argc, char **argv)
     op = argv[1];
     if (*op == '-') op++;
     if (!strcmp(op, "t")) return list(argv[2]);
-    if (!strcmp(op, "r") || !strcmp(op, "c") || !strcmp(op, "rc") || !strcmp(op, "cr"))
-        return create(argv[2], argc, argv, 3);
+    {
+        char base[4] = "";
+        size_t n = strlen(op);
+        if (n >= 2 && n <= 3 && op[n - 1] == 'v') { memcpy(base, op, n - 1); base[n - 1] = 0; verbose = 1; }
+        else if (n <= 2) memcpy(base, op, n + 1);
+        if (!strcmp(base, "r") || !strcmp(base, "c") || !strcmp(base, "rc") || !strcmp(base, "cr"))
+            return create(argv[2], argc, argv, 3);
+    }
     fprintf(stderr, "ar370: unknown operation '%s' (r, c, rc, cr or t)\n", argv[1]);
     return 2;
 }

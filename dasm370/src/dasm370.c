@@ -4348,8 +4348,10 @@ static void usage(FILE *o)
 "  --format card|free card (the default) writes 80-column records with sequence\n"
 "                     numbers in 73-80 and column 72 left blank\n"
 "  -o FILE            write to FILE instead of standard output\n"
-"  --help             show this message and exit\n"
-"  -v, --version      print the toolchain version and the commit it was built from\n"
+"  -h, --help         show this message and exit\n"
+"  -V, --version      print the toolchain version and the commit it was built from\n"
+"  -v                 verbose: what was read -- the section, its origin and length,\n"
+"                     its RLD and LD entries -- on stderr\n"
 "\n"
 "The decoder is as370's own opcode table, inverted (cc370#374): one table, and\n"
 "the disassembler agrees with the assembler by construction.  Every instruction\n"
@@ -4375,11 +4377,15 @@ int main(int argc, char **argv)
     char tsym[512], tuse[512], tobj[512], asver[128];
     long assize = 0;
     int ai, i, rc, allow_incomplete = 0;
+    int verbose = 0;
 
     if (argc == 1) { usage(stdout); return 0; }
     for (ai = 1; ai < argc; ai++) {
-        if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
-        else if (!strcmp(argv[ai], "-v") || !strcmp(argv[ai], "--version")) { printf("%s %s (%s)\n", DASM_NAME, CC370_VERSION, CC370_COMMIT); return 0; }
+        /* -V is the version and -v verbose, as in every tool of the chain; -v
+         * used to be the version (#811). */
+        if (!strcmp(argv[ai], "--help") || !strcmp(argv[ai], "-h")) { usage(stdout); return 0; }
+        else if (!strcmp(argv[ai], "-V") || !strcmp(argv[ai], "--version")) { printf("%s %s (%s)\n", DASM_NAME, CC370_VERSION, CC370_COMMIT); return 0; }
+        else if (!strcmp(argv[ai], "-v")) verbose = 1;
         else if (!strcmp(argv[ai], "--csect") && ai + 1 < argc) want = argv[++ai];
         else if (!strcmp(argv[ai], "--allow-incomplete")) allow_incomplete = 1;
         else if (!strcmp(argv[ai], "--hints") && ai + 1 < argc) hints_file = argv[++ai];
@@ -4557,7 +4563,7 @@ int main(int argc, char **argv)
         asver[0] = 0;
         {
             char vc[600];
-            snprintf(vc, sizeof vc, "'%s' -v 2>/dev/null", as370_path);
+            snprintf(vc, sizeof vc, "'%s' --version 2>/dev/null", as370_path);   /* not -v: verbose since #811 */
             if ((vp = popen(vc, "r")) != NULL) {
                 if (fgets(asver, sizeof asver, vp)) {
                     char *nl = strchr(asver, '\n'); if (nl) *nl = 0;
@@ -4565,7 +4571,7 @@ int main(int argc, char **argv)
                 pclose(vp);
             }
         }
-        if (!asver[0]) snprintf(asver, sizeof asver, "(could not run %.90s -v)", as370_path);
+        if (!asver[0]) snprintf(asver, sizeof asver, "(could not run %.90s --version)", as370_path);
         if (!stat(as370_path, &st)) assize = (long)st.st_size;
         if ((rc = run_as370(as370_path, derive_src, incs, ninc, tsym, tuse, tobj)) != 0) return rc;
         src = tobj;                      /* read it back through our own deck reader */
@@ -4605,6 +4611,9 @@ int main(int argc, char **argv)
     }
 
     if ((rc = load_section(src, want, allow_incomplete)) != 0) return rc;
+    if (verbose)
+        fprintf(stderr, "dasm370: %s: section %s, origin %06lX, length %06lX, %d RLD and %d LD entr%s\n",
+                src, sect_name, (unsigned long)sect_org, (unsigned long)sect_len, nrld, nld, nld == 1 ? "y" : "ies");
 
     /* THE TWO FILE-WRITING MODES COME AFTER THE LOAD, and that ordering is the
      * fix for the bound-member defect rather than a tidy-up.  The load used to

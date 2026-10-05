@@ -45,6 +45,17 @@ neither number is mistaken for the other.
   exponent modifier, #782).
 
 ### Changed
+- **`-v` is verbose and `-V` the version, in every tool** (#811). **Read this
+  first:** `as370 -v` and `dasm370 -v` used to print the version and now turn
+  on verbose output. Use `--version` or `-V` instead.
+  - as370 `-v`: the macro search path, each macro with the file it came from,
+    and the summary line even on a clean assembly, all on stderr; the deck is
+    unchanged.
+  - dasm370 `-v`: the section read, with its origin, length, RLD and LD entries.
+    dasm370 now asks as370 for its version with `--version`.
+  - ar370: a trailing `v` (`rcv`) names each member written, as GNU ar does.
+  - `-V` is new in as370, dasm370 and cmplmd370, and `-h` in as370 and dasm370,
+    so every tool takes `--version`/`-V` and `--help`/`-h`.
 - **The eyecatcher in front of `main` names cc370** (#813). A program's
   `main` module carried `DC C'GCCMVS!!'`, after the compiler cc370 descends
   from; it is now `DC C'CC370',AL1(major,minor,patch)` -- in a dump

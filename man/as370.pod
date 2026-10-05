@@ -139,12 +139,20 @@ prefix of it B<490 of 490>, and C<org> is B<never> a line inside the member. The
 false-positive control over 47,534 open-code records gives B<0> with the prefix
 test and B<5> with equality, so it is prefix and not equality.
 
-=item B<-v>, B<--version>
+=item B<-v>
+
+Verbose, on standard error: the source file, the macro search path in the order
+it is searched (a directory that does not exist is marked C<(absent)>), each
+macro with the file it was read from, and the C<Assembler Done> summary line
+even when nothing was flagged. The object deck is the same as without it. In
+1.2.0 and earlier, B<-v> printed the version.
+
+=item B<-V>, B<--version>
 
 Print the toolchain version and the commit the assembler was built from,
 e.g. C<as370 1.0.0 (cb7263e)>.
 
-=item B<--help>
+=item B<-h>, B<--help>
 
 Show usage and exit.
 
