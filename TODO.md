@@ -184,9 +184,10 @@ silent wrong results first. After each merge, one line to Book (session
     (rc 16), IFOnnn throughout.
 
 **The Command Reference block is done.** Open from it, lower priority:
-#827 (`#pragma pack`), #830 (`#pragma map`), #831 (`-pipe`), #832
-(trigraphs), #834 (`-mpickax`), #76's ld370 half (pseudo registers), and from
-libc370#159 the empty STARTFILE_SPEC and weak references.
+#827 (`#pragma pack`), #76's ld370 half (pseudo registers), and from
+libc370#159 the empty STARTFILE_SPEC and weak references. Done since: #830,
+#831, #832, #834 (#864: trigraphs under every -std, pragma map/linkage warn,
+-mpickax gone, -pipe ignored).
 
 ## Triage of 2026-10-03 — the next block, before 1.2.0
 
