@@ -1,0 +1,73 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 05.28 10/05/26
+COMREF    SD  0001 000000 000030
+PR1       XD  0002 000003 000004
+BLK       ER  0003
+BLK       CM  0004 000000 000008
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 05.28 10/05/26
+                                      1 * COM AND DXD NAMES IN ADDRESS CONSTANTS AND LITERALS (CC370#810).
+000000                                2 COMREF   CSECT
+                            00000     3          USING COMREF,15
+000000 5810 F028      00028           4          L     1,=A(BLK)
+                                      5 PR1      DXD   F
+000004 5820 F02C      0002C           6          L     2,=Q(PR1)
+000008 00000000                       7 A1       DC    A(BLK)
+00000C 00000004                       8 A2       DC    A(BLK+4)
+000010 00000004                       9 A3       DC    A(F2-BLK)
+000014 00000000                      10 V1       DC    V(BLK)
+000018 0000                          11 X1       DC    AL2(PR1)
+         *** ERROR ***
+00001A 0000
+00001C 00000000                      12 X2       DC    A(PR1)
+         *** ERROR ***
+000020 00000000                      13 Q1       DC    Q(PR1)
+000024 07FE                          14          BR    14
+000000                               15 BLK      COM
+000000                               16 F1       DS    F
+000004                               17 F2       DS    F
+                                     18          END
+000028 00000000                      19                =A(BLK)
+00002C 00000000                      20                =Q(PR1)
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 05.28 10/05/26
+ 0001     0002      2C     000020
+ 0001     0002      2C     00002C
+ 0001     0003      1C     000014
+ 0001     0004      0C     000008
+ 0001     0004      0C     00000C
+ 0001     0004      0C     000028
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 05.28 10/05/26
+A1       00004 00000008 00007
+A2       00004 0000000C 00008
+A3       00004 00000010 00009
+BLK      00001 00000000 00015  00007 00008 00009 00019
+COMREF   00001 00000000 00002  00003
+F1       00004 00000000 00016
+F2       00004 00000004 00017  00009
+PR1      00001 00000000 00005  00011 00012 00013 00020
+Q1       00004 00000020 00013
+V1       00004 00000014 00010
+X1       00002 00000018 00011
+X2       00004 0000001C 00012
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 05.28 10/05/26
+=A(BLK)  00004 00000028 00019  00004
+=Q(PR1)  00004 0000002C 00020  00006
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
+STMT  ERROR CODE   MESSAGE                                                                       ASM 0201 05.28 10/05/26
+   11  IFO204      RELOCATABLE EXPRESSION IN A- OR Y-TYPE ADDRESS CONSTANT WITH THE SPECIFIED LENGTH NOT ALLOWED
+   12  IFO158      NAME OF STATEMENT IN DSECT USED IN RELOCATABLE ADDRESS CONSTANT
+NUMBER OF STATEMENTS FLAGGED IN THIS ASSEMBLY =     2
+HIGHEST SEVERITY WAS    8
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         18
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         6
+TOTAL RECORDS PRINTED                        73

@@ -52,6 +52,19 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **as370: COM and DXD names in address constants** (#840).
+  - `A(BLK)`, `A(BLK+4)` and `=A(BLK)` on a COM section's own name got their
+    value and no RLD entry at rc 0. They now relocate against the CM entry, as
+    a field inside the section already did.
+  - A `=Q(PR)` literal got no RLD entry; it now gets the same type-2 entry as
+    `DC Q(PR)`.
+  - A DXD name in an A-con is a dummy-section term, as on IFOX00: `A(PR)` is
+    IFO158.
+  - The ESD page of the listing printed an ER that shares its name with a
+    section under the section's id.
+- **as370: IFO204** (#840). A relocatable A-type constant of 1 or 2 bytes, or a
+  Y-type of 1, was assembled with an RLD entry of that length at rc 0. IFOX00
+  rejects it: severity 8, value 0, no RLD entry.
 - **The cc370 driver** (#808):
   - An as370 warning (return code 4) no longer fails the command and deletes
     the object. 8 and above still do.
