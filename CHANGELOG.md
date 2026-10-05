@@ -70,6 +70,23 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **cmplmd370 pairs unnamed and empty sections** (#809).
+  - Private code (an unnamed section) paired only when a single one was left
+    over, so a module linked from several C objects compared with ITSELF was
+    "not in the reference" throughout. An unnamed section now pairs by its
+    first entry point and is reported under it, as `(ADDUP)`.
+  - An empty section is left out of the comparison.
+  - A refusal (`--csect` naming no section, an incomplete image) comes before
+    anything is written to stdout; `--json` keeps its shape and `--difout`
+    still carries every range.
+  - The usage calls the operands NEW and REFERENCE, each an object deck or a
+    load module.
+- **cc370 `-mcsect` no longer opens an empty private-code section** (#809).
+  `COPY PDPTOP`'s absolute EQUs ahead of the CSECT card opened one, as they do
+  on IFOX00. The CSECT card now comes first and is resumed after the COPY. The
+  text is unchanged.
+- **ld370's bare-member warning prints the entry point in six hex digits**
+  (`entry 000026`), as file370 does.
 - **dasm370 details** (#809).
   - A file that is neither an object deck nor a load module is refused with
     rc 16 ("not an object deck or a load module"), where it used to be taken
