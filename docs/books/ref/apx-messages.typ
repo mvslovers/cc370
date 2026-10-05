@@ -91,11 +91,13 @@ each command describes them in full.
     [Command], [Code], [Meaning],
     [ld370], [0], [The module or transport file was written. Warnings also end
       with 0.],
-    [], [1], [The link or pack failed: an unresolved reference, an input
-      that cannot be read or is not an object module, a library or member
-      not found.],
-    [], [2], [The command is not valid (an unknown option included);
-      nothing was written.],
+    [], [1], [A file or the link failed: an input that cannot be read or is
+      not an object module, a library or member not found, an unresolved
+      reference, an output that cannot be written.],
+    [], [2], [The command line is wrong, whatever the files hold: an
+      unknown option, options that do not go together, a name used twice in
+      a library, a #mc("--pack") input that is not a load module. Nothing
+      was written.],
     [ar370], [0], [The library was written or listed.],
     [], [1], [A file could not be read or written, or is of the wrong
       kind.],
@@ -519,15 +521,18 @@ the card in error and then the message, which ends with
 == ld370 Messages <apx-messages-ld370>
 
 #idx("ld370", "messages")
-ld370 ends with return code 1 when the link or pack failed, and with 2 when
-the command was not valid; a warning does not change the return code.
+ld370 ends with return code 2 when the command line is wrong, whatever the
+files hold, and writes nothing\; with 1 when a file or the link failed\; a
+warning or note does not change the return code (see @ld370-rc).
 
 #msg[#mc("ld370: cannot open ")#mv("file")#mc(": ")#mv("reason") \
-#mv("file")#mc(": ")#mv("reason")][
-  An object module or library could not be read (first form), or a member
-  file given to #mc("--pack") or an output file could not be opened (second
-  form). Return code 1.
-][Correct the file name.]
+#mc("ld370: cannot read ")#mv("file")#mc(": ")#mv("reason") \
+#mc("ld370: cannot write ")#mv("file")#mc(": ")#mv("reason")][
+  An object module or library could not be read (first form), a file given
+  to #mc("--pack") could not be read (second form), or an output file could
+  not be written (third form). An unwritable load map is found before the
+  member is written\; an unwritable transport file after it. Return code 1.
+][Correct the file name or the directory.]
 
 #msg[#mc("ld370: ")#mv("file")#mc(" is not an object deck (")#mv("reason")#mc(")") \
 #mc("ld370: ")#mv("file")#mc(" is an archive; name it with .a, or link it with -l") \
@@ -543,8 +548,8 @@ the command was not valid; a warning does not change the return code.
   Return code 1.
 ][Rebuild the library with ar370.]
 
-#msg[#mc("ld370: too many archives")][
-  More than 32 libraries were given. Return code 1.
+#msg[#mc("ld370: more than 32 archives")][
+  More than 32 libraries were given. Return code 2; nothing is written.
 ][Combine libraries with ar370.]
 
 #msg[#mc("ld370: cannot find -l")#mv("name")][
@@ -577,8 +582,14 @@ the command was not valid; a warning does not change the return code.
 ][Correct the name; see @ld370-entry.]
 
 #msg[#mc("ld370: '")#mv("name")#mc("' names two directory entries (a member or alias may appear only once in a library)")][
-  Two members, or a member and an alias, have the same name. Return code 1.
+  Two packed members, or a member and an alias, have the same name. Return
+  code 2; nothing is written.
 ][Rename one of them.]
+
+#msg[#mc("ld370: --alias ")#mv("name")#mc(" is the member's own name") \
+#mc("ld370: --alias ")#mv("name")#mc(" is given twice")][
+  Return code 2; nothing is written.
+][Remove the alias, or give it once.]
 
 #msg[#mc("ld370: member '")#mv("name")#mc("' has a ")#mv("n")#mc("-byte block > --blocksize ")#mv("m")#mc("; rebuild it with a matching --blocksize")][
   A member given to #mc("--pack") was linked with a larger block size than
@@ -586,9 +597,10 @@ the command was not valid; a warning does not change the return code.
 ][Link the member again with the block size of the pack.]
 
 #msg[#mc("ld370: cannot split member '")#mv("name")#mc("' (unknown record)")][
-  A file given to #mc("--pack") as a bare member is not a load module (it
-  is preceded by the bare-member warning below). Return code 1.
-][Name a load module, or its #mc(".iebcopy") file.]
+  A file given to #mc("--pack") looked like a load module, but holds a
+  record that ld370 cannot place. Return code 1.
+][Name a load module written by ld370 or IEWL, or its #mc(".iebcopy")
+file.]
 
 #msg[#mc("ld370: --pack: --entry ")#mv("name")#mc(" is not in the CESD of '")#mv("file")#mc("'") \
 #mc("ld370: --pack: '")#mv("file")#mc("' names ")#mv("name")#mc(" ")#mv("n")#mc(" times in its CESD; the entry is ambiguous")][
@@ -647,13 +659,17 @@ the command was not valid; a warning does not change the return code.
 #mc("ld370: --map applies to a link, not to --pack; a pack places no sections") \
 #mc("ld370: --alias applies to a link, not to --pack; build the member with --alias and -iebcopy, and pack that -- its aliases come along") \
 #mc("ld370: --name applies to a link, not to --pack; name a packed member as NAME=FILE") \
+#mc("ld370: --include names a link input; --pack takes members only") \
 #mc("ld370: --pack needs -o OUT (base name)")][
   The options do not go together. Return code 2.
 ][Correct the command as the message says.]
 
-#msg[#mc("ld370: --pack: '")#mv("file")#mc("' is ")#mv("what")#mc(", not a load module; pack the member or its -iebcopy")][
+#msg[#mc("ld370: --pack: '")#mv("file")#mc("' is ")#mv("what")#mc(", not a load module; pack the member or its -iebcopy") \
+#mc("ld370: --pack: '")#mv("file")#mc("' is not a load module")][
   A file given to #mc("--pack") is #mc("an object deck (link it first)"),
-  #mc("an archive") or #mc("a TSO transmission (XMIT)"). Return code 2.
+  #mc("an archive") or #mc("a TSO transmission (XMIT)") (first form), or
+  any other file that is not a load module, a C source for example (second
+  form). Return code 2; nothing is written.
 ][Link the object modules first, and pack the member or its
   #mc(".iebcopy") file.]
 
@@ -700,7 +716,8 @@ code is 0.
 
 #msg[#mc("ld370: warning: --alias has no effect without -iebcopy or -xmit; a bare member carries no directory") \
 #mc("ld370: warning: --sparse-text is ignored by --pack; it shapes the text records of a link") \
-#mc("ld370: warning: --allow-unresolved is ignored by --pack; a pack resolves nothing")][
+#mc("ld370: warning: --allow-unresolved is ignored by --pack; a pack resolves nothing") \
+#mc("ld370: warning: --warn-shadow is ignored by --pack; it reports archive members a link pulls")][
   The option has no effect in this command.
 ][Remove the option, or add #mc("-iebcopy") or #mc("-xmit").]
 

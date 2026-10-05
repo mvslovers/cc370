@@ -312,7 +312,8 @@ not start the program at its main entry.
 An alias name has one to eight characters, the first a letter or one of
 #cmd("@"), #cmd("#") and #cmd("$"), the others letters, digits or the same
 three characters. A name may appear only once in a library, as a member or as
-an alias\; a second use is refused. A member file has no directory, so an
+an alias\; a second use, and an alias that is the name of the member
+itself, are refused with return code 2. A member file has no directory, so an
 alias given without #cmd("-iebcopy") or #cmd("-xmit") has no effect, and
 ld370 warns.
 
@@ -496,17 +497,23 @@ ld370 --pack MAIN.iebcopy ADDER.iebcopy -o mylib
 
 which writes #cmd("mylib.xmit"), a library with the members #cmd("ADDER") and
 #cmd("MAIN"), each with its own entry point, attributes and authorization
-code. A name used twice in one pack, as a member or as an alias, is refused.
-#cmd("--alias") and #cmd("--map") apply to a link and are refused with
-#cmd("--pack"), and so is #cmd("--name"): a packed member is named with
-#var("member")#cmd("=")#var("file"). #cmd("--sparse-text"),
-#cmd("--allow-unresolved") are ignored with a warning, since a pack neither
-shapes nor resolves anything.
+code. A name used twice in one pack, as a member or as an alias, is refused
+with return code 2.
 
-A #var("file") that is a TRANSMIT file, an object library or an object
-module is refused with return code 2 and a message naming what it is: an
-object module has to be linked first, and a TRANSMIT file has to be packed
-from the modules it was made of.
+Some link options have no place in a pack:
+
+- #cmd("--alias"), #cmd("--map"), #cmd("--name") and #cmd("--include") are
+  refused with return code 2. A packed member is named with
+  #var("member")#cmd("=")#var("file")\; its aliases come from its
+  #cmd(".iebcopy") file.
+- #cmd("--sparse-text"), #cmd("--allow-unresolved") and
+  #cmd("--warn-shadow") are ignored with a warning, since a pack neither
+  shapes text, nor resolves references, nor searches libraries.
+
+A #var("file") that is not a load module is refused with return code 2. For a
+TRANSMIT file, an object library or an object module the message says which
+it is: an object module has to be linked first, and a TRANSMIT file has to be
+packed from the modules it was made of.
 
 == Identification Records <ld370-idr>
 
@@ -543,8 +550,11 @@ return code 2.
 == Return Codes <ld370-rc>
 
 #idx("ld370", "return codes")
-@ld370-rc-tab lists the values. Messages are written to standard error and
-begin with #cmd("ld370:")\; a warning begins with #cmd("ld370: warning:").
+@ld370-rc-tab lists the values. The rule that separates 1 from 2: *return
+code 2 means that the command line is wrong, whatever the files hold*, and
+nothing is written\; return code 1 means that a file, or the link itself,
+failed. Messages are written to standard error and begin with
+#cmd("ld370:")\; a warning begins with #cmd("ld370: warning:").
 
 #tab(caption: [ld370 return codes])[
   #table(columns: (0.9in, 1fr),
@@ -555,24 +565,26 @@ begin with #cmd("ld370:")\; a warning begins with #cmd("ld370: warning:").
       search, an alias without a directory, a member file packed without
       its directory, an option that #cmd("--pack") ignores. #cmd("--help")
       and #cmd("--version") also end with 0.],
-    [1], [The link or the pack failed: an input file that cannot be read or
-      is not an object module, a library that cannot be read or is not a
-      library, #cmd("-l") or #cmd("--include") not found, an unresolved
-      external reference, an entry point not defined, or with
-      #cmd("--pack") not found or found twice in the CESD of a member file,
-      more than 32
-      libraries, a name used twice in one library, a record longer than the
-      block size, a file given to #cmd("--pack") that cannot be split into
-      load module records, an output file that cannot be written.],
-    [2], [The command is not valid, and nothing was written: an unknown
+    [1], [A file or the link failed: an input file that cannot be read or
+      is not an object module, a file named as a library that is not one,
+      #cmd("-l") or #cmd("--include") not found, an unresolved external
+      reference, an entry point not defined (with #cmd("--pack"): not found,
+      or found twice, in the CESD of a member file), a packed member with a
+      record longer than the block size, an output file that cannot be
+      written. A load map that cannot be written is found before the member
+      is written\; a transport file that cannot be written is found after
+      it, so the member file is then left behind.],
+    [2], [The command line is wrong, and nothing was written: an unknown
       option, an option without its value, no input files, #cmd("--pack")
       without #cmd("-o"), #cmd("--rent") with #cmd("--norent") or
       #cmd("--reus") with #cmd("--noreus"), #cmd("--xref") without
-      #cmd("--map"), #cmd("--alias"), #cmd("--map") or #cmd("--name") with
-      #cmd("--pack"), a number that is not a number or out of range, a member
-      or alias name that is not valid, a TRANSMIT file, object library,
-      object module or unloaded library with several members given to
-      #cmd("--pack") as a member, or a wrong #cmd("LDDATE") or
+      #cmd("--map"), #cmd("--alias"), #cmd("--map"), #cmd("--name") or
+      #cmd("--include") with #cmd("--pack"), a number that is not a number
+      or out of range, a member or alias name that is not valid, one name
+      used twice in a library (two packed members, or an alias that names
+      the member or is given twice), more than 32 libraries, a
+      #cmd("--pack") input that is not a load module or is an unloaded
+      library with several members, or a wrong #cmd("LDDATE") or
       #cmd("LDTIME").],
   )
 ] <ld370-rc-tab>
