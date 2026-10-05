@@ -21,11 +21,15 @@
 #                     the GitHub release list; for a mirror or a test)
 #   CC370_BASE_URL / LIBC370_BASE_URL   where release assets are fetched
 #                     (default the GitHub releases; a file:// URL works)
+#   GITHUB_TOKEN      sent to the GitHub API if set: 5000 requests an hour
+#                     instead of 60 per address
+#   CC370_API_URL     the GitHub API root (default https://api.github.com;
+#                     for a test)
 set -eu
 
 PREFIX=${PREFIX:-$HOME/.local}
 GH=https://github.com/mvslovers
-API=https://api.github.com/repos/mvslovers
+API=${CC370_API_URL:-https://api.github.com}/repos/mvslovers
 CC370_BASE_URL=${CC370_BASE_URL:-$GH/cc370/releases/download}
 LIBC370_BASE_URL=${LIBC370_BASE_URL:-$GH/libc370/releases/download}
 
@@ -49,16 +53,45 @@ verify() {
 case $(uname -s) in Linux) os=linux ;; Darwin) os=darwin ;; *) die "unsupported OS $(uname -s)" ;; esac
 case $(uname -m) in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die "unsupported machine $(uname -m)" ;; esac
 
-latest_tag() {    # owner/repo -> its latest release's version
-    curl -fsSL "$API/$1/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -1
-}
-
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# GET $API/$1 into $tmp/api.json.  On anything but 200, set $apierr to the
+# status and its cause and return 1 -- an empty answer must not pass for an
+# empty list (#879).
+api() {
+    rm -f "$tmp/api.hdr" "$tmp/api.json"
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        code=$(curl -sSL -H "Authorization: Bearer $GITHUB_TOKEN" -D "$tmp/api.hdr" \
+            -o "$tmp/api.json" -w '%{http_code}' "$API/$1" 2>"$tmp/api.err") || code=000
+    else
+        code=$(curl -sSL -D "$tmp/api.hdr" -o "$tmp/api.json" -w '%{http_code}' \
+            "$API/$1" 2>"$tmp/api.err") || code=000
+    fi
+    [ "$code" = 200 ] && return 0
+    if [ "$code" = 000 ]; then
+        apierr="cannot reach $API ($(head -1 "$tmp/api.err"))"
+    elif tr -d '\r' < "$tmp/api.hdr" | grep -qi '^x-ratelimit-remaining: *0$'; then
+        reset=$(tr -d '\r' < "$tmp/api.hdr" | sed -n 's/^[Xx]-[Rr]ate[Ll]imit-[Rr]eset: *\([0-9]*\).*/\1/p' | head -1)
+        wait=""
+        [ -n "$reset" ] && wait=", resets in $(( (reset - $(date +%s) + 59) / 60 )) min"
+        apierr="the GitHub API rate limit for this address is used up (HTTP $code$wait); retry later or set GITHUB_TOKEN"
+    else
+        apierr="the GitHub API answered HTTP $code for $API/$1"
+    fi
+    return 1
+}
+# every tag_name in the answer, in order -- one per line or all on one
+tags() { tr ',{}' '\n\n\n' < "$tmp/api.json" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p'; }
+
 # --- cc370 -------------------------------------------------------------------
-v=${CC370_VERSION:-$(latest_tag cc370)}
-[ -n "$v" ] || die "cannot determine the latest cc370 release"
+if [ -n "${CC370_VERSION:-}" ]; then
+    v=$CC370_VERSION
+else
+    api cc370/releases/latest || die "cannot determine the latest cc370 release: $apierr (or name one with CC370_VERSION=)"
+    v=$(tags | head -1)
+    [ -n "$v" ] || die "cannot determine the latest cc370 release: no tag_name in the answer"
+fi
 tb=cc370-$v-$os-$arch.tar.gz
 say "cc370 $v for $os-$arch"
 fetch "$CC370_BASE_URL/v$v/$tb" "$tmp/$tb"
@@ -99,7 +132,13 @@ if [ -n "${LIBC370_VERSION:-}" ]; then
     lv=$LIBC370_VERSION
 else
     lv=""
-    rels=${LIBC370_RELEASES:-$(curl -fsSL "$API/libc370/releases?per_page=50" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')}
+    if [ -n "${LIBC370_RELEASES:-}" ]; then
+        rels=$LIBC370_RELEASES
+    else
+        api "libc370/releases?per_page=50" \
+            || die "cc370 $v is installed, libc370 is NOT: $apierr (or name one with LIBC370_VERSION=)"
+        rels=$(tags)
+    fi
     for t in $rels; do
         curl -fsSL "$LIBC370_BASE_URL/v$t/libc370-$t-metadata.json" -o "$tmp/meta.json" 2>/dev/null || continue
         r=$(range_of "$tmp/meta.json")

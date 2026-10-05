@@ -45,6 +45,10 @@ installs cc370 into `~/.local` (`PREFIX=` to change it) **and libc370 beside
 it**: the newest libc370 release whose `libc370-<v>-metadata.json` accepts the
 cc370 just installed. Both downloads are checked against their release's
 `SHA256SUMS`. Without a fitting libc370 it installs cc370 alone and says so.
+The release list comes from the GitHub API, which allows 60 requests an hour
+per address; when that is used up `install.sh` says so and stops. Retry later,
+set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=` and
+`LIBC370_VERSION=`.
 
 | Platform | cc370 assets |
 |---|---|
