@@ -157,6 +157,8 @@ silent wrong results first. After each merge, one line to Book (session
 6. ~~#810 as370 `COM`~~ **done** (#838, with #229): COM, DXD, CXD and Q as
    IFOX00 -- CM/XD entries, RLD types 2/3, IFO231/IFO207; two oracle decks
    (JOB00349, JOB00350) committed, listings identical; tree gate 0 moved.
+6b. ~~#840 as370 follow-up~~ **done** (#841): COM/DXD names in A-cons and
+   literals, =Q literals, ESD listing ER id, IFO204 (JOB00351); tree gate 0 moved.
 6a. #837 ld370 places a CM section at origin 0 over the first section, rc 0
    -- silent wrong module, so it comes before the flag work. Needs IEWL's
    rule read from the lked source and an IEWL link of `comq.obj` as oracle.

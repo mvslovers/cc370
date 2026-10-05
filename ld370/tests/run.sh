@@ -780,6 +780,33 @@ fi
 # 0F (permanent I/O error, NOT a bad record).  Reproduce: RA (defined first) refs
 # RLATE; RB is a big (20 KB) section; RLATE is defined LAST -> RLATE gets a low gid
 # but the highest origin, with RB between.  All text must be emitted.
+printf '\n=== #837: common (CM) sections after every object, longest wins ===\n'
+# IEWL on MVSTK5-REF (JOB00352; map + AMBLIST in fixtures/cm2.iewl-*.txt):
+# CMA 00, CMB 10, then CBLK 20 (x14 -- the longer of x0A and x14) and GBLK 38,
+# total x40; text only for the two CSECTs; CESD in order of first appearance.
+"$AS" -o "$TMP/cma.o" "$FIX/cma.s" && "$AS" -o "$TMP/cmb.o" "$FIX/cmb.s" \
+  && "$LD" -o "$TMP/cm.lm" --name CMTEST --entry CMA "$TMP/cma.o" "$TMP/cmb.o" --map "$TMP/cm.map" 2>/dev/null
+"$FI" -v "$TMP/cm.lm" > "$TMP/cm.v" 2>&1
+if python3 - "$TMP/cm.lm" "$TMP/cm.v" "$TMP/cm.map" <<'PYCM'
+import re, sys
+lm = open(sys.argv[1], "rb").read(); v = open(sys.argv[2]).read(); mp = open(sys.argv[3]).read()
+rec = [(int(o, 16), k, int(n)) for o, k, n in re.findall(r"@([0-9A-F]{6})\s+(\w+)\s+(\d+) bytes", v)]
+def body(kind, nth=0):
+    hits = [(o, n) for o, k, n in rec if k == kind]
+    o, n = hits[nth]; return lm[o:o + n].hex()
+want_cesd = ["CMA SD 000000 00000F", "CBLK CM 000020 000014", "GBLK CM 000038 000008", "CMB SD 000010 00000D"]
+got_cesd = [" ".join(m) for m in re.findall(r"CESD\s+\d+\s+(\S+)\s+(\S+)\s+addr=(\w+)\s+len=(\w+)", v)]
+ok = got_cesd == want_cesd
+ok &= body("control", 0) == "010000000008000006000000400000200001001000040010"   # CCW 06000000 40000020, ids 1/x10 4/x10
+ok &= body("text", 0) == "000000200000002400000038aaaaaa00000000200000002cbbbbbbbbbb000000"
+# the RLD items behind the 16-byte header: R 2 P 1 0D 0 / 0C 4, R 3 P 1 0C 8, R 2 P 4 0D 10 / 0C 14
+ok &= body("control", 1)[32:] == "000200010d0000000c000004000300010c000008000200040d0000100c000014"
+ok &= "LENGTH 000040" in mp
+sys.exit(0 if ok else 1)
+PYCM
+then echo "  OK: CM sections allocated after the objects, longest contribution, text CSECTs only (== IEWL JOB00352)"
+else echo "  FAIL: CM layout differs from IEWL JOB00352"; fails=$((fails+1)); fi
+
 printf '\n=== dropped-text: early-ref / late-def section keeps all text (S106-0F) ===\n'
 printf 'RA       CSECT\n         DC    V(RLATE)\n         BR    14\n         END\n'   > "$TMP/ra.s"
 printf 'RB       CSECT\n         DC    5000F'\''1'\''\n         BR    14\n         END\n' > "$TMP/rb.s"

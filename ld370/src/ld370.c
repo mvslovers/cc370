@@ -160,6 +160,9 @@ static long pick_maxtext(long blksize)
 }
 enum { T_SD = 0x00, T_LD = 0x01, T_ER = 0x02, T_PC = 0x04, T_CM = 0x05, T_WX = 0x0A };
 static int is_sect_type(int t) { return t == T_SD || t == T_PC || t == T_CM; }
+/* A section that occupies space INSIDE its object.  A common (CM) section does
+ * not: its ESD address is 0 and IEWL allocates it after every object (#837). */
+static int is_obj_sect(int t) { return t == T_SD || t == T_PC; }
 
 static void *grow_arr(void *arr, long *cap, long need, size_t elsz);   /* defined below */
 
@@ -187,6 +190,17 @@ static int g_new(const unsigned char *name)
     G[nG].type = 0; G[nG].is_sect = 0; G[nG].gid = 0; G[nG].org = 0; G[nG].len = 0;
     G[nG].def_obj = -1; G[nG].in_addr = 0; G[nG].owner = -1;
     return nG++;
+}
+/* A common section is one area per NAME for the whole link, as long as the
+ * longest contribution: CBLK of 0x0A and of 0x14 became one CBLK of 0x14
+ * (MVSTK5-REF JOB00352, #837).  It belongs to no object; its origin is set
+ * after them. */
+static void merge_common(int gi, long len)
+{
+    if (!(G[gi].is_sect && G[gi].type == T_CM)) {
+        G[gi].is_sect = 1; G[gi].type = T_CM; G[gi].len = 0; G[gi].def_obj = -1; G[gi].in_addr = 0;
+    }
+    if (len > G[gi].len) G[gi].len = len;
 }
 static int g_intern(const unsigned char *name, int type)
 {
@@ -1924,7 +1938,7 @@ static int write_map(const char *path, const char *mname, const char *entryname,
         const struct gsym *g = &G[gidx[i]];
         const struct obj *o = g->def_obj >= 0 ? &O[g->def_obj] : NULL;
         fprintf(f, "%-8s  %-4s  %06lX  %06lX  ", mvs_nm(g->name), map_type(g->type), g->org, g->len);
-        if (!o) fprintf(f, "?\n");
+        if (!o) fprintf(f, "%s\n", g->type == T_CM ? "(common, longest contribution)" : "?");
         else if (o->src_kind == SRC_EXPLICIT) fprintf(f, "%s\n", o->src_path);
         else fprintf(f, "%s(%s) %s\n", AR[o->src_ar].path, member_label(o->src_ar, o->src_off),
                      o->src_kind == SRC_AUTOCALL ? "autocall" : "include");
@@ -2404,6 +2418,8 @@ int main(int argc, char **argv)
                 fprintf(stderr, "ld370: note: CSECT %s defined again in %s; the first "
                                 "definition is kept and this one dropped, as IEWL does\n",
                         mvs_nm(o->loc[j].name), O[i].src_path ? O[i].src_path : "an object");
+            } else if (t == T_CM) {
+                merge_common(gi, o->loc[j].len);      /* one area per name, longest wins */
             } else if (is_sect_type(t)) {             /* a section definition */
                 G[gi].is_sect = 1; G[gi].type = t; G[gi].len = o->loc[j].len;
                 G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
@@ -2495,33 +2511,42 @@ int main(int argc, char **argv)
             for (;;) {                                 /* sections in origin order */
                 int nx = -1;
                 for (jj = 1; jj < MAXESD; jj++)
-                    if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && o->loc[jj].addr > last
+                    if (o->loc[jj].used && is_obj_sect(o->loc[jj].type) && o->loc[jj].addr > last
                         && (nx < 0 || o->loc[jj].addr < o->loc[nx].addr)) nx = jj;
                 if (nx < 0) break;
                 last = o->loc[nx].addr;
                 for (jj = 1; jj < MAXESD; jj++)        /* every section at this origin */
-                    if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && o->loc[jj].addr == last)
+                    if (o->loc[jj].used && is_obj_sect(o->loc[jj].type) && o->loc[jj].addr == last)
                         o->loc[jj].newaddr = last - removed;
                 if (o->loc[nx].dropped) {
                     long next = -1;
                     for (jj = 1; jj < MAXESD; jj++)
-                        if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && o->loc[jj].addr > last
+                        if (o->loc[jj].used && is_obj_sect(o->loc[jj].type) && o->loc[jj].addr > last
                             && (next < 0 || o->loc[jj].addr < next)) next = o->loc[jj].addr;
                     removed += (next >= 0 ? next : last + o->loc[nx].len) - last;
                 }
             }
             for (jj = 1; jj < MAXESD; jj++)
-                if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && !o->loc[jj].dropped
+                if (o->loc[jj].used && is_obj_sect(o->loc[jj].type) && !o->loc[jj].dropped
                     && G[o->loc_g[jj]].def_obj == i)
                     G[o->loc_g[jj]].in_addr = o->loc[jj].newaddr;
         }
         for (jj = 1; jj < MAXESD; jj++)
-            if (o->loc[jj].used && is_sect_type(o->loc[jj].type) && !o->loc[jj].dropped
+            if (o->loc[jj].used && is_obj_sect(o->loc[jj].type) && !o->loc[jj].dropped
                 && o->loc[jj].newaddr + o->loc[jj].len > osize)
                 osize = o->loc[jj].newaddr + o->loc[jj].len;
         o->object_base = running;
         running += roundup8(osize);
     }
+    /* Common sections follow every object, each on a doubleword, in the order
+     * their names first appeared: CMA 0, CMB x10, then CBLK x20 and GBLK x38,
+     * total length x40 (JOB00352).  They carry no text, so the text ends here. */
+    long textend = roundup8(running);
+    for (i = 0; i < nG; i++)
+        if (G[i].is_sect && G[i].type == T_CM) {
+            G[i].in_addr = roundup8(running);
+            running = G[i].in_addr + G[i].len;
+        }
     long modlen = roundup8(running);
     int gid = 0;
     for (i = 0; i < nG; i++)
@@ -2699,12 +2724,14 @@ int main(int argc, char **argv)
      * a single section that is itself larger than MAXTEXT (see below). --- */
     {
         int sg = 1, nchunk = 0;
-        while (sg <= nsect) {
+        int ntext = 0;                                 /* the text sections; the CMs sort behind them */
+        for (i = 1; i <= nsect; i++) if (G[gidx[i]].type != T_CM) ntext++;
+        while (sg <= ntext) {
             long cstart = G[gidx[sg]].org, cend = cstart; int first = sg, g, k, idlen;
             static unsigned char *cr = NULL; static long crcap;   /* one ID per section in the chunk */
             cr = grow_arr(cr, &crcap, 16 + 4 * (nsect + 1), 1);
-            while (sg <= nsect) {                      /* greedily pack whole sections, >= 1 */
-                long send = (sg < nsect) ? G[gidx[sg]].org + roundup8(G[gidx[sg]].len) : modlen;
+            while (sg <= ntext) {                      /* greedily pack whole sections, >= 1 */
+                long send = (sg < ntext) ? G[gidx[sg]].org + roundup8(G[gidx[sg]].len) : textend;
                 if (sg > first && send - cstart > MAXTEXT) break;
                 cend = send; sg++;
             }
@@ -2718,7 +2745,8 @@ int main(int argc, char **argv)
              * Oversized records would blow the RECV370 reload buffer
              * (U0200-13 .RECVBLK) and the IEBCOPY reload BLKSIZE. */
             {
-                int multi = (sg - first) > 1, last_chunk = (sg > nsect);
+                int multi = (sg - first) > 1;
+                int last_chunk = (sg > ntext);
                 long p = cstart;
                 do {
                     long rlen = cend - p; if (rlen > MAXTEXT) rlen = MAXTEXT;
@@ -2731,7 +2759,7 @@ int main(int argc, char **argv)
                     if (multi) {
                         for (g = first, k = 0; g < sg; g++, k++) {
                             int gi = gidx[g];           /* gidx is origin-sorted: g is a POSITION */
-                            long span = (g < nsect ? G[gi].org + roundup8(G[gi].len) : modlen) - G[gi].org;
+                            long span = (g < ntext ? G[gi].org + roundup8(G[gi].len) : textend) - G[gi].org;
                             mvs_put16(cr + 16 + 4 * k, G[gi].gid);    /* ID/length list = the CSECT's CESD-ID */
                             mvs_put16(cr + 18 + 4 * k, (int)span);
                         }

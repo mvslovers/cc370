@@ -1,0 +1,31 @@
+                                        LISTING OF LOAD MODULE CMTEST                                      PAGE 0001
+ 
+ 
+RECORD# 1     TYPE 20 - CESD     ESDID 1                        ESD SIZE 64
+               CESD#    SYMBOL    TYPE     ADDRESS     SEGNUM   ID/LENGTH(DEC)   (HEX)
+                  1    CMA       00(SD)     000000        1            15           F
+                  2    CBLK      05(CM)     000020        1            20          14
+                  3    GBLK      05(CM)     000038        1             8           8
+                  4    CMB       00(SD)     000010        1            13           D
+RECORD# 2     TYPE 80 - IDR    SUBTYPE 01                      DATA SIZE 248
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000
+RECORD# 3     TYPE 80 - IDR    SUBTYPE 82                      DATA SIZE 19
+            F5F7F5F2  E2C3F1F0  F4400308  26278F00  54524F
+RECORD# 4     TYPE 01 - CONTROL            CONTROL SIZE 8                        CCW 06000000 40000020
+                 CESD#   LENGTH
+                    1     0010
+                    4     0010
+RECORD# 5                                              T E X T
+            000000    00000020 00000024 00000038 AAAAAA00    00000020 0000002C BBBBBBBB BB000000
+RECORD# 6     TYPE 0E - RLD                                     RLD SIZE 32
+              R-PTR  P-PTR    FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR
+                  2      1    0D 000000  0C 000004
+                  3      1    0C 000008
+                  2      4    0D 000010  0C 000014
+ ******END OF LOAD MODULE LISTING
