@@ -550,9 +550,11 @@ As in any GCC, #cmd("-O1") replaces some library calls by cheaper ones: a
     into a register with #cmd("IC"), changed there and stored back with
     #cmd("STC"). @cc370-char-tab shows the difference.],
   [#cmd("-mcsect=")#var("name")], [names the control section of the
-    module. The name is put in upper case and cut to eight characters:
-    #cmd("-mcsect=upcase") writes #cmd("UPCASE CSECT"). Without the option
-    the control section has no name.],
+    module. The name is put in upper case and cut to eight characters.
+    #cmd("-mcsect=upcase") writes #cmd("UPCASE CSECT") both before and
+    after #cmd("COPY PDPTOP"), so that the object module holds the one
+    section #cmd("UPCASE"), type #cmd("SD"), and no other. Without the
+    option the module is one section without a name, type #cmd("PC").],
   [#cmd("-mpickax"), #cmd("-mno-pickax")], [are accepted and have no
     effect.],
 )

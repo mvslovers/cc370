@@ -38,7 +38,9 @@ and it does not compare the identification records (see @idrdump370).
     member, or an object module.],
   [#cmd("--csect") #var("name")], [compares only the control section
     #var("name"). The default is to compare every control section of
-    #var("new").],
+    #var("new"). #var("name") is the name under which the section is
+    reported, so an unnamed section is selected as, for example,
+    #cmd("'(@@MAIN)'") (see @cmplmd370-compare).],
   [#cmd("--clearrld")], [leaves the bytes of address constants out of the
     comparison. This is the default; the option exists to say so
     explicitly.],
@@ -87,10 +89,25 @@ against a load module that holds many is the ordinary case.
 
 #idx("private code")
 An unnamed section, which is what a #cmd("CSECT") statement without a name
-produces, is the one exception. It is paired with the one section of the
-reference that is left over after pairing by name, if exactly one is left,
-and is then reported under that section's name. When the partner is unnamed
-too, it is reported as #cmd("(private)").
+produces and what cc370 writes for a C source compiled without
+#cmd("-mcsect="), is paired by its first entry point instead: the entry
+point with the lowest address among those the section defines (#cmd("LD")
+entries in an object module, #cmd("LR") entries in a load module). It is
+paired with a section of the reference, named or not, whose first entry
+point has the same name. An unnamed section without entry points is paired with the
+one section of the reference that is left over, if exactly one is left.
+
+An unnamed section is reported under its partner's name, if the partner has
+one\; otherwise under the name of its first entry point in parentheses, such
+as #cmd("(@@MAIN)"), or as #cmd("(private)") when it has no entry point.
+Pairing by entry point applies to the unnamed sections of #var("new") only:
+an object module compiled with #cmd("-mcsect=") finds no partner in a load
+module linked from one compiled without it, while the opposite comparison
+succeeds.
+
+#idx("empty section")
+Sections of length zero, on either side, are not compared and not
+reported.
 
 A pair of sections whose lengths differ is reported as
 #cmd("LENGTH differs"), with both lengths; no bytes are compared. When the
@@ -140,9 +157,11 @@ in the other order can therefore be classified differently, as the example in
 If the records of a load module operand cannot be followed to the end of the
 module, for example because the file was truncated, the image of the module
 is incomplete. The bytes that were read might match, but that is not a
-match. cmplmd370 reports the reason on a line beginning #cmd("reader:"),
-names it in an error message, and ends with return code 2. With
-#cmd("--allow-incomplete") it compares anyway and ends with 0 or 1 as usual.
+match. cmplmd370 names the reason in an error message on standard error,
+writes nothing to standard output, and ends with return code 2. With
+#cmd("--allow-incomplete") it compares anyway: the reason is shown on a line
+beginning #cmd("reader:") after the first line of the output, and the return
+code is 0 or 1 as usual.
 
 == Output <cmplmd370-output>
 
@@ -220,7 +239,7 @@ length and the bytes of each cluster.
       partner in the reference.],
     [2], [The command was given incorrectly, a file could not be read or is
       neither a load module nor an object module, the section named by
-      #cmd("--csect") does not exist, #var("new") has no control section, or a
+      #cmd("--csect") does not exist, #var("new") has no section with text, or a
       load module is incomplete and #cmd("--allow-incomplete") was not
       given.],
   )

@@ -127,8 +127,9 @@ each command describes them in full.
     [], [1], [At least one section differs.],
     [], [2], [The comparison could not be made.],
     [idrdump370], [0], [At least one IDR was displayed.],
-    [], [1], [No IDR was found.],
-    [], [2], [The command was in error, or the file could not be read.],
+    [], [1], [The load module holds no IDR.],
+    [], [2], [The command was in error, or the file could not be read or is
+      not a load module.],
   )
 ] <apx-messages-rc3>
 
@@ -712,9 +713,9 @@ code is 0.
 
 #msg[#mc("ld370: warning: '")#mv("file")#mc("' is a bare load module: packing ")#mv("NAME")#mc(" at entry ")#mv("addr")#mc(" (")#mv("source")#mc("), AC ")#mv("n")#mc(", ")#mv("attributes")][
   A member file without its directory entry was given to #mc("--pack") (see
-  @ld370-pack). #mv("addr") is the entry point in hexadecimal, and
+  @ld370-pack). #mv("addr") is the entry point as six hexadecimal digits, and
   #mv("source") says where it came from: #mc("--entry"), #mc("@@CRT0"), or
-  #mc("no @@CRT0 in its CESD"), in which case the entry point is 0. The
+  #mc("no @@CRT0 in its CESD"), in which case the entry point is 000000. The
   attributes are those of the pack command. A note with the commands to use
   follows.
 ][If the entry point is wrong, give #mc("--entry")\; better, link the member
@@ -1126,17 +1127,20 @@ All of these end cmplmd370 with return code 2.
 ][Name an object module or a load module member.]
 
 #msg[#mc("cmplmd370: no section named ")#mv("name")][
-  The section named by #mc("--csect") is not in #mv("new"). The heading
-  line of the comparison is still written to standard output.
+  The section named by #mc("--csect") is not in #mv("new"), under the name
+  cmplmd370 reports it by (see @cmplmd370-compare). Nothing is written to
+  standard output.
 ][Correct the name.]
 
 #msg[#mc("cmplmd370: no sections paired")][
-  No section of #mv("new") was compared, for example because it has none.
+  No section of #mv("new") was compared, for example because it has none
+  with text. The heading line of the comparison is still written to
+  standard output.
 ][Check the files.]
 
 #msg[#mc("cmplmd370: reference image incomplete (")#mv("anomaly")#mc("); --allow-incomplete to compare anyway")][
   A load module member ends before its last record (see
-  @cmplmd370-incomplete).
+  @cmplmd370-incomplete). Nothing is written to standard output.
 ][Obtain a complete copy, or give #mc("--allow-incomplete").]
 
 #msg[#mc("cmplmd370: ")#mv("file")#mc(":")#mv("line")#mc(": not a DIFIN record: ")#mv("text") \
@@ -1168,11 +1172,16 @@ With #mc("--json"), the messages that arise during the comparison
   read (second form). Return code 2.
 ][Correct the file name.]
 
+#msg[#mc("idrdump370: ")#mv("file")#mc(" is not a load module")][
+  The file is not a load module member: for example an object module, or an
+  #mc(".iebcopy") or #mc(".xmit") file. Return code 2.
+][Name the member that ld370 wrote with #mc("-o"), or extract it from the
+  transport file.]
+
 #msg[#mc("  no IDR records")][
-  Written to standard output: the file contains no identification record.
-  This is also the result for a file that is not a load module member.
-  Return code 1.
-][Name a load module member.]
+  Written to standard output: the load module contains no identification
+  record. Return code 1.
+][None.]
 
 #msg[#mc("idrdump370: unknown option '")#mv("option")#mc("'") \
 #mc("idrdump370: one file at a time")][

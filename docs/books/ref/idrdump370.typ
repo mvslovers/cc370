@@ -29,10 +29,10 @@ has written (see @ld370). It only reads; it never changes a module.
   [#var("member")], [is the load module to read: one member, as ld370
     writes it with #cmd("-o") (see @idrdump370-input). Exactly one file is
     read; a second file name is an error.],
-  [#cmd("--csect") #var("name")], [reports only the SPZAP and user data
-    entries that name the control section #var("name"). The linkage editor
-    and translator records do not belong to a section and are not shown. An
-    SPZAP record that holds no entries is still reported as such.],
+  [#cmd("--csect") #var("name")], [reports only those SPZAP and user data
+    entries that name the control section #var("name"), and leaves out an
+    SPZAP record that holds no entries. The linkage editor and translator
+    records are always shown.],
   [#cmd("--json")], [writes the result as a JSON object instead of text.
     See @idrdump370-json.],
   [#cmd("-h"), #cmd("--help")], [displays a summary of the options and
@@ -53,8 +53,9 @@ record is never mistaken for one.
 
 The transport files that ld370 writes beside the member, #cmd(".iebcopy")
 and #cmd(".xmit"), are not read, and neither is an object module. For any of
-these idrdump370 finds no IDR, reports #cmd("no IDR records") and ends with
-return code 1; it does not say that the file is of the wrong kind.
+these idrdump370 writes #cmd("is not a load module") and ends with return
+code 2. A load module that holds no IDR is reported as #cmd("no IDR records"),
+with return code 1.
 
 == What idrdump370 Shows <idrdump370-output>
 
@@ -75,11 +76,16 @@ for each type of record.
       identifier given to SPZAP. #cmd("[chain continues]") means that
       further entries follow in another record. A record without entries
       is shown once, as #cmd("no entries").],
-    [#cmd("LKED")], [The linkage editor record: its length in bytes and up
-      to 40 characters of its contents, beginning with the program name of
-      the linkage editor.],
-    [#cmd("translator")], [A translator record, shown in the same way as
-      #cmd("LKED").],
+    [#cmd("LKED")], [The linkage editor record: the program name of the
+      linkage editor, its version (#cmd("V")) and modification level
+      (#cmd("M")), #cmd("date=") the date of the link and, where the record
+      holds one, #cmd("time=") the time, as #var("hhmmss"). The MVS linkage
+      editor writes #cmd("5752SC104")\; ld370 writes #cmd("LD370").],
+    [#cmd("translator")], [One line for each translator (assembler or
+      compiler) the record names: its program name, version and
+      modification level, #cmd("date=") the date of the translation, and
+      #cmd("csect=") the control sections it produced, separated by commas.
+      A section that cannot be resolved is shown by its number.],
     [#cmd("user")], [One line for each entry of user data: #cmd("csect="),
       #cmd("cesdid="), #cmd("date=") and #cmd("id="), the identifying text
       of the entry.],
@@ -92,12 +98,9 @@ number does not appear in the composite external symbol dictionary is shown
 with #cmd("csect=(unknown)").
 
 #idx("IDR", "dates")
-The SPZAP and user data dates are shown as stored, in the form
-#var("yyddd"): two digits of the year and the day of the year. The record
-holds no century, and idrdump370 does not supply one. The linkage editor and
-translator records are not decoded: their contents are shown as characters,
-and their binary fields, among them the version and the date and time of the
-link, appear as #cmd("?") or as arbitrary characters.
+All dates are shown as stored, in the form #var("yyddd"): two digits of the
+year and the day of the year. The records hold no century, and idrdump370
+does not supply one.
 
 === What ld370 Writes <idrdump370-ld370>
 
@@ -107,7 +110,7 @@ A member written by ld370 holds two IDRs:
 - an SPZAP record of 251 bytes with no entries, which leaves room for SPZAP
   to record changes made later on MVS;
 - a linkage editor record of 22 bytes naming #cmd("LD370"), with its
-  version and the date and time of the link. The date and time come from
+  version and modification level and the date and time of the link. The date and time come from
   the workstation clock, or from the environment variables
   #cmd("LDDATE") (#var("yyddd")) and #cmd("LDTIME") (#var("hhmmss")) when
   they are set.#idx("LDDATE")#idx("LDTIME")
@@ -123,17 +126,19 @@ With #cmd("--json"), idrdump370 writes one JSON object with these members:
 
 #deflist(width: 1.1in,
   [#cmd("file")], [the file name as given.],
-  [#cmd("idr")], [an array with one object for each line of the text form,
-    except that an SPZAP record without entries has no object. Every object
-    has #cmd("record"), the offset of the record as a decimal number,
-    #cmd("subtype") and #cmd("last"). SPZAP entries add #cmd("chain"),
-    #cmd("csect"), #cmd("cesdid"), #cmd("date") and #cmd("zap")\; user data
-    entries add #cmd("csect"), #cmd("cesdid"), #cmd("date") and
-    #cmd("id")\; the other records add #cmd("bytes") and, for linkage editor
-    and translator records, #cmd("text"). A #cmd("csect") that cannot be
-    resolved is #cmd("null").],
-  [#cmd("records")], [the number of IDRs read, including those that add
-    nothing to #cmd("idr").],
+  [#cmd("idr")], [an array with one object for each line of the text form.
+    Every object has #cmd("record"), the offset of the record as a decimal
+    number, #cmd("subtype") and #cmd("last"). SPZAP entries add
+    #cmd("chain"), #cmd("csect"), #cmd("cesdid"), #cmd("date") and
+    #cmd("zap"), and an SPZAP record without entries adds #cmd("entries"),
+    0\; user data entries add #cmd("csect"), #cmd("cesdid"), #cmd("date")
+    and #cmd("id")\; the linkage editor record adds #cmd("bytes"),
+    #cmd("program"), #cmd("version"), #cmd("modification"), #cmd("date")
+    and #cmd("time") (#cmd("null") when the record holds none)\; a
+    translator entry adds #cmd("csects"), an array, #cmd("program"),
+    #cmd("version"), #cmd("modification") and #cmd("date"). A #cmd("csect")
+    that cannot be resolved is #cmd("null").],
+  [#cmd("records")], [the number of IDRs read.],
   [#cmd("malformed")], [#cmd("true") if the record chain could not be
     followed to its end.],
 )
@@ -145,10 +150,9 @@ With #cmd("--json"), idrdump370 writes one JSON object with these members:
   #table(columns: (0.9in, 1fr),
     [Code], [Meaning],
     [0], [At least one IDR was read and displayed.],
-    [1], [No IDR was found. This is also the result for a file that is not
-      a load module member.],
-    [2], [The command was given incorrectly, or the file could not be
-      opened or read, or it is empty.],
+    [1], [The load module holds no IDR.],
+    [2], [The command was given incorrectly, the file could not be opened
+      or read, it is empty, or it is not a load module.],
   )
 ] <idrdump370-rc-tab>
 
@@ -164,6 +168,5 @@ then as JSON. The last command shows the result for an object module.
 
 The SPZAP record at offset #cmd("X'18'") has no entries: nothing has
 modified the module. The linkage editor record at #cmd("X'113'") ends the
-chain. Its text begins with #cmd("LD370")\; the characters after it are the
-binary version, date (#cmd("26277")) and time (#cmd("120000")) fields, which
-idrdump370 does not decode.
+chain: ld370 version 1, modification 2, linked on day 277 of 2026 at
+12:00:00, the date and time given by #cmd("LDDATE") and #cmd("LDTIME").

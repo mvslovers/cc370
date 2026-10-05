@@ -468,10 +468,10 @@ Each #var("file") is one of two kinds:
   ld370 warns about every such file and says where the entry point came
   from, for example (one line, shown here on two):
   ```
-  ld370: warning: 'B' is a bare load module: packing B at entry 26
+  ld370: warning: 'B' is a bare load module: packing B at entry 000026
     (--entry), AC 0, neither RENT nor REUS
   ```
-  The entry point is given in hexadecimal. The member name is the base name
+  The entry point is given as six hexadecimal digits. The member name is the base name
   of the file without its extension, in uppercase.
 
 #var("member")#cmd("=")#var("file") gives the member a name of your own\; a

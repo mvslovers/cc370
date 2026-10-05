@@ -210,10 +210,11 @@ the source I think?
 )
 
 @ug-diag-inspect-session uses each on SUMUP: file370 summarizes the load
-module, idrdump370 shows that it was written by ld370 and not changed since,
-cmplmd370 confirms that the ADDUP in the load module is the one assembled
-from #cmd("addup.asm"), and dasm370 shows ADDUP as it is in the load
-module.
+module\; idrdump370 shows that it was written by ld370, version 1.2, on day
+278 of 2026, and that SPZAP has not changed it since\; cmplmd370 confirms
+that the ADDUP in the load module is the one assembled from
+#cmd("addup.asm"), and that the code compiled from #cmd("sumup.c") is
+there too\; and dasm370 shows ADDUP as it is in the load module.
 
 #fig(caption: [Inspecting SUMUP])[
   #screen(raw(read("../ex/ug-diag/inspect.txt")))
@@ -230,11 +231,14 @@ The two comparisons that come up most often:
 - *Is the module on MVS the one I built?* Copy the library to the
   workstation in a TRANSMIT file, extract the member with
   #cmd("xmit370 extract"), and compare your object modules with it.
-  cmplmd370 pairs sections by name, and the unnamed sections of C code
-  cannot be told apart in a module that holds many of them. Compile the C
-  sources you want to compare with #cmd("-mcsect=")#var("name") and compare
-  that section alone, for example
-  #cmd("cmplmd370 --csect SUMUP sumup.o SUMUP"). For the attributes and the
+  cmplmd370 pairs sections by name. The code of a C source is an unnamed
+  section, which it pairs by its first entry point instead and reports
+  under that name in parentheses, as #cmd("(@@MAIN)") in
+  @ug-diag-inspect-session. To compare one section alone, name it with
+  #cmd("--csect"), for example #cmd("cmplmd370 --csect '(@@MAIN)' sumup.o SUMUP").
+  An object module compiled with #cmd("-mcsect=")#var("name") is paired by
+  that name only, so compare it with a module linked from the same kind of
+  object module. For the attributes and the
   entry point, which cmplmd370 does not compare, look at the directory with
   #cmd("file370 -v") on the TRANSMIT file.
 - *Does a rebuilt object module still match?* After a change to the build,
