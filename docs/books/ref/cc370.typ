@@ -513,11 +513,9 @@ the return code, but #cmd("-Werror") turns them into errors. #cmd("-w")
 suppresses them\; #cmd("-Wno-unknown-pragmas") does not.
 
 A header in the sysroot is a system header, and its warnings are not
-shown: #cmd("<mvs/clock.h>"), #cmd("<mvs/dynalloc.h>"),
-#cmd("<mvs/idcams.h>") and #cmd("<mvs/storage.h>"), which contain
-#cmd("#pragma linkage"), compile without a message, also with
-#cmd("-Wall -Werror"). Named with #cmd("-I")
-from a libc370 source tree, the same headers draw the warning.
+shown, also with #cmd("-Wall -Werror"). The same header named with
+#cmd("-I") from a libc370 source tree is an ordinary header, and its
+warnings are reported.
 
 == Optimization <cc370-opt>
 
