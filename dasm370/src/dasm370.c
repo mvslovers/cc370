@@ -481,7 +481,7 @@ static int hint_flush(int tab, int line)
     case 5:                                        /* [[using]] and [[dsect]] */
         return herr(line, "[[using]] and [[dsect]] are not implemented yet: a USING points a register "
                           "at a DSECT, and resolving into a dummy section needs a symbol table, which "
-                          "--derive-hints brings (#382).  A base register covering this section is "
+                          "--derive-hints brings.  A base register covering this section is "
                           "[[base]]");
     case 6:                                        /* [[replace]] */
     {
@@ -789,8 +789,10 @@ static void label_name(long a, char *out)
     const char *h;
     int i;
     if ((h = hlab_name(a)) != NULL) { strcpy(out, h); return; }
+    /* Only this section's own entries: an LR of another section keeps its
+     * module address, and @@CRT0 at module 0 named ADDUP's offset 0 (#809). */
     for (i = 0; i < nld; i++)
-        if (ld[i].addr == a) { strcpy(out, ld[i].name); return; }
+        if (ld[i].owner == sect_esdid && ld[i].addr == a) { strcpy(out, ld[i].name); return; }
     if (label_seq) {
         long lo = 0, hi = nlabord - 1;
         while (lo <= hi) {                    /* the offset's ordinal among the labels */
@@ -1209,7 +1211,7 @@ static int hints_verify_patch(void)
         for (j = 0; j < nhver; j++)
             if (hver[j].at <= r->at && r->at + r->n <= hver[j].at + hver_len(&hver[j])) break;
         if (j == nhver)
-            return herr(r->line, "no [[verify]] covers this replace -- an unasserted patch is what makes REPLACE unsafe (#112)");
+            return herr(r->line, "no [[verify]] covers this replace -- an unasserted patch is what makes REPLACE unsafe");
     }
     for (i = 0; i < nhrep; i++) memcpy(img + hrep[i].at, hrep[i].b, (size_t)hrep[i].n);
     return 0;
@@ -1596,6 +1598,10 @@ static void emit_adcon(long a, const struct rlditem *r)
  */
 struct cesd_ctx { const char *want; int pos; };
 
+/* A section with text to disassemble: SD or PC.  A common (CM) section is a
+ * section to the linkage editor and holds no text (#809). */
+static int text_section(int type) { return obj_is_section(type) && (type & 0x0f) != OBJ_CM; }
+
 static int cesd_cb(const struct lmod_esd *e, void *ctx)
 {
     struct cesd_ctx *c = ctx;
@@ -1611,7 +1617,7 @@ static int cesd_cb(const struct lmod_esd *e, void *ctx)
         memcpy(ld[nld].name, nm, 9);
         nld++;
     }
-    if (!sect_esdid && obj_is_section(e->type)
+    if (!sect_esdid && text_section(e->type)
         && (!c->want || !strcmp(nm, c->want))) {
         sect_esdid = e->esdid;
         sect_org = e->addr;
@@ -1804,6 +1810,9 @@ static void no_section(const char *want, const char *src)
                 if ((esdtype[i] & 0x0f) == 0x07)
                     fprintf(stderr, "dasm370: %s is in %s only as a DELETED (null) CESD "
                                     "entry, not a control section\n", want, src);
+                else if ((esdtype[i] & 0x0f) == OBJ_CM)
+                    fprintf(stderr, "dasm370: %s is a COMMON section in %s; it holds no text to "
+                                    "disassemble\n", want, src);
                 else if ((esdtype[i] & 0x0f) == 0x03)
                     fprintf(stderr, "dasm370: %s is an ENTRY POINT (LR) in %s, not a control "
                                     "section\n", want, src);
@@ -1815,7 +1824,7 @@ static void no_section(const char *want, const char *src)
     }
     fprintf(stderr, "dasm370: no section named %s in %s", want ? want : "(any)", src);
     for (i = 1; i < MAXESD; i++)
-        if (esdname[i][0] && obj_is_section(esdtype[i])) {
+        if (esdname[i][0] && text_section(esdtype[i])) {
             fprintf(stderr, "%s%s", n++ ? ", " : "; it holds ", esdname[i]);
             if (n == 6) { fputs(", ...", stderr); break; }
         }
@@ -1844,7 +1853,15 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
      * else is read as a bound member.  Both sniffs are the ones cmplmd370 uses
      * and neither is a guess about the content. */
     if (dn % 80 || dn == 0 || deck[0] != 0x02) {
-        int k = load_member(deck, dn, want, allow_incomplete);
+        int k;
+        /* Neither a deck nor a member: say so, rc 16 as the man page's table
+         * has it, instead of reading text as a truncated module (#809). */
+        if (!lmod_plausible(deck, dn)) {
+            fprintf(stderr, "dasm370: %s is not an object deck or a load module\n", src);
+            free(deck);
+            return 16;
+        }
+        k = load_member(deck, dn, want, allow_incomplete);
         free(deck);
         if (k == 0) {
             no_section(want, src);
@@ -1875,11 +1892,11 @@ static int load_section(const char *src, const char *want, int allow_incomplete)
                 ld[nld].owner = (int)e->len;
                 nld++;
             }
-            if (obj_is_section(e->type)) {   /* every section, for the note below (#439) */
+            if (text_section(e->type)) {     /* every section with text, for the note below (#439) */
                 if (nsecs < MAXSECS_NOTED) { memcpy(secs[nsecs].name, e->name, 9); secs[nsecs].len = e->len; }
                 nsecs++;
             }
-            if (obj_is_section(e->type) && !sect_esdid
+            if (text_section(e->type) && !sect_esdid
                 && (!want || !strcmp(e->name, want))) {
                 sect_esdid = e->id;
                 sect_org = e->addr;          /* cc370#415: a deck has one too */
@@ -2394,9 +2411,7 @@ static int derive_emit(FILE *o, const char *as, const char *asver, long assize,
                    "# one place that never moves: a base is established at the CSECT entry,\n"
                    "# typically offset 2 after a BALR, and the first divergence is at a\n"
                    "# median offset of X'14' -- so a per-base anchor sits BEFORE the\n"
-                   "# divergence, passes, and leaves every later label wrong. Measured over\n"
-                   "# 909 modules: median 9 divergence points, the first at 2.1%% of the\n"
-                   "# section, 65%% inside the first tenth.\n");
+                   "# divergence, passes, and leaves every later label wrong.\n");
         for (i = 0; i < ndsym; i++) {
             char hx[16];
             long at = dsyms[i].value;
@@ -2592,7 +2607,7 @@ static int infer_emit(FILE *o, const char *src)
 "#             detecting the IDIOM rather than the DECLARATION. A module that\n"
 "#             loads a base at run time without telling the assembler produces\n"
 "#             a candidate that is true about the bytes and wrong as a hint;\n"
-"#             and until reachability lands (#383) a data area holding X'0510'\n"
+"#             and without reachability a data area holding X'0510'\n"
 "#             is BALR 1,0 to anything reading bytes.\n"
 "#   rld       loaded from an address constant the RLD relocates into this\n"
 "#             section: re-checkable against the object itself\n"
@@ -4058,28 +4073,24 @@ static int align_run(const char *refp, const char *candp, const char *want, cons
               "tolerates its absence will silently see none where there is one.\",\n", jout);
         if (!sref.loaded || !scand.loaded)
             fputs("  \"source_absent_because\": \"a side with no as370 --stmts export "
-                  "(cc370#411) carries source:null there: line number, text, macro origin "
+                  "carries source:null there: line number, text, macro origin "
                   "and reserve-vs-align are SOURCE facts. In an object a DS 0F pad and a "
-                  "DS CL1 reservation are both uncovered bytes; two object-side rules "
-                  "measured over the 30 control CSECTs disagree 1% against 14%. Pass "
+                  "DS CL1 reservation are both uncovered bytes, and no object-side rule "
+                  "tells them apart reliably. Pass "
                   "--ref-stmts and --cand-stmts to fill them.\",\n", jout);
         fputs("  \"source_note\": \"A source record names the card at `org\', and THE "
               "CONSUMER MUST CHECK IT: test that `text\' is a PREFIX of the statement at "
               "org, folding continuations. A statement from a COPY\'d member keeps the "
               "COPY card\'s origin and carries nothing that marks it -- gen false, mdepth "
               "0, mcall_* null, exactly like open code -- so org names the COPY card and "
-              "the prefix test is what says so. Measured over 490 COPY-derived records: "
-              "490 of 490 both ways, and org is never a line inside the member; control "
-              "over 47,534 open-code records gives 0 false positives on prefix and 5 on "
-              "equality. `claimants\' above 1 means an ORG overlay put several statements "
+              "the prefix test is what says so; org is never a line inside the member, "
+              "and a prefix test, unlike equality, gives no false positives on open code. "
+              "`claimants\' above 1 means an ORG overlay put several statements "
               "on the offset. THE ONE TAKEN IS THE LAST IN LISTING ORDER THAT RESERVES, "
               "and `the last\' alone is wrong: a forward ORG claims the bytes it moved "
-              "over and is last, while the deck holds what the statements under it wrote "
-              "-- 53,328 of 189,227 overlapped offsets over the 832-module population, in "
-              "121 of its 378 modules with an overlap, and 45 of 3,266 over the 30. The "
-              "rule is keyed on `reserves\' and NOT on the operation: 53,323 of those "
-              "53,328 last claimants are ORG and five are a zero-duplication DC 0F or "
-              "DS 0F. Under the reserves rule the count is 0 in both populations. `chosen\' is \\\"reserving\\\" for that statement, "
+              "over and is last, while the deck holds what the statements under it wrote. "
+              "The rule is keyed on `reserves\' and NOT on the operation: nearly all such "
+              "last claimants are ORG, a few a zero-duplication DC 0F or DS 0F. `chosen\' is \\\"reserving\\\" for that statement, "
               "\\\"unreserved\\\" where no claimant reserves at all, "
               "\\\"encloses\\\" for one an INSERTION POINT falls inside -- a disassembly\'s "
               "boundaries are the decoder\'s and not the assembler\'s, so that card has to "
@@ -4288,22 +4299,9 @@ static void usage(FILE *o)
 "                     lifetimes the assembly gave them.  Takes -I, and records\n"
 "                     the list in the file -- a hint set derived against the\n"
 "                     wrong macro library is a wrong one that looks right\n"
-"  --reach[=SET]      #383: traverse from the CODE roots (the SD, the LD/LR\n"
-"                     entries this section owns, the END entry on a deck, and a\n"
-"                     table of address constants a branched-through register was\n"
-"                     loaded from) and emit what nothing reaches as DC.  A\n"
-"                     REACHABILITY comment card reports the coverage, which is\n"
-"                     the point: unreached CODE also becomes DC, and that is\n"
-"                     byte-safe and so invisible to a round trip.  SET is\n"
-"                     none|r15|balr|rld|lr|both|bothlr|acon|all (default all)\n"
-"  --reach-report[=SET] the traversal's coverage as data, without a disassembly\n"
-"  --reach-OLD[=SET]  #383 measurement: traverse from the CODE roots (the SD,\n"
-"                     the LD/LR entries this section owns, and the END entry on\n"
-"                     a deck) and report what the traversal reaches.  SET is\n"
-"                     none|r15|balr|both (default both) and says which base\n"
-"                     assumptions are allowed: r15 = R15 holds the entry point,\n"
-"                     balr = a prologue BALR Rn,0 is live for the section.  RLD\n"
-"                     targets are LABEL roots and are never code roots here\n"
+"  --reach-report[=SET] the reachability traversal's coverage as data, without a\n"
+"                     disassembly.  SET is none|r15|balr|rld|lr|both|bothlr|acon|all\n"
+"                     (default all)\n"
 "  --infer            candidates from the code itself, for a section with no\n"
 "                     source: base registers with their evidence kind\n"
 "                     (prologue/rld/pattern).  Every candidate is a COMMENT and\n"
@@ -4316,7 +4314,7 @@ static void usage(FILE *o)
 "                     shift function's value set and a FINDING when it is not.\n"
 "                     Reads no hint file and writes no disassembly\n"
 "  --json FILE        with --align-diff, the repair contract: one record per\n"
-"                     divergence, schema dasm370-repair/3 (cc370#385)\n"
+"                     divergence, schema dasm370-repair/3\n"
 "  --ref-stmts FILE   the as370 --stmts export of each side's SOURCE, which\n"
 "  --cand-stmts FILE  fills that side's `source\' in --json.  Two flags because\n"
 "                     the two objects have two different sources, and a single\n"
@@ -4339,12 +4337,12 @@ static void usage(FILE *o)
 "                     A displacement-derived name is WRONG the moment a\n"
 "                     statement is inserted above it -- and it still assembles,\n"
 "                     so no round trip, no comparison and no gate objects.  Use\n"
-"                     sequential for source that will be edited (cc370#396)\n"
+"                     sequential for source that will be edited\n"
 "  --isa SET          app|s370|s360|full.  `app' drops floating point, packed\n"
 "                     decimal, I/O and privileged -- 236 mnemonics to 128 -- so\n"
 "                     fewer bytes can be mistaken for an instruction.  `s370' is\n"
 "                     `full' here, this table being the S/370 set; `s360' is\n"
-"                     refused and says what it would cost (cc370#395)\n"
+"                     refused: the instructions it would drop are ones MVS uses\n"
 "  --format card|free card (the default) writes 80-column records with sequence\n"
 "                     numbers in 73-80 and column 72 left blank\n"
 "  -o FILE            write to FILE instead of standard output\n"
@@ -4353,14 +4351,14 @@ static void usage(FILE *o)
 "  -v                 verbose: what was read -- the section, its origin and length,\n"
 "                     its RLD and LD entries -- on stderr\n"
 "\n"
-"The decoder is as370's own opcode table, inverted (cc370#374): one table, and\n"
+"The decoder is as370's own opcode table, inverted: one table, and\n"
 "the disassembler agrees with the assembler by construction.  Every instruction\n"
 "is re-encoded from what was decoded and compared against the bytes it came\n"
 "from; anything that does not reproduce itself is written as DC X'..'.\n"
 "\n"
 "A base register given in a hint file is APPLIED, because it carries the\n"
 "lifetime its writer asserted.  One that dasm370 infers will be written to the\n"
-"file and never applied (#382): get a base register's range wrong and every\n"
+"file and never applied: get a base register's range wrong and every\n"
 "displacement in it resolves against the wrong section, producing symbols that\n"
 "are plausible, consistent and false -- and the bytes do not move, so no round\n"
 "trip objects.  A hint [[base]] covers this section; a USING points a register\n"
@@ -4379,7 +4377,7 @@ int main(int argc, char **argv)
     int ai, i, rc, allow_incomplete = 0;
     int verbose = 0;
 
-    if (argc == 1) { usage(stdout); return 0; }
+    if (argc == 1) { usage(stderr); return 2; }   /* as cmplmd370 and idrdump370 (#809) */
     for (ai = 1; ai < argc; ai++) {
         /* -V is the version and -v verbose, as in every tool of the chain; -v
          * used to be the version (#811). */
@@ -4411,7 +4409,8 @@ int main(int argc, char **argv)
             else if (!strcmp(v, "displacement")) label_seq = 0;
             else { fprintf(stderr, "dasm370: --labels %s is not displacement or sequential\n", v); return 16; }
         }
-        else if (!strncmp(argv[ai], "--reach-report", 14) || !strncmp(argv[ai], "--reach", 7)) {
+        else if (!strncmp(argv[ai], "--reach-report", 14) || !strcmp(argv[ai], "--reach")
+                 || !strncmp(argv[ai], "--reach=", 8)) {   /* not a prefix: --reach-OLD is no option (#809) */
             const char *v;
             if (!strncmp(argv[ai], "--reach-report", 14)) { reach_only = 1; v = argv[ai] + 14; }
             else {
@@ -4422,10 +4421,9 @@ int main(int argc, char **argv)
                  * is break-even.  Byte-safe is not harmless: a module whose real
                  * code becomes DC round-trips identically and every gate reports
                  * success.  cc370#383 carries the ledger. */
-                fprintf(stderr, "dasm370: --reach is not implemented; --reach-report measures it.\n"
-                                "  Applied, it darkens more real code than it silences data --\n"
-                                "  12,558 bytes against 2,300 over the 30 control CSECTs.\n"
-                                "  cc370#383 has the measurement.\n");
+                fprintf(stderr, "dasm370: --reach is not implemented: applied, it would turn more real\n"
+                                "  code into DC than it keeps data out of the code. --reach-report\n"
+                                "  shows the traversal's coverage without applying it.\n");
                 return 16;
             }
             if (!*v) reach_mode = RCH_R15 | RCH_BALR | RCH_RLD | RCH_LR | RCH_ACON;
@@ -4518,8 +4516,7 @@ int main(int argc, char **argv)
             return 16;
         }
         if ((ref_stmts_fn || cand_stmts_fn) && !json_fn) {
-            fprintf(stderr, "dasm370: a statement export fills the `source' field of --json "
-                            "(cc370#385);\n"
+            fprintf(stderr, "dasm370: a statement export fills the `source' field of --json;\n"
                             "  the text report has no field for it, so it would be read and "
                             "discarded\n");
             return 16;
@@ -4533,7 +4530,7 @@ int main(int argc, char **argv)
         return 16;
     }
     if (json_fn && !align_ref) {
-        fprintf(stderr, "dasm370: --json is the repair contract for --align-diff (cc370#385); "
+        fprintf(stderr, "dasm370: --json is the repair contract for --align-diff; "
                         "it has nothing to describe without one\n");
         return 16;
     }
@@ -4599,12 +4596,9 @@ int main(int argc, char **argv)
          * evidence than the class one, and the corpus says what it would cost. */
         if (isa && !strcmp(isa, "s360")) {
             fprintf(stderr,
-                "dasm370: --isa s360 is not implemented, and the corpus says why.\n"
-                "  Of the S/370 additions this table carries, IBM's own MVS 3.8j source\n"
-                "  writes ICM 9,824 times, STCM 6,720, MVCL 738, CLM 416, STCK 146 and\n"
-                "  CLCL 41 -- 17,885 instructions an S/360 cut would turn into DC.\n"
-                "  It writes BAS, BASR, BASSM, BSM, MVCIN, IAC and TB exactly ZERO times,\n"
-                "  so the cut removes nothing anyone wrote.  Use app, s370 or full.\n");
+                "dasm370: --isa s360 is not implemented: MVS 3.8j code uses the S/370\n"
+                "  additions (ICM, STCM, MVCL, CLM, STCK, CLCL) widely, and an S/360 cut\n"
+                "  would turn them into DC.  Use app, s370 or full.\n");
             return 16;
         }
         if (isa && !strcmp(isa, "app")) isa_app = 1;

@@ -1029,8 +1029,8 @@ fi
 
 # The applied form is refused by name rather than silently absent.
 "$D" --reach "$T/reach.obj" >/dev/null 2>&1
-[ $? = 16 ] && pass "--reach (applied) is refused, and says what the measurement was" \
-            || fail "--reach (applied) is refused, and says what the measurement was"
+[ $? = 16 ] && pass "--reach (applied) is refused by name" \
+            || fail "--reach (applied) is refused by name"
 
 # ---- --align-diff (#384) -------------------------------------------------
 # Both sides disassembled and aligned statement by statement, so a displacement
@@ -1655,9 +1655,9 @@ cmp -s "$T/isa-s370.s" "$T/isa-def.s" \
     && pass "--isa s370 IS the default: this table is the System/370 set" \
     || fail "--isa s370 must be byte-identical to no --isa at all"
 "$D" --isa s360 "$T/isa.obj" -o /dev/null >/dev/null 2>"$T/isa-s360.err"
-[ $? = 16 ] && grep -q '17,885' "$T/isa-s360.err" \
-    && pass "--isa s360 is refused, and the refusal carries what it would cost" \
-    || { fail "--isa s360 must be refused WITH the measurement"; cat "$T/isa-s360.err"; }
+[ $? = 16 ] && grep -q 'S/370' "$T/isa-s360.err" && ! grep -qE '[0-9],[0-9]{3}' "$T/isa-s360.err" \
+    && pass "--isa s360 is refused, saying why without corpus counts (#809)" \
+    || { fail "--isa s360 must be refused, saying why"; cat "$T/isa-s360.err"; }
 
 # ---- a cross-section adcon's addend (cc370#418) ----------------------------
 # A deck numbers module-absolute throughout (cc370#415), so an adcon naming
@@ -1741,6 +1741,42 @@ else fail "-v: output changed or no section line ($(head -1 "$T/v1.err"))"; fi
 if grep -qF "#   version  $("$A" --version)" "$T/dv.toml"; then
     pass "--derive-hints records as370's --version"
 else fail "--derive-hints records no as370 version ($(grep '#   version' "$T/dv.toml"))"; fi
+
+# ---- #809: what a user is told ----------------------------------------------
+# No arguments is a usage error, rc 2, like cmplmd370 and idrdump370.
+"$D" >/dev/null 2>"$T/na.err"; r=$?
+[ $r = 2 ] && grep -q '^Usage: dasm370' "$T/na.err" && pass "no arguments: usage on stderr, rc 2" \
+    || fail "no arguments: rc $r"
+# The usage names no option that is refused, and no issue number.
+"$D" --help > "$T/help.out"
+if grep -q -- '--reach\[\|--reach-OLD' "$T/help.out" || grep -qE '#[0-9]{2,4}' "$T/help.out"; then
+    fail "--help still lists a refused --reach option or an issue number"
+else pass "--help: no refused option, no issue number"; fi
+"$D" --reach-OLD "$T/a.obj" -o /dev/null 2>/dev/null; [ $? = 16 ] && pass "--reach-OLD is an invalid option, rc 16" || fail "--reach-OLD accepted"
+"$D" --reach "$T/a.obj" -o /dev/null 2>"$T/re.err"; r=$?
+[ $r = 16 ] && ! grep -qE '#[0-9]|[0-9],[0-9]{3}' "$T/re.err" && pass "--reach refused without issue numbers or corpus counts" \
+    || fail "--reach: rc $r: $(head -1 "$T/re.err")"
+# A file that is neither a deck nor a load module is rc 16, said as such.
+printf 'not a module\n' > "$T/text.txt"
+"$D" "$T/text.txt" -o /dev/null 2>"$T/tx.err"; r=$?
+[ $r = 16 ] && grep -q 'not an object deck or a load module' "$T/tx.err" && pass "a text file: not an object deck or a load module, rc 16" \
+    || fail "a text file: rc $r: $(head -1 "$T/tx.err")"
+# A common (CM) section holds no text: not listed, and --csect names it as such.
+printf 'T        CSECT\n         BR    14\nCBLK     COM\nCF1      DS    F\n         END\n' > "$T/cm.s"
+"$A" -o "$T/cm.obj" "$T/cm.s"
+"$D" "$T/cm.obj" -o /dev/null 2>"$T/cm.err"
+[ ! -s "$T/cm.err" ] && pass "a deck with one CSECT and a COM is one section to disassemble" || fail "COM listed: $(head -2 "$T/cm.err")"
+"$D" --csect CBLK "$T/cm.obj" -o /dev/null 2>"$T/cm2.err"; r=$?
+[ $r = 2 ] && grep -q 'COMMON section' "$T/cm2.err" && pass "--csect on a COM name says it holds no text, rc 2" || fail "--csect CBLK: rc $r"
+# An entry of ANOTHER section is no label here: @@CRT0, an LR at module 0 in
+# XCRT, named ADDUP's first instruction in the linked module.
+printf 'XCRT     CSECT\n         ENTRY @@CRT0\n@@CRT0   STM   14,12,12(13)\n         BR    14\n         END\n' > "$T/xc.s"
+printf 'ADDUP    CSECT\n         STM   14,12,12(13)\n         BR    14\n         END\n' > "$T/ad.s"
+"$A" -o "$T/xc.o" "$T/xc.s" && "$A" -o "$T/ad.o" "$T/ad.s" \
+  && ../ld370/ld370 -o "$T/su" --name SUMUP --entry @@CRT0 "$T/xc.o" "$T/ad.o" 2>/dev/null
+if "$D" --format free --csect ADDUP "$T/su" 2>/dev/null | grep -v '^\*' | sed -n 2p | grep -q '^L000000 '; then
+    pass "a linked section's offset 0 is not named after another section's LR"
+else fail "label: $("$D" --format free --csect ADDUP "$T/su" 2>/dev/null | grep -v '^\*' | sed -n 2p)"; fi
 
 [ $fails = 0 ] && echo "dasm370: all checks passed" || echo "dasm370: $fails FAILURE(S)"
 exit $fails
