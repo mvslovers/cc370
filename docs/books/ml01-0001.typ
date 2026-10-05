@@ -10,13 +10,12 @@
   edition: [
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
-    This edition applies to the release of the cc370 cross-toolchain that
-    follows cc370 1.2.0, and to all subsequent releases and modifications
-    until otherwise indicated in new editions. The release number is
-    entered here when that release is made.
+    This edition applies to Version 1 Release 3 of the cc370 cross-toolchain
+    (cc370 1.3.0) and to all subsequent releases and modifications until
+    otherwise indicated in new editions.
 
-    *Draft.* This book is in preparation and describes the toolchain as it is
-    being developed. It is published together with that release.
+    *Draft.* The output of the examples that run on MVS has still to be
+    captured; those figures are marked as such.
 
     Comments on this book may be addressed to the issue tracker of
     the mvslovers/cc370 repository on GitHub.
