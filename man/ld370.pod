@@ -285,15 +285,23 @@ The output was written. Warnings and notes do not change it.
 
 =item B<1>
 
-The link failed: an input could not be read or is not an object deck,
-references stayed unresolved (without B<--allow-unresolved>), the B<--entry>
-symbol was not found, or an output could not be written.
+The link failed, because of what a file holds: an input could not be read or
+is not an object deck, a B<-l> library or B<--include> member was not found, a
+file named as an archive is not one, references stayed unresolved (without
+B<--allow-unresolved>), the B<--entry> symbol was not found, a member to pack
+holds a block larger than B<--blocksize>, or an output could not be written.
 
 =item B<2>
 
-A usage error: an unknown option, an option without its value, a value out of
-range or not a number, an invalid member or alias name, or options that cannot be
-combined.
+A usage error: the command line is wrong whatever the files hold. An unknown
+option, an option without its value, a value out of range or not a number, an
+invalid member or alias name, options that cannot be combined (B<--include>
+with B<--pack>), one name used twice in a library (a member, or an alias naming
+the member or given twice), more than 32 archives, or a B<--pack> input that is
+not a load module.
+
+Nothing is written when ld370 ends with RC=2, and an unwritable B<--map> is
+found before the member is written.
 
 =back
 
