@@ -70,12 +70,21 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **as370 writes no object on a wrong command line** (#822).
+  - An invalid option or a second source file ended rc 16 and still wrote
+    the object. The assembly still runs and reports, but no object is
+    written.
+  - `-a=FILE` that cannot be written fell back to stdout at rc 0. It is now
+    rc 16 ("cannot write listing"), checked before the assembly.
+  - Diagnostics name `IFO177`, `IFO178`, `IFO224` and `IFO236`, where four
+    of them said `ERR` -- IFOX00's internal label for the same number.
 - **ld370 leftovers of #807** (#821).
   - `--pack` warns that `--warn-shadow` is ignored and refuses `--include`.
   - A `--pack` input that is not a load module (a C source, say) is rc 2,
     where it was warned about as a bare module and then failed rc 1.
   - Write errors carry the `ld370:` prefix.
-  - An unwritable `--map` is reported before the member is written.
+  - An unwritable `--map`, `.xmit` or `.iebcopy` is reported before the member
+    is written, so no member is left behind.
   - The return codes follow one rule: rc 2 when the command line is wrong
     whatever the files hold, rc 1 when a file or the link fails. A name used
     twice in a library (a member, or an alias naming the member or given
