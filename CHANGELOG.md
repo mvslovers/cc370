@@ -70,6 +70,21 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **dasm370 details** (#809).
+  - A file that is neither an object deck nor a load module is refused with
+    rc 16 ("not an object deck or a load module"), where it used to be taken
+    for an incomplete module, rc 2.
+  - Called with no arguments, it prints the usage on stderr and ends rc 2, as
+    cmplmd370 and idrdump370 do.
+  - A common (CM) section is neither listed nor disassembled; `--csect` on one
+    says it holds no text.
+  - In a linked module, a section's first instruction was named after an entry
+    point of another section that sits at module address 0 (`@@CRT0`). Labels
+    now come from the section's own entries only.
+  - The usage no longer lists `--reach` and `--reach-OLD`, which are refused;
+    `--reach-OLD` is now an unknown option.
+  - The usage and the messages carry no issue numbers or corpus statistics.
+  - The man page gives the JSON schema as `dasm370-repair/3`.
 - **ld370 `--pack` takes a bare member's entry point from its CESD** (#850).
   A bare load module (one not linked with `-iebcopy`) was always packed with
   entry 0, and `--entry` was ignored. That held only while `@@CRT0` came first

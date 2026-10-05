@@ -245,6 +245,11 @@ struct lmod_esd {
 
 /* Walk every CESD entry of a member, in order.  Returns the number reported;
  * `fn` may be NULL to count.  Stops early if `fn` returns 0. */
+/* Is this plausibly a load-module member?  The first byte is a CESD (X'20'/
+ * X'28') or a SYM record (X'4n'), and the record walk finds a CESD or a
+ * control record -- a text file that starts with a blank or '@'..'O' does
+ * not (file370 #806; dasm370/idrdump370 #809). */
+int lmod_plausible(const unsigned char *b, long n);
 int lmod_cesd_walk(const unsigned char *m, long n,
                    int (*fn)(const struct lmod_esd *e, void *ctx), void *ctx);
 
