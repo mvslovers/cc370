@@ -264,6 +264,16 @@ relocations and entries, and every reference binds to the first definition, as
 IEWL does. IEWL says nothing; ld370 prints a note naming the CSECT, and the
 return code is unchanged.
 
+A common section (ESD type CM, from the assembler's C<COM>) is one area per
+name for the whole link, as long as the longest contribution. Common sections
+follow every object, each on a doubleword, in the order their names first
+appear; they carry no text but count in the module length. That is IEWL's
+layout.
+
+Pseudo registers (ESD type XD from C<DXD> or a Q-type constant, and the
+Q-type and C<CXD> relocations) are not handled yet: they stay unresolved
+(cc370#76).
+
 =head1 EXIT STATUS
 
 =over 4
