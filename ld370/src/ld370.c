@@ -1841,7 +1841,8 @@ static int map_ld_cmp(const void *a, const void *b)
     return memcmp(x->name, y->name, 8);
 }
 /* --xref: every address constant that names an external symbol -- an RLD item
- * whose R pointer is an ER or WX in its own object -- listed under the section
+ * whose R pointer is an ER, a WX or a common (CM) section, which is resolved by
+ * name across objects too (IEWL lists those: JOB00352, #845) -- listed under the section
  * that holds it, at its offset in that section, with the section the name
  * resolved to.  IEWL's XREF answers the same "who references whom". */
 struct xref { int sect; long off; int flag; unsigned char name[8]; int target; int weak; };
@@ -1876,7 +1877,7 @@ static struct xref *collect_xrefs(int *nx)
             int R = o->rld[j].R, P = o->rld[j].P, Pg, Rg;
             if (rld_dropped(o, j)) continue;
             if (R < 1 || R >= MAXESD || !o->loc[R].used) continue;
-            if (o->loc[R].type != T_ER && o->loc[R].type != T_WX) continue;   /* a reference inside the object */
+            if (o->loc[R].type != T_ER && o->loc[R].type != T_WX && o->loc[R].type != T_CM) continue;   /* a reference inside the object */
             Pg = local_to_g(o, P); Rg = local_to_g(o, R);
             if (Pg < 0 || !G[Pg].is_sect) continue;
             x = grow_arr(x, &cap, n + 1, sizeof *x);

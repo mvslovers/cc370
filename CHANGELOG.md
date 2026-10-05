@@ -59,6 +59,8 @@ neither number is mistaken for the other.
   every object on doubleword boundaries, carry no text, and count in the module
   length. Measured with IEWL on two objects sharing a common section of
   different lengths: CESD, control, text and RLD records are identical.
+  `--xref` lists the address constants that point at a common section, as
+  IEWL's cross-reference does (#845).
 - **as370: COM and DXD names in address constants** (#840).
   - `A(BLK)`, `A(BLK+4)` and `=A(BLK)` on a COM section's own name got their
     value and no RLD entry at rc 0. They now relocate against the CM entry, as

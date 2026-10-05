@@ -785,7 +785,7 @@ printf '\n=== #837: common (CM) sections after every object, longest wins ===\n'
 # CMA 00, CMB 10, then CBLK 20 (x14 -- the longer of x0A and x14) and GBLK 38,
 # total x40; text only for the two CSECTs; CESD in order of first appearance.
 "$AS" -o "$TMP/cma.o" "$FIX/cma.s" && "$AS" -o "$TMP/cmb.o" "$FIX/cmb.s" \
-  && "$LD" -o "$TMP/cm.lm" --name CMTEST --entry CMA "$TMP/cma.o" "$TMP/cmb.o" --map "$TMP/cm.map" 2>/dev/null
+  && "$LD" -o "$TMP/cm.lm" --name CMTEST --entry CMA "$TMP/cma.o" "$TMP/cmb.o" --map "$TMP/cm.map" --xref 2>/dev/null
 "$FI" -v "$TMP/cm.lm" > "$TMP/cm.v" 2>&1
 if python3 - "$TMP/cm.lm" "$TMP/cm.v" "$TMP/cm.map" <<'PYCM'
 import re, sys
@@ -802,6 +802,8 @@ ok &= body("text", 0) == "000000200000002400000038aaaaaa00000000200000002cbbbbbb
 # the RLD items behind the 16-byte header: R 2 P 1 0D 0 / 0C 4, R 3 P 1 0C 8, R 2 P 4 0D 10 / 0C 14
 ok &= body("control", 1)[32:] == "000200010d0000000c000004000300010c000008000200040d0000100c000014"
 ok &= "LENGTH 000040" in mp
+# --xref lists the five references to the commons, as IEWL's map does (#845)
+ok &= len(re.findall(r"\+0000(?:00|04|08)\s+A\s+(?:CBLK|GBLK)\s+0000(?:20|38)\s+in (?:CBLK|GBLK)", mp)) == 5
 sys.exit(0 if ok else 1)
 PYCM
 then echo "  OK: CM sections allocated after the objects, longest contribution, text CSECTs only (== IEWL JOB00352)"
