@@ -56,7 +56,13 @@ i370_pr_map (cpp_reader *pfile ATTRIBUTE_UNUSED)
       if (c_lex (&x) != CPP_EOF)
 	warning ("junk at end of #pragma map");
 
-      mvs_add_alias (IDENTIFIER_POINTER (name), cp, 1);
+      /* Parsed and then dropped without a word: the external name stayed
+	 the one cc370 derives (#830).  It is not implemented, so say so and
+	 name the way that works.  */
+      (void) cp;
+      warning ("#pragma map is not implemented; `%s' keeps its derived external "
+	       "name -- declare it with __asm__(\"NAME\") instead",
+	       IDENTIFIER_POINTER (name));
       return;
     }
 
@@ -82,6 +88,9 @@ i370_pr_linkage (cpp_reader *pfile ATTRIBUTE_UNUSED)
       if (c_lex (&x) != CPP_EOF)
 	warning ("junk at end of #pragma linkage");
 
+      /* cc370 has one calling convention; the pragma changes nothing (#830).  */
+      warning ("#pragma linkage has no effect: `%s' is called with cc370's "
+	       "own linkage", IDENTIFIER_POINTER (name));
       return;
     }
 

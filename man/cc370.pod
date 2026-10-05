@@ -123,6 +123,18 @@ pulls in.
 
 All other standard GCC driver options are accepted.
 
+=head1 SOURCE
+
+Trigraphs are always on, whatever B<-std> says: C<??!> is C<|> and C<??!??!> is
+C<||>, as on an EBCDIC keyboard, so a string has the same value under every
+dialect. Write C<?\?!> for a literal C<??!>.
+
+C<#pragma map> and C<#pragma linkage> are recognized and have no effect; each
+warns. Give an external name with C<__asm__("NAME")> on the declaration.
+C<#pragma checkout>, C<nomargins> and C<nosequence> are accepted silently.
+
+B<-pipe> is accepted and ignored: the assembler reads a file.
+
 =head1 DIAGNOSTICS
 
 MVS external names are at most 8 characters, so a longer C name is cut and two

@@ -3519,9 +3519,10 @@ process_command (int argc, const char **argv)
 	report_times = 1;
       else if (strcmp (argv[i], "-pipe") == 0)
 	{
-	  /* -pipe has to go into the switches array as well as
-	     setting a flag.  */
-	  use_pipes = 1;
+	  /* -pipe is accepted and the temporary files are kept: as370 reads a
+	     file, so a pipe ended rc 2 with no object (#831).  It only ever
+	     traded files for speed, so ignoring it changes no output.  Still
+	     counted, as the second scan stores it among the switches.  */
 	  n_switches++;
 	}
       else if (strcmp (argv[i], "-###") == 0)
