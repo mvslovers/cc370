@@ -1865,6 +1865,30 @@ static const char *with_suffix(char *buf, size_t n, const char *base, const char
 /* The module address of a defined external -- a section (SD/PC) or an LD entry
  * inside one.  Shared by --entry and --alias, so an alias resolves a name
  * exactly the way the entry point does.  Returns 1 and sets *addr when found. */
+/* Each --alias names a directory entry of its own: not the member, and
+ * not once more (#821).  0 with a message when one does. */
+static int aliases_ok(const char *member, const char *const *al, int nal)
+{
+    unsigned char nm[8];
+    member_name(nm, member);
+    for (int x = 0; x < nal; x++) {
+        unsigned char a1[8];
+        member_name(a1, al[x]);
+        if (!memcmp(a1, nm, 8)) {
+            fprintf(stderr, "ld370: --alias %s is the member's own name\n", al[x]);
+            return 0;
+        }
+        for (int y = x + 1; y < nal; y++) {
+            unsigned char a2[8];
+            member_name(a2, al[y]);
+            if (!memcmp(a1, a2, 8)) {
+                fprintf(stderr, "ld370: --alias %s is given twice\n", al[x]);
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
 static int find_symbol(const char *name, long *addr)
 {
     unsigned char en[8]; int gi;
@@ -2369,7 +2393,8 @@ int main(int argc, char **argv)
         /* A name used twice is the command line's error, found before anything
          * is written: rc 2 (#821).  dir_layout says which name. */
         {
-            int nd, ndb;
+            int nd;
+            int ndb;
             struct dent *dd = dir_layout(m, npack, &nd, &ndb);
             if (!dd) return 2;
             free(dd);
@@ -2920,21 +2945,8 @@ int main(int argc, char **argv)
     (void)entry_pt;
     /* An alias naming the member, or one alias given twice, is the command
      * line's error: rc 2, before anything is written (#821). */
-    if (naliasv && (want_xmit || want_unload)) {
-        unsigned char nm[8], a1[8], a2[8];
-        int x, y;
-        member_name(nm, mname ? mname : basename_member(outfile));
-        for (x = 0; x < naliasv; x++) {
-            member_name(a1, aliasv[x]);
-            if (!memcmp(a1, nm, 8)) {
-                fprintf(stderr, "ld370: --alias %s is the member's own name\n", aliasv[x]); return 2;
-            }
-            for (y = x + 1; y < naliasv; y++) {
-                member_name(a2, aliasv[y]);
-                if (!memcmp(a1, a2, 8)) { fprintf(stderr, "ld370: --alias %s is given twice\n", aliasv[x]); return 2; }
-            }
-        }
-    }
+    if (naliasv && (want_xmit || want_unload)
+        && !aliases_ok(mname ? mname : basename_member(outfile), aliasv, naliasv)) return 2;
     /* A map that cannot be written is found BEFORE the member is: it used to be
      * reported after the member was already on disk (#821). */
     if (mapfile && strcmp(mapfile, "-")) {
