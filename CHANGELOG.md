@@ -33,7 +33,9 @@ neither number is mistaken for the other.
   and had no match. `GITHUB_TOKEN` is sent to the API when set, and a
   release list on one line is read whole. Run by zsh (`| zsh`), the script
   skipped libc370 with the same message, because zsh does not split words;
-  it now turns that on.
+  it now turns that on. The 1.4.0 release's `install.sh` asset was replaced
+  with this version on 2026-10-05 (and its `SHA256SUMS` line with it); the
+  toolchain archives and packages were not changed.
 
 ## [1.4.0] - 2026-10-05
 
