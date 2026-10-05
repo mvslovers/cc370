@@ -172,9 +172,11 @@ silent wrong results first. After each merge, one line to Book (session
    (`--entry NAME`, else @@CRT0), refused if absent; packed bare == direct
    -iebcopy. Still open from libc370#159: STARTFILE_SPEC "crt0.o%s" can go
    once libc.a carries @@CRT0; cc370 has no weak (libc370 uses WXTRN).
-8. #809 dasm370 / cmplmd370 / idrdump370 details **(next)**; plus dasm370 listing
-   CM sections as control sections (comment on the issue).
-9. #821 ld370 leftovers of #807 (--pack with --warn-shadow/-i, non-member
+8. ~~#809 dasm370 / cmplmd370 / idrdump370 details~~ **done** (#855, #856,
+   #857): input checks and rc, COM sections, foreign LR labels, unnamed-PC
+   pairing by entry, refusals before output, LKED/translator IDRs decoded;
+   cc370 -mcsect without the empty PC (IFOX does the same, JOB00353).
+9. #821 ld370 leftovers **(next)** of #807 (--pack with --warn-shadow/-i, non-member
    --pack input, unprefixed write errors, rc 1/2 classification).
 10. #822 as370 -- rc 16 still writes the object, `-a=FILE` falls back to
     stdout at rc 0, ERRnnn beside IFOnnn.
