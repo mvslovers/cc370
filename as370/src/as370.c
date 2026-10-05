@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <libgen.h>
 #include <limits.h>
+#include <sys/stat.h>
 
 #include "mvs370.h"
 #ifdef __APPLE__
@@ -488,7 +489,7 @@ static char g_sysparm[VALSZ] = "";
  * The CLI tool is "as370" (the cc370/as370/ld370 family); the stamped assembler
  * product is "ASM370". Used in three places: -v, the listing header, and the
  * END-record IDR. */
-#define AS370_NAME     "as370"          /* CLI tool name (-v) */
+#define AS370_NAME     "as370"          /* CLI tool name (-V, --version) */
 #include "cc370-version.h"   /* CC370_VERSION, CC370_COMMIT (common/mkversion.sh) */
 #define AS370_IDR_PROD "ASM370"         /* 10-char EBCDIC product id, left-justified (listing header + END-record IDR) */
 #define AS370_IDR_VER  "0100"           /* 4-char version = 01.00 (listing header + IDR) */
@@ -3489,6 +3490,17 @@ static void aif_split(const char *opnd, char *cond, int condsz, char *seq, int s
 /* ---- macro library (-I dirs): COPY members + macro lookup by name -------- */
 #define MAXMACLIB 16
 static char *maclib_dirs[MAXMACLIB]; static int nmaclib;
+/* -v (#811): name the macro search path and each macro where it was found, on
+ * stderr.  A wrong -I is the usual reason a macro goes undefined, and the path
+ * actually taken is the one thing the diagnostic cannot show. */
+static int g_verbose;
+static void verbose_macro(const char *name, const char *path) {
+    static char seen[512][9]; static int nseen;
+    int k;
+    for (k = 0; k < nseen; k++) if (!strncmp(seen[k], name, 8)) return;
+    if (nseen < 512) { strncpy(seen[nseen], name, 8); seen[nseen][8] = 0; nseen++; }
+    fprintf(stderr, "as370: macro %s from %s\n", name, path);
+}
 
 /* Resolve the real directory of this executable (symlinks included) so the
  * built-in default macro path can be derived RELATIVE to the install:
@@ -3609,7 +3621,8 @@ static int lib_path(const char *name, char *path) {
     int di, e, pass, npass = strcmp(name, low) ? 2 : 1;   /* one pass if it is already lowercase */
     for (di = 0; di < nmaclib; di++) for (pass = 0; pass < npass; pass++) for (e = 0; exts[e]; e++) {
         snprintf(path, 256, "%s/%s%s", maclib_dirs[di], pass ? low : name, exts[e]);
-        FILE *f = fopen(path, "r"); if (f) { fclose(f); return 1; }
+        FILE *f = fopen(path, "r");
+        if (f) { fclose(f); if (g_verbose) verbose_macro(name, path); return 1; }
     }
     return 0;
 }
@@ -9673,7 +9686,7 @@ static void usage(FILE *o) {
 "                     s     produce ordinary symbol and literal cross-reference\n"
 "                     x     produce DSECT cross-reference (not yet implemented)\n"
 "                     =FILE list to FILE (must be last sub-option)\n"
-"  --help             show this message and exit\n"
+"  -h, --help         show this message and exit\n"
 "  -I dir             add PDS or HFS directory name to the search list for assembler macros\n"
 "  -o OBJFILE         name object-file output OBJFILE in binary mode\n"
 "  --sym=FILE         write the symbol table to FILE as tab-separated data (- = stdout)\n"
@@ -9689,7 +9702,9 @@ static void usage(FILE *o) {
 "                     register, each carrying its own section and location\n"
 "                     counter, so a base register's lifetime is readable without\n"
 "                     inference\n"
-"  -v, --version      print the toolchain version and the commit it was built from\n"
+"  -V, --version      print the toolchain version and the commit it was built from\n"
+"  -v                 verbose: the macro search path, each macro and where it came\n"
+"                     from, and the summary line even when nothing was flagged\n"
 "\n"
 "macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros ;\n"
 "  <exedir>/../libc370/macros (a libc370 linked in as <sysroot>/libc370, #726)\n"
@@ -9759,8 +9774,11 @@ int main(int argc, char **argv) {
      * FIRST name is the one assembled. */
     int optsev = 0;
     for (ai = 1; ai < argc; ai++) {
-        if (!strcmp(argv[ai], "--help")) { usage(stdout); return 0; }
-        else if (!strcmp(argv[ai], "-v") || !strcmp(argv[ai], "--version")) { printf("%s %s (%s)\n", AS370_NAME, CC370_VERSION, CC370_COMMIT); return 0; }
+        /* -V is the version and -v verbose, as in every tool of the chain; -v
+         * used to be the version (#811). */
+        if (!strcmp(argv[ai], "--help") || !strcmp(argv[ai], "-h")) { usage(stdout); return 0; }
+        else if (!strcmp(argv[ai], "-V") || !strcmp(argv[ai], "--version")) { printf("%s %s (%s)\n", AS370_NAME, CC370_VERSION, CC370_COMMIT); return 0; }
+        else if (!strcmp(argv[ai], "-v")) g_verbose = 1;
         else if (!strcmp(argv[ai], "-o") && ai + 1 < argc) objfn = argv[++ai];
         else if (!strncmp(argv[ai], "--sym=", 6) && argv[ai][6]) sym_fn = argv[ai] + 6;   /* the symbol table as data; -a's `s'/`x' remain the human cross-reference pages */
         else if (!strncmp(argv[ai], "--stmts=", 8) && argv[ai][8]) stmt_fn = argv[ai] + 8;   /* one record per generated statement (#411) */
@@ -9834,6 +9852,13 @@ int main(int argc, char **argv) {
         }
     }
     if (!src) { usage(stderr); return 16; }                /* options given but no input file */
+    if (g_verbose) {
+        int k; struct stat dst;
+        fprintf(stderr, "as370: assembling %s\n", src);
+        for (k = 0; k < nmaclib; k++)
+            fprintf(stderr, "as370: macro path %d: %s%s\n", k + 1, maclib_dirs[k],
+                    stat(maclib_dirs[k], &dst) == 0 ? "" : " (absent)");
+    }
     init_sysvars();
     FILE *f = src_fopen(src, NULL); if (!f) { perror(src); return 16; }
     static char *raw0[MAXLINES], *raw[MAXLINES]; int nr = 0; char lb[256];
@@ -10111,7 +10136,7 @@ int main(int argc, char **argv) {
      * it prints -- but if a line index ever went out of range the RC would drop to
      * 0 and a real error would ship silently. Floor it rather than trust that. */
     if (!errors && max_sev) errors = 1;
-    if (errors)
+    if (errors || g_verbose)   /* -v: the summary also when nothing was flagged (#811) */
         fprintf(stderr, " Assembler Done   %d Statement%s Flagged / %3d was Highest Severity\n", errors, errors == 1 ? "" : "s", max_sev);
     /* A command-line error is not a flagged STATEMENT, so it is merged here and
      * not into max_sev: folding it in would make the line above claim a

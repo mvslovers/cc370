@@ -164,7 +164,7 @@ UTF-8.
 
 `as370/src/as370.c` is a single-file (~1900 lines) host-native MVS **Assembler-XF (IFOX00)** clone: macro preprocessor + two-pass core + OS/360 OBJ writer (80-byte EBCDIC ESD/TXT/RLD/END cards). It runs on macOS/Linux and produces object decks **byte-identical to IFOX00**.
 
-- **Identity:** tool name `as370`, product id `ASM370`. `as370 --version` (or `-v`) → `as370 1.0.0 (<commit>)` -- the toolchain version from `VERSION`, as every tool reports it (#523).
+- **Identity:** tool name `as370`, product id `ASM370`. `as370 --version` (or `-V`; `-v` is verbose since #811) → `as370 1.0.0 (<commit>)` -- the toolchain version from `VERSION`, as every tool reports it (#523).
 - **Build:** `gcc -O2 -Wall -Wextra -Werror -Ias370/include -o as370/as370 as370/src/as370.c` (warning-clean under gcc-14 + clang).
 - **CLI:** z/OS-`as`-aligned. `--help` usage; RC convention from IFOX `JERMSGCD` (0 clean / 4 warn / 8 error / 12 severe / 16 terminal); silent on success (no noise when called from cc370). Friendly per-statement diagnostic: prints the true source line + `ERROR: Undefined operation code in line N - op`.
 - **Macro path:** `-I <dir>` (repeatable). The ecosystem needs libc370 `maclib` + `sysmac` and SYS1.MACLIB members.

@@ -39,6 +39,18 @@ for b in "$@"; do
         echo "version: FAIL $b -- got '$got', want '$want'"
         fail=1
     fi
+    # -V is the short form in every tool, and -v is never the version (#811).
+    # The driver is GCC's: -V there takes a target version, -v is verbose.
+    case $name in
+        xgcc|cc370) ;;
+        *)
+            got=$("$b" -V 2>&1 | head -1)
+            if [ "$got" = "$want" ]; then echo "version: OK   $name -V"
+            else echo "version: FAIL $b -V -- got '$got', want '$want'"; fail=1; fi
+            if "$b" -v </dev/null 2>&1 | head -1 | grep -qF "$want"; then
+                echo "version: FAIL $b -v prints the version; -v is verbose"; fail=1
+            fi ;;
+    esac
     case $name in
         xgcc|cc370)
             # the in-tree driver finds cc1 beside it only through -B

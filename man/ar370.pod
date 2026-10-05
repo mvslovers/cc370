@@ -4,7 +4,7 @@ ar370 - OS/360 object-deck archiver with an ESD symbol index
 
 =head1 SYNOPSIS
 
-B<ar370> [B<->]B<rc> I<archive.a> I<obj>...
+B<ar370> [B<->]B<rc>[B<v>] I<archive.a> I<obj>...
 
 B<ar370> [B<->]B<t> I<archive.a>
 
@@ -41,6 +41,9 @@ A member is named after its file's base name. A name of up to 15 characters is
 stored in the member header; a longer one, up to 63 characters, goes into a GNU
 C<//> long-name member, which L<ld370(1)> and L<file370(1)> read. A name longer
 than 63 characters is refused: L<ld370(1)> could not name it with B<--include>.
+
+With a trailing B<v> (B<rcv>, B<crv>, B<rv>, B<cv>) each member is named on
+standard output as it is written, C<a - >I<member>, as GNU B<ar> does.
 
 =item B<t> I<archive.a>
 
