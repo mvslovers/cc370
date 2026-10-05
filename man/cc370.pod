@@ -136,11 +136,11 @@ C<#pragma checkout>, C<nomargins> and C<nosequence> are accepted silently.
 B<-pipe> is accepted and ignored: the assembler reads a file.
 
 A B<weak reference> -- C<extern void f(void) __attribute__((weak));> -- is a
-C<WXTRN>: written ahead of the first reference, an ESD entry of type WX. Left
+C<WXTRN>, written at the end of the assembly: an ESD entry of type WX. Left
 unresolved it is 0 at run time (C<if (f) f();>), and the linkage editor's
 automatic library call does not pull a definer for it. An unreferenced weak
-declaration produces nothing. MVS has no weak B<definition>: one is compiled as
-an ordinary definition and warns (B<-Wweak-definition>, on by default;
+declaration produces nothing. MVS has no weak B<definition>: one is compiled
+and exported as an ordinary definition and warns (B<-Wweak-definition>, on by default;
 B<-Wno-weak-definition> switches it off). C<__CC370_WEAK__> is predefined when
 the compiler supports this.
 

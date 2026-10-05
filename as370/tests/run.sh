@@ -4994,5 +4994,15 @@ grep -q 'IFOX00 IFO177' /tmp/_822$$.err && ! grep -q 'ERR177' /tmp/_822$$.err ||
 fail=$((fail + f822))
 rm -f /tmp/_822$$*
 
+# --- #872: a WXTRN after the V-cons that name it ------------------------------
+# cc370 writes a weak reference's WXTRN at the end of the assembly; IFOX00 gives
+# the same WX entry as for one ahead of them (MVSTK5-REF JOB00354).
+./as370 tests/wxlate.s -o /tmp/_wx$$.obj >/dev/null 2>&1; r=$?
+wxref=tests/ref/wxlate.obj; wxn=$(( ($(wc -c < "$wxref") / 80 - 1) * 80 ))
+head -c "$wxn" /tmp/_wx$$.obj > /tmp/_wx$$a; head -c "$wxn" "$wxref" > /tmp/_wx$$b
+if [ "$r" = 0 ] && cmp -s /tmp/_wx$$a /tmp/_wx$$b; then echo "wxlate: OK (late WXTRN is WX, deck == IFOX00)"
+else echo "wxlate: FAIL (rc $r, deck vs $wxref)"; fail=1; fi
+rm -f /tmp/_wx$$.obj /tmp/_wx$$a /tmp/_wx$$b
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

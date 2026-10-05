@@ -20,6 +20,18 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Fixed
+- **cc370: weak definitions are exported, and a weak name may be defined
+  after it is used** (#872). Both were broken in 1.3.0.
+  - A weak definition was compiled but not exported (`ENTRY=NO`, no LD), so
+    nothing could link to it. It is now exported like the ordinary
+    definition it is.
+  - A name declared weak, used and then defined in the same file got its
+    `WXTRN` at the first use, and the definition then failed with IFO196,
+    rc 8. The `WXTRN` is now written at the end of the assembly and only for
+    a weak name that stayed undefined; measured on IFOX00, a `WXTRN` after
+    the V-cons gives the same WX entry.
+
 ## [1.3.0] - 2026-10-05
 
 ### Added
