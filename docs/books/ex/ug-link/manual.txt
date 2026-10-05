@@ -3,5 +3,5 @@ $ ld370 -o SUMUP --entry @@CRT0 sumup.o -L. -lsum -L$LIB -lcc370rt -lc -lcc370rt
 $ echo $?
 0
 $ file370 -v SUMUP.iebcopy | grep member
-    member SUMUP     ttr=000001  entry=0000F8  modlen=71112  [EXEC AC=0]
+    member SUMUP     ttr=000001  entry=0000F8  modlen=71240  [EXEC AC=0]
     1 directory member entr(y/ies)

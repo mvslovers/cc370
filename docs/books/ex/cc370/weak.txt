@@ -3,11 +3,12 @@ $ ar370 rc libhook.a hook.o
 $ cc370 -o opt opt.o -L. -lhook -Wl,--map,opt.map
 $ echo $?
 0
-$ grep -A4 UNRESOLVED opt.map
+$ grep -A5 UNRESOLVED opt.map
 UNRESOLVED
 TRACE@HO  WX
 @@STKLEN  WX
 CTHREAD   WX
+@@PREMAI  WX
 $ cc370 -o opt opt.o hook.o -Wl,--map,opt.map
 $ grep -B1 TRACE opt.map
           PC    0000C8  000080  hook.o

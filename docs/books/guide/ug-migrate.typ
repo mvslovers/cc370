@@ -159,8 +159,9 @@ moved there from the C library.
   directly adds #cmd("-lcc370rt") ahead of #cmd("-lc").
 - *Matching C library.* cc370 1.1 and later need libc370 2.1 or later, and
   the libc370 headers stop the compile with #cmd("#error") when the compiler
-  is older than they require. cc370 1.4 needs libc370 2.3 or later.
-  Update both together.
+  is older than they require. cc370 1.4 needs libc370 2.3 or later, and
+  libc370 2.4 needs cc370 1.4.0 or later (@ug-install-versions). Update
+  both together.
 - *No start-up object.* Up to cc370 1.3, every link began with the start-up
   object #cmd("crt0.o"), so #cmd("@@CRT0") was at offset 0 of every C
   program. Since 1.4 the driver links no start-up object: #cmd("@@CRT0") is
@@ -169,7 +170,9 @@ moved there from the C library.
   (@ug-link-map). Anything that assumed the entry point at offset 0, such
   as a calculation of offsets from an abend (@ug-diag-abend), must take the
   offset from the load map. A build that runs ld370 itself no longer needs
-  to name #cmd("crt0.o")\; #cmd("-nostartfiles") has no effect any more.
+  to name #cmd("crt0.o"), and from libc370 2.4 on cannot: libc370 2.4 no
+  longer installs #cmd("crt0.o") and #cmd("crt1.o"), only #cmd("crtm.o").
+  #cmd("-nostartfiles") has no effect any more.
 
 == Notes for GCCMVS Users <ug-migrate-gccmvs>
 

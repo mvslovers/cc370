@@ -147,7 +147,7 @@ prefix.
   #let m = read("../ex/ug-link/sumup.map").split("\n")
   #screen(raw((m.slice(0, 8) + ("...",)
     + m.filter(l => l.contains("libsum.a")) + ("...",)
-    + m.slice(m.len() - 4)).join("\n")))
+    + m.slice(m.len() - 5)).join("\n")))
 ] <ug-link-map>
 
 Each line gives a section with its type, its origin and length in the load
@@ -165,11 +165,13 @@ directory entry of the member records where it is, and MVS gives control
 there.
 
 #idx("weak external reference")
-The two names under #cmd("UNRESOLVED") are not an error. Type #cmd("WX")
+The three names under #cmd("UNRESOLVED") are not an error. Type #cmd("WX")
 marks a weak external reference: a name that the program may define and need
 not. The C start-up refers to #cmd("@@STKLEN") in this way, so that a program
 can choose the size of its stack, for example with
-#cmd("unsigned __stklen = 64 * 1024;") in a C source. An unresolved ordinary
+#cmd("unsigned __stklen = 64 * 1024;") in a C source, and to
+#cmd("@@PREMAI"), the function #cmd("__premain"), a step of its own that a
+program can run before #cmd("main"). An unresolved ordinary
 reference, on the other hand, ends the link, as @ug-diag-unres shows.
 
 When two libraries define the same name, the first library given wins.

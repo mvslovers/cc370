@@ -6,5 +6,5 @@ $ echo $?
 $ file370 -v sumlib.xmit | grep member
 sumlib.xmit: TSO XMIT/NETDATA -> USER1.SUMUP.LOAD, IEBCOPY, wraps IEBCOPY unload (2 members)
     member GREET     ttr=000001  entry=000000  modlen=56  [RENT REUS EXEC 1BLK NRLD AC=0]
-    member SUMUP     ttr=000007  entry=0000F8  modlen=71112  [EXEC AC=0]
+    member SUMUP     ttr=000007  entry=0000F8  modlen=71240  [EXEC AC=0]
     2 directory member entr(y/ies)

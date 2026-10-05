@@ -1,11 +1,11 @@
 $ make install
 [libc] 724 .s + 28 .asm
 [libc] no duplicate externals (751 archived, 1 skipped)
-[libc] OK -> .../libc370/build/sdk/libc.a (751 members, 797374 bytes, -Os)
-[libc] startfiles -> crt0.o crt1.o (= the @@CRT0 member) crtm.o
+[libc] OK -> .../libc370/build/sdk/libc.a (751 members, 797534 bytes, -Os)
+[libc] startfile -> crtm.o (@@CRT0 is a libc.a member)
 [install] target cc370
 [install] 130 headers -> $PREFIX/cc370/include (0 files there before, cleared)
-[install] libc.a + crt0/1/m.o -> $PREFIX/cc370/lib
+[install] libc.a + crtm.o -> $PREFIX/cc370/lib
 [install] 131 macro files -> $PREFIX/cc370/macros
 [install] => an as370 installed in $PREFIX/cc370/bin finds these by default;
 [install]    otherwise set AS370_MACLIB=$PREFIX/cc370/macros

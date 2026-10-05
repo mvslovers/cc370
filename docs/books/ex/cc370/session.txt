@@ -6,5 +6,5 @@ upcase
 upcase.c
 upcase.xmit
 $ file370 upcase upcase.xmit
-upcase: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 27 w/RLD, MODEND, 83805 bytes
+upcase: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 27 w/RLD, MODEND, 83953 bytes
 upcase.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unload (member UPCASE)

@@ -282,9 +282,8 @@ of its own, #cmd("cc370/") under the installation prefix:
     searched first.],
   [#cmd("cc370/lib")], [#cmd("libc.a"), the C library, which also holds the
     start-up routine #cmd("@@CRT0")\; and #cmd("libcc370rt.a"), the run-time
-    support library. libc370 2.3.1 also installs the start-up objects
-    #cmd("crt0.o"), #cmd("crt1.o") and #cmd("crtm.o"), which the driver does
-    not use.],
+    support library. libc370 2.4.0 also installs the start-up object
+    #cmd("crtm.o"), which the driver does not use unless you name it.],
   [#cmd("cc370/macros")], [the assembler macros, among them #cmd("PDPTOP"),
     #cmd("PDPPRLG") and #cmd("PDPEPIL")\; see @as370-maclib.],
 )
@@ -307,7 +306,9 @@ libraries only the members the program needs.
 cc370 1.4 needs libc370 2.3.0 or later. Since that release the start-up
 routine is a member of #cmd("libc.a")\; an older #cmd("libc.a") has none,
 and a program with a #cmd("main") does not link. The cc370 packages
-require libc370 2.3.0 for this reason.
+require libc370 2.3.0 for this reason. libc370 2.4.0 in turn requires cc370
+1.4.0: every one of its headers stops the compile with
+#cmd("libc370 needs cc370 1.4.0 or later") under an older cc370.
 
 === Entry Point and Start-Up <cc370-startup>
 
@@ -336,14 +337,14 @@ it then leads to #cmd("@@CRT0") as well.
 
 The start-up can be changed in two ways:
 
-- To use one of the start-up objects that libc370 installs instead of the
-  member of #cmd("libc.a"), name it on the command line. It defines
-  #cmd("@@CRT0"), so the library member is not taken. For example:
+- To use the start-up object #cmd("crtm.o") that libc370 installs instead
+  of the member of #cmd("libc.a"), name it on the command line. It defines
+  #cmd("@@CRT0"), so the library member is not taken:
   ```
   cc370 -o prog prog.c $(cc370 -print-file-name=crtm.o)
   ```
-  What the start-up objects do differently is described with the C library,
-  in the _libc370 Programmer's Guide_.
+  What it does differently is described with the C library, in the
+  _libc370 Programmer's Guide_.
 - To link a module that does not use the C start-up at all, give
   #cmd("-e") #var("entry"). ld370 uses the last entry it is given, which is
   #var("entry"). A name in lower case is accepted: #cmd("-e myentry") finds

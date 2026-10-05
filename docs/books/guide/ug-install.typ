@@ -137,7 +137,7 @@ directory, #cmd("cc370").
     bin/                    the tools: as370 ld370 ar370 file370 xmit370
                               dasm370 cmplmd370 idrdump370
     include/                the headers of libc370
-    lib/                    libc.a, libcc370rt.a (and crt0.o crt1.o crtm.o)
+    lib/                    libc.a, libcc370rt.a, crtm.o
     macros/                 the assembler macros
   libexec/cc370/version/
     cc1                     the compiler proper
@@ -155,8 +155,8 @@ directory, #cmd("cc370").
   [#cmd("cc370/lib")], [the C library #cmd("libc.a"), which comes from
     libc370 and holds the start-up routine #cmd("@@CRT0") as well, and the
     run-time support library #cmd("libcc370rt.a"), which comes with cc370.
-    libc370 2.3 also installs the start-up objects #cmd("crt0.o"),
-    #cmd("crt1.o") and #cmd("crtm.o")\; cc370 1.4 does not use them. Every
+    libc370 also installs the start-up object #cmd("crtm.o"), which a link
+    uses only when you name it. Every
     link searches this directory without #cmd("-L").],
   [#cmd("cc370/macros")], [the assembler macros: #cmd("PDPTOP"),
     #cmd("PDPPRLG") and #cmd("PDPEPIL"), which every module compiled by
@@ -186,16 +186,27 @@ searched after those of #cmd("cc370").
 
 #idx("libc370", "version")
 cc370 and libc370 are released separately, and each states the versions of
-the other it works with. libc370 2.1 needs cc370 1.1.0 or later, below 2.0,
-and every header of libc370 checks it: compiled with an older cc370, it
-stops with the error #cmd("libc370 needs cc370 1.1.0 or later"). cc370 1.4
-needs libc370 2.3.0 or later: since that release the start-up routine
+the other it works with, as @ug-install-versions-tab shows. Every header of
+libc370 checks the version of the compiler: compiled with a cc370 that is
+too old, it stops with an error such as
+#cmd("libc370 needs cc370 1.4.0 or later"). cc370 1.4 in turn needs
+libc370 2.3.0 or later: since that release the start-up routine
 #cmd("@@CRT0") is a member of #cmd("libc.a"), and cc370 1.4 no longer links
 a start-up object of its own, so with an older libc370 a program with a
-#cmd("main") does not link. cc370 1.1 to 1.3 need libc370 2.1.0 or later.
-The packages of cc370 1.4 require libc370 2.3.0. The installation script and the
-packages choose matching versions for you\; when you build from source, build
-both from their current sources.
+#cmd("main") does not link. The packages of cc370 1.4 require libc370
+2.3.0.
+
+#tab(caption: [Matching versions of cc370 and libc370])[
+  #table(columns: (1fr, 1fr),
+    [cc370], [libc370],
+    [1.1 to 1.3], [2.1.0 to 2.3.x],
+    [1.4], [2.3.0 or later\; 2.4 needs cc370 1.4.0 or later],
+  )
+] <ug-install-versions-tab>
+
+The installation script and the packages choose matching versions for
+you\; when you build from source, build both from their current sources.
+The figures of this book show cc370 1.4.0 with libc370 2.4.0.
 
 == Checking the Installation <ug-install-check>
 
