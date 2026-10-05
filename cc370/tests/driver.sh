@@ -4,7 +4,7 @@
 #   driver.sh PREFIX        PREFIX = an installed cc370 tree with NO libc370
 #                           of its own (make test-driver installs one)
 #
-# A stand-in libc370 (a crt0.o defining @@CRT0 and an empty libc.a) goes under
+# A stand-in libc370 (a libc.a holding @@CRT0, as libc370 >= 2.3.0) goes under
 # PREFIX/cc370/libc370/ so the link checks run; it is removed afterwards.
 #
 #   sev4       an as370 warning (rc 4) keeps the object and the driver rc 0
@@ -30,8 +30,8 @@ bad() { echo "driver: FAIL $*"; fail=1; }
 mkdir -p "$L/lib"
 printf '@@CRT0   CSECT\n         BR    14\n         END\n' > "$WORK/crt0.s"
 printf 'FAKEFN   CSECT\n         BR    14\n         END\n' > "$WORK/fakefn.s"
-"$AS" -o "$L/lib/crt0.o" "$WORK/crt0.s" && "$AS" -o "$WORK/fakefn.o" "$WORK/fakefn.s" \
-    && "$AR" rc "$L/lib/libc.a" "$WORK/fakefn.o" >/dev/null || { echo "driver: cannot build the stand-in"; exit 2; }
+"$AS" -o "$WORK/crt0.o" "$WORK/crt0.s" && "$AS" -o "$WORK/fakefn.o" "$WORK/fakefn.s" \
+    && "$AR" rc "$L/lib/libc.a" "$WORK/crt0.o" "$WORK/fakefn.o" >/dev/null || { echo "driver: cannot build the stand-in"; exit 2; }
 
 printf 'int f(void) { return 1; }\n__asm__("         DC    F%s2147483648%s");\n' "'" "'" > "$WORK/w.c"
 "$CC" -c "$WORK/w.c" -o "$WORK/w.o" >"$WORK/d" 2>&1; rc=$?
@@ -132,7 +132,7 @@ printf 'extern void __premain(void) __attribute__((weak));
 int main(void) { if (__premain) __premain(); return 0; }
 ' > "$WORK/wk.c"
 printf '@@PREMAI CSECT\n         BR    14\n         END\n' > "$WORK/pm.s"
-"$AS" -o "$WORK/pm.o" "$WORK/pm.s" && "$AR" rc "$L/lib/libc.a" "$WORK/fakefn.o" "$WORK/pm.o" >/dev/null
+"$AS" -o "$WORK/pm.o" "$WORK/pm.s" && "$AR" rc "$L/lib/libc.a" "$WORK/crt0.o" "$WORK/fakefn.o" "$WORK/pm.o" >/dev/null
 "$CC" -O1 "$WORK/wk.c" -o "$WORK/wk" -Wl,--map,"$WORK/wk.map" >"$WORK/d" 2>&1; rc=$?
 if [ $rc -eq 0 ] && grep -q '@@PREMAI  WX' "$WORK/wk.map" && ! grep -q 'pm.o' "$WORK/wk.map"; then
     ok "weak reference: rc 0, left unresolved, not autocalled from libc.a"

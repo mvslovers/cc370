@@ -5,11 +5,11 @@
 #                            of its own (make test-sysroot installs one)
 #
 # A minimal stand-in for libc370 goes under PREFIX/cc370/libc370/ -- one
-# header, a crt0.o defining @@CRT0, a libc.a with one function, one macro --
+# header, a libc.a with @@CRT0 and one function (libc370 >= 2.3.0), one macro --
 # and the toolchain must find each of them there, through the driver alone:
 #
 #   header   cc370 -E sees fake370.h's #define
-#   crt0.o   the link takes it from libc370/lib (the tree's own lib has none)
+#   @@CRT0   autocall takes it from libc370/lib/libc.a (no startfile since #159)
 #   -lc      the link resolves FAKEFN from libc370/lib/libc.a
 #   macro    as370, run by the driver, expands FAKEMAC from libc370/macros
 #
@@ -30,8 +30,8 @@ mkdir -p "$L/include" "$L/lib" "$L/macros"
 printf '#define FAKE370 4242\nint fakefn(void);\n' > "$L/include/fake370.h"
 printf '@@CRT0   CSECT\n         BR    14\n         END\n' > "$WORK/crt0.s"
 printf 'FAKEFN   CSECT\n         SR    15,15\n         BR    14\n         END\n' > "$WORK/fakefn.s"
-"$AS" -o "$L/lib/crt0.o" "$WORK/crt0.s" && "$AS" -o "$WORK/fakefn.o" "$WORK/fakefn.s" \
-    && "$AR" rc "$L/lib/libc.a" "$WORK/fakefn.o" >/dev/null || { echo "sysroot: cannot build the stand-in"; exit 2; }
+"$AS" -o "$WORK/crt0.o" "$WORK/crt0.s" && "$AS" -o "$WORK/fakefn.o" "$WORK/fakefn.s" \
+    && "$AR" rc "$L/lib/libc.a" "$WORK/crt0.o" "$WORK/fakefn.o" >/dev/null || { echo "sysroot: cannot build the stand-in"; exit 2; }
 printf '         MACRO\n&L       FAKEMAC\n&L       DC    F%s4243%s\n         MEND\n' "'" "'" > "$L/macros/fakemac.macro"
 
 printf '#include <fake370.h>\nint v = FAKE370;\nint main(void) { return fakefn(); }\n' > "$WORK/t.c"
@@ -44,8 +44,8 @@ fi
 # the link on its own, no header involved, so each check stands alone
 printf 'int fakefn(void);\nint main(void) { return fakefn(); }\n' > "$WORK/k.c"
 if "$CC" -O1 "$WORK/k.c" -o "$WORK/t.lm" -Wl,--map,"$WORK/t.map" >"$WORK/l" 2>&1; then
-    grep -q 'libc370/lib/crt0.o' "$WORK/t.map" && ok "crt0.o from cc370/libc370/lib" \
-        || bad "crt0.o not taken from libc370/lib: $(grep -i crt0 "$WORK/t.map" | head -1)"
+    grep -q 'libc370/lib/libc.a(crt0.o)' "$WORK/t.map" && ok "@@CRT0 from cc370/libc370/lib/libc.a" \
+        || bad "@@CRT0 not taken from libc370/lib/libc.a: $(grep -i crt0 "$WORK/t.map" | head -1)"
     grep -q 'libc370/lib/libc.a(fakefn.o)' "$WORK/t.map" && ok "-lc resolved from cc370/libc370/lib/libc.a" \
         || bad "FAKEFN not from libc370/lib/libc.a: $(grep -i fakefn "$WORK/t.map" | head -1)"
 else
