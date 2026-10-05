@@ -2347,7 +2347,7 @@ int main(int argc, char **argv)
                  * where the directory metadata is not what is under test. */
                 nbare++;
                 fprintf(stderr, "ld370: warning: '%s' is a bare load module: packing %s at "
-                                "entry %lX (%s), AC %d, %s\n", file, mvs_nm(m[i].name),
+                                "entry %06lX (%s), AC %d, %s\n", file, mvs_nm(m[i].name),
                         m[i].entry, entry_from[i], apfcode,
                         (set_rent && set_reus) ? "RENT REUS" : set_rent ? "RENT, not REUS"
                                                  : set_reus ? "REUS, not RENT" : "neither RENT nor REUS");
