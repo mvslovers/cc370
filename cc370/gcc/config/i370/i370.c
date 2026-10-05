@@ -234,6 +234,8 @@ static void i370_output_function_prologue (FILE *, HOST_WIDE_INT);
 static void i370_output_function_epilogue (FILE *, HOST_WIDE_INT);
 static void i370_file_start (void);
 static void i370_file_end (void);
+void i370_weaken_decl (FILE *, tree, const char *);
+void i370_weak_external (FILE *, tree, const char *);
 
 static void i370_internal_label (FILE *, const char *, unsigned long);
 static bool i370_rtx_costs (rtx, int, int, int *);
@@ -3384,6 +3386,62 @@ i370_file_start (void)
 #endif /* PDPMAC */
 
 #endif /* TARGET_ALIASES */
+
+/* ASM_WEAKEN_DECL: a weak reference becomes WXTRN NAME, so the ESD entry is
+   a WX -- 0 when unresolved, never pulled by autocall (IEWL, and ld370's
+   autocall walks ER only).  A weak DEFINITION has no MVS counterpart: it is
+   written as an ordinary definition and the user is told so.  */
+/* The WXTRN goes out at the FIRST reference, ahead of the code that holds the
+   V-con -- the order every hand-written MVS module uses (WXTRN @@STKLEN) --
+   and weak_finish adds it only for a weak name never referenced.  Each name
+   once; the list is short-lived and small.  */
+static char **weak_done;
+static int nweak_done;
+
+static int
+weak_written (const char *name, int mark)
+{
+  int k;
+  for (k = 0; k < nweak_done; k++)
+    if (!strcmp (weak_done[k], name)) return 1;
+  if (mark)
+    {
+      weak_done = xrealloc (weak_done, (nweak_done + 1) * sizeof *weak_done);
+      weak_done[nweak_done++] = xstrdup (name);
+    }
+  return 0;
+}
+
+static void
+weak_wxtrn (FILE *f, const char *name)
+{
+  if (weak_written (name, 1)) return;
+  fputs ("\tWXTRN\t", f);
+  assemble_name (f, name);
+  fputc ('\n', f);
+}
+
+void
+i370_weak_external (FILE *f, tree decl, const char *name)
+{
+  if (decl && DECL_WEAK (decl) && DECL_EXTERNAL (decl))
+    weak_wxtrn (f, name);
+}
+
+void
+i370_weaken_decl (FILE *f, tree decl, const char *name)
+{
+  if (decl && !DECL_EXTERNAL (decl))
+    {
+      extern int warn_weak_definition;
+      if (warn_weak_definition)
+	warning ("%Jweak definition of '%D' is an ordinary definition on MVS; "
+		 "only a weak reference (WXTRN) exists [-Wweak-definition]",
+		 decl, decl);
+      return;
+    }
+  weak_wxtrn (f, name);
+}
 
 static void
 i370_file_end (void)

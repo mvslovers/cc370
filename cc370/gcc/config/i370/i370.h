@@ -1384,7 +1384,13 @@ enum reg_class
    that collapses onto a different defined or referenced name is warned too
    (#808).  */
 #ifdef TARGET_HLASM
-#define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME) mvs_check_extname_collision (NAME)
+#define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME) \
+  (mvs_check_extname_collision (NAME), i370_weak_external ((FILE), (DECL), (NAME)))
+/* A weak REFERENCE is a WXTRN: the linkage editor leaves it 0 when nothing
+   defines it and does not autocall for it.  MVS has no weak definition, so a
+   weak definition stays an ordinary one, with a warning.  Defining this makes
+   SUPPORTS_WEAK 1 (defaults.h). */
+#define ASM_WEAKEN_DECL(FILE, DECL, NAME, VALUE) i370_weaken_decl ((FILE), (DECL), (NAME))
 #else
 #define ASM_OUTPUT_EXTERNAL(FILE, DECL, NAME)
 #endif
