@@ -20,6 +20,16 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Changed
+- **The link no longer names `crt0.o`; it needs libc370 >= 2.3.0**
+  (libc370#159). Since libc370 2.3.0 the startup `@@CRT0` is a member of
+  `libc.a`, and `main`'s stub refers to it, so the automatic library call
+  pulls it like any other routine. The driver's startfile is empty, and the
+  packages require libc370 2.3.0 (`.deb` Depends/Breaks, `.rpm`
+  Requires/Conflicts). With an older libc370 a `main` would not link.
+  `@@CRT0` no longer has to sit at offset 0: the directory's entry points to
+  it, and `ld370 --pack` takes a bare member's entry from its CESD (#850).
+
 ## [1.3.1] - 2026-10-05
 
 ### Fixed
