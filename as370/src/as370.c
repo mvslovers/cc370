@@ -784,7 +784,7 @@ static void lit_classify(struct lit *l) {
         while (isdigit((unsigned char)*ep)) { expo = expo * 10 + (*ep++ - '0'); ed = 1; }
         if (ed) { if (eneg) expo = -expo; hasexpo = 1; p = ep; } else expo = 0; }
     l->isV = (ty == 'V'); l->isA = (ty == 'A' || ty == 'V' || ty == 'Y');
-    if (ty == 'A' || ty == 'V' || ty == 'Y') {
+    if (ty == 'A' || ty == 'V' || ty == 'Y' || ty == 'Q') {   /* =Q(PR) is a fullword like =A (#840) */
         const char *lp = strchr(p, '('), *rp = strrchr(p, ')');
         if (lp && rp && rp > lp) { int n = (int)(rp - lp - 1); if (n > FLDW - 1) n = FLDW - 1; memcpy(l->ext, lp + 1, n); l->ext[n] = 0; }
         int per = haslen ? len : (ty == 'Y' ? 2 : 4);
@@ -1270,7 +1270,10 @@ static long x_factor(int sign) {
     if (g_pass == 2 && nm[0] && (!sym_known(s))) note_undefsym(nm, g_curln);
     if (nm[0] && !sym_known(s)) xundef_ = 1;
     if (s && s->type == S_ER && !sym_known(s)) s = NULL;   /* known only from V(): no symbol, so 0 and not relocatable (#580) */
-    if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER) {
+    /* A COM name is relocatable in its own CM section and a DXD name in its own
+     * dummy one, exactly as a CSECT name and a DSECT label are: A(BLK) relocates
+     * against the CM, A(PR1) is IFO158 (MVSTK5-REF JOB00351, #840). */
+    if (s) { if (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_ER || s->type == S_CM || s->type == S_XD) {
                  xrl_ += sign;
                  /* Tally the relocatable terms PER SECTION as well as in total.
                   * xrl_ alone cannot tell (A-B) within one section, which is
@@ -1736,7 +1739,7 @@ static void reloc_sym(const char *expr, char *out, int outsz) {
         { char nm[64]; int n = 0; while (*p && !strchr("+-*/(), ", *p) && n < 63) nm[n++] = *p++; nm[n] = 0;
           if (!n) { p++; continue; }                                /* unhandled char: advance to guarantee progress */
           if (nm[0] && !isdigit((unsigned char)nm[0])) { struct sym *s = sym_find(nm);
-              if (s && (s->type == S_SD || s->type == S_PC || s->type == S_REL || (s->type == S_ER && sym_known(s))) && sign > 0 && !out[0]) {
+              if (s && (s->type == S_SD || s->type == S_PC || s->type == S_REL || s->type == S_CM || s->type == S_XD || (s->type == S_ER && sym_known(s))) && sign > 0 && !out[0]) {
                   int i = 0; while (nm[i] && i < outsz - 1) { out[i] = nm[i]; i++; } out[i] = 0; } } }
         sign = 1; expect = 0;
     }
@@ -6175,6 +6178,29 @@ static void emit_float(long at, const char *vstr, int bytes, int scale, int expo
 }
 /* one copy's width: the size a single nominal value occupies, which is what the
  * per-type emitters below are written against. */
+static void dc_qcon(long at, const char *v, int len, int line);   /* fwd: #810/#840 */
+/* One A- or Y-type literal value at VLOC, PER bytes wide. */
+static void emit_lit_addr(const struct lit *l, int ty, const char *v, long vloc, int per) {
+    int rc = 0;
+    long val = v[0] ? expr_val_full(v, &rc) : 0;   /* leading '(' -- see the DC arm and cc370#167 */
+    /* IFO204 as on the DC path: a literal is assembled by the same AYKON (#840;
+     * the DC case is measured, this one follows it). */
+    int ifo204 = rc != 0 && !in_dsect && per <= (ty == 'Y' ? 1 : 2);
+    if (ifo204) {
+        val = 0;
+        note_operr("Relocatable expression in A- or Y-type address constant with the specified length not allowed (IFOX00 IFO204)", 8, l->defln);
+    }
+    put(vloc, val, per);
+    if (ifo204 || rc == 0) return;                 /* relocate only if net-relocatable */
+    char sym[64];
+    reloc_sym(v, sym, sizeof sym);                 /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
+    const struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
+    int tgtreal;
+    if (sym[0] == '*') tgtreal = !dsect_sect[cur_sect_id & 255];
+    else tgtreal = es && !dsect_sect[es->sect & 255];
+    if (!in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
+    if (tgtreal) add_reloc(vloc, sym, 0, per);     /* RLD length matches AL3/AL2 width */
+}
 static int size_unit(const struct lit *l, int dup) { int u = l->size / (dup > 0 ? dup : 1); return u > 0 ? u : 1; }
 static void emit_lit_one(struct lit *l, long loc, int size) {
     /* A literal is assembled at the pool, so g_curln here is the LTORG or the
@@ -6186,18 +6212,15 @@ static void emit_lit_one(struct lit *l, long loc, int size) {
     int dup0; const char *p = lit_dup(l->text + 1, &dup0);
     char ty = toupper((unsigned char)*p++);
     if (*p == 'L') { p++; while (isdigit((unsigned char)*p)) p++; }
-    if (ty == 'V' || ty == 'A' || ty == 'Y') {            /* address constant, possibly a value list =AL1(a,b,c) */
+    if (ty == 'V' || ty == 'A' || ty == 'Y' || ty == 'Q') {   /* address constant, possibly a value list =AL1(a,b,c) */
         char vv[64][FLDW]; int nv = split_fields(l->ext, vv, 64); if (nv < 1) nv = 1;
         int per = size / nv, vj;
         for (vj = 0; vj < nv; vj++) { long vloc = loc + (long)vj * per;
-            if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
+            /* =Q(PR1): zero and an RLD entry of type 2, as DC Q (JOB00351, #840) */
+            if (ty == 'Q') { put(vloc, 0, per); dc_qcon(vloc, vv[vj], per, l->defln); }
+            else if (ty == 'V') { char r[64]; int sn = 0; const char *se = vv[vj]; while (*se && !strchr("+-(), ", *se) && sn < 63) r[sn++] = *se++; r[sn] = 0;
                 put(vloc, 0, per); add_reloc(vloc, r, 1, per); }
-            else { int rc = 0; long v = vv[vj][0] ? expr_val_full(vv[vj], &rc) : 0; put(vloc, v, per);   /* leading '(' -- see the DC arm and cc370#167 */
-                char sym[64]; reloc_sym(vv[vj], sym, sizeof sym);   /* relocation target symbol (e.g. @V1-192, X'80000000'+SYM) */
-                struct sym *es = (sym[0] && sym[0] != '*') ? sym_find(sym) : NULL;
-                int tgtreal = (sym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
-                if (rc != 0 && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(sym, l->defln);   /* IFO158 */
-                if (rc != 0 && tgtreal) { add_reloc(vloc, sym, 0, per); } } }   /* relocate only if net-relocatable; RLD length matches AL3/AL2 width */
+            else emit_lit_addr(l, ty, vv[vj], vloc, per); }
     } else if (ty == 'E' || ty == 'D' || ty == 'L') {     /* floating point */
         /* Every nominal value goes through the converter. It used to be reached
          * only when the text contained a `.`, `e` or `E`, so =D'2' and =E'1' took
@@ -7026,8 +7049,8 @@ static void do_pass(int pass, char **lines, int nlines) {
             if (!s->sect) s->sect = ++g_sectid;
             note_sect_owner(s);
             cur_sect_id = s->sect;
-            if (++s->opened == 1 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;
-            lc = (cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;
+            if (++s->opened == 1 && cur_sect_id > 0 && cur_sect_id < MAXSECT) sect_rel[cur_sect_id] = 0;
+            lc = (cur_sect_id > 0 && cur_sect_id < MAXSECT) ? sect_rel[cur_sect_id] : 0;
             if (pass == 1 && !s->defined) { s->type = S_CM; s->val = 0; s->defined = 1; esd_add(s, ESD_CM); }
             if (pass == 2) { lrecs[i].loc = lc; line_sect[i] = cur_sect_id; }
         } else if (!strcmp(op, "DXD")) {
@@ -7039,7 +7062,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                 struct sym *s = sym_get(lbl);
                 if (!s->defined) {
                     dxd_extent(opnd, &s->xdlen, &s->xdalgn);
-                    s->type = S_XD; s->val = 0; s->defined = 1; s->sect = 0; s->len = 1; esd_add(s, ESD_XD);
+                    /* A dummy section of its own, so that its name is the
+                     * relocatable-but-dummy term IFOX00 takes it for (#840). */
+                    s->type = S_XD; s->val = 0; s->defined = 1; s->len = 1; esd_add(s, ESD_XD);
+                    if (!s->sect) s->sect = ++g_sectid;
+                    if (s->sect < 256) dsect_sect[s->sect] = 1;
                 }
             }
         } else if (!strcmp(op, "DSECT")) {          /* dummy section: own counter from 0, no object text */
@@ -7957,7 +7984,16 @@ static void do_pass(int pass, char **lines, int nlines) {
                                     int tgtreal = (rsym[0] == '*') ? !dsect_sect[cur_sect_id & 255] : (es && !dsect_sect[es->sect & 255]);
                                     /* in_dsect: a DC inside a DSECT reserves storage and generates no constant at all
                                      * (sysmac/cvt.macro's own `CVTMFRTR DC A(CVTBRET)` is one), so it is not IFO158. */
-                                    if ((rc != 0) && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(rsym, i);
+                                    /* IFO204: a relocatable A-con of 1 or 2 bytes, or a Y-con of
+                                     * 1, cannot be relocated.  AYKON (ifnx5d.asm:720, APAR AX21436)
+                                     * logs it at severity 8, zeroes the value and writes no RLD
+                                     * entry -- so no IFO158 either, which is reported only for an
+                                     * entry it would write: AL2(PR1) on a DXD is IFO204 alone,
+                                     * A(PR1) IFO158 (JOB00351, #840). */
+                                    int ifo204 = rc != 0 && !in_dsect && blen <= (ty == 'Y' ? 1 : 2);
+                                    int nrel0 = nrel;
+                                    if (!ifo204 && (rc != 0) && !in_dsect && es && dsect_sect[es->sect & 255]) note_dsect_adcon(rsym, i);
+                                    if (ifo204) v = 0;
                                     put(lc, v, blen);
                                     /* A difference of symbols in DIFFERENT control sections is not
                                      * absolute, and expr_val_full reports NET relocatability -- so
@@ -7985,7 +8021,11 @@ static void do_pass(int pass, char **lines, int nlines) {
                                                   if (ts[q] <= -2) add_reloc_er(lc, ER_OF_KEY(ts[q]), blen, t < 0);
                                                   else add_reloc_sect(lc, ts[q], blen, t < 0); } }
                                       } else if ((rc != 0) && tgtreal) { add_reloc(lc, rsym, 0, blen); }
-                                      /* A relocatable Y-con -- simply or complexly -- is IFO205
+                                      if (ifo204) {
+                                        nrel = nrel0;
+                                        note_operr("Relocatable expression in A- or Y-type address constant with the specified length not allowed (IFOX00 IFO204)", 8, i);
+                                    }
+                                    /* A relocatable Y-con -- simply or complexly -- is IFO205
                                        * (severity 4) under YFLAG, IFOX00's default, from a length
                                        * of 2 up; the bytes and the RLD stay as they are (ifnx5d
                                        * AYREL..YCHK; MVSTK5-REF JOB00302, tests/xrefcov.s case 4;
@@ -8560,7 +8600,9 @@ static void a_esd_section(void) {
             a_esd_xdcm(ln, k);
         } else {
             memcpy(ln + 10, s->is_weak ? "WX" : "ER", 2);
-            snprintf(b, sizeof b, "%04X", s->esdid); memcpy(ln + 14, b, 4);
+            /* The ENTRY's id, not the symbol's: beside an SD or CM of the same
+             * name the symbol holds the section's (#840). */
+            snprintf(b, sizeof b, "%04X", esdord[k].esdid); memcpy(ln + 14, b, 4);
         }
         a_line(ln);
     }
@@ -9361,6 +9403,8 @@ static const char *sym_type_name(int t) {
     case S_ER:  return "ER";    /* external reference: EXTRN, WXTRN or a V-con */
     case S_LD:  return "LD";    /* a name this module ENTRYs */
     case S_ABS: return "ABS";   /* absolute: an EQU with no section */
+    case S_XD:  return "XD";    /* an external dummy section: a DXD, or a DSECT a Q-con names */
+    case S_CM:  return "CM";    /* the name of a common section */
     }
     return "?";
 }
@@ -9869,7 +9913,7 @@ int main(int argc, char **argv) {
     do_pass(2, lines, nl);
     { int k; for (k = 0; k < nesdord; k++) {   /* a DSECT made XD by a Q-type constant: its extent, on a doubleword (JOB00350) */
         struct sym *xs = esdord[k].s;
-        if (esdord[k].role == ESD_XD && is_dsect_id(xs->sect)) { xs->xdlen = dsect_hwm[xs->sect]; xs->xdalgn = 7; } } }
+        if (esdord[k].role == ESD_XD && xs->type != S_XD && is_dsect_id(xs->sect)) { xs->xdlen = dsect_hwm[xs->sect]; xs->xdalgn = 7; } } }
     g_pass = 0;   /* everything below (emit_obj, emit_listing_a) is past the point where a diagnostic could still be printed */
     int max_sev = 0;   /* highest IFOX severity of any diagnostic emitted below (drives the RC) */
     if (nsrcw_seen) {   /* source characters with no EBCDIC image (#483): severity 4, raised to 8 per statement where one reaches a constant */

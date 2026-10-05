@@ -4937,7 +4937,8 @@ rm -f /tmp/_rn$$.obj /tmp/_rn$$.out /tmp/_rn$$a /tmp/_rn$$b
 # snapshots -0045/-0055, 2789 unchanged) has the clean cases and one IFO158 of
 # its own, A(M2) on a DSECT label.  Both decks == IFOX00 up to the END card;
 # both listings are compared by tests/listref.
-for qc in comdxd comq; do
+# comref (#840, JOB00351): COM/DXD names in A-cons and literals, IFO204/IFO158.
+for qc in comdxd comq comref; do
     ./as370 tests/$qc.s -o /tmp/_qc$$.obj >/tmp/_qc$$.out 2>&1; r=$?
     qref=tests/ref/$qc.obj; qn=$(( ($(wc -c < "$qref") / 80 - 1) * 80 ))
     head -c "$qn" /tmp/_qc$$.obj > /tmp/_qc$$a; head -c "$qn" "$qref" > /tmp/_qc$$b
@@ -4946,6 +4947,20 @@ for qc in comdxd comq; do
     else echo "$qc: FAIL (rc $r, deck vs $qref)"; fail=1; fi
 done
 rm -f /tmp/_qc$$.obj /tmp/_qc$$.out /tmp/_qc$$a /tmp/_qc$$b
+
+# --- #840: IFO204 -- a relocatable A-con of 1-2 bytes, a Y-con of 1 ---------
+# AYKON (ifnx5d.asm:720, APAR AX21436): severity 8, value 0, no RLD entry.
+# Measured on AL2(PR1) (comref, JOB00351); a CSECT name takes the same branch.
+i204=0
+for c in "AL2(T):8" "AL1(T):8" "YL1(T):8" "AL3(T):0" "AL2(4):0"; do
+    printf 'T        CSECT\nX        DC    %s\n         END\n' "${c%%:*}" > /tmp/_i204$$.s
+    ./as370 /tmp/_i204$$.s -o /tmp/_i204$$.obj -a=/tmp/_i204$$.lst >/tmp/_i204$$.out 2>&1; r=$?
+    if [ "$r" != "${c##*:}" ]; then echo "ifo204: FAIL (${c%%:*} rc $r)"; i204=1
+    elif [ "$r" = 8 ] && { ! grep -q IFO204 /tmp/_i204$$.out || grep -q 'RELOCATION DICTIONARY' /tmp/_i204$$.lst; }; then
+        echo "ifo204: FAIL (${c%%:*} without IFO204, or with an RLD entry)"; i204=1; fi
+done
+[ $i204 = 0 ] && echo "ifo204: OK (AL1/AL2/YL1 relocatable -> IFO204, no RLD; AL3 and an absolute AL2 clean)"
+fail=$((fail + i204)); rm -f /tmp/_i204$$.s /tmp/_i204$$.obj /tmp/_i204$$.lst /tmp/_i204$$.out
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail

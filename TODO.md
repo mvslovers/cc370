@@ -144,8 +144,7 @@ silent wrong results first. After each merge, one line to Book (session
    warns on UTF-8; RECFM/INMRECFM decoding shared with file370.
 4a. ~~#824 as370~~ **done** (#828): unary minus counted, externals keyed
    apart -- one RLD entry per term in its own direction (JOB00348). No tree
-   deck moved. #810's capture (COM/DXD/CXD/Q, JOB00349, rc 8) is in the
-   scratchpad, not committed, until #810 is implemented.
+   deck moved.
 4b. #827 `#pragma pack` ignored -- joint decision with libc370 (theirs:
    drop the 9 pragmas, layout proven identical; `pack(reset)` is not GCC
    syntax and would leak if cc370 enabled the pragma).
@@ -155,7 +154,13 @@ silent wrong results first. After each merge, one line to Book (session
    join the 8-character collision check; `make test-driver` (local only, CI
    builds no compiler). Split out: #830 `#pragma map`, #831 `-pipe`, #832
    trigraphs, #833 `-b`, #834 `-mpickax`.
-6. #810 as370 `COM` -- needs an IFOX00 capture (approved). **Next.**
+6. ~~#810 as370 `COM`~~ **done** (#838, with #229): COM, DXD, CXD and Q as
+   IFOX00 -- CM/XD entries, RLD types 2/3, IFO231/IFO207; two oracle decks
+   (JOB00349, JOB00350) committed, listings identical; tree gate 0 moved.
+6a. #837 ld370 places a CM section at origin 0 over the first section, rc 0
+   -- silent wrong module, so it comes before the flag work. Needs IEWL's
+   rule read from the lked source and an IEWL link of `comq.obj` as oracle.
+   **Next.**
 7. #811 flags everywhere: `--version`/`-V`, `-v` verbose (also as370 and
    dasm370 -- decided, "Read this first" in the next release), `--help`.
 8. #809 dasm370 / cmplmd370 / idrdump370 details.
@@ -1264,9 +1269,7 @@ afterwards.
   that for `TPROT`. Either drop the two rows or give them RSI; do not leave them
   encoding as something else.
 
-- **#229** *(deferred, 2026-10-02 -- no use in MVSBLD or the ecosystem, cc370 never emits COM; see the issue's comment for what a fix needs)* — `COM` gets no `CM` entry in the ESD and does not reset the location
-  counter, so a common section is neither declared nor addressed. Adjacent to
-  #76's `DXD`/`COM` message-class note and worth doing with it.
+- ~~**#229**~~ **Fixed** (PR #838, with #810) — `COM` gets its CM entry and its own counter.
 - ~~**#297**~~ **Fixed** (PR #739, IFO043 at the prototype) — a macro prototype may take a machine mnemonic's name and as370
   assembles it in silence; IFOX00 answers `IFO043` at rc 12. Loud on the oracle
   side, absent on ours.
@@ -1278,12 +1281,10 @@ afterwards.
   #129 landed the operand parse, the column range and the disable form and its own
   body says what it did *not* do — raise `IFO025` on an out-of-sequence card. So
   the gap is the check, not the statement, and it is diagnostic-only either way.
-- **#76** — pseudo registers, one feature across both tools (`DXD`, `CXD`,
-  `Q`-cons, PR collection in the linker). Zero occurrences anywhere in the
-  ecosystem and no oracle in reach. **One part is worth doing regardless of the
-  feature:** `DXD` and `COM` are rejected as *"undefined operation code"*, which
-  is the wrong message class for a valid Assembler XF statement — a one-line
-  change, and the distinction #53 already established for DC/DS types.
+- **#76** — pseudo registers. **The as370 half is done** (PR #838: `DXD`,
+  `CXD`, `Q` as IFOX00, two oracle decks committed). Left: ld370's PR
+  collection -- an XD is an unresolved ER at rc 0 today. Zero occurrences in
+  the ecosystem; an IEWL link of `as370/tests/ref/comq.obj` would be the oracle.
 - **#78** — IFO069 needs a statement type `join_cont` does not have, because the
   limit is two continuations for machine/assembler operations and comments but
   *not* for macro calls.
@@ -1501,7 +1502,8 @@ was found while building a `listref` case, and each is excluded from that case
   open-code substitution across cards -- **fixed** (PR #674); ~~**#657**~~ a
   long literal wrapped in the pool -- **fixed** (PR #675). tests/listref: 133
   of 135 comparable SOURCE pages identical to IFOX00, markers included; the
-  two left are equparen (known) and orglist (COM, #229). Not measured, taken
+  two left were equparen (known) and orglist (COM, #229 -- compared strictly
+  since #838). Not measured, taken
   as predictions in the code: a comment swallowing more than one surplus card
   (#654), the literal's continuation character (#657).
 
