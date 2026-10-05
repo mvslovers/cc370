@@ -166,8 +166,8 @@ linked the module:
       #cmd("X'02'"), or #cmd("X'82'") when it is the last IDR.],
     [3], [10], [The program: #cmd("LD370") followed by five blanks. The MVS
       linkage editor writes #cmd("5752SC104").],
-    [13], [2], [The version and modification level. ld370 writes
-      #cmd("X'0100'").],
+    [13], [2], [The version and modification level. ld370 writes the
+      version and release of the toolchain: #cmd("X'0102'") for 1.2.],
     [15], [3], [The date of the link, packed #var("yyddd").],
     [18], [4], [The time of the link, packed #var("0hhmmss").],
   )
@@ -629,7 +629,7 @@ out here.
   [#cmd("058"), IDR], [#cmd("80 FA 01 00"): HMASPZAP, 251 bytes, no
     entries, then zeros.],
   [#cmd("153"), IDR], [#cmd("80 15 82"): linkage editor, last IDR, 22 bytes.
-    #cmd("LD370"), version #cmd("01 00"), date #cmd("26 27 7F") (26277),
+    #cmd("LD370"), version #cmd("01 02"), date #cmd("26 27 7F") (26277),
     time #cmd("01 20 00 0F") (12:00:00).],
   [#cmd("169"), control], [#cmd("01"), an ID/length list of 12 bytes, no
     relocation items\; CCW #cmd("06 000000 40 00 0030"): 48 bytes of text
@@ -639,11 +639,11 @@ out here.
     relocated: #cmd("A(ALT)") is 8, and the #cmd("=V(SUB)") at offset
     #cmd("18") holds #cmd("28").],
   [#cmd("1B5"), RLD], [#cmd("0E"), the end of the module, with
-    #cmd("28") (40) bytes of items and no CCW. #cmd("00 01 00 02 1C 00 00 18"):
+    #cmd("24") (36) bytes of items and no CCW. #cmd("00 01 00 02 1C 00 00 18"):
     the #cmd("V")-constant for #cmd("SUB") at #cmd("18"). The one for
     #cmd("OPT") has the flag #cmd("9C"): unresolved. The last item,
-    #cmd("04 00 00 24"), is the 2-byte #cmd("AL2(ALT)"), now at
-    #cmd("24") in the module.],
+    #cmd("00 02 00 03 0C 00 00 20"), is #cmd("A(MAIN)") in #cmd("SECOND"),
+    at #cmd("20") in the module.],
 )
 
 @apx-lmodfmt-member-v shows the same member as file370 describes it.
@@ -679,7 +679,7 @@ out here.
     @apx-lmodfmt-member-dump. Each of the six records of the member is on a
     track of its own, so the text record, the fifth, is on track 4: TTR
     #cmd("000401") in the directory entry.],
-  [#cmd("49D"), end of member], [Cylinder #cmd("8D"), track 6, record 1,
+  [#cmd("499"), end of member], [Cylinder #cmd("8D"), track 6, record 1,
     data length 0.],
 )
 
@@ -696,19 +696,19 @@ out here.
     #cmd("1001"), #cmd("1002"), #cmd("1024") INMFTIME
     #cmd("2026100412000000"), and #cmd("102F") INMNUMF 1.],
   [#cmd("062"), INMR02], [#cmd("67") bytes: file number 1,
-    #cmd("IEBCOPY"), INMSIZE #cmd("241") (577), INMDIR 10, INMLRECL 0,
+    #cmd("IEBCOPY"), INMSIZE #cmd("23D") (573), INMDIR 10, INMLRECL 0,
     INMDSORG #cmd("0200"), INMBLKSZ 15040, INMRECFM #cmd("C002"), and
     #cmd("0002 0003"): a data set name of three qualifiers,
     #cmd("USER1"), #cmd("DEMO"), #cmd("LOAD").],
   [#cmd("0C9"), INMR02], [#cmd("47") bytes: #cmd("INMCOPY"), INMSIZE
-    #cmd("4A9") (1193), INMLRECL 15056, INMDSORG #cmd("4000"), INMBLKSZ
+    #cmd("4A5") (1189), INMLRECL 15056, INMDSORG #cmd("4000"), INMBLKSZ
     15060, INMRECFM #cmd("4802").],
-  [#cmd("110"), INMR03], [#cmd("2C") bytes: INMSIZE 577, INMLRECL 80,
+  [#cmd("110"), INMR03], [#cmd("2C") bytes: INMSIZE 573, INMLRECL 80,
     INMDSORG #cmd("4000"), INMRECFM #cmd("0001").],
   [#cmd("13C"), data], [A segment of #cmd("36") bytes with the flags
     #cmd("C0")\: COPYR1, 52 bytes. The other records of the unloaded form
     follow.],
-  [#cmd("5F5"), INMR06], [The last control record, #cmd("08 E0") and
+  [#cmd("5F1"), INMR06], [The last control record, #cmd("08 E0") and
     #cmd("INMR06")\; the file is filled with zeros to 1600 bytes, 20
     records of 80.],
 )

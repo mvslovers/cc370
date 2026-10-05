@@ -244,8 +244,16 @@ The usual flag bytes are therefore #cmd("X'0C'") for
 #cmd("DC A(")#var("x")#cmd(")"), #cmd("X'1C'") for
 #cmd("DC V(")#var("x")#cmd(")"), #cmd("X'08'") for
 #cmd("DC AL3(")#var("x")#cmd(")") and #cmd("X'04'") for
-#cmd("DC AL2(")#var("x")#cmd(")"), each with #cmd("X'01'") added when a
+#cmd("DC Y(")#var("x")#cmd(")"), each with #cmd("X'01'") added when a
 short item follows.
+
+#idx("IFO204")#idx("IFO205")
+as370 writes relocatable constants of 3 and 4 bytes, and of 2 bytes only
+for a #cmd("Y")-type constant, which it flags with IFO205 (severity 4). A
+relocatable #cmd("A")-type constant of 1 or 2 bytes, such as
+#cmd("AL2(")#var("x")#cmd(")"), and a relocatable #cmd("YL1") are refused
+with IFO204 (severity 8): the constant is assembled as zeros and gets no RLD
+item. The same holds for literals.
 
 == Common and External Dummy Sections <apx-objfmt-pr>
 
@@ -298,6 +306,14 @@ part of its text:
     #cmd("00 01 00 04 2C 00 00 00") and #cmd("00 02 00 04 2C 00 00 04"):
     the two #cmd("Q")-type constants, for #cmd("WORK") and #cmd("FLAG").],
 )
+
+An #cmd("A")-type constant that names a common section, such as
+#cmd("A(AREA+4)"), is relocated against the CM item, and a literal
+#cmd("=Q(")#var("name")#cmd(")") gets the same RLD item as
+#cmd("DC Q(")#var("name")#cmd(")"). A #cmd("V")-type constant that names a
+common section adds an ER item of the same name beside the CM item. An
+#cmd("A")-type constant may not name an external dummy section: one of 3 or 4
+bytes is flagged with IFO158, one of 1 or 2 bytes with IFO204.
 
 The #cmd("Q")-type operand must name a #cmd("DXD") or a #cmd("DSECT")
 defined before it: a name that is defined later is flagged with IFO231, a
@@ -365,7 +381,7 @@ into the load module (see @ld370-idr).
 
 The source in @apx-objfmt-src has two control sections, an entry point, an
 external reference, a weak external reference, and address constants of
-lengths 2, 3 and 4. It was assembled with
+lengths 3 and 4. It was assembled with
 
 ```
 ASMDATE=10/04/26 as370 -o fmt.o fmt.asm
@@ -404,15 +420,16 @@ without its character column. Each record takes five lines of the dump.
     4 bytes of #cmd("=V(SUB)"), at #cmd("18"). The literal pool comes last
     because it belongs to #cmd("MAIN") but was produced after the text of
     #cmd("SECOND").],
-  [Record 6, RLD], [40 bytes of items. #cmd("00 01 00 03 1C 00 00 18"):
+  [Record 6, RLD], [36 bytes of items. #cmd("00 01 00 03 1C 00 00 18"):
     #cmd("SUB") in #cmd("MAIN"), a 4-byte #cmd("V")-type constant at
     #cmd("18"). The same for #cmd("OPT") at #cmd("10"). Then
     #cmd("00 03 00 03 0D 00 00 08"), #cmd("A(ALT)")\: #cmd("ALT") is an LD
     item, so the relocation pointer is 3, the section #cmd("MAIN")\; the
     flag #cmd("0D") announces a short item, #cmd("08 00 00 0C"), the 3-byte
-    #cmd("AL3(MAIN)"). The last two items, in #cmd("SECOND"), are a long
-    and a short one: #cmd("A(MAIN)") at #cmd("20") and the 2-byte
-    #cmd("AL2(ALT)") at #cmd("24").],
+    #cmd("AL3(MAIN)"). The last item, in #cmd("SECOND"), is
+    #cmd("A(MAIN)") at #cmd("20"). #cmd("AL2(ALT-MAIN)") at #cmd("24") is
+    absolute, the difference of two addresses in one section, and needs
+    no item.],
   [Record 7, END], [The entry point, address #cmd("000000") in section 3,
     and from column 33 the translator identification: #cmd("ASM370"), the
     version #cmd("0100") and the date #cmd("26277"), day 277 of 2026.],

@@ -11,5 +11,5 @@ ALT      DC    A(ALT)
          DC    V(OPT)
 SECOND   CSECT
          DC    A(MAIN)
-         DC    AL2(ALT)
+         DC    AL2(ALT-MAIN)
          END   MAIN

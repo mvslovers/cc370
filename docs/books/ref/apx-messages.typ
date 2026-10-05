@@ -276,6 +276,7 @@ the message as printed.
     [IFO201], [8], [#mc("Illegal or invalid exponent modifier")],
     [IFO202], [8], [#mc("Arithmetic precision of floating-point constant lost")],
     [IFO203], [4], [#mc("L, D, E, F, H, or Y-type constant truncated, high order digits lost")],
+    [IFO204], [8], [#mc("Relocatable expression in A- or Y-type address constant with the specified length not allowed")],
     [IFO205], [4], [#mc("Relocatable Y-type constant, value truncated to rightmost 2 bytes")],
     [IFO206], [8], [#mc("Duplication factor error - no storage reserved") \ #mc("Duplication factor error - the terms are not from one section") \ #mc("Negative duplication factor")],
     [IFO207], [8], [#mc("Operand of Q-type constant does not name a DSECT or DXD - ")#mv("sym")],
@@ -303,6 +304,11 @@ remarks apply to as370:
 - IFO161, IFO213 and IFO217 in a machine instruction: the instruction is
   assembled as zeros, as IFOX00 does. It keeps its length, so the error does
   not move any later symbol.
+- IFO158 is also issued for the name of an external dummy section
+  (#mc("DXD")) in a 3- or 4-byte #mc("A")-type constant. IFO204 is issued
+  for a relocatable #mc("A")-type constant of 1 or 2 bytes and a
+  relocatable #mc("YL1"), in a literal as well\; the constant is assembled
+  as zeros, without a relocation item.
 - IFO206 and IFO179: no storage is reserved for the statement, so every
   later symbol of the section is placed differently from what the source
   intends.
