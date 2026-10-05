@@ -27,6 +27,8 @@ change them; it stores each one byte for byte.
 #idx("ar370", "syntax")
 #syntax(read("../syntax/ar370-main.txt"))
 
+#syntax(read("../syntax/ar370-info.txt"))
+
 === Operands
 
 #deflist(width: 1.6in,
@@ -35,7 +37,9 @@ change them; it stores each one byte for byte.
     builds its symbol index. *A library that already exists is replaced, not
     updated*: #cmd("ar370 r lib.a new.o") leaves #cmd("lib.a") holding
     #cmd("new.o") alone. With no #var("object"), ar370 writes an empty
-    library.
+    library. With a trailing #cmd("v"), as in #cmd("rcv"), ar370 also writes
+    one line #cmd("a - ")#var("member") to standard output for each member it
+    stores, as GNU #cmd("ar") does.
     #v(0.3em)
     Each member is named after the base name of its file\; the directory
     part is dropped. Every #var("object") must be an object module: a whole
@@ -58,11 +62,16 @@ change them; it stores each one byte for byte.
 #idx("ar370", "operations")
 The operation is one of #cmd("r"), #cmd("c"), #cmd("rc") or #cmd("cr"), all
 of which create the library, or #cmd("t"), which lists it\; it may be
-written with a leading #cmd("-"), as in #cmd("-rc"). Any other operation,
-such as #cmd("crs") or #cmd("x"), is rejected with the message
+written with a leading #cmd("-"), as in #cmd("-rc"). A create operation
+may end in #cmd("v") (#cmd("rv"), #cmd("cv"), #cmd("rcv"), #cmd("crv")) to
+name each member as it is written\; #cmd("t") takes no #cmd("v"). Any other
+operation, such as #cmd("crs"), #cmd("tv"), #cmd("vrc") or #cmd("x"), is
+rejected with the message
 #cmd("ar370: unknown operation '")#var("op")#cmd("' (r, c, rc, cr or t)")
-and return code 2. #cmd("--help") and #cmd("--version") are recognized as
-the first operand whatever follows them. Called with no operands, or with
+and return code 2. #cmd("--help"), #cmd("-h"), #cmd("--version") and
+#cmd("-V") are recognized as the first operand whatever follows them\; as in
+every tool of the toolchain, #cmd("-v") never means the version, and
+#cmd("ar370 -v") alone is too few operands. Called with no operands, or with
 too few, ar370 writes its usage summary to standard error and ends with
 return code 2.
 
