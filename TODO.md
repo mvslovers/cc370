@@ -121,7 +121,25 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## Command Reference findings — #804-#811, the current block (2026-10-04)
+## cc370 1.3.1 released; 1.4.0-dev on main (2026-10-05)
+
+- **1.3.1** (tag on `2c1485e`): weak definitions exported, weak name used
+  then defined no longer IFO196 (#872, #873; IFOX JOB00354).
+- **main = 1.4.0-dev:** the cc370 half of libc370#159 (#875) -- no startfile,
+  `@@CRT0` autocalled from `libc.a`, packages need libc370 >= 2.3.0.
+  **1.4.0 waits for mbt#158** (mbt PR #160); then mbt-4c's go and Mike's OK.
+  libc370 mirrors the releasing.md tables and keeps its crt0.o copies until
+  its cc370 minimum is 1.4.0.
+
+## cc370 1.3.0 released (2026-10-05)
+
+Tag `v1.3.0` on `1c8181e`; release page reworked (Read this first: -v/-V,
+as370 rc 16 without object, eyecatcher bytes, trigraphs, driver, ld370 rc
+rule, --pack entry). Verified from a clean prefix with libc370 2.3.0. `main`
+is 1.3.1-dev. It carries the whole Command Reference block below plus weak
+references (#866).
+
+## Command Reference findings — #804-#811, the block of 2026-10-04 (done, in 1.3.0)
 
 Found while writing ML01-0002 (the Command Reference); the maintainer handed
 them over through the Book session, plan decided 2026-10-04. Order by harm:

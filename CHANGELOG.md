@@ -20,6 +20,32 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-05
+
+### Changed
+- **The link no longer names `crt0.o`; it needs libc370 >= 2.3.0**
+  (libc370#159). Since libc370 2.3.0 the startup `@@CRT0` is a member of
+  `libc.a`, and `main`'s stub refers to it, so the automatic library call
+  pulls it like any other routine. The driver's startfile is empty, and the
+  packages require libc370 2.3.0 (`.deb` Depends/Breaks, `.rpm`
+  Requires/Conflicts). With an older libc370 a `main` would not link.
+  `@@CRT0` no longer has to sit at offset 0: the directory's entry points to
+  it, and `ld370 --pack` takes a bare member's entry from its CESD (#850).
+
+## [1.3.1] - 2026-10-05
+
+### Fixed
+- **cc370: weak definitions are exported, and a weak name may be defined
+  after it is used** (#872). Both were broken in 1.3.0.
+  - A weak definition was compiled but not exported (`ENTRY=NO`, no LD), so
+    nothing could link to it. It is now exported like the ordinary
+    definition it is.
+  - A name declared weak, used and then defined in the same file got its
+    `WXTRN` at the first use, and the definition then failed with IFO196,
+    rc 8. The `WXTRN` is now written at the end of the assembly and only for
+    a weak name that stayed undefined; measured on IFOX00, a `WXTRN` after
+    the V-cons gives the same WX entry.
+
 ## [1.3.0] - 2026-10-05
 
 ### Added

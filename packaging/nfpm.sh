@@ -20,7 +20,7 @@ set -eu
 tree=$1; arch=$2; out=$3
 here=$(cd "$(dirname "$0")" && pwd)
 ver=$(tr -d ' \t\r\n' < "$here/../VERSION")
-LIBC_MIN=2.1.0                      # cc370 1.1.0's own minimum (#523)
+LIBC_MIN=2.3.0                      # @@CRT0 in libc.a, no startfile (libc370#159); was 2.1.0 (#523)
 case $arch in
     amd64) rpmarch=x86_64 ;;
     arm64) rpmarch=aarch64 ;;

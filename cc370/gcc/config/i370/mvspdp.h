@@ -43,9 +43,12 @@ Boston, MA 02111-1307, USA.  */
 #define TARGET_MEM_FUNCTIONS
 
 /* One-shot link (cc370 foo.c -o foo.lm): the driver invokes ld370 (the target
-   `ld`).  Pull the crt0 startup as the first object (so the @@CRT0 startup is at
-   module offset 0) and set the entry to @@CRT0.  crt0.o and libc.a live in the
-   sysroot lib, found via the -L paths the driver already passes.
+   `ld`) with the entry @@CRT0.  No startfile: since libc370 2.3.0 the startup
+   is a member of libc.a (libc370#159), and main's stub references @@CRT0
+   hard (EXTRN + =V), so automatic library call pulls it -- wherever it lands,
+   the directory entry points there, and ld370 --pack reads a bare member's
+   entry from its CESD (#850).  An older libc370 has no such member, hence the
+   packages' libc370 minimum of 2.3.0.
 
    The compiler-support routines are libcc370rt.a (#687), cc370's libgcc, in the
    same directory.  The link line becomes -lcc370rt -lc -lcc370rt: LIBGCC_SPEC
@@ -53,7 +56,7 @@ Boston, MA 02111-1307, USA.  */
    decides only which copy of a name defined twice wins, and the first archive
    does -- the compiler's runtime, ahead of the copies libc370 2.0 still
    carries (measured on #687).  */
-#define STARTFILE_SPEC "crt0.o%s"
+#define STARTFILE_SPEC ""
 #undef  LIBGCC_SPEC
 #define LIBGCC_SPEC "-lcc370rt"
 #undef  LINK_SPEC

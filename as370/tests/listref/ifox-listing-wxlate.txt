@@ -1,0 +1,53 @@
+                                               EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                            ASM 0201 10.57 10/05/26
+FIRST     WX  0001
+WXL       SD  0002 000000 000020
+LATE      WX  0003
+                                                                                                               PAGE    2
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                       ASM 0201 10.57 10/05/26
+                                      1 * WXTRN BEFORE AND AFTER THE V-CONS THAT NAME IT (CC370 WEAK REFS).
+                                      2          WXTRN FIRST
+000000                                3 WXL      CSECT
+                            00000     4          USING WXL,15
+000000 58F0 F018      00018           5          L     15,=V(LATE)
+000004 58E0 F01C      0001C           6          L     14,=V(FIRST)
+000008 07FE                           7          BR    14
+00000A 0000
+00000C 00000000                       8 VLATE    DC    V(LATE)
+000010 00000000                       9 VFIRST   DC    V(FIRST)
+                                     10          WXTRN LATE
+                                     11          END
+000018 00000000                      12                =V(LATE)
+00001C 00000000                      13                =V(FIRST)
+                                                  RELOCATION DICTIONARY                                        PAGE    3
+POS.ID   REL.ID   FLAGS   ADDRESS                                                                ASM 0201 10.57 10/05/26
+ 0002     0001      1C     000010
+ 0002     0001      1C     00001C
+ 0002     0003      1C     00000C
+ 0002     0003      1C     000018
+ 
+                                                  CROSS-REFERENCE                                              PAGE    4
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.57 10/05/26
+FIRST    00001 00000000 00002
+LATE     00001 00000000 00010
+VFIRST   00004 00000010 00009
+VLATE    00004 0000000C 00008
+WXL      00001 00000000 00003  00004
+                                                  LITERAL CROSS-REFERENCE                                      PAGE    5
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                       ASM 0201 10.57 10/05/26
+=V(LATE) 00004 00000018 00012  00005
+=V(FIRST)
+         00004 0000001C 00013  00006
+                                                  ASSEMBLER DIAGNOSTICS AND STATISTICS                         PAGE    6
+                                                                                                 ASM 0201 10.57 10/05/26
+NO STATEMENTS FLAGGED IN THIS ASSEMBLY
+HIGHEST SEVERITY WAS    0
+OPTIONS FOR THIS ASSEMBLY
+  ALIGN, ALOGIC, BUFSIZE(STD), DECK, ESD, FLAG(0), LINECOUNT(55), LIST, NOMCALL, YFLAG, WORKSIZE(2097152)
+  NOMLOGIC, NONUMBER, NOOBJECT, RENT, RLD, NOSTMT, NOLIBMAC, NOTERMINAL, NOTEST, XREF
+  SYSPARM()
+WORK FILE BUFFER SIZE/NUMBER =32758/ 1
+TOTAL RECORDS READ FROM SYSTEM INPUT         11
+TOTAL RECORDS READ FROM SYSTEM LIBRARY        0
+TOTAL RECORDS PUNCHED                         5
+TOTAL RECORDS PRINTED                        53
