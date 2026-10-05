@@ -191,6 +191,17 @@ static int g_new(const unsigned char *name)
     G[nG].def_obj = -1; G[nG].in_addr = 0; G[nG].owner = -1;
     return nG++;
 }
+/* A common section is one area per NAME for the whole link, as long as the
+ * longest contribution: CBLK of 0x0A and of 0x14 became one CBLK of 0x14
+ * (MVSTK5-REF JOB00352, #837).  It belongs to no object; its origin is set
+ * after them. */
+static void merge_common(int gi, long len)
+{
+    if (!(G[gi].is_sect && G[gi].type == T_CM)) {
+        G[gi].is_sect = 1; G[gi].type = T_CM; G[gi].len = 0; G[gi].def_obj = -1; G[gi].in_addr = 0;
+    }
+    if (len > G[gi].len) G[gi].len = len;
+}
 static int g_intern(const unsigned char *name, int type)
 {
     int i = g_find(name);
@@ -2408,14 +2419,7 @@ int main(int argc, char **argv)
                                 "definition is kept and this one dropped, as IEWL does\n",
                         mvs_nm(o->loc[j].name), O[i].src_path ? O[i].src_path : "an object");
             } else if (t == T_CM) {
-                /* A common section is one area per NAME across the whole link,
-                 * as long as the longest contribution: CBLK of 0x0A and of 0x14
-                 * became one CBLK of 0x14 (MVSTK5-REF JOB00352, #837).  It
-                 * belongs to no object; its origin is set after them. */
-                if (!(G[gi].is_sect && G[gi].type == T_CM)) {
-                    G[gi].is_sect = 1; G[gi].type = T_CM; G[gi].len = 0; G[gi].def_obj = -1; G[gi].in_addr = 0;
-                }
-                if (o->loc[j].len > G[gi].len) G[gi].len = o->loc[j].len;
+                merge_common(gi, o->loc[j].len);      /* one area per name, longest wins */
             } else if (is_sect_type(t)) {             /* a section definition */
                 G[gi].is_sect = 1; G[gi].type = t; G[gi].len = o->loc[j].len;
                 G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
@@ -2741,7 +2745,8 @@ int main(int argc, char **argv)
              * Oversized records would blow the RECV370 reload buffer
              * (U0200-13 .RECVBLK) and the IEBCOPY reload BLKSIZE. */
             {
-                int multi = (sg - first) > 1, last_chunk = (sg > ntext);
+                int multi = (sg - first) > 1;
+                int last_chunk = (sg > ntext);
                 long p = cstart;
                 do {
                     long rlen = cend - p; if (rlen > MAXTEXT) rlen = MAXTEXT;
