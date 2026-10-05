@@ -588,6 +588,14 @@ the command was not valid; a warning does not change the return code.
   is preceded by the bare-member warning below). Return code 1.
 ][Name a load module, or its #mc(".iebcopy") file.]
 
+#msg[#mc("ld370: --pack: --entry ")#mv("name")#mc(" is not in the CESD of '")#mv("file")#mc("'") \
+#mc("ld370: --pack: '")#mv("file")#mc("' names ")#mv("name")#mc(" ")#mv("n")#mc(" times in its CESD; the entry is ambiguous")][
+  The entry point of a member file given to #mc("--pack") is taken from its
+  CESD, by the #mc("--entry") name or #mc("@@CRT0") (see @ld370-pack). The
+  name is not there, or is there more than once. Return code 1; nothing is
+  written.
+][Correct the name, or pack the #mc(".iebcopy") file of the module.]
+
 #msg[#mc("ld370: module length ")#mv("n")#mc(" exceeds 24-bit addressing (")#mv("m")#mc("); the text records' load addresses would wrap")][
   The module would be longer than 16 megabytes. Return code 1.
 ][Divide the program.]
@@ -689,17 +697,27 @@ code is 0.
 ][Remove the duplicate control section.]
 
 #msg[#mc("ld370: warning: --alias has no effect without -iebcopy or -xmit; a bare member carries no directory") \
-#mc("ld370: warning: --entry is ignored by --pack; a member's entry point comes from its -iebcopy directory") \
 #mc("ld370: warning: --sparse-text is ignored by --pack; it shapes the text records of a link") \
 #mc("ld370: warning: --allow-unresolved is ignored by --pack; a pack resolves nothing")][
   The option has no effect in this command.
 ][Remove the option, or add #mc("-iebcopy") or #mc("-xmit").]
 
-#msg[#mc("ld370: warning: '")#mv("file")#mc("' is a bare load module: packing ")#mv("NAME")#mc(" at entry 0, AC ")#mv("n")#mc(", ")#mv("attributes")][
+#msg[#mc("ld370: warning: --entry does not apply to '")#mv("file")#mc("'; a -iebcopy member keeps the entry its directory holds")][
+  #mc("--entry") was given to #mc("--pack") together with a
+  #mc(".iebcopy") file. The entry point in its directory is kept\; the
+  option still applies to the member files of the same pack (see
+  @ld370-pack).
+][None, or remove the option.]
+
+#msg[#mc("ld370: warning: '")#mv("file")#mc("' is a bare load module: packing ")#mv("NAME")#mc(" at entry ")#mv("addr")#mc(" (")#mv("source")#mc("), AC ")#mv("n")#mc(", ")#mv("attributes")][
   A member file without its directory entry was given to #mc("--pack") (see
-  @ld370-pack). Its entry point is taken as 0, and the attributes are those
-  of the pack command. A note with the commands to use follows.
-][Link the member with #mc("-iebcopy") and pack the #mc(".iebcopy") file.]
+  @ld370-pack). #mv("addr") is the entry point in hexadecimal, and
+  #mv("source") says where it came from: #mc("--entry"), #mc("@@CRT0"), or
+  #mc("no @@CRT0 in its CESD"), in which case the entry point is 0. The
+  attributes are those of the pack command. A note with the commands to use
+  follows.
+][If the entry point is wrong, give #mc("--entry")\; better, link the member
+with #mc("-iebcopy") and pack the #mc(".iebcopy") file.]
 
 == ar370 Messages <apx-messages-ar370>
 

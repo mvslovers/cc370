@@ -233,10 +233,13 @@ the packed library: each member keeps its own entry point and attributes.
 ] <ug-link-pack-session>
 
 *Pack the #cmd(".iebcopy") files, not the member files.* A member file
-carries no directory entry, so ld370 cannot know its entry point and
-attributes, packs it with entry point 0 and no attributes, and warns. That
-happens to be right for SUMUP, whose entry point #cmd("@@CRT0") is at offset
-0, but not in general.
+carries no directory entry. ld370 then looks up the entry point in the
+external symbol dictionary of the member, by the name given with
+#cmd("--entry") or else #cmd("@@CRT0"), which is right for a C program, and
+uses entry point 0 for a member without #cmd("@@CRT0"), such as an assembler
+program. The attributes and the authorization code it cannot recover: the
+member gets those of the #cmd("--pack") command, none unless you give them,
+and ld370 warns about every member file.
 
 #idx("block size", "of a load library")
 A load library has a block size, and no record of a module may be longer.

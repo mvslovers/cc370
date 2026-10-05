@@ -110,7 +110,8 @@ return code 2.
     cut to eight characters.],
   [#cmd("-e"), #cmd("--entry") #var("symbol")], [sets the entry point to
     #var("symbol"), the name of a control section or an entry point in the
-    module. See @ld370-entry.],
+    module. See @ld370-entry. With #cmd("--pack") it names the entry point
+    of the member files packed (see @ld370-pack).],
   [#cmd("-L") #var("directory")], [adds #var("directory") to the
     directories searched by the #cmd("-l") options that follow it. The
     directory may also be attached: #cmd("-Llib").],
@@ -450,21 +451,42 @@ Each #var("file") is one of two kinds:
   #cmd("-iebcopy"). It carries the directory entry of the module, and the
   whole entry is kept: entry point, length, attributes, authorization code
   and aliases. The member name is the one in that directory.
-- *A member file*, written by #cmd("-o"). It carries no directory: ld370
-  computes the module length, but the module is packed with entry point 0,
-  with the attributes and authorization code given on the #cmd("--pack")
-  command itself, and without aliases. ld370 warns about every such file.
-  The member name is the base name of the file without its extension, in
-  uppercase.
+- *A member file*, written by #cmd("-o"). It carries no directory, so
+  ld370 takes what it can from the member itself and the rest from the
+  #cmd("--pack") command:
+  - The module length is computed from the CESD.
+  - The entry point is the address that the CESD of the member gives to
+    #cmd("--entry") #var("symbol"), or, without #cmd("--entry"), to
+    #cmd("@@CRT0"), the start-up routine of a C program. The name may be a
+    control section or an entry point. A name that the CESD does not hold,
+    or holds more than once, ends the pack with return code 1. A member
+    without #cmd("@@CRT0"), such as an assembler program, is packed with
+    entry point 0.
+  - The attributes and the authorization code are those given on the
+    #cmd("--pack") command, and the member has no aliases.
+
+  ld370 warns about every such file and says where the entry point came
+  from, for example (one line, shown here on two):
+  ```
+  ld370: warning: 'B' is a bare load module: packing B at entry 26
+    (--entry), AC 0, neither RENT nor REUS
+  ```
+  The entry point is given in hexadecimal. The member name is the base name
+  of the file without its extension, in uppercase.
 
 #var("member")#cmd("=")#var("file") gives the member a name of your own\; a
 renamed #cmd(".iebcopy") module keeps its aliases, which then point at the
 new name.
 
-*Pack the #cmd(".iebcopy") file of each module, not its member file.* The
-entry point in particular cannot be given again: #cmd("--entry") is ignored
-by #cmd("--pack"), with a warning, and the attribute options apply only to
-member files. The usual sequence is therefore:
+*Pack the #cmd(".iebcopy") file of each module, not its member file.* Its
+directory entry is the one the link wrote, whatever the module contains. The
+options of the #cmd("--pack") command do not change it: #cmd("--entry") is
+reported with #cmd("ld370: warning: --entry does not apply to '")#var("file")#cmd("'")
+and the entry point of the directory is kept, and the attribute options apply
+only to member files. One #cmd("--entry") applies to every member file of the
+pack, so packing member files with different entry points takes one
+#cmd("--pack") command each, or their #cmd(".iebcopy") files. The usual
+sequence is therefore:
 
 ```
 ld370 -o MAIN --name MAIN main.o -L. -ldemo -iebcopy --rent --reus
@@ -478,8 +500,8 @@ code. A name used twice in one pack, as a member or as an alias, is refused.
 #cmd("--alias") and #cmd("--map") apply to a link and are refused with
 #cmd("--pack"), and so is #cmd("--name"): a packed member is named with
 #var("member")#cmd("=")#var("file"). #cmd("--sparse-text"),
-#cmd("--allow-unresolved") and #cmd("--entry") are ignored with a warning,
-since a pack neither shapes nor resolves anything.
+#cmd("--allow-unresolved") are ignored with a warning, since a pack neither
+shapes nor resolves anything.
 
 A #var("file") that is a TRANSMIT file, an object library or an object
 module is refused with return code 2 and a message naming what it is: an
@@ -536,7 +558,9 @@ begin with #cmd("ld370:")\; a warning begins with #cmd("ld370: warning:").
     [1], [The link or the pack failed: an input file that cannot be read or
       is not an object module, a library that cannot be read or is not a
       library, #cmd("-l") or #cmd("--include") not found, an unresolved
-      external reference, an entry point not defined, more than 32
+      external reference, an entry point not defined, or with
+      #cmd("--pack") not found or found twice in the CESD of a member file,
+      more than 32
       libraries, a name used twice in one library, a record longer than the
       block size, a file given to #cmd("--pack") that cannot be split into
       load module records, an output file that cannot be written.],
