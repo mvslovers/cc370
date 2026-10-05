@@ -128,9 +128,10 @@ front of you, the second is nineteen-twentieths unattributable.
   >= 2.3.0 (#875). Verified from a clean prefix: install.sh took libc370
   2.3.1, hello world links with entry `@@CRT0` at 0x80 from
   `libc.a(@@crt0.o)`. Tap at 1.4.0. Release page reworked.
-- install.sh reports "no libc370 release ... fits" when the unauthenticated
-  GitHub API is rate-limited (403) -- the message names the wrong cause.
-  Worth a fix: say the API failed.
+- ~~install.sh reports "no libc370 release ... fits" under a GitHub API rate
+  limit~~ -- fixed in #880 (#879): API status checked and named, rc 1,
+  `GITHUB_TOKEN`, zsh word splitting; `make test-install`. Reaches users with
+  the next release (install.sh is a release asset).
 - **1.3.1** (tag on `2c1485e`): weak definitions exported, weak name used
   then defined no longer IFO196 (#872, #873; IFOX JOB00354).
 - libc370 keeps its crt0.o copies until its cc370 minimum is 1.4.0.
