@@ -56,6 +56,13 @@ neither number is mistaken for the other.
   - ar370: a trailing `v` (`rcv`) names each member written, as GNU ar does.
   - `-V` is new in as370, dasm370 and cmplmd370, and `-h` in as370 and dasm370,
     so every tool takes `--version`/`-V` and `--help`/`-h`.
+  - The cc370 driver as well: `-V` prints the version and `-h` the usage. Its
+    `-v` stays GCC's verbose mode. `--version` is now the one line
+    `cc370 <version> (<commit>), based on GCC 3.4.6`, without GCC's copyright
+    and warranty lines. GPLv2 asks for that announcement only from a program
+    that reads commands interactively; the licence is in `COPYING`.
+  - The driver refuses `-b` and `-V<version>` (#833). In GCC they start another
+    installed driver: `cc370 -bogus` tried to run `ogus-gcc-1.2.0`.
 - **The eyecatcher in front of `main` names cc370** (#813). A program's
   `main` module carried `DC C'GCCMVS!!'`, after the compiler cc370 descends
   from; it is now `DC C'CC370',AL1(major,minor,patch)` -- in a dump
