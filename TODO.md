@@ -185,7 +185,7 @@ silent wrong results first. After each merge, one line to Book (session
 
 **The Command Reference block is done.** Open from it, lower priority:
 #827 (`#pragma pack`), #76's ld370 half (pseudo registers), and from
-libc370#159 the empty STARTFILE_SPEC and weak references. Done since: #830,
+libc370#159 the empty STARTFILE_SPEC. Weak references are done (#867, #866: WXTRN, -Wweak-definition, __CC370_WEAK__; libc370 switches its @@start.c hook). Done since: #830,
 #831, #832, #834 (#864: trigraphs under every -std, pragma map/linkage warn,
 -mpickax gone, -pipe ignored).
 
