@@ -166,7 +166,11 @@ silent wrong results first. After each merge, one line to Book (session
 7. ~~#811 flags everywhere~~ **done** (#848): `--version`/`-V`, `--help`/`-h`
    in every tool, `-v` verbose (as370: macro path and origins; dasm370: the
    section read); ar370 `rcv`. "Read this first" in the next release notes.
-8. #809 dasm370 / cmplmd370 / idrdump370 details **(next)**; plus dasm370 listing
+   The driver followed in #851 (`-V`/`-h`, one-line `--version`), which also
+   closed #833 (`-b`/`-V<version>` refused).
+7a. #850 ld370 `--pack` takes a bare member's entry from its CESD **(next)**
+   -- libc370#159 moves @@CRT0 off offset 0.
+8. #809 dasm370 / cmplmd370 / idrdump370 details (after #850); plus dasm370 listing
    CM sections as control sections (comment on the issue).
 9. #821 ld370 leftovers of #807 (--pack with --warn-shadow/-i, non-member
    --pack input, unprefixed write errors, rc 1/2 classification).
