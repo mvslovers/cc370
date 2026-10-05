@@ -125,4 +125,16 @@ done
 "$CC" -pipe -c "$WORK/a.c" -o "$WORK/pp.o" >"$WORK/d" 2>&1; rc=$?
 if [ $rc -eq 0 ] && cmp -s "$WORK/pp.o" "$WORK/a.o"; then ok "-pipe: same object, rc 0"
 else bad "-pipe: rc $rc: $(head -1 "$WORK/d")"; fi
+# weak references end to end: __CC370_WEAK__ is predefined; an unresolved weak
+# reference links rc 0 as 0 and autocall does not pull its definer from libc.a
+"$CC" -E -dM - </dev/null 2>/dev/null | grep -q '^#define __CC370_WEAK__ 1$' && ok "__CC370_WEAK__ predefined" || bad "__CC370_WEAK__ missing"
+printf 'extern void __premain(void) __attribute__((weak));
+int main(void) { if (__premain) __premain(); return 0; }
+' > "$WORK/wk.c"
+printf '@@PREMAI CSECT\n         BR    14\n         END\n' > "$WORK/pm.s"
+"$AS" -o "$WORK/pm.o" "$WORK/pm.s" && "$AR" rc "$L/lib/libc.a" "$WORK/fakefn.o" "$WORK/pm.o" >/dev/null
+"$CC" -O1 "$WORK/wk.c" -o "$WORK/wk" -Wl,--map,"$WORK/wk.map" >"$WORK/d" 2>&1; rc=$?
+if [ $rc -eq 0 ] && grep -q '@@PREMAI  WX' "$WORK/wk.map" && ! grep -q 'pm.o' "$WORK/wk.map"; then
+    ok "weak reference: rc 0, left unresolved, not autocalled from libc.a"
+else bad "weak link: rc $rc: $(head -2 "$WORK/d")"; fi
 exit $fail

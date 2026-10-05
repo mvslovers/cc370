@@ -152,6 +152,10 @@ Wunused-variable
 Common
 Warn when a variable is unused
 
+Wweak-definition
+Common
+Warn that a weak definition is an ordinary one on MVS (on by default)
+
 aux-info
 Common Separate
 -aux-info <file>	Emit declaration information into <file>

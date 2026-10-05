@@ -45,6 +45,9 @@ bool g_switch_set;
 /* True if we should exit after parsing options.  */
 bool exit_after_options;
 
+/* -Wweak-definition (cc370): on by default.  */
+int warn_weak_definition = 1;
+
 /* If -version.  */
 bool version_flag;
 
@@ -784,6 +787,12 @@ common_handle_option (size_t scode, const char *arg,
 
     case OPT_Wunused:
       set_Wunused (value);
+      break;
+
+    case OPT_Wweak_definition:
+      /* cc370: a weak definition is an ordinary one on MVS; the warning has
+	 its own name so -Werror builds can switch it off deliberately.  */
+      warn_weak_definition = value;
       break;
 
     case OPT_Wunused_function:

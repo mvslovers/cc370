@@ -138,6 +138,10 @@ Boston, MA 02111-1307, USA.  */
     do {                                       \
        builtin_define ("__GCC__");             \
        builtin_define ("__MVS__");             \
+       /* __attribute__((weak)) on a reference is a WXTRN: a feature    \
+          macro, so a library can switch from its inline-asm WXTRN       \
+          without naming a version (libc370#10).  */                     \
+       builtin_define ("__CC370_WEAK__");      \
        builtin_assert ("system=mvs");          \
        CC370_CPP_VERSION_BUILTINS ();          \
     } while (0)
