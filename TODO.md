@@ -159,11 +159,10 @@ silent wrong results first. After each merge, one line to Book (session
    (JOB00349, JOB00350) committed, listings identical; tree gate 0 moved.
 6b. ~~#840 as370 follow-up~~ **done** (#841): COM/DXD names in A-cons and
    literals, =Q literals, ESD listing ER id, IFO204 (JOB00351); tree gate 0 moved.
-6a. #837 ld370 places a CM section at origin 0 over the first section, rc 0
-   -- silent wrong module, so it comes before the flag work. Needs IEWL's
-   rule read from the lked source and an IEWL link of `comq.obj` as oracle.
-   **Next.**
-7. #811 flags everywhere: `--version`/`-V`, `-v` verbose (also as370 and
+6a. ~~#837 ld370 CM placement~~ **done** (#843): common areas after the
+   objects, longest contribution, no text, in the module length -- equal to
+   IEWL's AMBLIST (JOB00352). Pseudo registers in ld370 stay #76.
+7. #811 flags everywhere **(next)**: `--version`/`-V`, `-v` verbose (also as370 and
    dasm370 -- decided, "Read this first" in the next release), `--help`.
 8. #809 dasm370 / cmplmd370 / idrdump370 details.
 9. #821 ld370 leftovers of #807 (--pack with --warn-shadow/-i, non-member
@@ -1284,8 +1283,10 @@ afterwards.
   body says what it did *not* do — raise `IFO025` on an out-of-sequence card. So
   the gap is the check, not the statement, and it is diagnostic-only either way.
 - **#76** — pseudo registers. **The as370 half is done** (PR #838: `DXD`,
-  `CXD`, `Q` as IFOX00, two oracle decks committed). Left: ld370's PR
-  collection -- an XD is an unresolved ER at rc 0 today. Zero occurrences in
+  `CXD`, `Q` as IFOX00, two oracle decks committed; common sections in ld370
+  since #843). Left: ld370's PR collection -- an XD is an unresolved ER at
+  rc 0 today. `ld370/tests/run.sh`'s #837 case shows how to take an IEWL
+  oracle on MVSTK5-REF. Zero occurrences in
   the ecosystem; an IEWL link of `as370/tests/ref/comq.obj` would be the oracle.
 - **#78** — IFO069 needs a statement type `join_cont` does not have, because the
   limit is two continuations for machine/assembler operations and comments but
