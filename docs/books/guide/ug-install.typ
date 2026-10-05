@@ -200,7 +200,7 @@ a start-up object of its own, so with an older libc370 a program with a
   #table(columns: (1fr, 1fr),
     [cc370], [libc370],
     [1.1 to 1.3], [2.1.0 to 2.3.x],
-    [1.4], [2.3.0 or later\; 2.4 needs cc370 1.4.0 or later],
+    [1.4], [2.3.0 or later],
   )
 ] <ug-install-versions-tab>
 
