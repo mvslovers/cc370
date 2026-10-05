@@ -1867,6 +1867,16 @@ static const char *with_suffix(char *buf, size_t n, const char *base, const char
  * exactly the way the entry point does.  Returns 1 and sets *addr when found. */
 /* Each --alias names a directory entry of its own: not the member, and
  * not once more (#821).  0 with a message when one does. */
+/* Can PATH be written?  Says why when not.  An output that fails is found
+ * before the member is written, not after (#821). */
+static char unlbuf_pre[1024];
+static int writable(const char *path)
+{
+    FILE *t = fopen(path, "w");
+    if (!t) { fprintf(stderr, "ld370: cannot write %s: %s\n", path, strerror(errno)); return 0; }
+    fclose(t);
+    return 1;
+}
 static int aliases_ok(const char *member, const char *const *al, int nal)
 {
     unsigned char nm[8];
@@ -2949,11 +2959,10 @@ int main(int argc, char **argv)
         && !aliases_ok(mname ? mname : basename_member(outfile), aliasv, naliasv)) return 2;
     /* A map that cannot be written is found BEFORE the member is: it used to be
      * reported after the member was already on disk (#821). */
-    if (mapfile && strcmp(mapfile, "-")) {
-        FILE *mf = fopen(mapfile, "w");
-        if (!mf) { fprintf(stderr, "ld370: cannot write %s: %s\n", mapfile, strerror(errno)); return 1; }
-        fclose(mf);
-    }
+    if (mapfile && strcmp(mapfile, "-") && !writable(mapfile)) return 1;
+    /* ...and so are the transport files, which are written after it. */
+    if (outfile && want_xmit && !writable(with_suffix(unlbuf_pre, sizeof unlbuf_pre, outfile, ".xmit"))) return 1;
+    if (outfile && want_unload && !writable(with_suffix(unlbuf_pre, sizeof unlbuf_pre, outfile, ".iebcopy"))) return 1;
     if (outfile) {                              /* the load-module member (always) */
         f = fopen(outfile, "wb");
         if (!f) { fprintf(stderr, "ld370: cannot write %s: %s\n", outfile, strerror(errno)); return 1; }

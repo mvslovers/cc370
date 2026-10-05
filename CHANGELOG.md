@@ -83,7 +83,8 @@ neither number is mistaken for the other.
   - A `--pack` input that is not a load module (a C source, say) is rc 2,
     where it was warned about as a bare module and then failed rc 1.
   - Write errors carry the `ld370:` prefix.
-  - An unwritable `--map` is reported before the member is written.
+  - An unwritable `--map`, `.xmit` or `.iebcopy` is reported before the member
+    is written, so no member is left behind.
   - The return codes follow one rule: rc 2 when the command line is wrong
     whatever the files hold, rc 1 when a file or the link fails. A name used
     twice in a library (a member, or an alias naming the member or given

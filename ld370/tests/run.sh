@@ -851,6 +851,11 @@ rm -f "$TMP/c821m"
 c821 "an unwritable --map is rc 1" 1 $r
 [ ! -e "$TMP/c821m" ] && echo "  OK: ...found before the member is written" || { echo "  FAIL: member written before the --map failure"; c821_fails=1; }
 "$LD" -o "$TMP/c821a" --name X --alias X "$TMP/c821.o" -iebcopy 2>/dev/null; c821 "--alias naming the member is rc 2" 2 $?
+rm -rf "$TMP/c821x" "$TMP/c821x.xmit"; mkdir "$TMP/c821x.xmit"
+"$LD" -o "$TMP/c821x" --name X --entry CMA "$TMP/c821.o" -xmit 2>/dev/null; r=$?
+c821 "an unwritable transport file is rc 1" 1 $r
+[ ! -e "$TMP/c821x" ] && echo "  OK: ...found before the member is written" || { echo "  FAIL: member left behind by an unwritable .xmit"; c821_fails=1; }
+rmdir "$TMP/c821x.xmit"
 [ "$c821_fails" = 0 ] || fails=$((fails + 1))
 
 printf '\n=== dropped-text: early-ref / late-def section keeps all text (S106-0F) ===\n'
