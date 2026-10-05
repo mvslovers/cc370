@@ -471,6 +471,21 @@ printf 'SUMUP    CSECT\n         BR    14\n         END\n' > "$TMP/em2.s"
 [ $r = 2 ] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["exit"]==2 and d["sections"]==[] and d["error"] else 1)' "$TMP/nsj.out" \
     && pass "--json refusal keeps the object's shape" || fail "--json refusal: $(head -3 "$TMP/nsj.out")"
 
+# Entry-point pairing works both ways: a NAMED section (cc370 -mcsect SUMUP)
+# against the unnamed PC holding the same entry, as well as the reverse; and
+# "no sections paired" refuses before any output like the other refusals.
+printf 'SUMUP    CSECT\n         ENTRY ADDUP\nADDUP    SR    15,15\n         BR    14\n         END\n' > "$TMP/nm.s"
+printf '         CSECT\n         ENTRY ADDUP\nADDUP    SR    15,15\n         BR    14\n         END\n' > "$TMP/un.s"
+./as370/as370 -o "$TMP/nm.o" "$TMP/nm.s" && ./as370/as370 -o "$TMP/un.o" "$TMP/un.s" \
+  && ./ld370/ld370 -o "$TMP/un.lm" --name UN --entry ADDUP "$TMP/un.o" 2>/dev/null
+"$C" "$TMP/nm.o" "$TMP/un.lm" >/dev/null; r1=$?
+"$C" "$TMP/un.o" "$TMP/nm.o" >/dev/null; r2=$?
+[ $r1 = 0 ] && [ $r2 = 0 ] && pass "a named section pairs with an unnamed one by entry point, both ways" \
+    || fail "named/unnamed entry pairing: rc $r1 and $r2"
+printf 'D        DSECT\nX        DS    F\n         END\n' > "$TMP/ds.s"; ./as370/as370 -o "$TMP/ds.o" "$TMP/ds.s"
+"$C" "$TMP/ds.o" "$TMP/un.lm" > "$TMP/np.out" 2>/dev/null; r=$?
+[ $r = 2 ] && [ ! -s "$TMP/np.out" ] && pass "\"no sections paired\" refuses with nothing on stdout" || fail "no sections paired: rc $r, stdout $(cat "$TMP/np.out")"
+
 echo
 echo "$fails failure(s)"
 exit $fails
