@@ -317,9 +317,21 @@ The driver links no start-up object of its own. It passes
 #cmd("--entry @@CRT0") to ld370 (@cc370-phases-fig), and a source that
 defines #cmd("main") refers to #cmd("@@CRT0"), so automatic library call
 takes the start-up routine from #cmd("libc.a") like any other routine. MVS
-gives control to #cmd("@@CRT0"), which calls #cmd("@@START"), the C start-up
-routine of the library, which calls #cmd("MAIN"), the C function
-#cmd("main").
+gives control to #cmd("@@CRT0"), which builds the run time and calls
+#cmd("@@START"), the C start-up routine of the library. #cmd("@@START")
+calls #cmd("__premain") if the program defines it, opens the standard
+streams and calls #cmd("MAIN"), the C function #cmd("main"). A library named
+with #cmd("-l") is searched before the C library, so one that defines
+#cmd("@@START") replaces the routine of the C library without a message\;
+put work before #cmd("main") into #cmd("__premain") instead (libc370 2.4.0
+or later). The _cc370 User's Guide_ describes it under "Work Before main", the
+_libc370 Programmer's Guide_ under "Running Code Before main()".
+
+#idx("CTHREAD")
+The start-up refers to #cmd("CTHREAD"), the thread driver of the C library,
+by a weak reference. A program that creates threads with
+#cmd("cthread_create") links it with that function, and the start-up then registers it with MVS\; a program that does not
+links none of it. No option chooses between the two.
 
 #idx("entry point", "offset in the module")
 The object modules named on the command line come first in the load module,
@@ -337,14 +349,21 @@ it then leads to #cmd("@@CRT0") as well.
 
 The start-up can be changed in two ways:
 
-- To use the start-up object #cmd("crtm.o") that libc370 installs instead
-  of the member of #cmd("libc.a"), name it on the command line. It defines
-  #cmd("@@CRT0"), so the library member is not taken:
+- A C module that a running C program enters on the same task does not
+  build a run time of its own: it uses the caller's. Its caller passes the
+  address of a parameter block, a halfword length and the text, in
+  register 0, not in a register-1 parameter list, so a plain LINK is not
+  enough. Link it with the start-up object #cmd("crtm.o") that
+  libc370 installs. It defines #cmd("@@CRT0"), so the library member is not
+  taken:
   ```
-  cc370 -o prog prog.c $(cc370 -print-file-name=crtm.o)
+  cc370 -o sub sub.c $(cc370 -print-file-name=crtm.o)
   ```
-  What it does differently is described with the C library, in the
-  _libc370 Programmer's Guide_.
+  *Never use #cmd("crtm.o") for a program that MVS starts*, as a job step
+  or a TSO command: without a C program before it on the same task there is
+  no run time to use, and the module abends. How the two start-ups differ
+  is described in the _libc370 Programmer's Guide_, "The Start-Up
+  Routines" in the chapter "Program Structure and Start-Up".
 - To link a module that does not use the C start-up at all, give
   #cmd("-e") #var("entry"). ld370 uses the last entry it is given, which is
   #var("entry"). A name in lower case is accepted: #cmd("-e myentry") finds

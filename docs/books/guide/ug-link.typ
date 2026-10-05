@@ -167,16 +167,64 @@ there.
 #idx("weak external reference")
 The three names under #cmd("UNRESOLVED") are not an error. Type #cmd("WX")
 marks a weak external reference: a name that the program may define and need
-not. The C start-up refers to #cmd("@@STKLEN") in this way, so that a program
-can choose the size of its stack, for example with
-#cmd("unsigned __stklen = 64 * 1024;") in a C source, and to
-#cmd("@@PREMAI"), the function #cmd("__premain"), a step of its own that a
-program can run before #cmd("main"). An unresolved ordinary
-reference, on the other hand, ends the link, as @ug-diag-unres shows.
+not. The C start-up refers to three names in this way:
+
+- #cmd("@@STKLEN"), so that a program can choose the size of its stack, for
+  example with #cmd("unsigned __stklen = 64 * 1024;") in a C source\;
+- #cmd("CTHREAD"), the driver of the C library for threads. A program that
+  creates threads with the C library, with #cmd("cthread_create"), links
+  the driver with it,
+  and the start-up then makes it known to MVS\; a program that does not
+  carries none of it. There is nothing to choose: what the program calls
+  decides.
+- #cmd("@@PREMAI"), the function #cmd("__premain"), a step of its own that a
+  program can run before #cmd("main")\; see @ug-link-premain.
+
+An unresolved ordinary reference, on the other hand, ends the link, as
+@ug-diag-unres shows.
 
 When two libraries define the same name, the first library given wins.
 Give your own libraries before the C library, which cc370 does by putting
 #cmd("-l") options of the command line ahead of its own.
+
+== Work Before main <ug-link-premain>
+
+#idx("__premain")#idx("@@START")
+#cmd("@@CRT0") calls #cmd("@@START"), the C start-up routine of the C
+library, which calls #cmd("main"). That the first library given wins holds
+for #cmd("@@START") too: a library of your own that defines #cmd("@@START")
+replaces the routine of the C library, and the link ends with return code 0
+and no message. The load map shows it, with #cmd("@@START") taken from your
+library and no #cmd("@@PREMAI") under #cmd("UNRESOLVED"), and
+#cmd("-Wl,--warn-shadow") reports the definition in #cmd("libc.a") that was
+passed over. The program then runs without anything the C start-up routine
+does: the standard streams are not opened, and #cmd("__premain") is not
+called.
+
+*Do not define #cmd("@@START").* Put the work that must be done before
+#cmd("main") into the function #cmd("__premain"), declared in
+#cmd("<mvs/crt.h>") since libc370 2.4.0:
+
+```
+#include <mvs/crt.h>
+
+int __premain(char *parm, char *pgmname, void **pgmr1)
+{
+    /* runs before the standard streams are opened */
+    return 0;
+}
+```
+
+The C start-up routine calls it first, before it opens the standard streams.
+#var("parm") is the parameter as MVS passed it, a halfword length and the
+text, or under TSO the command buffer with its four-byte prefix\;
+#var("pgmname") the name of the program, eight characters padded with
+blanks and followed by a null character\; #var("pgmr1") the parameter list
+the program was given in register 1. A stream that #cmd("__premain") sets is
+kept, and one it leaves alone is opened as usual. A return value other than
+0 ends the program with that value as its return code, and #cmd("main") is
+not called. A program that does not define #cmd("__premain") links nothing
+for it.
 
 == Optional Functions: Weak References <ug-link-weak>
 

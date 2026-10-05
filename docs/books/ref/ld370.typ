@@ -255,8 +255,8 @@ another reason defines the name\; otherwise it stays 0, is listed under
 search begins, whether or not anything refers to it. ld370 looks for a member
 whose file name, without #cmd(".o"), is #var("name") in any mix of case, and
 then for a member that defines #var("name"). Use it to choose one of several
-variants of a module, for example a different C start-up routine, before the
-search can pick another.
+variants of a module, before the search can pick another, or to bring in a
+module that only a weak reference names.
 
 == The Entry Point <ld370-entry>
 

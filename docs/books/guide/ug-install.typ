@@ -155,8 +155,8 @@ directory, #cmd("cc370").
   [#cmd("cc370/lib")], [the C library #cmd("libc.a"), which comes from
     libc370 and holds the start-up routine #cmd("@@CRT0") as well, and the
     run-time support library #cmd("libcc370rt.a"), which comes with cc370.
-    libc370 also installs the start-up object #cmd("crtm.o"), which a link
-    uses only when you name it. Every
+    libc370 also installs the start-up object #cmd("crtm.o"), for a C module
+    that a running C program calls\; a link uses it only when you name it. Every
     link searches this directory without #cmd("-L").],
   [#cmd("cc370/macros")], [the assembler macros: #cmd("PDPTOP"),
     #cmd("PDPPRLG") and #cmd("PDPEPIL"), which every module compiled by

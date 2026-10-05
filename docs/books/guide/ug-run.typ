@@ -96,7 +96,9 @@ without #cmd("PARM")\; #cmd("argc") is then 1.
 #idx("stdin")#idx("stdout")#idx("stderr")
 #idx("DD statement", "for a C program")
 Before #cmd("main") is called, the start-up opens the three standard
-streams on DD statements of the step, as @ug-run-streams-tab shows.
+streams on DD statements of the step, as @ug-run-streams-tab shows. A
+stream that the program has already set in #cmd("__premain")
+(@ug-link-premain) is kept.
 
 #tab(caption: [The standard streams of a C program])[
   #table(columns: (0.75in, 0.85in, 1fr),

@@ -46,7 +46,13 @@ L<ld370(1)> B<--pack>).
 =back
 
 The C library it links against is B<libc370>, found in the toolchain sysroot
-with no B<-I>, B<-L> or B<-lc> needed.
+with no B<-I>, B<-L> or B<-lc> needed. No startfile is linked: the driver
+passes B<--entry @@CRT0> to L<ld370(1)>, and the C startup C<@@CRT0> is taken
+from F<libc.a> by automatic library call (libc370 2.3.0 or later). Work that
+must run before C<main()> belongs in C<__premain()> (F<E<lt>mvs/crt.hE<gt>>,
+libc370 2.4.0 or later); a library given with B<-l> is searched before the C
+library, so one that defines C<@@START> replaces libc370's, with no warning unless
+B<-Wl,--warn-shadow> is given.
 
 =head1 OPTIONS
 
@@ -170,7 +176,7 @@ The compiler proper (driver-private).
 
 =item F<I<prefix>/cc370/{include,lib}>
 
-The libc370 sysroot (headers, F<libc.a>, startfiles).
+The libc370 sysroot (headers, F<libc.a> with the C startup, F<crtm.o>).
 
 =back
 
