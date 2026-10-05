@@ -1,0 +1,14 @@
+  CONTROL SECTION                       ENTRY
+    NAME    ORIGIN  LENGTH                NAME   LOCATION     NAME   LOCATION     NAME   LOCATION     NAME   LOCATION
+  CMA           00       F
+  CMB           10       D
+  CBLK          20      14
+  GBLK          38       8
+ 
+ 
+  LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION             LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION
+       00            CBLK            CBLK                           4            CBLK            CBLK
+        8            GBLK            GBLK                          10            CBLK            CBLK
+       14            CBLK            CBLK
+ ENTRY ADDRESS       00
+ TOTAL LENGTH        40

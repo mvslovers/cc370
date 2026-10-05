@@ -1,0 +1,8 @@
+* COMMON SECTIONS FOR THE IEWL ORACLE (CC370#837), DECK 2 OF 2.
+CMB      CSECT
+         DC    A(CBLK,CX2)
+         DC    XL5'BBBBBBBBBB'
+CBLK     COM
+CX1      DS    CL12
+CX2      DS    CL8
+         END

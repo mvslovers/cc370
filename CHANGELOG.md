@@ -35,8 +35,8 @@ neither number is mistaken for the other.
     defined and IFO207 for one that is neither.
   - Decks and listings were measured on IFOX00 and are byte-identical up to the
     END card.
-  - **ld370 does not handle either kind yet:** a common section is placed over
-    the first section (#837), and pseudo registers stay unresolved (#76).
+  - **ld370 does not handle pseudo registers yet:** they stay unresolved (#76).
+    Common sections are allocated since #837.
 - **as370: IFO203** (#776), severity 4, for a fixed-point or Y-type constant
   that does not fit its field: `F'2147483648'`, `H'65535'`, `FL1'128'`,
   `Y(32768)`. The signed range of the field decides, A-type is never flagged,
@@ -52,6 +52,13 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **ld370 allocates common sections** (#837). A CM section was placed at
+  origin 0 of its object, on top of the object's first section, and was not
+  counted in the module length, at rc 0. Now, as with IEWL, each common name
+  becomes one area as long as its longest contribution. These areas follow
+  every object on doubleword boundaries, carry no text, and count in the module
+  length. Measured with IEWL on two objects sharing a common section of
+  different lengths: CESD, control, text and RLD records are identical.
 - **as370: COM and DXD names in address constants** (#840).
   - `A(BLK)`, `A(BLK+4)` and `=A(BLK)` on a COM section's own name got their
     value and no RLD entry at rc 0. They now relocate against the CM entry, as
