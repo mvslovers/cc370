@@ -132,6 +132,32 @@ if $CC1 -quiet -mpickax "$WORK/pm.c" -o "$WORK/pk.s" 2>/dev/null; then
     echo "mpickax: FAIL (still accepted)"; fail=1
 else echo "mpickax: OK (refused)"; fi
 
+# (3g) weak references: a WXTRN ahead of the first V-con, ESD type WX; an
+# unreferenced weak declaration emits nothing; a weak definition stays an
+# ordinary one and says so (libc370#10's __premain hook).
+cat > "$WORK/wk.c" <<'EOF'
+extern void __premain(void) __attribute__((weak));
+extern int unused_weak __attribute__((weak));
+void defd(void) __attribute__((weak));
+void defd(void) { }
+int f(void) { if (__premain) __premain(); return 0; }
+EOF
+$CC1 -quiet -O1 "$WORK/wk.c" -o "$WORK/wk.s" 2>"$WORK/wk.err"
+wx=$(grep -n 'WXTRN @@PREMAI' "$WORK/wk.s" | cut -d: -f1 | head -1)
+vc=$(grep -n '=V(@@PREMAI)' "$WORK/wk.s" | cut -d: -f1 | head -1)
+if [ -n "$wx" ] && [ -n "$vc" ] && [ "$wx" -lt "$vc" ] && [ "$(grep -c 'WXTRN' "$WORK/wk.s")" = 1 ]; then
+    echo "weak-ref: OK (one WXTRN, ahead of the first V-con)"
+else echo "weak-ref: FAIL (WXTRN line $wx, V-con line $vc, $(grep -c WXTRN "$WORK/wk.s") WXTRN)"; fail=1; fi
+grep -q 'weak definition of .defd. is an ordinary definition' "$WORK/wk.err" \
+    && echo "weak-def: OK (warned, ordinary definition)" || { echo "weak-def: FAIL ($(head -2 "$WORK/wk.err"))"; fail=1; }
+$CC1 -quiet -O1 -Wno-weak-definition "$WORK/wk.c" -o "$WORK/wk2.s" 2>"$WORK/wk2.err"
+[ ! -s "$WORK/wk2.err" ] && echo "weak-def-off: OK (-Wno-weak-definition silences it)" || { echo "weak-def-off: FAIL ($(head -1 "$WORK/wk2.err"))"; fail=1; }
+if $ROOT/as370/as370 -I $ROOT/macros -o "$WORK/wk.o" "$WORK/wk.s" >/dev/null 2>&1 \
+   && $ROOT/file370/file370 --csects "$WORK/wk.o" | grep -q '@@PREMAI  WX' \
+   && ! $ROOT/file370/file370 --csects "$WORK/wk.o" | grep -q 'UNUSED'; then
+    echo "weak-esd: OK (@@PREMAI is WX; the unreferenced one is absent)"
+else echo "weak-esd: FAIL ($($ROOT/file370/file370 --csects "$WORK/wk.o" | grep ESD | tr '\n' '|'))"; fail=1; fi
+
 # (4) the __asm__ workaround: two 8-char linkage names that differ are distinct
 # object-deck symbols -> must NOT warn (no false positive on the workaround).
 cat > "$WORK/asm.c" <<'EOF'

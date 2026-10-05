@@ -20,7 +20,20 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-05
+
 ### Added
+- **cc370: weak references** (`__attribute__((weak))` on a declaration).
+  - A weak reference becomes a `WXTRN` (ESD type WX), written ahead of the
+    first reference. Unresolved it is 0 (`if (f) f();`), and automatic
+    library call does not pull a definer for it -- IEWL's rule, which ld370
+    already followed.
+  - An unreferenced weak declaration produces nothing.
+  - MVS has no weak definition: one is compiled as an ordinary definition and
+    warns with `-Wweak-definition` (on by default, so an `-Werror` build
+    stops; `-Wno-weak-definition` switches it off).
+  - `__CC370_WEAK__` is predefined, so a library can test for the feature
+    rather than for a version.
 - **as370: `COM`, `DXD`, `CXD` and Q-type constants** (#810, #229). They were
   the last Assembler XF statements and constant types it lacked: `COM` and
   `DXD` were undefined operation codes, `CXD` and `DC Q(...)` "not
