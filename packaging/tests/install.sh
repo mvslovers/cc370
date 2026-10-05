@@ -10,12 +10,12 @@ W=$(mktemp -d "${TMPDIR:-/tmp}/cc370inst.XXXXXX") || exit 2
 pid=""
 trap '[ -n "$pid" ] && kill $pid 2>/dev/null; rm -rf "$W"' 0
 fail=0
-ok()  { echo "install: OK   $*"; }
-bad() { echo "install: FAIL $*"; fail=1; }
+ok()  { echo "install: OK   $*"; return 0; }
+bad() { echo "install: FAIL $*"; fail=1; return 0; }
 
 case $(uname -s) in Linux) os=linux ;; Darwin) os=darwin ;; *) echo "install: SKIP unsupported OS"; exit 0 ;; esac
 case $(uname -m) in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "install: SKIP unsupported machine"; exit 0 ;; esac
-if command -v sha256sum >/dev/null; then sums() { sha256sum "$@"; }; else sums() { shasum -a 256 "$@"; }; fi
+if command -v sha256sum >/dev/null; then sums() { sha256sum "$@"; return $?; }; else sums() { shasum -a 256 "$@"; return $?; }; fi
 
 # the fake releases
 R=$W/rel
@@ -51,9 +51,10 @@ run() {
         GITHUB_TOKEN= CC370_VERSION= LIBC370_VERSION= LIBC370_RELEASES= NO_LIBC370= \
         "$@" sh "$INST" > "$W/out" 2>&1
     rc=$?
+    return 0
 }
-has() { grep -q "$1" "$W/out"; }
-show() { tr '\n' '|' < "$W/out"; }
+has() { pat=$1; grep -q "$pat" "$W/out"; return $?; }
+show() { tr '\n' '|' < "$W/out"; return 0; }
 
 run ok
 [ $rc = 0 ] && has 'cc370 9.9.9 for' && [ -f "$P/cc370/include/fake2.0.0.h" ] \

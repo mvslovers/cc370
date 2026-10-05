@@ -60,13 +60,14 @@ trap 'rm -rf "$tmp"' EXIT
 # status and its cause and return 1 -- an empty answer must not pass for an
 # empty list (#879).
 api() {
+    apipath=$1
     rm -f "$tmp/api.hdr" "$tmp/api.json"
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         code=$(curl -sSL -H "Authorization: Bearer $GITHUB_TOKEN" -D "$tmp/api.hdr" \
-            -o "$tmp/api.json" -w '%{http_code}' "$API/$1" 2>"$tmp/api.err") || code=000
+            -o "$tmp/api.json" -w '%{http_code}' "$API/$apipath" 2>"$tmp/api.err") || code=000
     else
         code=$(curl -sSL -D "$tmp/api.hdr" -o "$tmp/api.json" -w '%{http_code}' \
-            "$API/$1" 2>"$tmp/api.err") || code=000
+            "$API/$apipath" 2>"$tmp/api.err") || code=000
     fi
     [ "$code" = 200 ] && return 0
     if [ "$code" = 000 ]; then
@@ -77,7 +78,7 @@ api() {
         [ -n "$reset" ] && wait=", resets in $(( (reset - $(date +%s) + 59) / 60 )) min"
         apierr="the GitHub API rate limit for this address is used up (HTTP $code$wait); retry later or set GITHUB_TOKEN"
     else
-        apierr="the GitHub API answered HTTP $code for $API/$1"
+        apierr="the GitHub API answered HTTP $code for $API/$apipath"
     fi
     return 1
 }
