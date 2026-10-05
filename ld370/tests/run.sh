@@ -210,7 +210,7 @@ esac
 if [ "$pw_rc" -eq 0 ]; then echo "  OK: it is a warning, rc still 0 (the suite's own bare packs keep working)"
 else echo "  FAIL: bare .lm pack now exits $pw_rc -- that breaks 13 call sites"; pw_fails=1; fi
 case "$pw" in
-    *"entry 0"*) echo "  OK: the message names the entry point, the half no flag can repair" ;;
+    *"entry 0"*) echo "  OK: the message names the entry point it packed at" ;;
     *) echo "  FAIL: the message does not name the entry: [$pw]"; pw_fails=1 ;;
 esac
 pwa=$("$LD" --pack "NZENT=$TMP/nzent_lnk" --ac 1 -o "$TMP/pw_ac" -iebcopy 2>&1 >/dev/null)
@@ -221,13 +221,34 @@ esac
 pwi=$("$LD" --pack "NZENT=$TMP/nzent_lnk.iebcopy" -o "$TMP/pw_ieb" -iebcopy 2>&1 >/dev/null)
 if [ -z "$pwi" ]; then echo "  OK: the .iebcopy form is silent (nothing is lost, nothing is said)"
 else echo "  FAIL: .iebcopy pack warned: [$pwi]"; pw_fails=1; fi
-# --entry is parsed and then never reaches the pack path: `--entry NOSUCHSY'
-# packed at rc 0 with no word said.  Same silent drop, one flag further along --
-# and it is what makes the entry half unrepairable from the command line.
+# A -iebcopy member keeps the entry its directory holds; --entry names a BARE
+# member's entry (#850), so on this form it is said not to apply.
 pwe=$("$LD" --pack "NZENT=$TMP/nzent_lnk.iebcopy" --entry NOSUCHSY -o "$TMP/pw_e" -iebcopy 2>&1 >/dev/null)
 case "$pwe" in
-    *"--entry is ignored"*) echo "  OK: --entry with --pack is diagnosed instead of dropped" ;;
-    *) echo "  FAIL: --entry silently ignored by --pack: [$pwe]"; pw_fails=1 ;;
+    *"does not apply"*) echo "  OK: --entry on a -iebcopy member is diagnosed instead of dropped" ;;
+    *) echo "  FAIL: --entry on a -iebcopy member not diagnosed: [$pwe]"; pw_fails=1 ;;
+esac
+# #850: a bare member's entry comes from its CESD -- @@CRT0, or --entry NAME.
+# It sat at 0 only while crt0.o was linked first; with the CRT pulled by autocall
+# (libc370#159) @@CRT0 follows the program, and a pack at 0 starts the module in
+# the wrong place.  The packed bare member must equal the direct -iebcopy link.
+"$AS" -o "$TMP/pkfirst.o" "$FIX/pkfirst.s" && "$AS" -o "$TMP/pkcrt.o" "$FIX/pkcrt.s" \
+  && "$LD" -o "$TMP/pk_direct" --name CRTX --entry @@CRT0 "$TMP/pkfirst.o" "$TMP/pkcrt.o" -iebcopy \
+  && "$LD" -o "$TMP/pk_bare" --name CRTX "$TMP/pkfirst.o" "$TMP/pkcrt.o" --entry @@CRT0
+"$LD" --pack "CRTX=$TMP/pk_bare" -o "$TMP/pk_packed" -iebcopy 2>/dev/null
+if cmp -s "$TMP/pk_direct.iebcopy" "$TMP/pk_packed.iebcopy" \
+   && "$FI" -v "$TMP/pk_packed.iebcopy" | grep -q 'member CRTX .*entry=000018'; then
+    echo "  OK: bare member packed at @@CRT0 (x18), byte-identical to the direct -iebcopy"
+else echo "  FAIL: bare member not packed at @@CRT0: $("$FI" -v "$TMP/pk_packed.iebcopy" | grep 'member CRTX')"; pw_fails=1; fi
+"$LD" --pack "CRTX=$TMP/pk_bare" --entry GO -o "$TMP/pk_go" -iebcopy 2>/dev/null
+"$FI" -v "$TMP/pk_go.iebcopy" | grep -q 'member CRTX .*entry=00001A' \
+    && echo "  OK: --entry GO picks the LR at x1A" || { echo "  FAIL: --entry GO not honoured"; pw_fails=1; }
+"$LD" --pack "CRTX=$TMP/pk_bare" --entry NOSUCH -o "$TMP/pk_no" -iebcopy 2>"$TMP/pk_no.err"; r=$?
+[ $r = 1 ] && grep -q 'not in the CESD' "$TMP/pk_no.err" \
+    && echo "  OK: --entry naming nothing in the CESD is refused, rc 1" || { echo "  FAIL: --entry NOSUCH rc $r"; pw_fails=1; }
+case "$pw" in
+    *"no @@CRT0 in its CESD"*) echo "  OK: without @@CRT0 the entry stays 0 and the warning says why" ;;
+    *) echo "  FAIL: entry-0 fallback not explained: [$pw]"; pw_fails=1 ;;
 esac
 [ "$pw_fails" -eq 0 ] || fails=$((fails + 1))
 

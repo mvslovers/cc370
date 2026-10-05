@@ -70,6 +70,13 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **ld370 `--pack` takes a bare member's entry point from its CESD** (#850).
+  A bare load module (one not linked with `-iebcopy`) was always packed with
+  entry 0, and `--entry` was ignored. That held only while `@@CRT0` came first
+  in the module. Now `--pack` uses the address of `--entry NAME`, or of
+  `@@CRT0`, in the member's own CESD. A name it does not find is refused with
+  rc 1, and a module without `@@CRT0` keeps entry 0, warned as before. A packed
+  bare member is now identical to the direct `-iebcopy` link of the same module.
 - **ld370 allocates common sections** (#837). A CM section was placed at
   origin 0 of its object, on top of the object's first section, and was not
   counted in the module length, at rc 0. Now, as with IEWL, each common name
