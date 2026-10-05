@@ -380,7 +380,13 @@ and C<TB> exactly B<zero> times. The cut would remove nothing anyone wrote.
 
 Write to I<FILE> instead of standard output.
 
-=item B<-v>, B<--version>, B<--help>
+=item B<-v>
+
+Verbose, on standard error: the section read, its origin and length, and its
+RLD and LD entries. The disassembly is the same as without it. In 1.2.0 and
+earlier, B<-v> printed the version.
+
+=item B<-V>, B<--version>, B<-h>, B<--help>
 
 Print the toolchain version and the commit it was built from, or the usage.
 

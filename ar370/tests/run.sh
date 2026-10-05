@@ -78,5 +78,13 @@ grep -qE '^  SYM9 +sym9\.o$' "$W/t" && ! grep -q 'sym9.o/' "$W/t" && ok "t pairs
 "$AR" rc "$W/s.a" "$W/sym9.o"
 grep -q "//" "$W/s.a" && bad "a short-name archive carries a // member" || ok "no // member when no name needs it"
 
+# 8. #811: a trailing v names each member written, as GNU ar; the archive is
+#    the same as without it, and an unknown letter is still refused
+"$AR" rcv "$W/v.a" "$W/sym9.o" > "$W/v.out"
+"$AR" rc "$W/nv.a" "$W/sym9.o" > "$W/nv.out"
+grep -qx 'a - sym9.o' "$W/v.out" && [ ! -s "$W/nv.out" ] && cmp -s "$W/v.a" "$W/nv.a" \
+    && ok "rcv names each member; the archive is unchanged" || bad "rcv: $(cat "$W/v.out")"
+"$AR" rcx "$W/x.a" "$W/sym9.o" 2>/dev/null; [ $? = 2 ] && ok "rcx is still an unknown operation" || bad "rcx accepted"
+
 echo "ar370: $pass passed, $fail failed"
 [ $fail = 0 ]

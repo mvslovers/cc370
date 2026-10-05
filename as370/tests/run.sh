@@ -4962,5 +4962,19 @@ done
 [ $i204 = 0 ] && echo "ifo204: OK (AL1/AL2/YL1 relocatable -> IFO204, no RLD; AL3 and an absolute AL2 clean)"
 fail=$((fail + i204)); rm -f /tmp/_i204$$.s /tmp/_i204$$.obj /tmp/_i204$$.lst /tmp/_i204$$.out
 
+# --- #811: -v is verbose, -V the version ---------------------------------------
+# -v adds the macro path, each macro with where it came from, and the summary
+# line on a clean run, all on stderr; the deck does not move.
+printf 'T        CSECT\n         PDPPRLG CINDEX=0,FRAME=88,BASER=12,ENTRY=YES\n         PDPEPIL\n         END\n' > /tmp/_v811$$.s
+./as370 /tmp/_v811$$.s -o /tmp/_v811$$a.obj >/tmp/_v811$$a.err 2>&1; r0=$?
+./as370 -v /tmp/_v811$$.s -o /tmp/_v811$$b.obj >/tmp/_v811$$b.err 2>&1; r1=$?
+if [ $r0 = 0 ] && [ $r1 = 0 ] && [ ! -s /tmp/_v811$$a.err ] && cmp -s /tmp/_v811$$a.obj /tmp/_v811$$b.obj \
+   && grep -q '^as370: macro path 1: ' /tmp/_v811$$b.err && grep -qi '^as370: macro PDPPRLG from .*pdpprlg\.macro$' /tmp/_v811$$b.err \
+   && grep -q 'Assembler Done   0 Statements Flagged /   0 was Highest Severity' /tmp/_v811$$b.err \
+   && ! grep -q "$(./as370 -V)" /tmp/_v811$$b.err; then
+    echo "verbose: OK (-v: macro path, macro origins, clean summary; deck unchanged; silent without it)"
+else echo "verbose: FAIL (rc $r0/$r1)"; fail=1; fi
+rm -f /tmp/_v811$$.s /tmp/_v811$$a.obj /tmp/_v811$$b.obj /tmp/_v811$$a.err /tmp/_v811$$b.err
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
