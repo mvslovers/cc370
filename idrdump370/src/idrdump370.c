@@ -89,6 +89,90 @@ static void jstr(const char *s)
     putchar('"');
 }
 
+/* EBCDIC field -> printable ASCII, trailing blanks dropped. */
+static void efield(char *out, const unsigned char *p, int n)
+{
+    int j;
+    for (j = 0; j < n; j++) out[j] = mvs_e2a_pr(p[j]);
+    while (j > 0 && out[j - 1] == ' ') j--;
+    out[j] = 0;
+}
+
+/* X'02' linkage editor (internals/load-module-format.md 10.2): program id (10),
+ * version and modification (1 + 1), date packed yyddd (3); IEWL here and ld370
+ * append the time, packed 0hhmmss (4). */
+static void show_lked(const unsigned char *r, long rlen, long off, int last, int json, int *first)
+{
+    char prog[11], date[16], tm[16] = "";
+    if (rlen < 18) return;
+    efield(prog, r + 3, 10);
+    packed_date(date, r + 15);
+    if (rlen >= 22) sprintf(tm, "%02x%02x%02x", ((r[18] & 0x0f) << 4) | (r[19] >> 4),
+                            ((r[19] & 0x0f) << 4) | (r[20] >> 4), ((r[20] & 0x0f) << 4) | (r[21] >> 4));
+    if (json) {
+        printf("%s\n    {\"record\": %ld, \"subtype\": \"LKED\", \"last\": %s, \"bytes\": %ld, \"program\": ",
+               *first ? "" : ",", off, last ? "true" : "false", rlen);
+        jstr(prog);
+        printf(", \"version\": \"%02X\", \"modification\": \"%02X\", \"date\": ", r[13], r[14]);
+        jstr(date);
+        printf(", \"time\": ");
+        if (tm[0]) jstr(tm); else printf("null");
+        printf("}");
+        *first = 0;
+    } else {
+        printf("  @%06lX  LKED      %s V%02X M%02X  date=%s%s%s%s\n", off, prog, r[13], r[14], date,
+               tm[0] ? "  time=" : "", tm, last ? "  [LAST]" : "");
+    }
+}
+
+/* X'04' translator (HEWLFOUT TRNSREC): items packed back to back -- the
+ * CESDIDs the item applies to (2 each, the last with X'80' in its first
+ * byte), a flag (0 one translator, else two), then per translator its id and
+ * level (12: 10 + 2) and its date packed yyddd (3). */
+static void show_xlate(const unsigned char *r, long rlen, long off, int last, int json, int *first)
+{
+    long q = 3;
+    while (q + 2 <= rlen) {
+        int ids[64], nid = 0, k, ntr, t;
+        while (q + 2 <= rlen) {
+            int b0 = r[q], id = ((b0 & 0x7f) << 8) | r[q + 1];
+            q += 2;
+            if (nid < 64) ids[nid++] = id;
+            if (b0 & 0x80) break;
+        }
+        if (q + 1 > rlen) break;
+        ntr = r[q] ? 2 : 1;
+        q++;
+        if (q + 15L * ntr > rlen) break;                 /* framed short */
+        for (t = 0; t < ntr; t++, q += 15) {
+            char prog[11], date[16];
+            efield(prog, r + q, 10);
+            packed_date(date, r + q + 12);
+            if (json) {
+                printf("%s\n    {\"record\": %ld, \"subtype\": \"translator\", \"last\": %s, \"csects\": [",
+                       *first ? "" : ",", off, last ? "true" : "false");
+                for (k = 0; k < nid; k++) {
+                    const char *o = sect_name(ids[k]);
+                    if (k) printf(", ");
+                    if (o) jstr(o); else printf("%d", ids[k]);
+                }
+                printf("], \"program\": "); jstr(prog);
+                printf(", \"version\": \"%02X\", \"modification\": \"%02X\", \"date\": ", r[q + 10], r[q + 11]);
+                jstr(date); printf("}");
+                *first = 0;
+            } else {
+                printf("  @%06lX  translator %s V%02X M%02X  date=%s  csect=", off, prog, r[q + 10], r[q + 11], date);
+                for (k = 0; k < nid; k++) {
+                    const char *o = sect_name(ids[k]);
+                    if (k) putchar(',');
+                    if (o) printf("%s", o); else printf("%d", ids[k]);
+                }
+                printf("%s\n", last ? "  [LAST]" : "");
+            }
+        }
+    }
+}
+
 /* ---- one IDR record ---------------------------------------------------- */
 /* r points at the record; rlen is what the iterator framed for us. */
 static void show_idr(const unsigned char *r, long rlen, long off,
@@ -129,8 +213,16 @@ static void show_idr(const unsigned char *r, long rlen, long off,
                        chain ? "  [chain continues]" : "", last ? "  [LAST]" : "");
             }
         }
-        if (!json && n == 0)
-            printf("  @%06lX  HMASPZAP  no entries\n", off);
+        if (n == 0 && !only) {
+            /* an empty record is a record: --json lists it too, so `idr' and
+             * `records' count the same thing (#809) */
+            if (json) {
+                printf("%s\n    {\"record\": %ld, \"subtype\": \"HMASPZAP\", \"last\": %s, \"entries\": 0}",
+                       *first ? "" : ",", off, last ? "true" : "false");
+                *first = 0;
+            } else
+                printf("  @%06lX  HMASPZAP  no entries\n", off);
+        }
         return;
     }
 
@@ -180,7 +272,11 @@ static void show_idr(const unsigned char *r, long rlen, long off,
         return;
     }
 
-    if (only) return;          /* the remaining subtypes are not per-CSECT */
+    /* The linkage-editor and translator records describe the module: shown
+     * with --csect as well (#809). */
+    if (base == IDR_LKED)  { show_lked(r, rlen, off, last, json, first); return; }
+    if (base == IDR_XLATE) { show_xlate(r, rlen, off, last, json, first); return; }
+    if (only) return;          /* an unknown subtype is not per-CSECT */
 
     if (json) {
         printf("%s\n    {\"record\": %ld, \"subtype\": ", *first ? "" : ",", off);
@@ -211,7 +307,9 @@ static void usage(FILE *f)
       "usage: idrdump370 [--json] [--csect NAME] FILE\n"
       "\n"
       "  FILE           a bound load-module member\n"
-      "  --csect NAME   report only HMASPZAP entries naming this section\n"
+      "  --csect NAME   report only the HMASPZAP and IDENTIFY entries naming this\n"
+      "                 section; the linkage-editor and translator records are\n"
+      "                 always shown\n"
       "  --json         machine-readable output\n"
       "\n"
       "Walks the IDR chain (it ends on LASTIDR X'80', it is not a scan for\n"
@@ -220,7 +318,8 @@ static void usage(FILE *f)
       "offset, so a count of entries cannot say whether one CSECT was serviced\n"
       "and the decoded CESDID can.\n"
       "\n"
-      "Exit: 0 a chain was read, 1 no IDR record, 2 the invocation or the file\n");
+      "Exit: 0 a chain was read, 1 no IDR record, 2 the invocation, or a file\n"
+      "that is not a load module\n");
 }
 
 int main(int argc, char **argv)
@@ -250,6 +349,11 @@ int main(int argc, char **argv)
     }
     fclose(f);
 
+    /* Not a load module at all is a format error, not "no IDR records" (#809). */
+    if (!lmod_plausible(b, n)) {
+        fprintf(stderr, "idrdump370: %s is not a load module\n", path);
+        free(b); return 2;
+    }
     lmod_cesd_walk(b, n, cesd_cb, NULL);
 
     if (json) printf("{\n  \"file\": "), jstr(path), printf(",\n  \"idr\": [");

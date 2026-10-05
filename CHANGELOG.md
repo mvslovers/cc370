@@ -70,6 +70,15 @@ neither number is mistaken for the other.
   Same 8 bytes, `@@MAIN` still at offset 8.
 
 ### Fixed
+- **idrdump370 decodes the linkage-editor and translator records** (#809).
+  - LKED: program, version, modification, date and time (`5752SC104 V03 M08
+    date=26170 time=045427`), where it printed stray characters.
+  - Translator: each translator with its level, date and the sections it
+    applies to.
+  - `--json` lists an empty HMASPZAP record too, so `idr` and `records` agree.
+  - `--csect` filters the HMASPZAP and IDENTIFY entries only; the
+    linkage-editor and translator records are always shown.
+  - A file that is not a load module is a format error, rc 2.
 - **cmplmd370 pairs unnamed and empty sections** (#809).
   - Private code (an unnamed section) paired only when a single one was left
     over, so a module linked from several C objects compared with ITSELF was
