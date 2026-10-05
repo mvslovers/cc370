@@ -3005,7 +3005,8 @@ display_help (void)
   fputs (_("Options:\n"), stdout);
 
   fputs (_("  -pass-exit-codes         Exit with highest error code from a phase\n"), stdout);
-  fputs (_("  --help                   Display this information\n"), stdout);
+  fputs (_("  -h, --help               Display this information\n"), stdout);
+  fputs (_("  -V, --version            Display the version and the commit it was built from\n"), stdout);
   fputs (_("  --target-help            Display target specific command line options\n"), stdout);
   if (! verbose_flag)
     fputs (_("  (Use '-v --help' to display command line options of sub-processes)\n"), stdout);
@@ -3033,8 +3034,6 @@ display_help (void)
   fputs (_("  -specs=<file>            Override built-in specs with the contents of <file>\n"), stdout);
   fputs (_("  -std=<standard>          Assume that the input sources are for <standard>\n"), stdout);
   fputs (_("  -B <directory>           Add <directory> to the compiler's search paths\n"), stdout);
-  fputs (_("  -b <machine>             Run gcc for target <machine>, if installed\n"), stdout);
-  fputs (_("  -V <version>             Run gcc version number <version>, if installed\n"), stdout);
   fputs (_("  -v                       Display the programs invoked by the compiler\n"), stdout);
   fputs (_("  -###                     Like -v but options quoted and commands not executed\n"), stdout);
   fputs (_("  -E                       Preprocess only; do not compile, assemble or link\n"), stdout);
@@ -3140,60 +3139,10 @@ process_command (int argc, const char **argv)
 	}
     }
 
-  /* If there is a -V or -b option (or both), process it now, before
-     trying to interpret the rest of the command line.  */
-  if (argc > 1 && argv[1][0] == '-'
-      && (argv[1][1] == 'V' || argv[1][1] == 'b'))
-    {
-      const char *new_version = DEFAULT_TARGET_VERSION;
-      const char *new_machine = DEFAULT_TARGET_MACHINE;
-      const char *progname = argv[0];
-      char **new_argv;
-      char *new_argv0;
-      int baselen;
-
-      while (argc > 1 && argv[1][0] == '-'
-	     && (argv[1][1] == 'V' || argv[1][1] == 'b'))
-	{
-	  char opt = argv[1][1];
-	  const char *arg;
-	  if (argv[1][2] != '\0')
-	    {
-	      arg = argv[1] + 2;
-	      argc -= 1;
-	      argv += 1;
-	    }
-	  else if (argc > 2)
-	    {
-	      arg = argv[2];
-	      argc -= 2;
-	      argv += 2;
-	    }
-	  else
-	    fatal ("`-%c' option must have argument", opt);
-	  if (opt == 'V')
-	    new_version = arg;
-	  else
-	    new_machine = arg;
-	}
-
-      for (baselen = strlen (progname); baselen > 0; baselen--)
-	if (IS_DIR_SEPARATOR (progname[baselen-1]))
-	  break;
-      new_argv0 = xmemdup (progname, baselen,
-			   baselen + concat_length (new_version, new_machine,
-						    "-gcc-", NULL) + 1);
-      strcpy (new_argv0 + baselen, new_machine);
-      strcat (new_argv0, "-gcc-");
-      strcat (new_argv0, new_version);
-
-      new_argv = xmemdup (argv, (argc + 1) * sizeof (argv[0]),
-			  (argc + 1) * sizeof (argv[0]));
-      new_argv[0] = new_argv0;
-
-      execvp (new_argv0, new_argv);
-      fatal ("couldn't run `%s': %s", new_argv0, xstrerror (errno));
-    }
+  /* GCC's -V VERSION and -b MACHINE re-ran a driver named MACHINE-gcc-VERSION.
+     cc370 has one target and one version, so -bogus ran `ogus-gcc-1.2.0' (#833);
+     -V is the version here, as in every tool of the chain, and -b is refused
+     below (#811).  */
 
   /* Set up the default search paths.  If there is no GCC_EXEC_PREFIX,
      see if we can create it from the pathname specified in argv[0].  */
@@ -3343,6 +3292,26 @@ process_command (int argc, const char **argv)
 	}
     }
 
+  /* -V and -h are --version and --help, as in every tool of the chain (#811). */
+  {
+    int k;
+    for (k = 1; k < argc; k++)
+      if (! strcmp (argv[k], "-V") || ! strcmp (argv[k], "-h"))
+	{
+	  const char **nv = xmalloc ((argc + 1) * sizeof (const char *));
+	  int m;
+	  for (m = 0; m <= argc; m++)
+	    nv[m] = argv[m];
+	  for (m = k; m < argc; m++)
+	    if (! strcmp (nv[m], "-V"))
+	      nv[m] = "--version";
+	    else if (! strcmp (nv[m], "-h"))
+	      nv[m] = "--help";
+	  argv = (char **) nv;
+	  break;
+	}
+  }
+
   /* Convert new-style -- options to old-style.  */
   translate_options (&argc, (const char *const **) &argv);
 
@@ -3381,12 +3350,11 @@ process_command (int argc, const char **argv)
 	  /* cc370 driver identity: the toolchain version and commit every *370
 	     tool reports, and the GCC base it is built on, kept apart so that
 	     neither is mistaken for the other.  */
+	  /* The one line every *370 tool prints.  GCC's copyright and warranty
+	     lines are gone: GPLv2 2(c) asks that announcement of a program that
+	     reads commands interactively, which a compiler driver does not; the
+	     licence is in COPYING and the notices stay in the sources (#811).  */
 	  printf ("cc370 %s (%s), based on GCC 3.4.6\n", CC370_VERSION, CC370_COMMIT);
-	  printf ("Copyright %s 2006 Free Software Foundation, Inc.\n",
-		  _("(C)"));
-	  fputs (_("This is free software; see the source for copying conditions.  There is NO\n\
-warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"),
-		 stdout);
 	  exit (0);
 	}
       else if (strcmp (argv[i], "-fhelp") == 0)
@@ -3574,7 +3542,9 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
 	    {
 	    case 'b':
 	    case 'V':
-	      fatal ("`-%c' must come at the start of the command line", c);
+	      /* -V alone became --version above; -VVERSION and -bMACHINE chose
+		 another driver in GCC, and cc370 has only itself (#833).  */
+	      fatal ("`-%c' selects another compiler version or target in GCC; cc370 has one of each", c);
 	      break;
 
 	    case 'B':

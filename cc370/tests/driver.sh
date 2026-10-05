@@ -103,4 +103,22 @@ if "$CC" --help 2>&1 | grep -q 'github.com/mvslovers/cc370/issues' \
 else
     bad "help-url: $("$CC" --help 2>&1 | grep -i -A1 'bug' | tail -1)"
 fi
+# -V and -h as everywhere (#811); --version is one line, no GCC banner; -b and
+# -VVERSION are refused instead of running `ogus-gcc-...' (#833)
+v=$("$CC" --version 2>&1)
+if [ "$("$CC" -V 2>&1)" = "$v" ] && [ "$(printf '%s\n' "$v" | wc -l | tr -d ' ')" = 1 ] \
+   && printf '%s' "$v" | grep -q '^cc370 .* based on GCC 3\.4\.6$'; then
+    ok "version: -V = --version, one line"
+else
+    bad "version: $(printf '%s' "$v" | head -3)"
+fi
+"$CC" -h 2>&1 | grep -q '^Usage: cc370' && ok "-h shows the usage" || bad "-h: $("$CC" -h 2>&1 | head -1)"
+for a in -bogus -V3.4; do
+    "$CC" $a -c "$WORK/a.c" -o "$WORK/b.o" >"$WORK/d" 2>&1; rc=$?
+    if [ $rc -ne 0 ] && grep -q 'cc370 has one of each' "$WORK/d" && ! grep -q "couldn't run" "$WORK/d"; then
+        ok "$a refused, rc $rc"
+    else
+        bad "$a: rc $rc: $(head -1 "$WORK/d")"
+    fi
+done
 exit $fail
