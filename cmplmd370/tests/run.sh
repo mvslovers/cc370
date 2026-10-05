@@ -426,6 +426,51 @@ else
     echo "SKIP: 102-pair cases (no $FIX/dlib-102)"
 fi
 
+# --- #809: unnamed and empty sections, and refusing before any output ----
+# ld370 leaves private code unnamed, one PC per object, so a module compared
+# with ITSELF used to pair none of them.  An unnamed section pairs by its first
+# entry point; an empty one (cc370's zero-length PC) is not compared at all.
+cat > "$TMP/pa.s" <<'EOF'
+         CSECT
+         ENTRY ALPHA
+ALPHA    SR    15,15
+         BR    14
+         END
+EOF
+cat > "$TMP/pb.s" <<'EOF'
+         CSECT
+         ENTRY BETA
+BETA     LA    15,4
+         BR    14
+         END
+EOF
+./as370/as370 -o "$TMP/pa.o" "$TMP/pa.s" && ./as370/as370 -o "$TMP/pb.o" "$TMP/pb.s" \
+  && ./ld370/ld370 -o "$TMP/pab" --name PAB --entry ALPHA "$TMP/pa.o" "$TMP/pb.o" 2>/dev/null
+"$C" -v "$TMP/pab" "$TMP/pab" > "$TMP/self.out"; r=$?
+[ $r = 0 ] && grep -q '(ALPHA) *identical' "$TMP/self.out" && grep -q '(BETA) *identical' "$TMP/self.out" \
+    && pass "two unnamed PCs pair by entry point: a module is identical to itself" \
+    || fail "self-compare of an unnamed-PC module: rc $r: $(sed -n 2,3p "$TMP/self.out")"
+"$C" "$TMP/pb.o" "$TMP/pab" > "$TMP/pb.out"; r=$?
+[ $r = 0 ] && pass "a deck's unnamed PC pairs with the module's PC owning the same entry" \
+    || fail "deck BETA vs module: rc $r: $(cat "$TMP/pb.out")"
+# the control: a changed instruction in the same unnamed PC is still DIFFER
+sed 's/LA    15,4/LA    15,8/' "$TMP/pb.s" > "$TMP/pc.s"; ./as370/as370 -o "$TMP/pc.o" "$TMP/pc.s"
+"$C" "$TMP/pc.o" "$TMP/pab" >/dev/null; [ $? = 1 ] && pass "...and a changed byte in it is still a DIFFER" || fail "pairing by entry hid a difference"
+# an empty PC ahead of a named CSECT: not reported, not "not in the reference"
+printf 'R0       EQU   0\nSUMUP    CSECT\n         BR    14\n         END\n' > "$TMP/em.s"
+printf 'SUMUP    CSECT\n         BR    14\n         END\n' > "$TMP/em2.s"
+./as370/as370 -o "$TMP/em.o" "$TMP/em.s"; ./as370/as370 -o "$TMP/em2.o" "$TMP/em2.s"
+"$C" "$TMP/em.o" "$TMP/em2.o" > "$TMP/em.out"; r=$?
+[ $r = 0 ] && ! grep -q 'not in the reference' "$TMP/em.out" && pass "an empty PC is left out of the comparison" \
+    || fail "empty PC: rc $r: $(cat "$TMP/em.out")"
+# a refusal comes before any output
+"$C" "$TMP/pb.o" "$TMP/pab" --csect NOSUCH > "$TMP/ns.out" 2>"$TMP/ns.err"; r=$?
+[ $r = 2 ] && [ ! -s "$TMP/ns.out" ] && grep -q 'no section named NOSUCH' "$TMP/ns.err" \
+    && pass "--csect NOSUCH refuses with nothing on stdout" || fail "--csect NOSUCH: rc $r, stdout: $(head -2 "$TMP/ns.out")"
+"$C" --json "$TMP/pb.o" "$TMP/pab" --csect NOSUCH > "$TMP/nsj.out"; r=$?
+[ $r = 2 ] && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["exit"]==2 and d["sections"]==[] and d["error"] else 1)' "$TMP/nsj.out" \
+    && pass "--json refusal keeps the object's shape" || fail "--json refusal: $(head -3 "$TMP/nsj.out")"
+
 echo
 echo "$fails failure(s)"
 exit $fails

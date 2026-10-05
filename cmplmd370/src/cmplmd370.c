@@ -41,6 +41,8 @@ struct sect {
     unsigned char *made;        /* 1 where a TXT card actually put something   */
     unsigned char *ign;         /* 1 where --difin says to ignore              */
     int seg;                    /* overlay segment (CESDSEG); 0 when not overlaid */
+    char ent[9];                /* its first entry point (LD/LR), the key of an unnamed section */
+    long entaddr;
 };
 
 struct side {
@@ -49,7 +51,34 @@ struct side {
     int id2sect[65536];         /* ESDID -> index into s[]; -1 for none */
     int is_lmod;                /* this side came from a bound member */
     struct lmod_info info;      /* what the record walk could account for */
+    struct { char name[9]; int owner; long addr; } ents[512];   /* LD/LR, owner by ESDID */
+    int nents;
 };
+
+/* Remember an entry point; owners are resolved once every section is known,
+ * because an ENTRY can precede its CSECT in the ESD. */
+static void ent_note(struct side *sd, const unsigned char *nm8, int owner, long addr)
+{
+    if (sd->nents >= 512) return;
+    strncpy(sd->ents[sd->nents].name, mvs_nm(nm8), 8);
+    sd->ents[sd->nents].name[8] = 0;
+    sd->ents[sd->nents].owner = owner;
+    sd->ents[sd->nents].addr = addr;
+    sd->nents++;
+}
+/* Each section's first entry point (the lowest address it owns). */
+static void ent_resolve(struct side *sd)
+{
+    for (int k = 0; k < sd->nents; k++) {
+        int o = sd->ents[k].owner;
+        int si = (o > 0 && o < 65536) ? sd->id2sect[o] : -1;
+        if (si < 0) continue;
+        if (!sd->s[si].ent[0] || sd->ents[k].addr < sd->s[si].entaddr) {
+            strcpy(sd->s[si].ent, sd->ents[k].name);
+            sd->s[si].entaddr = sd->ents[k].addr;
+        }
+    }
+}
 
 static void die(const char *m, const char *a)
 {
@@ -114,6 +143,7 @@ static int mark_relo(const struct obj_rld *r, void *ctx)
 static int deck_esd(const struct obj_esd *e, void *ctx)
 {
     if (obj_is_section(e->type)) sect_add(ctx, e->name, e->addr, e->len, e->esdid, 0);
+    else if (e->type == OBJ_LD) ent_note(ctx, e->name, (int)e->len, e->addr);
     return 1;
 }
 
@@ -123,6 +153,7 @@ static void load_deck(struct side *sd, const unsigned char *b, long n)
     side_init(sd);
     for (off = 0; off + OBJ_CARD_LEN <= n; off += OBJ_CARD_LEN)
         if (obj_card_type(b + off) == OBJ_ESD) obj_esd_walk(b + off, deck_esd, sd);
+    ent_resolve(sd);
 
     for (off = 0; off + OBJ_CARD_LEN <= n; off += OBJ_CARD_LEN) {
         const unsigned char *c = b + off;
@@ -165,6 +196,8 @@ static int lmod_sect(const struct lmod_esd *e, void *ctx)
      * LMOD_ESD_FLAGS in obj370.h. */
     if (obj_is_section(e->type))
         sect_add(ctx, e->name, e->addr, e->len, e->esdid, e->seg);
+    else if (e->type == LMOD_LR)
+        ent_note(ctx, e->name, (int)e->len, e->addr);
     return 1;
 }
 
@@ -183,6 +216,7 @@ static void load_lmod(struct side *sd, const unsigned char *m, long n)
      * saying so is the difference between a verdict and a guess (#372). */
     lmod_scan(m, n, &sd->info);
     lmod_cesd_walk(m, n, lmod_sect, sd);
+    ent_resolve(sd);
     nseg = sd->info.nseg;                    /* 0 when the module is not overlaid */
     /* A storage-owning section with no segment number in a module that HAS
      * segments would never be sliced by the loop below, which walks segments
@@ -650,12 +684,14 @@ static void difout_carry(FILE *f)
 static void usage(FILE *f)
 {
     fprintf(f,
-      "usage: cmplmd370 [options] NEW.obj REFERENCE\n"
+      "usage: cmplmd370 [options] NEW REFERENCE\n"
       "\n"
-      "  NEW.obj     an object deck (as370 output)\n"
-      "  REFERENCE   a bound load-module member, or another object deck\n"
+      "  NEW         the module under test: an object deck or a load-module member\n"
+      "  REFERENCE   what it is compared with: a load-module member or an object deck\n"
       "\n"
-      "  --csect NAME   compare only this section (default: pair all by name)\n"
+      "  --csect NAME   compare only this section (default: pair all by name; an\n"
+      "                 unnamed section by its first entry point, reported as\n"
+      "                 (ENTRY), and an empty one not at all)\n"
       "  --clearrld     zero address constants before comparing (DEFAULT)\n"
       "  --no-clearrld  compare adcons too -- only meaningful deck against deck\n"
       "  --difin FILE   ignore the ranges this file lists ('>' + CSECT name,\n"
@@ -673,6 +709,36 @@ static void usage(FILE *f)
       "Exit 0 ONLY on identity; 1 on any difference; 2 on a usage or format error.\n"
       "A reference whose image is INCOMPLETE is refused rather than compared: the\n"
       "bytes that are there may well match, and that is not the same as a match.\n");
+}
+
+/* The JSON object's head, the same on a refusal as on a comparison. */
+static void print_json_head(const char *fa, const char *fb, int clearrld, const char *difin,
+                            const struct side *a, const struct side *b)
+{
+    printf("{\n  \"new\": \"%s\",\n  \"reference\": \"%s\",\n", fa, fb);
+    printf("  \"clearrld\": %s,\n", clearrld ? "true" : "false");
+    printf("  \"difin\": %s%s%s,\n", difin ? "\"" : "null", difin ? difin : "", difin ? "\"" : "");
+    if (a->is_lmod) report_reader(&a->info, 1, fa);
+    if (b->is_lmod) report_reader(&b->info, 1, fb);
+}
+
+/* The name a section is reported under: its own, else the paired section's,
+ * else its first entry point in parentheses (unnamed private code). */
+static const char *sect_label(const struct sect *a, const struct sect *b)
+{
+    static char buf[16];
+    if (a->name[0]) return a->name;
+    if (b && b->name[0]) return b->name;
+    if (a->ent[0]) { snprintf(buf, sizeof buf, "(%s)", a->ent); return buf; }
+    return "(private)";
+}
+/* Does --csect NAME name a non-empty section of the new side? */
+static int csect_named(const struct side *a, const struct side *b, const int *pair, const char *only)
+{
+    for (int i = 0; i < a->n; i++)
+        if (a->s[i].len && !strcmp(sect_label(&a->s[i], pair[i] >= 0 ? &b->s[pair[i]] : NULL), only))
+            return 1;
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -732,13 +798,75 @@ int main(int argc, char **argv)
     if (difin) difin_load(&A, difin);
     if (difoutp && !(difout = fopen(difoutp, "w"))) { perror(difoutp); return 2; }
 
+    /* ---- pair the sections ----
+     * By NAME, with exceptions the name rule cannot express.  An UNNAMED
+     * section is the private code as370 and cc370 write; the linkage editor
+     * may name it after the member, and ld370 leaves it blank -- one per C
+     * object -- so a module compared with itself paired none of them (#809).
+     * An unnamed section therefore pairs by its FIRST ENTRY POINT (ADDUP's PC
+     * in the deck owns the LD ADDUP, the module's the LR ADDUP), and only
+     * when that is absent with the one section left over on the other side --
+     * never with one of several: positional pairing beyond that would be the
+     * ESDID guess this tool exists not to make.  An EMPTY section (cc370's
+     * zero-length PC ahead of a named CSECT) holds nothing to compare and is
+     * left out on both sides. */
+    {
+        int k;
+        for (k = 0; k < B.n; k++) if (!B.s[k].len) bused[k] = 1;
+        for (i = 0; i < A.n; i++) {
+            pair[i] = -1;
+            if (!A.s[i].name[0] || !A.s[i].len) continue;
+            for (k = 0; k < B.n; k++)
+                if (!bused[k] && !strcmp(B.s[k].name, A.s[i].name)) {
+                    pair[i] = k; bused[k] = 1; break;
+                }
+        }
+        for (i = 0; i < A.n; i++) {
+            if (pair[i] >= 0 || A.s[i].name[0] || !A.s[i].len || !A.s[i].ent[0]) continue;
+            for (k = 0; k < B.n; k++)
+                if (!bused[k] && !strcmp(B.s[k].ent, A.s[i].ent)) { pair[i] = k; bused[k] = 1; break; }
+        }
+        for (i = 0; i < A.n; i++) {
+            int cand = -1, ncand = 0;
+            if (pair[i] >= 0 || A.s[i].name[0] || !A.s[i].len) continue;
+            for (k = 0; k < B.n; k++) if (!bused[k]) { cand = k; ncand++; }
+            if (ncand == 1) { pair[i] = cand; bused[cand] = 1; }
+        }
+    }
+
+    /* Refuse BEFORE anything is printed (#809): a verdict line followed by a
+     * refusal reads as a partial result. */
+    {
+        const char *early = NULL;
+        char ebuf[256];
+        if (((B.is_lmod && (B.info.anomalies & LMOD_IMAGE_INCOMPLETE))
+             || (A.is_lmod && (A.info.anomalies & LMOD_IMAGE_INCOMPLETE)))
+            && !allow_incomplete) {
+            char names[128];
+            anom_list(&B.info, names, sizeof names);
+            snprintf(ebuf, sizeof ebuf,
+                     "reference image incomplete (%s); --allow-incomplete to compare anyway", names);
+            early = ebuf;
+        } else if (only && !csect_named(&A, &B, pair, only)) {
+            snprintf(ebuf, sizeof ebuf, "no section named %s", only);
+            early = ebuf;
+        }
+        if (early) {
+            /* What the run could not judge is carried, not dropped: a
+             * --difout written here keeps every --difin range. */
+            if (difout) { difout_carry(difout); fclose(difout); }
+            if (json) {
+                print_json_head(fa, fb, clearrld, difin, &A, &B);
+                printf("  \"sections\": [],\n  \"error\": \"%s\",\n  \"identical\": false,\n"
+                       "  \"exit\": 2\n}\n", early);
+            } else
+                fprintf(stderr, "cmplmd370: %s\n", early);
+            return 2;
+        }
+    }
+
     if (json) {
-        printf("{\n  \"new\": \"%s\",\n  \"reference\": \"%s\",\n", fa, fb);
-        printf("  \"clearrld\": %s,\n", clearrld ? "true" : "false");
-        printf("  \"difin\": %s%s%s,\n", difin ? "\"" : "null",
-               difin ? difin : "", difin ? "\"" : "");
-        if (A.is_lmod) report_reader(&A.info, 1, fa);
-        if (B.is_lmod) report_reader(&B.info, 1, fb);
+        print_json_head(fa, fb, clearrld, difin, &A, &B);
         printf("  \"sections\": [");
     } else {
         printf("%s vs %s%s%s\n", fa, fb, clearrld ? "" : "  (adcons compared)",
@@ -747,44 +875,13 @@ int main(int argc, char **argv)
         if (B.is_lmod) report_reader(&B.info, 0, fb);
     }
 
-    /* ---- pair the sections ----
-     * By NAME, with one exception that the name rule cannot express: an
-     * UNNAMED section.  as370 and cc370 put code in a bare CSECT, which is an
-     * ESD type-04 private-code entry with a blank name, and the linkage editor
-     * names it after the member -- so the deck says "" and the bound module
-     * says IFCE0115, and pairing by name gives "not in the reference" for a
-     * section that is plainly there.  15 of TK5's 16 remaining unreadable
-     * CSECTs are exactly this.
-     *
-     * The exception is taken only where it is UNAMBIGUOUS: an unnamed section
-     * pairs with the one section left over on the other side, never with one
-     * of several.  Positional pairing beyond that would be the ESDID guess
-     * this tool exists not to make. */
-    {
-        int k;
-        for (i = 0; i < A.n; i++) {
-            pair[i] = -1;
-            if (!A.s[i].name[0]) continue;
-            for (k = 0; k < B.n; k++)
-                if (!bused[k] && !strcmp(B.s[k].name, A.s[i].name)) {
-                    pair[i] = k; bused[k] = 1; break;
-                }
-        }
-        for (i = 0; i < A.n; i++) {
-            int cand = -1, ncand = 0;
-            if (pair[i] >= 0 || A.s[i].name[0]) continue;
-            for (k = 0; k < B.n; k++) if (!bused[k]) { cand = k; ncand++; }
-            if (ncand == 1) { pair[i] = cand; bused[cand] = 1; }
-        }
-    }
-
     for (i = 0; i < A.n; i++) {
         struct sect *b2 = pair[i] >= 0 ? &B.s[pair[i]] : NULL;
         struct result r;
+        if (!A.s[i].len) continue;                   /* empty: nothing to compare */
         /* An unnamed section is reported under the name it was paired to, so a
          * caller can ask for it by the name the module uses. */
-        const char *label = A.s[i].name[0] ? A.s[i].name
-                          : (b2 && b2->name[0] ? b2->name : "(private)");
+        const char *label = sect_label(&A.s[i], b2);
         if (only && strcmp(label, only)) continue;
         if (!b2) {
             memset(&r, 0, sizeof r);

@@ -90,6 +90,25 @@ else
     echo "collide-ref2: FAIL (no warning for two colliding references)"; fail=1
 fi
 
+# (3d) #809: -mcsect writes the CSECT card ahead of COPY PDPTOP and resumes it
+# after, so PDPTOP's absolute EQUs open no empty private code (IFOX00 does the
+# same for them, MVSTK5-REF JOB00353).  Without -mcsect: unchanged.
+cat > "$WORK/mc.c" <<'EOF'
+int addup(int a, int b) { return a + b; }
+EOF
+$CC1 -quiet -mcsect=sumup "$WORK/mc.c" -o "$WORK/mc.s" 2>/dev/null
+if [ "$(head -3 "$WORK/mc.s" | awk '{print $1 $2}' | tr '\n' ' ')" = "SUMUPCSECT COPYPDPTOP SUMUPCSECT " ]; then
+    echo "mcsect-order: OK (CSECT, COPY PDPTOP, CSECT)"
+else
+    echo "mcsect-order: FAIL ($(head -3 "$WORK/mc.s" | tr '\n' '|'))"; fail=1
+fi
+$CC1 -quiet "$WORK/mc.c" -o "$WORK/nmc.s" 2>/dev/null
+if [ "$(head -2 "$WORK/nmc.s" | awk '{print $1 $2}' | tr '\n' ' ')" = "COPYPDPTOP CSECT " ]; then
+    echo "mcsect-none: OK (no -mcsect: COPY PDPTOP, blank CSECT)"
+else
+    echo "mcsect-none: FAIL ($(head -2 "$WORK/nmc.s" | tr '\n' '|'))"; fail=1
+fi
+
 # (4) the __asm__ workaround: two 8-char linkage names that differ are distinct
 # object-deck symbols -> must NOT warn (no false positive on the workaround).
 cat > "$WORK/asm.c" <<'EOF'

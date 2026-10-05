@@ -3335,8 +3335,22 @@ i370_file_start (void)
 #ifdef I370_IFOX_COLUMNS
   i370_ifox_begin ();
 #endif
-  fprintf (asm_out_file, "\tCOPY\tPDPTOP\n");
-  fprintf (asm_out_file, "%s\tCSECT\n", mvs_csect_name ? mvs_csect_name : "");
+  /* With -mcsect the CSECT card comes FIRST.  PDPTOP's absolute EQUs ahead of
+     it opened an empty private-code section -- IFOX00 does the same
+     (MVSTK5-REF JOB00353), so the source order is what has to change -- and
+     the CSECT is resumed after the COPY because PDPTOP ends in a DSECT
+     (#809).  Without -mcsect the code is the private code itself, as ever. */
+  if (mvs_csect_name)
+    {
+      fprintf (asm_out_file, "%s\tCSECT\n", mvs_csect_name);
+      fprintf (asm_out_file, "\tCOPY\tPDPTOP\n");
+      fprintf (asm_out_file, "%s\tCSECT\n", mvs_csect_name);
+    }
+  else
+    {
+      fprintf (asm_out_file, "\tCOPY\tPDPTOP\n");
+      fprintf (asm_out_file, "\tCSECT\n");
+    }
 }
 
 #else /* ! PDPMAC */
