@@ -126,7 +126,8 @@ fi
 # --- 6c. the negative half again, for X'08' ---------------------------------
 f=$(find_m IEFVFA)
 if [ -n "$f" ]; then
-    n=$("$I" --csect NOSUCHSECT "$f" 2>&1 | grep -c 'csect=')
+    # service entries only: the translator record is shown under --csect too (#809)
+    n=$("$I" --csect NOSUCHSECT "$f" 2>&1 | grep -E '(HMASPZAP|user) ' | grep -c 'csect=')
     if [ "$n" -ne 0 ]; then fail "--csect NOSUCHSECT reported $n entries"
     else pass "--csect naming no real section reports nothing (neither subtype)"
     fi
@@ -148,6 +149,28 @@ assert z and z[0]["cesdid"]==2 and z[0]["csect"]=="IEFVFA", z
         fail "--json: invalid or missing the decoded fields"
     fi
 fi
+
+# --- #809: the LKED and translator records decoded; empty SPZAP; --csect; format
+# An IEWL-linked member from ld370's fixtures: SPZAP (no entries), LKED
+# 5752SC104 V03 M08 26170 04:54:27, translator 5741SC103 V02 M01 26170 for E2E.
+E2E=ld370/tests/fixtures/e2e.iewl-member.bin
+out=$("$I" "$E2E")
+case "$out" in
+    *"LKED      5752SC104 V03 M08  date=26170  time=045427"*) pass "LKED record decoded (program, version, date, time)" ;;
+    *) fail "LKED not decoded: $out" ;;
+esac
+case "$out" in
+    *"translator 5741SC103 V02 M01  date=26170  csect=E2E"*) pass "translator record decoded and attributed" ;;
+    *) fail "translator not decoded: $out" ;;
+esac
+if "$I" --json "$E2E" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if len(d["idr"])==d["records"]==3 and d["idr"][0]["entries"]==0 else 1)'; then
+    pass "--json lists the empty SPZAP record, so idr and records agree"
+else fail "--json idr/records disagree"; fi
+"$I" --csect E2E "$E2E" | grep -q 'LKED' && pass "--csect keeps the linkage-editor record" || fail "--csect hid the LKED record"
+printf 'just text\n' > "/tmp/idr809.$$"
+"$I" "/tmp/idr809.$$" >/dev/null 2>"/tmp/idr809e.$$"; r=$?
+[ $r = 2 ] && grep -q 'not a load module' "/tmp/idr809e.$$" && pass "a text file is a format error, rc 2" || fail "text file: rc $r"
+rm -f "/tmp/idr809.$$" "/tmp/idr809e.$$"
 
 echo
 echo "$fail failure(s)"
