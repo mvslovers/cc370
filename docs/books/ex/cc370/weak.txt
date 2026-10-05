@@ -5,13 +5,13 @@ $ echo $?
 0
 $ grep -A4 UNRESOLVED opt.map
 UNRESOLVED
+TRACE@HO  WX
 @@STKLEN  WX
 CTHREAD   WX
-TRACE@HO  WX
 $ cc370 -o opt opt.o hook.o -Wl,--map,opt.map
 $ grep -B1 TRACE opt.map
-          PC    000340  000080  hook.o
-  TRACE@HO      00034C
+          PC    0000C8  000080  hook.o
+  TRACE@HO      0000D4
 $ cc370 -O1 -c wdef.c
 wdef.c: In function `trace_hook':
 wdef.c:4: warning: weak definition of 'trace_hook' is an ordinary definition on MVS; only a weak reference (WXTRN) exists [-Wweak-definition]

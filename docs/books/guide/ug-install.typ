@@ -116,7 +116,7 @@ need a tool, for example file370, on a workstation where you do not compile
 C.
 
 The version of the toolchain comes from the file #cmd("VERSION") of the
-source tree: the figures in this chapter show the release 1.3.1. A build
+source tree: the figures in this chapter show the release 1.4.0. A build
 between two releases carries a version such as #cmd("1.2.1-dev").
 
 == The Installed Tree <ug-install-tree>
@@ -137,7 +137,7 @@ directory, #cmd("cc370").
     bin/                    the tools: as370 ld370 ar370 file370 xmit370
                               dasm370 cmplmd370 idrdump370
     include/                the headers of libc370
-    lib/                    libc.a, libcc370rt.a, crt0.o crt1.o crtm.o
+    lib/                    libc.a, libcc370rt.a (and crt0.o crt1.o crtm.o)
     macros/                 the assembler macros
   libexec/cc370/version/
     cc1                     the compiler proper
@@ -152,11 +152,12 @@ directory, #cmd("cc370").
     real programs in #cmd("cc370/bin").],
   [#cmd("cc370/include")], [the headers of the C library. The compiler
     searches this directory without #cmd("-I").],
-  [#cmd("cc370/lib")], [the C library #cmd("libc.a") and the start-up
-    objects #cmd("crt0.o"), #cmd("crt1.o") and #cmd("crtm.o"), which come
-    from libc370, and the run-time support library #cmd("libcc370rt.a"),
-    which comes with cc370. Every link searches this directory without
-    #cmd("-L").],
+  [#cmd("cc370/lib")], [the C library #cmd("libc.a"), which comes from
+    libc370 and holds the start-up routine #cmd("@@CRT0") as well, and the
+    run-time support library #cmd("libcc370rt.a"), which comes with cc370.
+    libc370 2.3 also installs the start-up objects #cmd("crt0.o"),
+    #cmd("crt1.o") and #cmd("crtm.o")\; cc370 1.4 does not use them. Every
+    link searches this directory without #cmd("-L").],
   [#cmd("cc370/macros")], [the assembler macros: #cmd("PDPTOP"),
     #cmd("PDPPRLG") and #cmd("PDPEPIL"), which every module compiled by
     cc370 uses and which come with cc370, and the macros of libc370 and the
@@ -187,8 +188,12 @@ searched after those of #cmd("cc370").
 cc370 and libc370 are released separately, and each states the versions of
 the other it works with. libc370 2.1 needs cc370 1.1.0 or later, below 2.0,
 and every header of libc370 checks it: compiled with an older cc370, it
-stops with the error #cmd("libc370 needs cc370 1.1.0 or later"). cc370 from
-1.1.0 on needs libc370 2.1.0 or later. The installation script and the
+stops with the error #cmd("libc370 needs cc370 1.1.0 or later"). cc370 1.4
+needs libc370 2.3.0 or later: since that release the start-up routine
+#cmd("@@CRT0") is a member of #cmd("libc.a"), and cc370 1.4 no longer links
+a start-up object of its own, so with an older libc370 a program with a
+#cmd("main") does not link. cc370 1.1 to 1.3 need libc370 2.1.0 or later.
+The packages of cc370 1.4 require libc370 2.3.0. The installation script and the
 packages choose matching versions for you\; when you build from source, build
 both from their current sources.
 

@@ -331,8 +331,8 @@ SUMUP is built from three sources:
 
 + Assemble #cmd("addup.asm") and #cmd("report.asm") with as370.
 + Compile #cmd("sumup.c") into an object module with #cmd("cc370 -c").
-+ Link the three object modules with cc370, which adds the C start-up and
-  the C library.
++ Link the three object modules with cc370, which links the C library, and
+  with it the C start-up.
 
 @ug-asm-sumup-session shows the commands. #cmd("-flinker-output=xmit")
 writes #cmd("sumup.xmit") beside the load module, ready to be sent to MVS.

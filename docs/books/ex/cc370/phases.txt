@@ -1,8 +1,8 @@
 $ cc370 -### -O1 -o upcase upcase.c
- $PREFIX/libexec/cc370/1.3.1/cc1 -quiet -iprefix $PREFIX/lib/cc370/1.3.1/ \
+ $PREFIX/libexec/cc370/1.4.0/cc1 -quiet -iprefix $PREFIX/lib/cc370/1.4.0/ \
      -trigraphs upcase.c -quiet -dumpbase upcase.c -auxbase upcase -O1 \
      -o $TMP/cc1.s
- $PREFIX/libexec/cc370/1.3.1/as -o $TMP/cc2.o $TMP/cc1.s
- $PREFIX/libexec/cc370/1.3.1/ld --entry @@CRT0 -o upcase \
-     $PREFIX/cc370/lib/crt0.o -L$PREFIX/lib/cc370/1.3.1 -L$PREFIX/lib \
-     -L$PREFIX/cc370/lib $TMP/cc2.o -lcc370rt -lc -lcc370rt
+ $PREFIX/libexec/cc370/1.4.0/as -o $TMP/cc2.o $TMP/cc1.s
+ $PREFIX/libexec/cc370/1.4.0/ld --entry @@CRT0 -o upcase \
+     -L$PREFIX/lib/cc370/1.4.0 -L$PREFIX/lib -L$PREFIX/cc370/lib \
+     $TMP/cc2.o -lcc370rt -lc -lcc370rt

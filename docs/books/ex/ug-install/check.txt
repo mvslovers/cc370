@@ -1,13 +1,11 @@
 $ cc370 --version
-cc370 1.3.1 (2c1485e), based on GCC 3.4.6
+cc370 1.4.0 (2821ebb), based on GCC 3.4.6
 $ cc370 -dumpmachine
 cc370
 $ cc370 -print-file-name=libc.a
-$PREFIX/bin/../lib/cc370/1.3.1/../../../cc370/lib/libc.a
-$ cc370 -print-file-name=crt0.o
-$PREFIX/bin/../lib/cc370/1.3.1/../../../cc370/lib/crt0.o
+$PREFIX/bin/../lib/cc370/1.4.0/../../../cc370/lib/libc.a
 $ as370 --version
-as370 1.3.1 (2c1485e)
+as370 1.4.0 (2821ebb)
 $ cc370 -O1 -o hello -flinker-output=xmit hello.c
 $ echo $?
 0

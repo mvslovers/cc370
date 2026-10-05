@@ -163,7 +163,7 @@ return code 2.
   [#cmd("-h"), #cmd("--help")], [writes a summary of the options to
     standard output and ends with return code 0.],
   [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the commit from
-    which ld370 was built, for example #cmd("ld370 1.3.1 (2c1485e)"), and
+    which ld370 was built, for example #cmd("ld370 1.4.0 (2821ebb)"), and
     ends.],
 )
 
@@ -274,7 +274,11 @@ The entry point is taken, in this order of priority:
 A C program enters at #cmd("@@CRT0"), the start-up routine of the C library,
 not at the #cmd("@@MAIN") stub that the compiler names on the END record.
 The cc370 driver passes #cmd("--entry @@CRT0") when it links\; when you link
-a C program yourself, pass it too.
+a C program yourself, pass it too. With libc370 2.3.0 or later,
+#cmd("@@CRT0") is a member of #cmd("libc.a") and comes into the module by
+automatic library call, after the object modules named on the command line.
+It is then not at offset 0\; the directory entry records where it is, and
+the first line of the load map shows it.
 
 == Module Attributes <ld370-attr>
 
@@ -531,7 +535,7 @@ Every member written by ld370 carries two identification records:
   AMASPZAP notes the changes it makes to the module on MVS\;
 - a linkage editor record of 22 bytes, which names #cmd("LD370") as the
   program, with the version and release of the toolchain as version and
-  modification level (01 and 03 for cc370 1.3), and holds the date and time
+  modification level (01 and 04 for cc370 1.4), and holds the date and time
   of the link.
 
 The translator records that IEWL copies from the END records of the object

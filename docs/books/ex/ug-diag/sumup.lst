@@ -1,5 +1,5 @@
                                                EXTERNAL SYMBOL DICTIONARY                                      PAGE    1
-SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                         ASM370 0100 13.32 10/05/26
+SYMBOL   TYPE  ID   ADDR  LENGTH LDID                                                         ASM370 0100 14.03 10/05/26
           PC  0001 000000 0000F8
 @@CRT0    ER  0002
 @@MAIN    LD       000008        0001
@@ -8,13 +8,13 @@ ATOI      ER  0003
 ADDUP     ER  0004
 REPORT    ER  0005
                                                                                                                PAGE    2
-  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                    ASM370 0100 13.32 10/05/26
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                    ASM370 0100 14.03 10/05/26
                                       1          PRINT OFF
                                      90          PRINT ON
 000000                               91          CSECT
                                      92 * Program text area
 000000                               93          DS    0F
-000000 C3C3F3F7F0010301              94          DC    C'CC370',AL1(1,3,1)
+000000 C3C3F3F7F0010400              94          DC    C'CC370',AL1(1,4,0)
                                      95          EXTRN @@CRT0
                                      96          ENTRY @@MAIN
 000008                               97 @@MAIN   DS    0H
@@ -65,7 +65,7 @@ REPORT    ER  0005
                             00060   141 @@L5     EQU   *
 000060 1835                         142          LR    3,5
                                                                                                                PAGE    3
-  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                    ASM370 0100 13.32 10/05/26
+  LOC  OBJECT CODE    ADDR1 ADDR2  STMT   SOURCE STATEMENT                                    ASM370 0100 14.03 10/05/26
 000062 8930 0002      00002         143          SLL   3,2
 000066 1824                         144          LR    2,4
 000068 8920 0002      00002         145          SLL   2,2
@@ -121,7 +121,7 @@ REPORT    ER  0005
 0000F4 00000042                     195          DC    A(@@PG0)
 000008                              196          END   @@MAIN
                                                   RELOCATION DICTIONARY                                        PAGE    4
-POS.ID   REL.ID   FLAGS   ADDRESS                                                             ASM370 0100 13.32 10/05/26
+POS.ID   REL.ID   FLAGS   ADDRESS                                                             ASM370 0100 14.03 10/05/26
  0001     0001      0C     0000E0
  0001     0001      0C     0000F4
  0001     0002      1C     000010
@@ -129,7 +129,7 @@ POS.ID   REL.ID   FLAGS   ADDRESS                                               
  0001     0004      1C     0000EC
  0001     0005      1C     0000F0
                                                   CROSS-REFERENCE                                              PAGE    5
-SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                    ASM370 0100 13.32 10/05/26
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                    ASM370 0100 14.03 10/05/26
 @@CRT0   00001 00000000 00095
 @@FEN0   00001 00000040 00125  00123
 @@L3     00001 0000009A 00159  00140 00155
@@ -176,7 +176,7 @@ R7       00001 00000007 00058
 R8       00001 00000008 00059
 R9       00001 00000009 00060
                                                   LITERAL CROSS-REFERENCE                                      PAGE    6
-SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                    ASM370 0100 13.32 10/05/26
+SYMBOL    LEN   VALUE   DEFN    REFERENCES                                                    ASM370 0100 14.03 10/05/26
 =V(@@CRT0)
          00004 00000010 00104  00100
 =A(@@PGT0)

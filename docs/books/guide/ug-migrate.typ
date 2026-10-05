@@ -80,7 +80,7 @@ Reference_, Chapter 3, “The ld370 Command”.
   #cmd("#pragma map") has no effect (the compiler warns)\; use an #cmd("asm") label
   (@ug-asm-asmfromc).
 - The macro #cmd("__CC370__") gives the version of the compiler as a number,
-  for example #cmd("10301") for 1.3.1. Use it to keep a source that must
+  for example #cmd("10400") for 1.4.0. Use it to keep a source that must
   also compile with another compiler:
   ```
   #ifdef __CC370__
@@ -159,7 +159,17 @@ moved there from the C library.
   directly adds #cmd("-lcc370rt") ahead of #cmd("-lc").
 - *Matching C library.* cc370 1.1 and later need libc370 2.1 or later, and
   the libc370 headers stop the compile with #cmd("#error") when the compiler
-  is older than they require. Update both together.
+  is older than they require. cc370 1.4 needs libc370 2.3 or later.
+  Update both together.
+- *No start-up object.* Up to cc370 1.3, every link began with the start-up
+  object #cmd("crt0.o"), so #cmd("@@CRT0") was at offset 0 of every C
+  program. Since 1.4 the driver links no start-up object: #cmd("@@CRT0") is
+  taken from #cmd("libc.a") by automatic library call and lies after the
+  object modules of the program, and the directory entry points to it
+  (@ug-link-map). Anything that assumed the entry point at offset 0, such
+  as a calculation of offsets from an abend (@ug-diag-abend), must take the
+  offset from the load map. A build that runs ld370 itself no longer needs
+  to name #cmd("crt0.o")\; #cmd("-nostartfiles") has no effect any more.
 
 == Notes for GCCMVS Users <ug-migrate-gccmvs>
 

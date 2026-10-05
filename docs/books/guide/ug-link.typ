@@ -45,11 +45,11 @@ one you keep when modules are to be packed into one library later, as
 #idx("@@CRT0")
 When cc370 links, it runs ld370 with everything a C program needs:
 
-- the start-up object #cmd("crt0.o") in front of your object modules\;
 - the entry point #cmd("@@CRT0"), the C start-up, which builds the run time
   and then calls #cmd("main")\;
 - the libraries #cmd("-lcc370rt -lc -lcc370rt") after your object modules:
-  the run-time support routines of the compiler and the C library.
+  the run-time support routines of the compiler and the C library, from
+  which automatic library call also takes #cmd("@@CRT0").
 
 So the command in @ug-asm-sumup-session,
 
@@ -64,7 +64,7 @@ is all a C program needs. To pass an option to ld370, write it after
 You can also run ld370 yourself, for example from a build system that calls
 each tool directly. Then you name what cc370 would add. @ug-link-manual
 links SUMUP that way. #cmd("cc370 -print-file-name=libc.a") gives the
-directory of the C library, which also holds #cmd("crt0.o").
+directory of the C library.
 
 #fig(caption: [Linking SUMUP with ld370 directly])[
   #screen(raw(read("../ex/ug-link/manual.txt")))
@@ -145,7 +145,7 @@ prefix.
 
 #fig(caption: [The load map of SUMUP (excerpts)])[
   #let m = read("../ex/ug-link/sumup.map").split("\n")
-  #screen(raw((m.slice(0, 12) + ("...",)
+  #screen(raw((m.slice(0, 8) + ("...",)
     + m.filter(l => l.contains("libsum.a")) + ("...",)
     + m.slice(m.len() - 4)).join("\n")))
 ] <ug-link-map>
@@ -155,6 +155,14 @@ module, and where it came from. C code, your own and that of the C library,
 is compiled into unnamed sections, type #cmd("PC"), so their lines have no
 name\; the entry points of a section follow it, indented. The first line gives the member name, the
 entry point and the length of the module.
+
+#idx("@@CRT0", "in the load map")
+#cmd("sumup.o"), the first object module of the link, begins at offset 0.
+The C start-up #cmd("@@CRT0") follows it, at #cmd("X'F8'"): ld370 took it
+from #cmd("libc.a") by automatic library call, like any other routine.
+The entry point of the module is therefore not its first byte\; the
+directory entry of the member records where it is, and MVS gives control
+there.
 
 #idx("weak external reference")
 The two names under #cmd("UNRESOLVED") are not an error. Type #cmd("WX")

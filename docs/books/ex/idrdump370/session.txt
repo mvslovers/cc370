@@ -3,14 +3,14 @@ $ LDDATE=26277 LDTIME=120000 ld370 -o count.lm --name COUNT count.o
 $ idrdump370 count.lm; echo $?
 count.lm: 1 section(s)
   @000018  HMASPZAP  no entries
-  @000113  LKED      LD370 V01 M03  date=26277  time=120000  [LAST]
+  @000113  LKED      LD370 V01 M04  date=26277  time=120000  [LAST]
 0
 $ idrdump370 --json count.lm
 {
   "file": "count.lm",
   "idr": [
     {"record": 24, "subtype": "HMASPZAP", "last": false, "entries": 0},
-    {"record": 275, "subtype": "LKED", "last": true, "bytes": 22, "program": "LD370", "version": "01", "modification": "03", "date": "26277", "time": "120000"}
+    {"record": 275, "subtype": "LKED", "last": true, "bytes": 22, "program": "LD370", "version": "01", "modification": "04", "date": "26277", "time": "120000"}
   ],
   "records": 2,
   "malformed": false

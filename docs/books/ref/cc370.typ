@@ -135,12 +135,11 @@ them.
     #cmd("lib")#var("library")#cmd(".a").],
   [#cmd("-e") #var("entry")], [names the entry point of the load module\;
     see @cc370-startup.],
-  [#cmd("-nostartfiles")], [does not link the start-up object
-    #cmd("crt0.o")\; see @cc370-startup.],
-  [#cmd("-nodefaultlibs")], [does not link the C library and the run-time
-    support library.],
-  [#cmd("-nostdlib")], [does neither: no start-up object, no default
-    libraries.],
+  [#cmd("-nostartfiles")], [is accepted and has no effect: the driver links
+    no start-up object\; see @cc370-startup.],
+  [#cmd("-nodefaultlibs"), #cmd("-nostdlib")], [do not link the C library
+    and the run-time support library, and so not the C start-up
+    either.],
   [#cmd("-Wa,")#var("options")], [passes options to as370\; see
     @cc370-passthru.],
   [#cmd("-Xassembler") #var("argument")], [passes one argument to as370.],
@@ -160,8 +159,8 @@ them.
   [#cmd("-pass-exit-codes")], [ends with the return code of the phase that
     failed instead of 1\; see @cc370-rc.],
   [#cmd("-print-file-name=")#var("file")], [displays the full name of a
-    file of the C library, for example #cmd("crt1.o") or
-    #cmd("libc.a").],
+    file of the C library, for example #cmd("libc.a") or
+    #cmd("crtm.o").],
   [#cmd("-print-libgcc-file-name")], [displays the full name of
     #cmd("libcc370rt.a"), the run-time support library (@cc370-sysroot).],
   [#cmd("-print-search-dirs")], [displays the program and library search
@@ -170,7 +169,7 @@ them.
     #cmd("cc1"), #cmd("as") or #cmd("ld").],
   [#cmd("-dumpmachine")], [displays the target name, #cmd("cc370").],
   [#cmd("-dumpversion")], [displays the toolchain version, for example
-    #cmd("1.3.1").],
+    #cmd("1.4.0").],
   [#cmd("-dumpspecs")], [displays the rules by which the driver builds the
     commands of the phases.],
   [#cmd("-h"), #cmd("--help")], [display a summary of the driver options
@@ -180,7 +179,7 @@ them.
     linked, even when files are named.],
   [#cmd("-V"), #cmd("--version")], [display the version, the commit the
     driver was built from and the GCC version it is based on, on one line,
-    for example #cmd("cc370 1.3.1 (2c1485e), based on GCC 3.4.6"), and end
+    for example #cmd("cc370 1.4.0 (2821ebb), based on GCC 3.4.6"), and end
     with return code 0. Nothing is compiled or linked.],
   [#cmd("-b") #var("machine")], [is refused with return code 1. In GCC it
     selects another target\; cc370 has only one. #cmd("-V") followed
@@ -281,9 +280,11 @@ of its own, #cmd("cc370/") under the installation prefix:
   [#cmd("cc370/include")], [the C library headers. The compiler searches
     this directory without #cmd("-I")\; a directory given with #cmd("-I") is
     searched first.],
-  [#cmd("cc370/lib")], [#cmd("libc.a"), the C library\;
-    #cmd("libcc370rt.a"), the run-time support library\; and the start-up
-    objects #cmd("crt0.o"), #cmd("crt1.o") and #cmd("crtm.o").],
+  [#cmd("cc370/lib")], [#cmd("libc.a"), the C library, which also holds the
+    start-up routine #cmd("@@CRT0")\; and #cmd("libcc370rt.a"), the run-time
+    support library. libc370 2.3.1 also installs the start-up objects
+    #cmd("crt0.o"), #cmd("crt1.o") and #cmd("crtm.o"), which the driver does
+    not use.],
   [#cmd("cc370/macros")], [the assembler macros, among them #cmd("PDPTOP"),
     #cmd("PDPPRLG") and #cmd("PDPEPIL")\; see @as370-maclib.],
 )
@@ -302,15 +303,30 @@ multiplication, division and remainder, conversions between
 with #cmd("@@"), for example #cmd("@@DIVDI3"). ld370 takes from the
 libraries only the members the program needs.
 
+#idx("libc370", "version required")
+cc370 1.4 needs libc370 2.3.0 or later. Since that release the start-up
+routine is a member of #cmd("libc.a")\; an older #cmd("libc.a") has none,
+and a program with a #cmd("main") does not link. The cc370 packages
+require libc370 2.3.0 for this reason.
+
 === Entry Point and Start-Up <cc370-startup>
 
 #idx("entry point")#idx("@@CRT0")#idx("@@START")
-Every link begins with the start-up object #cmd("crt0.o") and makes
-#cmd("@@CRT0"), defined in it, the entry point of the load module: the
-driver passes #cmd("--entry @@CRT0") to ld370 (@cc370-phases-fig). MVS
+The driver links no start-up object of its own. It passes
+#cmd("--entry @@CRT0") to ld370 (@cc370-phases-fig), and a source that
+defines #cmd("main") refers to #cmd("@@CRT0"), so automatic library call
+takes the start-up routine from #cmd("libc.a") like any other routine. MVS
 gives control to #cmd("@@CRT0"), which calls #cmd("@@START"), the C start-up
 routine of the library, which calls #cmd("MAIN"), the C function
 #cmd("main").
+
+#idx("entry point", "offset in the module")
+The object modules named on the command line come first in the load module,
+and #cmd("@@CRT0") lies wherever the library search puts it, not at offset
+0. The directory entry of the member points to it, and the first line of the
+load map names it with its offset: the map of UPCASE begins
+#cmd("ENTRY @@CRT0 0001F8"), because the code of #cmd("upcase.c"), at offset
+0, is #cmd("X'1F8'") bytes long.
 
 A source that defines #cmd("main") also defines #cmd("@@MAIN") and names
 it on its #cmd("END") statement. The entry point of the load module is set
@@ -320,24 +336,28 @@ it then leads to #cmd("@@CRT0") as well.
 
 The start-up can be changed in two ways:
 
-- To use another start-up object of the library, leave out #cmd("crt0.o")
-  with #cmd("-nostartfiles") and name the one you want. All three start-up
-  objects define #cmd("@@CRT0"). For example:
+- To use one of the start-up objects that libc370 installs instead of the
+  member of #cmd("libc.a"), name it on the command line. It defines
+  #cmd("@@CRT0"), so the library member is not taken. For example:
   ```
-  cc370 -nostartfiles -o prog prog.c $(cc370 -print-file-name=crtm.o)
+  cc370 -o prog prog.c $(cc370 -print-file-name=crtm.o)
   ```
   What the start-up objects do differently is described with the C library,
   in the _libc370 Programmer's Guide_.
 - To link a module that does not use the C start-up at all, give
-  #cmd("-nostartfiles") and #cmd("-e") #var("entry"). ld370 uses the last
-  entry it is given, which is #var("entry"). A name in lower case is
-  accepted: #cmd("-e myentry") finds the entry #cmd("MYENTRY").
-  #cmd("-nostdlib") leaves out the libraries as well.
+  #cmd("-e") #var("entry"). ld370 uses the last entry it is given, which is
+  #var("entry"). A name in lower case is accepted: #cmd("-e myentry") finds
+  the entry #cmd("MYENTRY"). Without #cmd("-e"), the driver's
+  #cmd("--entry @@CRT0") brings in the C start-up even for a source without
+  #cmd("main"), and the link fails on the unresolved reference to
+  #cmd("MAIN").
 
-#cmd("-nostartfiles") without another start-up object and without
-#cmd("-e") fails. ld370 reports
-#cmd("--entry symbol '@@CRT0' not found or unresolved") or, for a program with a #cmd("main"), the reference to
-#cmd("@@CRT0") as an unresolved external reference.
+#idx("-nostartfiles")#idx("-nostdlib")#idx("-nodefaultlibs")
+#cmd("-nostartfiles") has no effect: there is no start-up object to leave
+out, and the module is the same as without it. #cmd("-nodefaultlibs") and
+#cmd("-nostdlib") leave out the libraries, and with them #cmd("@@CRT0")\;
+use them only for a module that has its own entry point and calls nothing
+in the libraries, together with #cmd("-e").
 
 == Language Dialect and Predefined Macros <cc370-dialect>
 
@@ -361,14 +381,14 @@ escape the second question mark: #cmd("\"what?\\?!\"").#idx("trigraphs", "escapi
 Besides the macros of GCC 3.4.6, cc370 defines the macros in
 @cc370-macro-tab. #cmd("cc370 -dM -E - </dev/null") lists all of them.
 
-#tab(caption: [Macros predefined by cc370 1.3.1])[
+#tab(caption: [Macros predefined by cc370 1.4.0])[
   #table(columns: (1.6in, 0.7in, 1fr),
     [Macro], [Value], [Meaning],
-    [#cmd("__CC370__")], [#cmd("10301")], [the toolchain version: major
+    [#cmd("__CC370__")], [#cmd("10400")], [the toolchain version: major
       × 10000 + minor × 100 + patch],
     [#cmd("__CC370_MAJOR__")], [#cmd("1")], [major version],
-    [#cmd("__CC370_MINOR__")], [#cmd("3")], [minor version],
-    [#cmd("__CC370_PATCH__")], [#cmd("1")], [patch level],
+    [#cmd("__CC370_MINOR__")], [#cmd("4")], [minor version],
+    [#cmd("__CC370_PATCH__")], [#cmd("0")], [patch level],
     [#cmd("__CC370_WEAK__")], [#cmd("1")], [weak references are supported\;
       see @cc370-weak],
     [#cmd("__MVS__")], [#cmd("1")], [the target is MVS],

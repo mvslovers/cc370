@@ -10,8 +10,8 @@
   edition: [
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
-    This edition applies to Version 1 Release 3 Modification 1 of the cc370
-    cross-toolchain (cc370 1.3.1) and to all subsequent releases and
+    This edition applies to Version 1 Release 4 of the cc370
+    cross-toolchain (cc370 1.4.0) and to all subsequent releases and
     modifications until otherwise indicated in new editions.
 
     Comments on this book may be addressed to the issue tracker of

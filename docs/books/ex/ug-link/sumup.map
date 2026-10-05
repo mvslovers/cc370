@@ -1,153 +1,153 @@
-LD370 MAP  SUMUP  ENTRY @@CRT0 000000  LENGTH 0115C8
+LD370 MAP  SUMUP  ENTRY @@CRT0 0000F8  LENGTH 0115C8
 
 SECTION   TYPE  ORIGIN  LENGTH  SOURCE
-          PC    000000  000278  $LIB/crt0.o
-  @@CRT0        000000
-          PC    000278  0000F8  sumup.o
-  @@MAIN        000280
-  MAIN          00028C
-          PC    000370  0001EC  $LIB/libc.a(@@crtset.o) autocall
-  @@CRTSET      00037C
-          PC    000560  0000E8  $LIB/libc.a(@@grtset.o) autocall
-  @@GRTSET      00056C
-          PC    000648  0001B0  $LIB/libc.a(@@crtget.o) autocall
-  @@CRTGET      000688
-          PC    0007F8  0007E4  $LIB/libc.a(@@start.o) autocall
-  @@START       0009C8
-          PC    000FE0  000398  $LIB/libc.a(@@exit.o) autocall
-  @@EXIT        000FE0
-          PC    001378  00007C  $LIB/libc.a(atoi.o) autocall
-  ATOI          001378
-ADDUP     SD    0013F8  000028  ./libsum.a(addup.o) autocall
-REPORT    SD    001420  000060  ./libsum.a(report.o) autocall
-          PC    001480  0000B8  $LIB/libc.a(@@ppaget.o) autocall
-  @@PPAGET      001480
-          PC    001538  0000C4  $LIB/libc.a(@@lk.o) autocall
-  @@LK          00154C
-          PC    001600  00010C  $LIB/libc.a(calloc.o) autocall
-  CALLOC        001600
-          PC    001710  0000B0  $LIB/libc.a(@@arcou.o) autocall
-  @@ARCOU       001718
-          PC    0017C0  0001D0  $LIB/libc.a(@@aradd.o) autocall
-  @@ARADD       0017C8
-          PC    001990  0000C0  $LIB/libc.a(@@lkunlk.o) autocall
-  @@LKUNLK      0019A4
-          PC    001A50  00006C  $LIB/libc.a(wtof.o) autocall
-  WTOF          001A50
-          PC    001AC0  00009C  $LIB/libc.a(wtodumpf.o) autocall
-  WTODUMPF      001AC0
-          PC    001B60  000084  $LIB/libc.a(@@errno.o) autocall
-  @@ERRNO       001B64
-          PC    001BE8  000074  $LIB/libc.a(@@grtget.o) autocall
-  @@GRTGET      001BE8
-          PC    001C60  00089C  $LIB/libc.a(fopen.o) autocall
-  FOPEN         001C68
-          PC    002500  000078  $LIB/libc.a(@@gtout.o) autocall
-  @@GTOUT       002500
-          PC    002578  000064  $LIB/libc.a(@@exita.o) autocall
-  @@EXITA       002578
-          PC    0025E0  000078  $LIB/libc.a(@@gterr.o) autocall
-  @@GTERR       0025E0
-          PC    002658  000080  $LIB/libc.a(printf.o) autocall
-  PRINTF        002658
-          PC    0026D8  000158  $LIB/libc.a(fclose.o) autocall
-  FCLOSE        0026E0
-          PC    002830  000078  $LIB/libc.a(@@gtin.o) autocall
-  @@GTIN        002830
-          PC    0028A8  0000B8  $LIB/libc.a(fprintf.o) autocall
-  FPRINTF       0028A8
-          PC    002960  000288  $LIB/libc.a(loadenv.o) autocall
-  LOADENV       002964
-          PC    002BE8  00033C  $LIB/libc.a(tzset.o) autocall
-  TZSET         002C88
-          PC    002F28  000090  $LIB/libc.a(strchr.o) autocall
-  STRCHR        002F28
-          PC    002FB8  0000D0  $LIB/libc.a(@@arfre.o) autocall
-  @@ARFRE       002FC0
-          PC    003088  000074  $LIB/libc.a(free.o) autocall
-  FREE          003088
-          PC    003100  0003E0  $LIB/libc.a(strtol.o) autocall
-  STRTOL        003128
-          PC    0034E0  000074  $LIB/libc.a(sprintf.o) autocall
-  SPRINTF       0034E0
-          PC    003558  0001F0  $LIB/libc.a(@@enqdeq.o) autocall
-  @@ENQDEQ      003558
-          PC    003748  0000EC  $LIB/libc.a(malloc.o) autocall
-  MALLOC        003768
-          PC    003838  0000C4  $LIB/libc.a(@@arnew.o) autocall
-  @@ARNEW       003840
-          PC    003900  000148  $LIB/libc.a(vwtof.o) autocall
-  VWTOF         003900
-          PC    003A48  000090  $LIB/libc.a(vsprintf.o) autocall
-  VSPRINTF      003A48
-          PC    003AD8  0002CC  $LIB/libc.a(wtodump.o) autocall
-  WTODUMP       003B24
-          PC    003DA8  00039C  $LIB/libc.a(@@fpmode.o) autocall
-  @@FPMODE      003DBC
-          PC    004148  000208  $LIB/libc.a(@@tolow.o) autocall
-  @@TOLOW       00434C
-          PC    004350  000208  $LIB/libc.a(@@toup.o) autocall
-  @@TOUP        004554
-          PC    004558  0007D8  $LIB/libc.a(@@fpopen.o) autocall
-  @@FPOPEN      004660
-          PC    004D30  000744  $LIB/libc.a(@@fpstar.o) autocall
-  @@FPSTAR      004DD8
-          PC    005478  000050  $LIB/libc.a(@@getpfx.o) autocall
-  @@GETPFX      005478
-          PC    0054C8  000180  $LIB/libc.a(@@fpshr.o) autocall
-  @@FPSHR       0054C8
-          PC    005648  000804  $LIB/libc.a(@@fptmp.o) autocall
-  @@FPTMP       0056C4
-          PC    005E50  0001C0  $LIB/libc.a(@@fpold.o) autocall
-  @@FPOLD       005E50
-          PC    006010  0009D8  $LIB/libc.a(@@fpnew.o) autocall
-  @@FPNEW       0060B0
-          PC    0069E8  000760  $LIB/libc.a(@@fpswt.o) autocall
-  @@FPSWT       0069E8
-  @@FPUPC       006F44
-          PC    007148  0000FC  $LIB/libc.a(@@grtres.o) autocall
-  @@GRTRES      007154
-          PC    007248  000138  $LIB/libc.a(@@crtres.o) autocall
-  @@CRTRES      007248
-          PC    007380  000078  $LIB/libc.a(vfprintf.o) autocall
-  VFPRINTF      007380
-          PC    0073F8  000874  $LIB/libc.a(@@fflush.o) autocall
-  @@FFLUSH      0073F8
-  @@FFLNL       007468
-          PC    007C70  000148  $LIB/libc.a(@@aclose.o) autocall
-  @@ACLOSE      007C70
-          PC    007DB8  00017C  $LIB/libc.a(@@fpterm.o) autocall
-  @@FPTERM      007DB8
-          PC    007F38  000410  $LIB/libc.a(vsnprint.o) autocall
-  VSNPRINT      007F48
-          PC    008348  0000C8  $LIB/libc.a(fwrite.o) autocall
-  FWRITE        008348
-          PC    008410  00008C  $LIB/libc.a(strrchr.o) autocall
-  STRRCHR       008410
-          PC    0084A0  0000C4  $LIB/libc.a(putenv.o) autocall
-  PUTENV        0084A4
-          PC    008568  0000C8  $LIB/libc.a(fgets.o) autocall
-  FGETS         008568
-          PC    008630  000080  $LIB/libc.a(strlen.o) autocall
-  STRLEN        008630
-          PC    0086B0  0000D0  $LIB/libc.a(getenv.o) autocall
-  GETENV        0086B0
-          PC    008780  000208  $LIB/libc.a(@@isbuf.o) autocall
-  @@ISBUF       008984
+          PC    000000  0000F8  sumup.o
+  @@MAIN        000008
+  MAIN          000014
+          PC    0000F8  000278  $LIB/libc.a(@@crt0.o) autocall
+  @@CRT0        0000F8
+          PC    000370  00007C  $LIB/libc.a(atoi.o) autocall
+  ATOI          000370
+ADDUP     SD    0003F0  000028  ./libsum.a(addup.o) autocall
+REPORT    SD    000418  000060  ./libsum.a(report.o) autocall
+          PC    000478  0001EC  $LIB/libc.a(@@crtset.o) autocall
+  @@CRTSET      000484
+          PC    000668  0000E8  $LIB/libc.a(@@grtset.o) autocall
+  @@GRTSET      000674
+          PC    000750  0001B0  $LIB/libc.a(@@crtget.o) autocall
+  @@CRTGET      000790
+          PC    000900  0007E4  $LIB/libc.a(@@start.o) autocall
+  @@START       000AD0
+          PC    0010E8  000398  $LIB/libc.a(@@exit.o) autocall
+  @@EXIT        0010E8
+          PC    001480  0003E0  $LIB/libc.a(strtol.o) autocall
+  STRTOL        0014A8
+          PC    001860  000080  $LIB/libc.a(printf.o) autocall
+  PRINTF        001860
+          PC    0018E0  0000B8  $LIB/libc.a(@@ppaget.o) autocall
+  @@PPAGET      0018E0
+          PC    001998  0000C4  $LIB/libc.a(@@lk.o) autocall
+  @@LK          0019AC
+          PC    001A60  00010C  $LIB/libc.a(calloc.o) autocall
+  CALLOC        001A60
+          PC    001B70  0000B0  $LIB/libc.a(@@arcou.o) autocall
+  @@ARCOU       001B78
+          PC    001C20  0001D0  $LIB/libc.a(@@aradd.o) autocall
+  @@ARADD       001C28
+          PC    001DF0  0000C0  $LIB/libc.a(@@lkunlk.o) autocall
+  @@LKUNLK      001E04
+          PC    001EB0  00006C  $LIB/libc.a(wtof.o) autocall
+  WTOF          001EB0
+          PC    001F20  00009C  $LIB/libc.a(wtodumpf.o) autocall
+  WTODUMPF      001F20
+          PC    001FC0  000084  $LIB/libc.a(@@errno.o) autocall
+  @@ERRNO       001FC4
+          PC    002048  000074  $LIB/libc.a(@@grtget.o) autocall
+  @@GRTGET      002048
+          PC    0020C0  00089C  $LIB/libc.a(fopen.o) autocall
+  FOPEN         0020C8
+          PC    002960  000078  $LIB/libc.a(@@gtout.o) autocall
+  @@GTOUT       002960
+          PC    0029D8  000064  $LIB/libc.a(@@exita.o) autocall
+  @@EXITA       0029D8
+          PC    002A40  000078  $LIB/libc.a(@@gterr.o) autocall
+  @@GTERR       002A40
+          PC    002AB8  000158  $LIB/libc.a(fclose.o) autocall
+  FCLOSE        002AC0
+          PC    002C10  000078  $LIB/libc.a(@@gtin.o) autocall
+  @@GTIN        002C10
+          PC    002C88  0000B8  $LIB/libc.a(fprintf.o) autocall
+  FPRINTF       002C88
+          PC    002D40  000288  $LIB/libc.a(loadenv.o) autocall
+  LOADENV       002D44
+          PC    002FC8  00033C  $LIB/libc.a(tzset.o) autocall
+  TZSET         003068
+          PC    003308  000090  $LIB/libc.a(strchr.o) autocall
+  STRCHR        003308
+          PC    003398  0000D0  $LIB/libc.a(@@arfre.o) autocall
+  @@ARFRE       0033A0
+          PC    003468  000074  $LIB/libc.a(free.o) autocall
+  FREE          003468
+          PC    0034E0  000208  $LIB/libc.a(@@isbuf.o) autocall
+  @@ISBUF       0036E4
+          PC    0036E8  000208  $LIB/libc.a(@@tolow.o) autocall
+  @@TOLOW       0038EC
+          PC    0038F0  000078  $LIB/libc.a(vfprintf.o) autocall
+  VFPRINTF      0038F0
+          PC    003968  000074  $LIB/libc.a(sprintf.o) autocall
+  SPRINTF       003968
+          PC    0039E0  0001F0  $LIB/libc.a(@@enqdeq.o) autocall
+  @@ENQDEQ      0039E0
+          PC    003BD0  0000EC  $LIB/libc.a(malloc.o) autocall
+  MALLOC        003BF0
+          PC    003CC0  0000C4  $LIB/libc.a(@@arnew.o) autocall
+  @@ARNEW       003CC8
+          PC    003D88  000148  $LIB/libc.a(vwtof.o) autocall
+  VWTOF         003D88
+          PC    003ED0  000090  $LIB/libc.a(vsprintf.o) autocall
+  VSPRINTF      003ED0
+          PC    003F60  0002CC  $LIB/libc.a(wtodump.o) autocall
+  WTODUMP       003FAC
+          PC    004230  00039C  $LIB/libc.a(@@fpmode.o) autocall
+  @@FPMODE      004244
+          PC    0045D0  000208  $LIB/libc.a(@@toup.o) autocall
+  @@TOUP        0047D4
+          PC    0047D8  0007D8  $LIB/libc.a(@@fpopen.o) autocall
+  @@FPOPEN      0048E0
+          PC    004FB0  000744  $LIB/libc.a(@@fpstar.o) autocall
+  @@FPSTAR      005058
+          PC    0056F8  000050  $LIB/libc.a(@@getpfx.o) autocall
+  @@GETPFX      0056F8
+          PC    005748  000180  $LIB/libc.a(@@fpshr.o) autocall
+  @@FPSHR       005748
+          PC    0058C8  000804  $LIB/libc.a(@@fptmp.o) autocall
+  @@FPTMP       005944
+          PC    0060D0  0001C0  $LIB/libc.a(@@fpold.o) autocall
+  @@FPOLD       0060D0
+          PC    006290  0009D8  $LIB/libc.a(@@fpnew.o) autocall
+  @@FPNEW       006330
+          PC    006C68  000760  $LIB/libc.a(@@fpswt.o) autocall
+  @@FPSWT       006C68
+  @@FPUPC       0071C4
+          PC    0073C8  0000FC  $LIB/libc.a(@@grtres.o) autocall
+  @@GRTRES      0073D4
+          PC    0074C8  000138  $LIB/libc.a(@@crtres.o) autocall
+  @@CRTRES      0074C8
+          PC    007600  000874  $LIB/libc.a(@@fflush.o) autocall
+  @@FFLUSH      007600
+  @@FFLNL       007670
+          PC    007E78  000148  $LIB/libc.a(@@aclose.o) autocall
+  @@ACLOSE      007E78
+          PC    007FC0  00017C  $LIB/libc.a(@@fpterm.o) autocall
+  @@FPTERM      007FC0
+          PC    008140  000410  $LIB/libc.a(vsnprint.o) autocall
+  VSNPRINT      008150
+          PC    008550  0000C8  $LIB/libc.a(fwrite.o) autocall
+  FWRITE        008550
+          PC    008618  00008C  $LIB/libc.a(strrchr.o) autocall
+  STRRCHR       008618
+          PC    0086A8  0000C4  $LIB/libc.a(putenv.o) autocall
+  PUTENV        0086AC
+          PC    008770  0000C8  $LIB/libc.a(fgets.o) autocall
+  FGETS         008770
+          PC    008838  000080  $LIB/libc.a(strlen.o) autocall
+  STRLEN        008838
+          PC    0088B8  0000D0  $LIB/libc.a(getenv.o) autocall
+  GETENV        0088B8
           PC    008988  000074  $LIB/libc.a(@@tzset.o) autocall
   @@TZSET       008988
           PC    008A00  00003C  $LIB/libc.a(@@freem.o) autocall
   @@FREEM       008A00
-          PC    008A40  0000B8  $LIB/libc.a(@@getm.o) autocall
-  @@GETM        008A40
-          PC    008AF8  000388  $LIB/libc.a(@@wtotb.o) autocall
-  @@WTOTB       008AF8
-          PC    008E80  000180  $LIB/libc.a(wto.o) autocall
-  WTO           008E80
-          PC    009000  000078  $LIB/libc.a(strcpy.o) autocall
-  STRCPY        009000
-          PC    009078  000494  $LIB/libc.a(vvprintf.o) autocall
-  VVPRINTF      009088
+          PC    008A40  000494  $LIB/libc.a(vvprintf.o) autocall
+  VVPRINTF      008A50
+          PC    008ED8  0000B8  $LIB/libc.a(@@getm.o) autocall
+  @@GETM        008ED8
+          PC    008F90  000388  $LIB/libc.a(@@wtotb.o) autocall
+  @@WTOTB       008F90
+          PC    009318  000180  $LIB/libc.a(wto.o) autocall
+  WTO           009318
+          PC    009498  000078  $LIB/libc.a(strcpy.o) autocall
+  STRCPY        009498
           PC    009510  0000C8  $LIB/libc.a(strstr.o) autocall
   STRSTR        009510
           PC    0095D8  000184  $LIB/libc.a(@@gtdsab.o) autocall
@@ -228,15 +228,15 @@ REPORT    SD    001420  000060  ./libsum.a(report.o) autocall
   @@FGETS       00E958
           PC    00EA50  000168  $LIB/libc.a(@@finden.o) autocall
   @@FINDEN      00EA50
-          PC    00EBB8  0004A0  $LIB/libc.a(@@@try.o) autocall
-  @@@TRY        00EF70
-  @@@TRYRC      00EFDC
-          PC    00F058  000058  $LIB/libc.a(wtoline.o) autocall
-  WTOLINE       00F058
-          PC    00F0B0  000200  $LIB/libc.a(@@fputc.o) autocall
-  @@FPUTC       00F0B0
-          PC    00F2B0  0000CC  $LIB/libc.a(@@fputs.o) autocall
-  @@FPUTS       00F2B0
+          PC    00EBB8  000200  $LIB/libc.a(@@fputc.o) autocall
+  @@FPUTC       00EBB8
+          PC    00EDB8  0000CC  $LIB/libc.a(@@fputs.o) autocall
+  @@FPUTS       00EDB8
+          PC    00EE88  0004A0  $LIB/libc.a(@@@try.o) autocall
+  @@@TRY        00F240
+  @@@TRYRC      00F2AC
+          PC    00F328  000058  $LIB/libc.a(wtoline.o) autocall
+  WTOLINE       00F328
           PC    00F380  0000C0  $LIB/libc.a(@@nwtx99.o) autocall
   @@NWTX99      00F380
           PC    00F440  0000C4  $LIB/libc.a(strcmp.o) autocall

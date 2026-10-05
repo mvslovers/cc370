@@ -105,8 +105,8 @@ the one before.
 + *The object module* is written by as370: 80-byte card images with the
   external symbol dictionary, the text and the relocation dictionary, as
   IFOX00 writes them on MVS.
-+ *The load module member* is written by ld370. ld370 adds the start-up code
-  and the members of the C library that the program needs, resolves the
++ *The load module member* is written by ld370. ld370 takes from the C
+  library the members the program needs, the start-up code among them, resolves the
   references between them and writes the records of one member of a load
   library, in the form that program fetch reads.
 + *The TRANSMIT file* is written by ld370 too, on request. A load library is

@@ -1,9 +1,9 @@
 $ file370 sumup
-sumup: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 27 w/RLD, MODEND, 83681 bytes
+sumup: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 27 w/RLD, MODEND, 83697 bytes
 $ idrdump370 sumup
 sumup: 147 section(s)
   @001340  HMASPZAP  no entries
-  @00143B  LKED      LD370 V01 M03  date=26278  time=133213  [LAST]
+  @00143B  LKED      LD370 V01 M04  date=26278  time=140335  [LAST]
 $ cmplmd370 addup.o sumup
 addup.o vs sumup
 IDENTICAL

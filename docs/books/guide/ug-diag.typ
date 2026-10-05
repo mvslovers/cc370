@@ -127,18 +127,21 @@ To find the statement:
   time of the abend holds the address of the instruction that would have
   run next, together with the instruction length code (ILC), the length of
   the instruction that failed. The list of loaded programs gives the entry
-  point address of SUMUP. The entry point of a C program, #cmd("@@CRT0"),
-  is at offset 0 of the module (@ug-link-map), so the entry point address
-  is also the address at which the module was loaded.
-+ *Compute the offset in the module*: the PSW address, minus the entry
-  point address, minus the instruction length. For example, with SUMUP
-  loaded at #cmd("X'0A1000'") and a PSW address of #cmd("X'0A1338'") after an
-  instruction of 2 bytes, the failing instruction is at offset
-  #cmd("X'1338'") − #cmd("X'1000'") − 2 = #cmd("X'336'").
-+ *Find the section in the load map.* Offset #cmd("X'336'") lies in the
-  unnamed section from #cmd("sumup.o"), which begins at #cmd("X'278'") and
-  is #cmd("X'F8'") bytes long. The offset in that section is
-  #cmd("X'336'") − #cmd("X'278'") = #cmd("X'BE'").
+  point address of SUMUP.
++ *Compute the load address.* The entry point of a C program,
+  #cmd("@@CRT0"), is not at offset 0 of the module: the first line of the
+  load map gives its offset, #cmd("X'F8'") for SUMUP (@ug-link-map). The
+  module was loaded at the entry point address minus that offset.
++ *Compute the offset in the module*: the PSW address, minus the load
+  address, minus the instruction length. For example, with an entry point
+  address of #cmd("X'0A10F8'"), SUMUP was loaded at #cmd("X'0A1000'")\; with
+  a PSW address of #cmd("X'0A10C0'") after an instruction of 2 bytes, the
+  failing instruction is at offset #cmd("X'10C0'") − #cmd("X'1000'") − 2 =
+  #cmd("X'BE'").
++ *Find the section in the load map.* Offset #cmd("X'BE'") lies in the
+  unnamed section from #cmd("sumup.o"), which begins at 0 and is
+  #cmd("X'F8'") bytes long. The offset in that section is
+  #cmd("X'BE'") − 0 = #cmd("X'BE'").
 + *Find the statement in the listing.* @ug-diag-lst shows the listing of
   #cmd("sumup.o") around #cmd("LOC 0000BE"): the instruction there is
   #cmd("DR 6,5"), a division.
@@ -157,7 +160,7 @@ To find the statement:
 ] <ug-diag-lst>
 
 The offsets in the listing are offsets in the control section, which is why
-step 3 subtracts the origin of the section. If the abend lies in a section
+step 4 subtracts the origin of the section (0 for #cmd("sumup.o"), which the link puts first). If the abend lies in a section
 from a library, such as one of the C library, the map names the member, and
 the error is usually in the arguments your program passed to it: look at
 the call in your own code that led there. The chain of save areas in the
@@ -210,7 +213,7 @@ the source I think?
 )
 
 @ug-diag-inspect-session uses each on SUMUP: file370 summarizes the load
-module\; idrdump370 shows that it was written by ld370, version 1.3, on day
+module\; idrdump370 shows that it was written by ld370, version 1.4, on day
 278 of 2026, and that SPZAP has not changed it since\; cmplmd370 confirms
 that the ADDUP in the load module is the one assembled from
 #cmd("addup.asm"), and that the code compiled from #cmd("sumup.c") is
