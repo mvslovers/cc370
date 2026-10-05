@@ -162,6 +162,7 @@ silent wrong results first. After each merge, one line to Book (session
 6a. ~~#837 ld370 CM placement~~ **done** (#843): common areas after the
    objects, longest contribution, no text, in the module length -- equal to
    IEWL's AMBLIST (JOB00352). Pseudo registers in ld370 stay #76.
+   Follow-up #845 done (#846): `--xref` lists adcons into a common section.
 7. #811 flags everywhere **(next)**: `--version`/`-V`, `-v` verbose (also as370 and
    dasm370 -- decided, "Read this first" in the next release), `--help`.
 8. #809 dasm370 / cmplmd370 / idrdump370 details.
