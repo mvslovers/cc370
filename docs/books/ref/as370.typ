@@ -84,8 +84,14 @@ tab-separated data files that describe the assembly for other programs (see
   [#cmd("--sym="), #cmd("--stmts="), #cmd("--usings=")], [write the symbol
     table, the generated statements, or the #cmd("USING") and #cmd("DROP")
     events to #var("file"). See @as370-datafiles.],
-  [#cmd("--help")], [displays a summary of the options and ends.],
-  [#cmd("-v"), #cmd("--version")], [displays the toolchain version and the
+  [#cmd("-v")], [reports on standard error what as370 does: the source it
+    assembles, each directory of the macro search path (marked
+    #cmd("(absent)") when it does not exist), each macro and the file it
+    came from, and the closing #cmd("Assembler Done") line, also after a
+    clean assembly.#idx("as370", "-v option")],
+  [#cmd("-h"), #cmd("--help")], [displays a summary of the options and
+    ends.],
+  [#cmd("-V"), #cmd("--version")], [displays the toolchain version and the
     commit from which as370 was built, for example
     #cmd("as370 1.2.0 (b17cd14)"), and ends.],
 )
@@ -116,7 +122,8 @@ finally the name with no extension. The macro #cmd("SAVE") is therefore found
 as #cmd("SAVE.macro"), #cmd("save.mac") or simply #cmd("SAVE").
 
 #note[A directory that does not exist is not an error. It is skipped, so a
-misspelled #cmd("-I") shows itself only as an undefined operation code.]
+misspelled #cmd("-I") shows itself as an undefined operation code\; #cmd("-v")
+lists the search path and marks a missing directory #cmd("(absent)").]
 
 == Source Encoding <as370-encoding>
 
