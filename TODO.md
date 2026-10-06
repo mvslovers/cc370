@@ -130,11 +130,14 @@ front of you, the second is nineteen-twentieths unattributable.
   `libc.a(@@crt0.o)`. Tap at 1.4.0. Release page reworked.
 - ~~install.sh reports "no libc370 release ... fits" under a GitHub API rate
   limit~~ -- fixed in #880 (#879): API status checked and named, rc 1,
-  `GITHUB_TOKEN`, zsh word splitting; `make test-install`. Reaches users with
-  the next release (install.sh is a release asset).
+  `GITHUB_TOKEN`, zsh word splitting; `make test-install`. Already with
+  users: the 1.4.0 `install.sh` asset (and its `SHA256SUMS` line) was
+  replaced on 2026-10-05, see CHANGELOG.md.
 - **1.3.1** (tag on `2c1485e`): weak definitions exported, weak name used
   then defined no longer IFO196 (#872, #873; IFOX JOB00354).
-- libc370 keeps its crt0.o copies until its cc370 minimum is 1.4.0.
+- ~~libc370 keeps its crt0.o copies until its cc370 minimum is 1.4.0~~ --
+  done: libc370 2.4.0 is released, installs no crt0.o/crt1.o and needs
+  cc370 >= 1.4.0 (libc370#448; `internals/releasing.md`, #883, #884).
 
 ## cc370 1.3.0 released (2026-10-05)
 
@@ -168,9 +171,11 @@ silent wrong results first. After each merge, one line to Book (session
 4a. ~~#824 as370~~ **done** (#828): unary minus counted, externals keyed
    apart -- one RLD entry per term in its own direction (JOB00348). No tree
    deck moved.
-4b. #827 `#pragma pack` ignored -- joint decision with libc370 (theirs:
-   drop the 9 pragmas, layout proven identical; `pack(reset)` is not GCC
-   syntax and would leak if cc370 enabled the pragma).
+4b. ~~#827 `#pragma pack` ignored~~ **decided**: cc370 does not enable
+   the pragma and keeps warning `ignoring #pragma pack`. libc370 dropped its
+   pragmas in 2.3.1 (libc370#415, #434: 637 sizeof/offsetof values identical
+   with and without packing; `pack(reset)` is not GCC syntax and would leak
+   if the pragma were honoured). No code change on this side.
 5. ~~#808 cc370 driver~~ **done** (#835): as370 rc 4 keeps the object;
    `-c`/`-S` + several sources + `-o` refused; `--target-help` cc1 only;
    `-flinker-output=` checked; libcc370rt.a and the cc370 bug URL; references
@@ -207,8 +212,8 @@ silent wrong results first. After each merge, one line to Book (session
     (rc 16), IFOnnn throughout.
 
 **The Command Reference block is done.** Open from it, lower priority:
-#827 (`#pragma pack`), #76's ld370 half (pseudo registers), and from
-libc370#159 the empty STARTFILE_SPEC. Weak references are done (#867, #866: WXTRN, -Wweak-definition, __CC370_WEAK__; libc370 switches its @@start.c hook). Done since: #830,
+#76's ld370 half (pseudo registers). #827 is decided (see 4b), the empty
+STARTFILE_SPEC landed in 1.4.0 (#875). Weak references are done (#867, #866: WXTRN, -Wweak-definition, __CC370_WEAK__; libc370 switches its @@start.c hook). Done since: #830,
 #831, #832, #834 (#864: trigraphs under every -std, pragma map/linkage warn,
 -mpickax gone, -pipe ignored).
 
