@@ -30,3 +30,8 @@ HANDOVER.md
 
 # release tarballs (make dist)
 /dist/
+
+# Python byte-compile cache (as370/tests, tools scripts) -- regenerated on
+# every run, never source
+__pycache__/
+*.py[co]
