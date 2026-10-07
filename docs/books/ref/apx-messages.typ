@@ -726,8 +726,9 @@ file.]
 ][Correct the command as the message says.]
 
 #msg[#mc("ld370: '")#mv("operand")#mc("' is a link input, but --pack links nothing; put --pack before the members to pack and leave objects, archives, -l and -L to a link")][
-  #mc("--pack") was given together with an object module or library named
-  before it, or with #mc("-l") or #mc("-L"). Every operand after
+  #mc("--pack") was given together with an input file named before it
+  (a member to pack, an object module or a library), or with #mc("-l") or
+  #mc("-L"). Every operand after
   #mc("--pack") is a member to pack, and a pack links nothing, so the
   operand would have been left out. Return code 2\; nothing is written.
 ][Put #mc("--pack") before the members, and link the object modules in a

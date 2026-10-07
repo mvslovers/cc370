@@ -77,9 +77,10 @@ Options and input files may be given in any order, with two exceptions: a
 #cmd("-l") option is resolved when it is read, so the #cmd("-L") directories
 it is to search must come before it\; and #cmd("--pack") must come before
 the files to be packed. Every operand after #cmd("--pack") is a member to
-pack, and a pack links nothing: an object module or library named before
-#cmd("--pack"), and #cmd("-l") or #cmd("-L") anywhere on the command, is
-refused with return code 2.
+pack, and a pack links nothing: any input file named before
+#cmd("--pack") -- a member to pack as well as an object module or library
+-- and #cmd("-l") or #cmd("-L") anywhere on the command, is refused with
+return code 2.
 
 An operand that begins with #cmd("-") and is not an option is refused with
 #cmd("ld370: unknown option '")#var("operand")#cmd("' (ld370 --help)"), and an

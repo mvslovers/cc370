@@ -48,9 +48,10 @@ neither number is mistaken for the other.
   which a pack ignores: `ld370 A.iebcopy --pack B.iebcopy -o lib -xmit`
   ended with rc 0 and a library holding B alone. `--pack` with no member
   linked the other operands instead, and `-l`/`-L` were searched for
-  nothing. Every operand after `--pack` is a member; an object, archive,
-  `-l` or `-L` on a `--pack` command, and a `--pack` naming no member, are
-  now refused with rc 2, naming the operand, and nothing is written.
+  nothing. Every operand after `--pack` is a member; any input file named
+  before `--pack` (a member to pack included), `-l` or `-L` on a `--pack`
+  command, and a `--pack` naming no member, are now refused with rc 2,
+  naming the operand, and nothing is written.
 - **`install.sh` names a failed GitHub API call instead of reporting "no
   libc370 release fits"** (#879). When the API's rate limit (60 requests an
   hour per address) was used up, the release list came back empty and the
