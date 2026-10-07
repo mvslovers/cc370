@@ -162,7 +162,7 @@ jobs:
       - name: Install typst (pinned)
         run: |
           f=typst-x86_64-unknown-linux-musl.tar.xz
-          curl -fsSLO "https://github.com/typst/typst/releases/download/v$TYPST_VERSION/$f"
+          curl -fsSL --proto "=https" --tlsv1.2 -O "https://github.com/typst/typst/releases/download/v$TYPST_VERSION/$f"
           echo "$TYPST_SHA256  $f" | sha256sum -c -
           tar xf "$f"
           sudo install -m 755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
