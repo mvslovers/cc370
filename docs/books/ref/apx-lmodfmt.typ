@@ -337,7 +337,8 @@ macro #cmd("IHAPDS") describes that form.
 
 The module of @apx-lmodfmt-ex, linked with #cmd("--reus"), has
 #cmd("X'42'") and #cmd("X'E2'"). The same link with #cmd("-e ALT"), whose
-entry point is not at 0, has #cmd("X'02'") and #cmd("X'C2'").
+entry point is not at 0, has #cmd("X'42'") and #cmd("X'C2'"): only the second
+byte changes.
 
 == The IEBCOPY Unloaded Form <apx-lmodfmt-unload>
 

@@ -550,7 +550,8 @@ effect. #cmd("#pragma map") and #cmd("#pragma linkage") say so with a
 warning: #cmd("#pragma map") does not change an external name, so use an
 #cmd("asm") label instead\; #cmd("#pragma linkage") does not change how a
 function is called. The other three are accepted silently. Any other
-pragma is ignored with a warning. Like every warning, these do not change
+pragma is ignored, silently by default and with a warning under
+#cmd("-Wall") or #cmd("-Wunknown-pragmas"). Like every warning, these do not change
 the return code, but #cmd("-Werror") turns them into errors. #cmd("-w")
 suppresses them\; #cmd("-Wno-unknown-pragmas") does not.
 

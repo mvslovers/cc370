@@ -263,7 +263,9 @@ differ.
 #cmd("T") or a blank and #var("hh")#cmd(":")#var("mm"), with or without
 #cmd(":")#var("ss"). The time defaults to midnight. The date must exist
 and lie in the years 1900 to 2099, the range of the ISPF date, and the time
-must be a valid time of day\; anything else is refused with return code 2:
+must be a valid time of day\; a value out of range is refused with return
+code 2. The check is not strict about the form: text after the date is
+ignored, and #cmd("2026-10-04 12") is taken as 12:00.
 
 #screen(```
 xmit370: --stats-date: '2026-13-45' is not a date YYYY-MM-DD[THH:MM:SS] between 1900 and 2099

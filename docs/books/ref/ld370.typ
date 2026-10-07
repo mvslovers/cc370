@@ -73,9 +73,11 @@ The third displays the version or a summary of the options:
 
 #syntax(read("../syntax/ld370-version.txt"))
 
-Options and input files may be given in any order, with one exception: a
+Options and input files may be given in any order, with two exceptions: a
 #cmd("-l") option is resolved when it is read, so the #cmd("-L") directories
-it is to search must come before it.
+it is to search must come before it\; and #cmd("--pack") must come before
+the files to be packed. An input file named before #cmd("--pack") is left
+out of the pack without a message.
 
 An operand that begins with #cmd("-") and is not an option is refused with
 #cmd("ld370: unknown option '")#var("operand")#cmd("' (ld370 --help)"), and an
@@ -102,7 +104,10 @@ return code 2.
     #cmd("a.out").],
   [#cmd("--name") #var("member")], [sets the member name used in the
     directory of the transport files. Without it, the name is taken from the
-    #cmd("-o") file: the base name up to its first period. Either name is
+    #cmd("-o") file: the base name up to its first period. The check that
+    the name is a valid member name, however, cuts at the last period, so
+    an #cmd("-o") file with two periods, such as #cmd("app.v1.lm"), is
+    refused with return code 2\; give #cmd("--name"). Either name is
     changed to uppercase. When the name is used, that is with
     #cmd("-iebcopy"), #cmd("-xmit") or #cmd("--map"), it must be a valid
     member name, one to eight characters as described for aliases in
@@ -233,16 +238,19 @@ member, so a reference to an entry point inside a library module is resolved
 as readily as a reference to a section. A C function is an entry point of its
 compilation unit, so this is how calls into the C library are resolved.
 
-The libraries are searched in the order they were given, and the first that
-defines the symbol is used. When a library holds several members that define
-the symbol, ld370 prefers a member that does not define again a symbol that
-the link already has. A definition that is passed over is reported with a
-warning:
+The libraries are searched in the order they were given, and the first
+member that defines the symbol is used -- unless it would define again a
+symbol that the link already has. Then ld370 takes the first member, in
+any library, that does not\; only when every candidate conflicts does it
+take the first. So a member of a later library can win over a conflicting
+one of an earlier library. A definition that is passed over is reported
+with a warning:
 
 - always, when it is in the same library, because then the order of the
   members decides, which is seldom intended\;
-- only with #cmd("--warn-shadow"), when it is in a later library. A later
-  library usually provides fallbacks, and IEWL is silent in that case too.
+- only with #cmd("--warn-shadow"), when it is in another library, earlier
+  or later. A later library usually provides fallbacks, and IEWL is silent
+  in that case too.
 
 #idx("weak external reference", "in automatic library call")
 A weak external reference, type #cmd("WX") (#cmd("WXTRN") in assembler), is

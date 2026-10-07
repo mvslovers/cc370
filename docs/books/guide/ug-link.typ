@@ -183,7 +183,9 @@ not. The C start-up refers to three names in this way:
 An unresolved ordinary reference, on the other hand, ends the link, as
 @ug-diag-unres shows.
 
-When two libraries define the same name, the first library given wins.
+When two libraries define the same name, the first library given wins,
+unless its member would define a name the link already has (see the
+_cc370 Command Reference_, “Automatic Library Call”).
 Give your own libraries before the C library, which cc370 does by putting
 #cmd("-l") options of the command line ahead of its own.
 
@@ -305,7 +307,8 @@ not reentrant if it changes any of them. GREET changes none of its storage
 and can be marked #cmd("--rent --reus")\; CLOCK, which stores the date into
 itself, cannot. From cc370 1.5.0 on, compile the sources of a module you
 mark #cmd("--rent") with #cmd("-mrent"): the compiler then warns about every
-writable variable the module would keep in itself.
+writable variable those sources define. Code taken from a library by
+automatic library call is not checked, and #cmd("__stklen") is exempt.
 
 The attributes are part of the directory entry, so they reach MVS only
 through the transport files. Give them on the link that writes

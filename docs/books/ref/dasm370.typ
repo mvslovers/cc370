@@ -63,8 +63,9 @@ end it with return code 16.
   [#cmd("--anchors=")#var("mode")], [decides what a failed check in a hint
     file does. #cmd("refuse"), the default, ends dasm370 with return code 16
     at the first failure and writes nothing. #cmd("report") writes the
-    disassembly anyway and records every failure as a comment at its
-    offset.],
+    disassembly anyway and records a failed check of bytes, of a label or
+    of a range as a comment at its offset. A failed date check and the
+    other errors of a hint file still end the run.],
   [#cmd("--labels") #var("mode")], [decides how a label that dasm370 makes
     up is named. #cmd("displacement"), the default, names it after its
     offset: #cmd("L00002C") for #cmd("X'2C'"). #cmd("sequential") numbers
@@ -305,7 +306,8 @@ implemented.
 #idx("dasm370", "anchors")
 A #cmd("[[verify]]") entry that fails ends the run with return code 16 and a
 message giving the offset and the bytes found. With #cmd("--anchors=report")
-the disassembly is written anyway, headed by comments that count the
+a failed check of bytes no longer ends the run (a failed date check still
+does): the disassembly is written anyway, headed by comments that count the
 failures, give the offset of the first one and list each one. The first
 failure shows where the module and the hint file part company.
 

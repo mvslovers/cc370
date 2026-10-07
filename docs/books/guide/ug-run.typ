@@ -249,7 +249,8 @@ skipped unless their #cmd("COND") parameter says otherwise.
 With a #cmd("SYSUDUMP") DD statement in the step, MVS writes a dump of the
 program's storage when it abends. The dump begins with the completion code
 and the program status word (PSW) at the time of the abend, which holds the
-address of the instruction that failed\; further down it shows where each
+address of the instruction after the one that failed (@ug-diag shows how
+to step back)\; further down it shows where each
 program of the step was loaded. With these two addresses, the load map and
 the assembler listing, you can find the statement in your source that
 failed. @ug-diag shows how, for an abend of SUMUP.

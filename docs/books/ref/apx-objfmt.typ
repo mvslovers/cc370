@@ -316,8 +316,9 @@ common section adds an ER item of the same name beside the CM item. An
 bytes is flagged with IFO158, one of 1 or 2 bytes with IFO204.
 
 The #cmd("Q")-type operand must name a #cmd("DXD") or a #cmd("DSECT")
-defined before it: a name that is defined later is flagged with IFO231, a
-name that is neither with IFO207. A #cmd("COM") statement without a name
+defined before it. A name that is not defined at all is flagged with
+IFO231, a name that is defined as something else, such as a #cmd("CSECT"),
+with IFO207, and a #cmd("DSECT") defined only after the operand with both. A #cmd("COM") statement without a name
 is not supported by as370. See @ld370-layout for what ld370 does with these
 items.
 

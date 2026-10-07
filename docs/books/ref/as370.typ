@@ -85,6 +85,14 @@ tab-separated data files that describe the assembly for other programs (see
   [#cmd("--sym="), #cmd("--stmts="), #cmd("--usings=")], [write the symbol
     table, the generated statements, or the #cmd("USING") and #cmd("DROP")
     events to #var("file"). See @as370-datafiles.],
+  [#cmd("--sysparm=")#var("string")], [sets the value of the system
+    variable symbol #cmd("&SYSPARM"), as the #cmd("SYSPARM") option of
+    IFOX00 does. Without it, #cmd("&SYSPARM") is the null string.#idx("&SYSPARM")],
+  [#cmd("--strict-cont")], [raises a statement that was lost because the
+    card above it continued into it (column 72) to severity 8, so that the
+    return code shows it. See @apx-messages-as370-cont.],
+  [#cmd("-m") #var("option"), #cmd("-d") #var("argument")], [are accepted
+    with their argument and have no effect.],
   [#cmd("-v")], [reports on standard error what as370 does: the source it
     assembles, each directory of the macro search path (marked
     #cmd("(absent)") when it does not exist), each macro and the file it

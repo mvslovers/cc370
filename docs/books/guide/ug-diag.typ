@@ -42,10 +42,11 @@ that says how serious they were.
   #screen(raw(read("../ex/ug-diag/unres.txt")))
 ] <ug-diag-unres>
 
-An unresolved reference is almost always one of three things: an object
-module or library missing from the link, a #cmd("-l") option given before
-the #cmd("-L") option of its directory, or an external name that is spelled
-differently on the two sides. For the last, remember that cc370 cuts C names
+An unresolved reference is almost always one of two things: an object
+module or library missing from the link, or an external name that is
+spelled differently on the two sides. (A #cmd("-l") option given before the
+#cmd("-L") option of its directory ends the link earlier, with
+#cmd("cannot find -l")#var("name").) For the last, remember that cc370 cuts C names
 to eight characters in upper case (@ug-asm-asmfromc): two C functions whose
 names agree in their first eight characters have the same external name.
 

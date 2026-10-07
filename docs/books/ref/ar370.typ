@@ -43,8 +43,8 @@ change them; it stores each one byte for byte.
     #v(0.3em)
     Each member is named after the base name of its file\; the directory
     part is dropped. Every #var("object") must be an object module: a whole
-    number of 80-byte card images that begins with an ESD record
-    (#cmd("X'02'")) and contains an END record. A source file or an archive
+    number of 80-byte card images, each of which begins with
+    #cmd("X'02'"), among them an END record. A source file or an archive
     is refused with a message and return code 1. ar370 reads and checks every
     #var("object") before it opens #var("archive"), so when one of them is
     refused or cannot be read, the library is neither written nor changed.],

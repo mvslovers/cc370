@@ -27,7 +27,7 @@
 #heading(numbering: none)[About This Book] <about>
 
 This book describes the commands of the cc370 cross-toolchain: the C
-compiler, the assembler, the linkage editor, the archiver and two utilities,
+compiler, the assembler, the linkage editor, the archiver and five utilities,
 all of which run on a workstation and produce programs for MVS 3.8j. For
 each command it gives the syntax, every option, the files it reads and
 writes, and its return codes.
