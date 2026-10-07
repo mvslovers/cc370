@@ -40,6 +40,7 @@ extern void i370_print_operand_address (FILE *, rtx);
 
 #ifdef TREE_CODE
 extern int handle_pragma (int (*)(void), void (*)(int), const char *);
+extern void i370_check_writable_data (tree);
 #endif /* TREE_CODE */
 
 extern void mvs_add_label (int);

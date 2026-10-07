@@ -48,6 +48,9 @@ bool exit_after_options;
 /* -Wweak-definition (cc370): on by default.  */
 int warn_weak_definition = 1;
 
+/* -Wwritable-data (cc370): on by default, reported only under -mrent.  */
+int warn_writable_data = 1;
+
 /* If -version.  */
 bool version_flag;
 
@@ -793,6 +796,11 @@ common_handle_option (size_t scode, const char *arg,
       /* cc370: a weak definition is an ordinary one on MVS; the warning has
 	 its own name so -Werror builds can switch it off deliberately.  */
       warn_weak_definition = value;
+      break;
+
+    case OPT_Wwritable_data:
+      /* cc370: writable data in a reentrant (-mrent) module.  */
+      warn_writable_data = value;
       break;
 
     case OPT_Wunused_function:

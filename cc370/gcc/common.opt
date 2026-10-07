@@ -156,6 +156,10 @@ Wweak-definition
 Common
 Warn that a weak definition is an ordinary one on MVS (on by default)
 
+Wwritable-data
+Common
+Warn about writable data defined in a reentrant (-mrent) module (on by default)
+
 aux-info
 Common Separate
 -aux-info <file>	Emit declaration information into <file>

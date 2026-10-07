@@ -1413,6 +1413,10 @@ assemble_variable (tree decl, int top_level ATTRIBUTE_UNUSED,
   if (TREE_PUBLIC (decl) && DECL_NAME (decl))
     notice_global_symbol (decl);
 
+#ifdef ASM_CHECK_VARIABLE_DEFINITION
+  ASM_CHECK_VARIABLE_DEFINITION (decl);
+#endif
+
   /* Compute the alignment of this data.  */
 
   align = DECL_ALIGN (decl);
