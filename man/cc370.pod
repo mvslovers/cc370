@@ -101,7 +101,8 @@ module itself, so every definition that is not C<const> is state those tasks
 share unsynchronised. Under B<-mrent> each such definition warns
 (B<-Wwritable-data>, on by default; an error under B<-Werror>;
 B<-Wno-writable-data> switches it off): globals, C<static> at file scope and
-inside functions, and C<const volatile> objects. Declarations (C<extern>) and
+inside functions, compound literals at file scope (C<(int[]){1, 2}>, reported
+as "a compound literal"), and C<const volatile> objects. Declarations (C<extern>) and
 string literals do not; B<-fwritable-strings> does, once. C<__stklen> is
 exempt: the startup reads it as the stack size and nothing writes it. The
 option changes no generated code. It sees only this translation unit: code

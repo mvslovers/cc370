@@ -229,9 +229,11 @@ MVS, and those of the driver itself.
 ][Remove the attribute from the definition. Declare the name weak only
   where it is referenced. #mc("-Wno-weak-definition") turns the warning off.]
 
-#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: '")#mv("name")#mc("' is writable data in a reentrant module [-Wwritable-data]")][
+#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: '")#mv("name")#mc("' is writable data in a reentrant module [-Wwritable-data]") \
+#mv("file")#mc(":")#mv("line")#mc(": warning: a compound literal is writable data in a reentrant module [-Wwritable-data]")][
   Under #mc("-mrent"), #mv("name") is a global or #mc("static") variable
-  that is not #mc("const"). The load module keeps it in itself, so in a
+  that is not #mc("const"), or (second form) a compound literal at file
+  scope, such as #mc("(int[]){1, 2}"), whose type is not #mc("const"). The load module keeps it in itself, so in a
   reentrant module every task that uses the module shares it (see
   @cc370-target). The compilation continues.
 ][Make the variable #mc("const"), move it into storage the program

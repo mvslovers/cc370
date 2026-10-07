@@ -38,6 +38,17 @@ neither number is mistaken for the other.
   checked.
 
 ### Fixed
+- **A compound literal at file scope is emitted** (#890). `static int *p =
+  (int[]){1, 2};` compiled to `DC A(@V2)` with no `@V2`, and as370 stopped
+  with rc 8, at every optimization level. The literal is a deferred static
+  that is written only when a reference marks its name, and the back end
+  renamed static variables to `@Vn` without moving the name the reference
+  is checked against. It now does; the same mechanism had also dropped a
+  static table referenced only from a global pointer under
+  `-funit-at-a-time`. Under `-mrent` a writable compound literal warns as
+  "a compound literal", and a `const` one, such as `(const int[]){1, 2}`,
+  does not. Nothing else in the generated code changes: 824 sources across
+  the ecosystem compile to identical output.
 - **`ld370 --help` no longer says a bare member packs at entry 0** (#896).
   Since 1.3.0 (#850) a bare member's entry is `--entry NAME`, else `@@CRT0`,
   looked up in its CESD; the manual page already said so.

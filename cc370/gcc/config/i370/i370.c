@@ -548,6 +548,15 @@ i370_encode_section_info (tree decl, rtx rtl, int first)
     strcat(str, buf);
 #endif
     XSTR (sym_ref, 0) = ggc_alloc_string (str, strlen(str) + 1);
+#ifdef TARGET_PDPMAC
+    /* The decl's assembler name must be the name that is written, or a
+       reference never marks it: assemble_name marks the identifier @Vn as
+       referenced, and wrapup_global_declarations asks the decl's own
+       assembler name.  A deferred static -- a file-scope compound literal,
+       DECL_COMDAT -- was therefore never output, leaving DC A(@V2) with no
+       @V2 (cc370#890).  */
+    SET_DECL_ASSEMBLER_NAME (decl, get_identifier (str));
+#endif
   }
 }
 
@@ -3463,13 +3472,26 @@ i370_check_writable_data (tree decl)
     return;
   if (TREE_CODE (decl) != VAR_DECL || DECL_EXTERNAL (decl))
     return;
-  if (TREE_READONLY (decl) && !TREE_THIS_VOLATILE (decl))
-    return;
+  /* The element type decides for an array: a compound literal's decl takes
+     TREE_READONLY from its array type, which a const element leaves clear
+     (cc370#890).  */
+  {
+    tree t = TREE_TYPE (decl);
+    while (TREE_CODE (t) == ARRAY_TYPE)	/* not strip_array_types: c-common.h */
+      t = TREE_TYPE (t);
+    if ((TREE_READONLY (decl) || TYPE_READONLY (t))
+	&& !TREE_THIS_VOLATILE (decl) && !TYPE_VOLATILE (t))
+      return;
+  }
   if (TREE_PUBLIC (decl) && DECL_NAME (decl)
       && !strcmp (IDENTIFIER_POINTER (DECL_NAME (decl)), "__stklen"))
     return;
-  warning ("%J'%D' is writable data in a reentrant module "
-	   "[-Wwritable-data]", decl, decl);
+  if (DECL_ARTIFICIAL (decl))
+    warning ("%Ja compound literal is writable data in a reentrant module "
+	     "[-Wwritable-data]", decl);
+  else
+    warning ("%J'%D' is writable data in a reentrant module "
+	     "[-Wwritable-data]", decl, decl);
 }
 
 static void
