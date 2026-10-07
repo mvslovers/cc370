@@ -121,7 +121,16 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## On main: 1.5.0-dev (2026-10-07)
+## cc370 1.5.0 released; 1.5.1-dev on main (2026-10-07)
+
+- **1.5.0** (tag on `6512eef`, PR #909; Mike's go, mbt-4c's go after
+  building six projects with 1.4.0 and 1.5.0: every library object
+  identical). `-mrent`/`-Wwritable-data` (#885), file-scope compound
+  literals (#890), ld370 #894/#895/#896, manuals attached (#893). Release
+  workflow green incl. Homebrew; 12 assets checked against SHA256SUMS;
+  install.sh from a scratch prefix took libc370 2.6.2 and builds a hello
+  with a compound literal. Release page reworked.
+- Next for mbt: mvslovers/mbt#189 (pass `-mrent` for `rent = true`).
 
 - **ld370, from the manuals review**: ~~#894~~ **done** (#899: an object,
   archive, `-l` or `-L` on a `--pack` command, and an empty `--pack`, are
