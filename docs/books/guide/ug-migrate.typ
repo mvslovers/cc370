@@ -173,6 +173,21 @@ moved there from the C library.
   to name #cmd("crt0.o"), and from libc370 2.4 on cannot: libc370 2.4 no
   longer installs #cmd("crt0.o") and #cmd("crt1.o"), only #cmd("crtm.o").
   #cmd("-nostartfiles") has no effect any more.
+- *Packing a library.* Since 1.5, #cmd("ld370 --pack") refuses, with
+  return code 2, any input file named before #cmd("--pack") (a member as
+  well as an object module or library), and #cmd("-l") or #cmd("-L")
+  anywhere on the command. Earlier releases left an input file named before
+  #cmd("--pack") out of the library without a message and ended with return
+  code 0, and searched #cmd("-l") libraries for nothing. Move
+  #cmd("--pack") in front of the members.
+- *Member name from -o.* Since 1.5, the member name ld370 checks is the one
+  it writes, the base name up to its first period: #cmd("-o app.v1.lm")
+  gives #cmd("APP"). Earlier releases refused that name, with return code
+  2, when they wrote a transport file or a load map.
+- *Reentrant modules.* Since 1.5, #cmd("-mrent") makes the compiler report
+  every writable variable the sources compiled with it define
+  (@ug-link-attr)\; library code taken by automatic library call is not
+  checked. Nothing changes without the option.
 
 == Notes for GCCMVS Users <ug-migrate-gccmvs>
 
