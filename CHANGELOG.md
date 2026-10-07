@@ -20,6 +20,23 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Added
+- **`-mrent` and `-Wwritable-data`: writable data in a reentrant module is
+  reported by the compiler** (#885). A reentrant load module is one copy
+  shared by every task that LINKs it, and cc370 keeps a C `static` or a
+  non-const global in the module itself, so such a definition is shared,
+  unsynchronised state. Under `-mrent` every definition that is not `const`
+  warns -- globals, `static` at file scope and inside functions, and
+  `const volatile` objects; `extern` declarations and string literals do
+  not, and `-fwritable-strings` warns once. `const char *p` is writable (the
+  pointer is), `char *const p` is not. `__stklen` is exempt: the startup
+  reads it as the stack size. The warning is on by default under `-mrent`,
+  an error under `-Werror`, and `-Wno-writable-data` switches it off.
+  `-mrent` changes no generated code. A build tool that marks a module
+  RENT passes `-mrent` to every translation unit of it; code that automatic
+  library call pulls from a library was compiled without it and is not
+  checked.
+
 ### Fixed
 - **`install.sh` names a failed GitHub API call instead of reporting "no
   libc370 release fits"** (#879). When the API's rate limit (60 requests an

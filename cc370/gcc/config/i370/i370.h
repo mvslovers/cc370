@@ -79,6 +79,12 @@ extern size_t mvs_function_name_length;
 /* bit 2 was -mpickax, an experimental PIC that nothing tested (#834) */
 extern int i370_enable_pic;
 
+/* -mrent: the translation unit goes into a reentrant load module, one copy
+   shared by every task that LINKs it, so it may define no writable data
+   (#885).  Bit 4, not 2: 2 was -mpickax.  No code generation depends on it;
+   it arms -Wwritable-data.  */
+#define TARGET_RENT (target_flags & 4)
+
 /* Default target switches */
 /* This appears to be what switches
    target char instructions on by default */
@@ -93,7 +99,12 @@ extern int i370_enable_pic;
 #define TARGET_SWITCHES							\
 { { "char-instructions", 1, N_("Generate char instructions")},		\
   { "no-char-instructions", -1, N_("Do not generate char instructions")}, \
+  { "rent", 4, N_("Compile for a reentrant module; warn about writable data")}, \
+  { "no-rent", -4, N_("Compile for a module that may hold writable data")}, \
   { "", TARGET_DEFAULT, 0} }
+
+/* Called by assemble_variable for every variable definition it emits.  */
+#define ASM_CHECK_VARIABLE_DEFINITION(DECL) i370_check_writable_data (DECL)
 
 /* The desired CSECT name */
 extern char *mvs_csect_name;
