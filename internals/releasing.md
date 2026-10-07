@@ -56,8 +56,15 @@ of it — and then the one it needs is released first.
    - `release.yml` requires `VERSION` == tag, builds the compiler, runs the
      suites and `test-version-cc370`, and attaches the tarballs, `.deb` /
      `.rpm`, `install.sh` and `SHA256SUMS` (`package.yml`);
-   - check the release afterwards — the assets and, from a clean prefix,
-     `install.sh`;
+   - the manuals (ML01-0001, ML01-0002, `docs/books/`): before the release
+     PR, the edition notice of both (`ml01-000N.typ`, "This edition applies
+     to ...") names the release, and `guide/ug-migrate.typ` ("From an Earlier
+     Release of cc370") has the release's row when it changes what a user
+     notices. A PR that changed documented behaviour has already updated the
+     books or named the stale section in its body. `release.yml` builds the
+     PDFs from the tag (build.yml's `books` job) and attaches them;
+   - check the release afterwards — the assets, the two PDFs and, from a
+     clean prefix, `install.sh`;
    - then set `VERSION` to the next `-dev`, so `main` reports a version
      ahead of the last tag (`__CC370__` follows it).
 

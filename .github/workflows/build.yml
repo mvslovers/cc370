@@ -36,6 +36,12 @@
 # build host while CI stayed green (#452).  It is pinned BY DIGEST rather
 # than by tag: ubuntu-latest moving under us is how this was missed, and a
 # floating `debian:bookworm` would reintroduce exactly that.
+#
+# The `books` job builds the manuals ML01-0001 and ML01-0002 (docs/books)
+# with typst, pinned by version AND sha256 rather than through a setup action,
+# so a broken reference, label or syntax diagram fails the PR, and uploads the
+# PDFs as the artifact `books`; release.yml attaches that artifact to the
+# release.  The fonts come from the bookmaster submodule.
 
 name: Build
 
@@ -141,3 +147,32 @@ jobs:
       # distro, not a stricter opinion.
       - name: Build the standalone tools
         run: make tools HOSTCC=gcc
+
+  books:
+    name: manuals (typst)
+    runs-on: ubuntu-latest
+    env:
+      TYPST_VERSION: 0.15.1
+      TYPST_SHA256: a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install typst (pinned)
+        run: |
+          f=typst-x86_64-unknown-linux-musl.tar.xz
+          curl -fsSLO "https://github.com/typst/typst/releases/download/v$TYPST_VERSION/$f"
+          echo "$TYPST_SHA256  $f" | sha256sum -c -
+          tar xf "$f"
+          sudo install -m 755 typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+          typst --version
+
+      - name: Build the manuals
+        run: make -C docs/books
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: books
+          path: docs/books/*.pdf
+          if-no-files-found: error

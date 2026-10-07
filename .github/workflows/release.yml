@@ -18,6 +18,8 @@
 # 6. The assets (#523): package.yml builds the four tarballs and the .deb and
 #    .rpm per Linux arch, each smoke-tested where it was built; this job adds
 #    install.sh and a SHA256SUMS over all of them and attaches the lot.
+#    The manuals (ML01-0001, ML01-0002) are built from the tag by build.yml's
+#    `books` job and attached beside them, as ml01-000N-E.pdf.
 # 7. Homebrew (#699): the formula is rendered from the release's SHA256SUMS
 #    and pushed to mvslovers/homebrew-tap with the tap's deploy key, which
 #    lives in the `release' environment and is handed only to v* tags.  Then
@@ -79,6 +81,11 @@ jobs:
           pattern: cc370-*
           path: assets
           merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: books
+          path: assets
 
       - name: install.sh and SHA256SUMS
         run: |

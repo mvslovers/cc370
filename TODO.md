@@ -123,6 +123,14 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ## On main: 1.5.0-dev (2026-10-07)
 
+- **Manuals on main** (#803, `7fde748`): ML01-0001 User's Guide and
+  ML01-0002 Command Reference, still Draft (MVS captures open). Agreed with
+  libc370 and the Book session: docs travel with the code (a PR changing
+  documented behaviour updates `docs/books` or names the stale section), CI
+  builds the books, the release attaches the PDFs, edition notice per release
+  (`internals/releasing.md`). After the merge: the review NITs and the
+  recaptures, with the edition (Book session).
+
 - ~~#885 writable data in a RENT module~~ **done** (#888): `-mrent` arms
   `-Wwritable-data` for every non-const definition (`__stklen` exempt,
   `-fwritable-strings` warns once); no code change, byte-identical to 1.4.0
