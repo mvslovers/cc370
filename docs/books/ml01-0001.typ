@@ -24,6 +24,8 @@
   ],
 )
 
+#part("index.html", title: [cc370 User's Guide])[
+#titlepage()
 #contents()
 #figures()
 
@@ -72,21 +74,24 @@ can submit a job and read its output on MVS.
 )
 
 #mainmatter()
+]
 #set page(numbering: "1")
 
-#include "guide/ug-intro.typ"
-#include "guide/ug-install.typ"
-#include "guide/ug-first.typ"
-#include "guide/ug-compile.typ"
-#include "guide/ug-asm.typ"
-#include "guide/ug-link.typ"
-#include "guide/ug-transfer.typ"
-#include "guide/ug-run.typ"
-#include "guide/ug-diag.typ"
+#part("ug-intro.html", include "guide/ug-intro.typ")
+#part("ug-install.html", include "guide/ug-install.typ")
+#part("ug-first.html", include "guide/ug-first.typ")
+#part("ug-compile.html", include "guide/ug-compile.typ")
+#part("ug-asm.html", include "guide/ug-asm.typ")
+#part("ug-link.html", include "guide/ug-link.typ")
+#part("ug-transfer.html", include "guide/ug-transfer.typ")
+#part("ug-run.html", include "guide/ug-run.typ")
+#part("ug-diag.html", include "guide/ug-diag.typ")
 
 #show: appendices
-#include "guide/ug-migrate.typ"
-#include "guide/ug-glossary.typ"
+#part("ug-migrate.html", include "guide/ug-migrate.typ")
+#part("ug-glossary.html", include "guide/ug-glossary.typ")
 
+#part("index-terms.html", title: [Index])[
 #heading(numbering: none)[Index]
 #make-index()
+]
