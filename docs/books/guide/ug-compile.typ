@@ -29,8 +29,9 @@ cc370 -std=gnu99 -Wall -O1 -o prog -flinker-output=xmit prog.c
     at\; see @ug-compile-opt.],
   [#cmd("-o prog")], [names the output. The member name of the load
     module, #cmd("PROG"), is made from this name: everything from the
-    first period on is removed, the rest is put in upper case and cut to
-    eight characters. Give a name that is a valid member name.],
+    first period on is removed and the rest is put in upper case. A name
+    that is not a valid member name, longer than eight characters for
+    example, is refused when the TRANSMIT file is written.],
   [#cmd("-flinker-output=xmit")], [writes the TRANSMIT file
     #cmd("prog.xmit") beside the load module.],
 )

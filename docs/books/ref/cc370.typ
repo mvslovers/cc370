@@ -241,13 +241,14 @@ Chapter 3 describes the format.
 
 #idx("member name")
 The member name is taken from the name given by #cmd("-o"): the directory
-and everything from the first period on are removed, the rest is put in
-upper case and cut to eight characters. #cmd("-o upcase.lm") gives the
-member #cmd("UPCASE"), #cmd("-o verylongname1") the member
-#cmd("VERYLONG"). Without #cmd("-o") the file is #cmd("a.out") and the member
-#cmd("A"). The name is not checked: #cmd("-o my_prog") gives the member
-#cmd("MY_PROG"), which is not a valid member name on MVS. Always give
-#cmd("-o"), with a name that is valid on MVS.
+and everything from the first period on are removed, and the rest is put in
+upper case: #cmd("-o upcase.lm") gives the member #cmd("UPCASE"). Without
+#cmd("-o") the file is #cmd("a.out") and the member #cmd("A"). The name is
+not cut: when a transport file or a load map needs it, a name that is not a
+valid member name on MVS, such as #cmd("-o verylongname1") or
+#cmd("-o my_prog"), is refused by ld370 and the build ends with return code
+1. Always give #cmd("-o"), with a name that is valid on MVS, or pass the
+member name with #cmd("-Wl,--name,")#var("member").
 
 #idx("-flinker-output")
 A member file cannot be uploaded to MVS as it is. #cmd("-flinker-output=")

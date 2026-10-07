@@ -94,8 +94,8 @@ Name the target dataset recorded in the XMIT (default F<IBMUSER.HOST.LOAD>).
 
 =item B<--name> I<n>
 
-Set the PDS member name (otherwise derived from I<out>'s basename, extension
-dropped, uppercased). Where the name reaches a directory or the map -- with
+Set the PDS member name (otherwise I<out>'s basename up to its first period,
+uppercased: F<app.v1.lm> gives C<APP>). Where the name reaches a directory or the map -- with
 B<-xmit>, B<-iebcopy> or B<--map> -- it must be a valid MVS member name (1-8
 characters, a letter or C<@#$> first, then letters, digits or C<@#$>); anything
 else is refused with RC=2, never cut. A bare B<-o> member carries no name and is

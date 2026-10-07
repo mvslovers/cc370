@@ -1800,14 +1800,20 @@ static int pack_link_input(const char *what)
     return 2;
 }
 
-/* derive an 8-char member name from a file path basename (strip dir + ext) */
-static const char *basename_member(const char *path)
+/* The member name a link takes from -o: the base name up to its FIRST
+ * period, upper case, NOT cut -- the caller checks it, so an over-long name
+ * is refused rather than shortened (#807).  The check and every writer use
+ * this one function: the check used to cut at the last period, so
+ * `-o app.v1.lm` was refused as APP.V1 while APP would have been written
+ * (#895). */
+static const char *member_from_out(const char *path)
 {
-    static char nm8[9]; const char *s = path, *p; int i;
+    static char nmbuf[256]; const char *s = path, *p; size_t i;
     for (p = path; *p; p++) if (*p == '/' || *p == '\\') s = p + 1;
-    for (i = 0; i < 8 && s[i] && s[i] != '.'; i++) nm8[i] = s[i];
-    nm8[i] = 0;
-    return nm8;
+    for (i = 0; i < sizeof nmbuf - 1 && s[i] && s[i] != '.'; i++)
+        nmbuf[i] = (s[i] >= 'a' && s[i] <= 'z') ? (char)(s[i] - 'a' + 'A') : s[i];
+    nmbuf[i] = 0;
+    return nmbuf;
 }
 
 /* derive a member name from a file path for --pack: strip the directory and the
@@ -2464,7 +2470,7 @@ int main(int argc, char **argv)
      * no name, so a host-only link is not held to it. */
     if (want_xmit || want_unload || mapfile) {
         const char *nm = mname;
-        if (!nm) nm = member_from_path(outfile ? outfile : "a.out");
+        if (!nm) nm = member_from_out(outfile ? outfile : "a.out");
         if (!valid_member_name(nm)) {
             fprintf(stderr, "ld370: '%s' (%s) is not a valid MVS member name (1-8 chars, letter "
                             "or @#$ first, then letters/digits/@#$)%s\n", nm,
@@ -2979,7 +2985,7 @@ int main(int argc, char **argv)
     /* An alias naming the member, or one alias given twice, is the command
      * line's error: rc 2, before anything is written (#821). */
     if (naliasv && (want_xmit || want_unload)
-        && !aliases_ok(mname ? mname : basename_member(outfile), aliasv, naliasv)) return 2;
+        && !aliases_ok(mname ? mname : member_from_out(outfile), aliasv, naliasv)) return 2;
     /* A map that cannot be written is found BEFORE the member is: it used to be
      * reported after the member was already on disk (#821). */
     if (mapfile && strcmp(mapfile, "-") && !writable(mapfile)) return 1;
@@ -2996,14 +3002,14 @@ int main(int argc, char **argv)
     }
     /* After the member, not before: a map for a module that was never written
      * would describe nothing on disk. */
-    if (mapfile && write_map(mapfile, mname ? mname : basename_member(outfile), entryname,
+    if (mapfile && write_map(mapfile, mname ? mname : member_from_out(outfile), entryname,
                              entry_obj, entry_addr, modlen, gidx, nsect, want_xref)) return 1;
 
     /* additionally emit the host->MVS transport wrappers when requested: -xmit
      * -> OUT.xmit (TSO TRANSMIT/NETDATA), -iebcopy -> OUT.iebcopy (IEBCOPY unload).
      * These never replace the member written above. */
     {
-        const char *name = mname ? mname : basename_member(outfile);
+        const char *name = mname ? mname : member_from_out(outfile);
         /* --alias: each is a directory entry with this member's TTR.  IEWL's rule
          * for its entry point, measured (MVSCE-LAB JOB01367): an ALIAS that names
          * an external symbol of the module enters there (ALT2 -> X'14'); any
