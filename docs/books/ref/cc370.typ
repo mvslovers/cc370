@@ -402,13 +402,13 @@ escape the second question mark: #cmd("\"what?\\?!\"").#idx("trigraphs", "escapi
 Besides the macros of GCC 3.4.6, cc370 defines the macros in
 @cc370-macro-tab. #cmd("cc370 -dM -E - </dev/null") lists all of them.
 
-#tab(caption: [Macros predefined by cc370 1.4.0])[
+#tab(caption: [Macros predefined by cc370 1.5.0])[
   #table(columns: (1.6in, 0.7in, 1fr),
     [Macro], [Value], [Meaning],
-    [#cmd("__CC370__")], [#cmd("10400")], [the toolchain version: major
+    [#cmd("__CC370__")], [#cmd("10500")], [the toolchain version: major
       × 10000 + minor × 100 + patch],
     [#cmd("__CC370_MAJOR__")], [#cmd("1")], [major version],
-    [#cmd("__CC370_MINOR__")], [#cmd("4")], [minor version],
+    [#cmd("__CC370_MINOR__")], [#cmd("5")], [minor version],
     [#cmd("__CC370_PATCH__")], [#cmd("0")], [patch level],
     [#cmd("__CC370_WEAK__")], [#cmd("1")], [weak references are supported\;
       see @cc370-weak],

@@ -10,8 +10,8 @@
   edition: [
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
-    This edition applies to Version 1 Release 4 of the cc370
-    cross-toolchain (cc370 1.4.0) and to all subsequent releases and
+    This edition applies to Version 1 Release 5 of the cc370
+    cross-toolchain (cc370 1.5.0) and to all subsequent releases and
     modifications until otherwise indicated in new editions.
 
     *Draft.* The output of the examples that run on MVS has still to be
