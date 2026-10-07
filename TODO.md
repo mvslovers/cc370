@@ -121,7 +121,19 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## cc370 1.4.0 released; 1.4.1-dev on main (2026-10-05)
+## On main: 1.5.0-dev (2026-10-07)
+
+- ~~#885 writable data in a RENT module~~ **done** (#888): `-mrent` arms
+  `-Wwritable-data` for every non-const definition (`__stklen` exempt,
+  `-fwritable-strings` warns once); no code change, byte-identical to 1.4.0
+  without `-mrent` over 356 libc370 sources. Follow-ups, not filed yet: mbt
+  passes `-mrent` per `rent = true` and drops `mbtmoddata.py`; the as370
+  half (hand-written assembler storing into its CSECT).
+- Found on the way, pre-existing in 1.4.0, not filed yet: a file-scope
+  compound literal (`static int *p = (int[]){1, 2};`) is never emitted --
+  `DC A(@V2)` without `@V2`, as370 rc 8.
+
+## cc370 1.4.0 released (2026-10-05)
 
 - **1.4.0** (tag on `2821ebb`, PR #877; go from mbt-4c, Mike's OK relayed):
   no startfile, `@@CRT0` autocalled from `libc.a`, packages need libc370
