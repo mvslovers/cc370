@@ -106,10 +106,8 @@ return code 2.
     #cmd("a.out").],
   [#cmd("--name") #var("member")], [sets the member name used in the
     directory of the transport files. Without it, the name is taken from the
-    #cmd("-o") file: the base name up to its first period. The check that
-    the name is a valid member name, however, cuts at the last period, so
-    an #cmd("-o") file with two periods, such as #cmd("app.v1.lm"), is
-    refused with return code 2\; give #cmd("--name"). Either name is
+    #cmd("-o") file: the base name up to its first period, so
+    #cmd("-o app.v1.lm") gives #cmd("APP"). Either name is
     changed to uppercase. When the name is used, that is with
     #cmd("-iebcopy"), #cmd("-xmit") or #cmd("--map"), it must be a valid
     member name, one to eight characters as described for aliases in

@@ -1443,6 +1443,13 @@ c807 "a C source is not an object"             1 "not an object deck"       -o "
 c807 "--name 1BAD is refused with -iebcopy"    2 "'1BAD' \(--name\) is not a valid" --name 1BAD -iebcopy -o "$TMP/x" "$TMP/s807.o"
 c807 "a 12-char -o name is refused with -xmit" 2 "from -o\) is not a valid.*give --name" -xmit -o "$TMP/verylongname" "$TMP/s807.o"
 c807 "a bare -o member needs no MVS name"      0 ""                         -o "$TMP/very_long_name" "$TMP/s807.o"
+# #895: the name from -o is what is written -- up to the FIRST period -- and
+# the check measures that same name; it used to cut at the last period.
+c807 "-o app.v1.lm -xmit is member APP"        0 ""                         -xmit -e E807 -o "$TMP/app.v1.lm" "$TMP/s807.o"
+"$FI" "$TMP/app.v1.lm.xmit" 2>/dev/null | grep -q '(member APP)' \
+    && echo "  OK: the XMIT holds member APP" || { echo "  FAIL: app.v1.lm.xmit: $("$FI" "$TMP/app.v1.lm.xmit" 2>&1)"; fails=$((fails + 1)); }
+c807 "-o app.v1.lm --map names APP"            0 "MAP +APP "                --map - -e E807 -o "$TMP/app.v1.lm" "$TMP/s807.o"
+c807 "a 10-char name before the period is refused" 2 "'ABCDEFGHIJ' \(from -o\) is not a valid" -xmit -o "$TMP/abcdefghij.lm" "$TMP/s807.o"
 c807 "--ac 300 is out of range"                2 "--ac 300 out of range"    --ac 300 -o "$TMP/x" "$TMP/s807.o"
 c807 "--blocksize abc is not a number"         2 "--blocksize takes a number, not 'abc'" --blocksize abc -o "$TMP/x" "$TMP/s807.o"
 "$LD" -o "$TMP/P807" --name P807 -e E807 "$TMP/s807.o" -xmit 2>/dev/null
@@ -1453,7 +1460,7 @@ c807 "--sparse-text with --pack is warned"     0 "--sparse-text is ignored by --
 "$LD" -v -o "$TMP/x" -e E807 "$TMP/s807.o" 2>&1 | grep -qE "1 section\(s\) \+ 1 LR \+ 0 ER" \
     && echo "  OK: -v counts the LR as an LR, not an ER" \
     || { echo "  FAIL: -v trace: $("$LD" -v -o "$TMP/x" -e E807 "$TMP/s807.o" 2>&1 | grep 'CESD:')"; fails=$((fails + 1)); }
-rm -f "$TMP"/s807.* "$TMP"/c807.* "$TMP"/hello807.c "$TMP"/P807* "$TMP"/q* "$TMP"/x "$TMP"/very_long_name "$TMP"/T807
+rm -f "$TMP"/s807.* "$TMP"/c807.* "$TMP"/hello807.c "$TMP"/P807* "$TMP"/q* "$TMP"/x "$TMP"/very_long_name "$TMP"/T807 "$TMP"/app.v1.lm*
 
 printf '\n'
 if [ "$fails" -eq 0 ]; then

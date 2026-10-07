@@ -38,6 +38,11 @@ neither number is mistaken for the other.
   checked.
 
 ### Fixed
+- **`ld370` checks the member name it writes** (#895). The name from `-o`
+  is the base name up to the first period (`-o upcase.lm` is `UPCASE`), but
+  the validity check cut at the last one: `-o app.v1.lm -xmit` was refused
+  as `APP.V1` although `APP` would have been written. Both now use the same
+  name. A name longer than eight characters is still refused, not cut.
 - **`ld370 --pack` refuses a link input instead of dropping it** (#894). An
   object deck or archive named before `--pack` went into the link list,
   which a pack ignores: `ld370 A.iebcopy --pack B.iebcopy -o lib -xmit`
