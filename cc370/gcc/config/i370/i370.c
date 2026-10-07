@@ -456,6 +456,15 @@ i370_override_options (void)
       }
       mvs_csect_name = buf;
   }
+
+  /* -fwritable-strings makes every string literal writable storage in the
+     CSECT; i370_check_writable_data never sees them, they are constants.  */
+  {
+    extern int warn_writable_data;
+    if (TARGET_RENT && warn_writable_data && flag_writable_strings)
+      warning ("-fwritable-strings puts writable string literals into a "
+	       "reentrant module [-Wwritable-data]");
+  }
 #endif /* TARGET_HLASM */
 
 #ifdef TARGET_ELF_ABI
@@ -3438,6 +3447,29 @@ i370_weaken_decl (FILE *f, tree decl, const char *name)
       return;
     }
   weak_wxtrn (f, name);
+}
+
+/* -Wwritable-data under -mrent (#885).  A reentrant load module is one copy
+   for every task that LINKs it, and cc370 keeps a definition's storage in
+   the CSECT, so anything not const is state those tasks share unsynchronised.
+   const volatile counts as writable.  __stklen is exempt: the startup reads
+   it through WXTRN @@STKLEN as the stack size and nothing writes it.  */
+void
+i370_check_writable_data (tree decl)
+{
+  extern int warn_writable_data;
+
+  if (!TARGET_RENT || !warn_writable_data)
+    return;
+  if (TREE_CODE (decl) != VAR_DECL || DECL_EXTERNAL (decl))
+    return;
+  if (TREE_READONLY (decl) && !TREE_THIS_VOLATILE (decl))
+    return;
+  if (TREE_PUBLIC (decl) && DECL_NAME (decl)
+      && !strcmp (IDENTIFIER_POINTER (DECL_NAME (decl)), "__stklen"))
+    return;
+  warning ("%J'%D' is writable data in a reentrant module "
+	   "[-Wwritable-data]", decl, decl);
 }
 
 static void

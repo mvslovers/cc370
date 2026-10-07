@@ -814,5 +814,47 @@ if compile ey "$WORK/ey.c" "-O1"; then
 else echo "eyecatcher: FAIL -- does not compile"; eyfail=1; fi
 if [ $eyfail = 0 ]; then echo "eyecatcher: OK (C'CC370',AL1($vparts) in front of @@MAIN)"; else fail=1; fi
 
+# --- #885: -mrent arms -Wwritable-data.  A reentrant module is one copy for
+# every task that LINKs it; every definition that is not const is shared
+# writable state.  const volatile counts as writable; __stklen is exempt
+# (the startup reads it through WXTRN @@STKLEN).  The option changes no code.
+cat > "$WORK/wd.c" <<'EOF'
+int g_init = 5;
+int g_bss;
+static int s_file;
+const int c_ok = 3;
+const char *pc = "x";
+char *const cp = 0;
+const char tab[] = "abc";
+const volatile int cv = 1;
+int __stklen = 65536;
+extern int ext;
+int f(void) { static int cnt; static const int k = 2; return ++cnt + k + ext + s_file; }
+EOF
+$CC1 -quiet -O1 -mrent "$WORK/wd.c" -o "$WORK/wd.s" 2>"$WORK/wd.err"
+got=$(sed -n "s/.*'\([^']*\)' is writable data in a reentrant module \[-Wwritable-data\]/\1/p" "$WORK/wd.err" | sort | tr '\n' ' ')
+want="cnt cv g_bss g_init pc s_file "
+[ "$got" = "$want" ] && echo "writable-data: OK (6 writable, const/extern/__stklen not reported)" \
+    || { echo "writable-data: FAIL (got '$got', want '$want')"; fail=1; }
+$CC1 -quiet -O1 "$WORK/wd.c" -o "$WORK/wd2.s" 2>"$WORK/wd2.err"
+[ ! -s "$WORK/wd2.err" ] && echo "writable-data-norent: OK (silent without -mrent)" \
+    || { echo "writable-data-norent: FAIL ($(head -1 "$WORK/wd2.err"))"; fail=1; }
+cmp -s "$WORK/wd.s" "$WORK/wd2.s" && echo "writable-data-code: OK (-mrent changes no code)" \
+    || { echo "writable-data-code: FAIL (-mrent changed the output)"; fail=1; }
+$CC1 -quiet -O1 -mrent -Wno-writable-data "$WORK/wd.c" -o "$WORK/wd3.s" 2>"$WORK/wd3.err"
+[ ! -s "$WORK/wd3.err" ] && echo "writable-data-off: OK (-Wno-writable-data silences it)" \
+    || { echo "writable-data-off: FAIL ($(head -1 "$WORK/wd3.err"))"; fail=1; }
+if $CC1 -quiet -O1 -mrent -Werror "$WORK/wd.c" -o "$WORK/wd4.s" 2>/dev/null; then
+    echo "writable-data-werror: FAIL (rc 0 under -Werror)"; fail=1
+else echo "writable-data-werror: OK (an error under -Werror)"; fi
+$CC1 -quiet -O1 -mrent -mno-rent "$WORK/wd.c" -o "$WORK/wd5.s" 2>"$WORK/wd5.err"
+[ ! -s "$WORK/wd5.err" ] && echo "writable-data-mno-rent: OK (-mno-rent after -mrent disarms it)" \
+    || { echo "writable-data-mno-rent: FAIL ($(head -1 "$WORK/wd5.err"))"; fail=1; }
+
+$CC1 -quiet -O1 -mrent -fwritable-strings "$WORK/wd.c" -o "$WORK/wd6.s" 2>"$WORK/wd6.err"
+grep -q 'fwritable-strings puts writable string literals into a reentrant module' "$WORK/wd6.err" \
+    && echo "writable-data-strings: OK (-fwritable-strings under -mrent warned)" \
+    || { echo "writable-data-strings: FAIL (no warning)"; fail=1; }
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail

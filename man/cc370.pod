@@ -93,6 +93,20 @@ untested and not supported. Unit-at-a-time and strict aliasing are off by
 default on this target; B<-funit-at-a-time> and B<-fstrict-aliasing> turn
 them back on.
 
+=item B<-mrent>, B<-mno-rent>
+
+The translation unit goes into a reentrant (RENT) load module: one copy that
+every task LINKing it shares. B<cc370> keeps a C C<static> or global in the
+module itself, so every definition that is not C<const> is state those tasks
+share unsynchronised. Under B<-mrent> each such definition warns
+(B<-Wwritable-data>, on by default; an error under B<-Werror>;
+B<-Wno-writable-data> switches it off): globals, C<static> at file scope and
+inside functions, and C<const volatile> objects. Declarations (C<extern>) and
+string literals do not; B<-fwritable-strings> does, once. C<__stklen> is
+exempt: the startup reads it as the stack size and nothing writes it. The
+option changes no generated code. It sees only this translation unit: code
+pulled from a library by automatic library call was compiled without it.
+
 =item B<-I> I<dir>, B<-L> I<dir>, B<-l> I<name>
 
 Add a header search directory, a library search directory, or link a library

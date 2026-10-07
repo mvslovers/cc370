@@ -45,6 +45,10 @@ installs cc370 into `~/.local` (`PREFIX=` to change it) **and libc370 beside
 it**: the newest libc370 release whose `libc370-<v>-metadata.json` accepts the
 cc370 just installed. Both downloads are checked against their release's
 `SHA256SUMS`. Without a fitting libc370 it installs cc370 alone and says so.
+The release list comes from the GitHub API, which allows 60 requests an hour
+per address; when that is used up `install.sh` says so and stops. Retry later,
+set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=` and
+`LIBC370_VERSION=`.
 
 | Platform | cc370 assets |
 |---|---|
@@ -122,11 +126,12 @@ via a path relative to it, so it must exist. Builds on x86-64 and ARM64.
 ### Sysroot — where cc370 finds the libc
 
 cc370 searches `<prefix>/cc370/{include,lib}` by default (the `cc370` component is
-the target name, from `-dumpmachine`). [libc370](https://github.com/mvslovers/libc370)
-drops its headers, `libc.a`, the `crt0/1/m.o` startfiles and the assembler macros
-all under `<prefix>/cc370/` (`include`, `lib`, `macros`); as370, whose real binary
-lives in `<prefix>/cc370/bin`, finds the macros via its `<exedir>/../macros`
-default. After that the toolchain is self-contained:
+the target name, from `-dumpmachine`).
+[libc370](https://github.com/mvslovers/libc370) drops its headers, `libc.a` (which
+carries the C startup `@@CRT0` since 2.3.0), the nested startup `crtm.o` and the
+assembler macros all under `<prefix>/cc370/` (`include`, `lib`, `macros`); as370,
+whose real binary lives in `<prefix>/cc370/bin`, finds the macros via its
+`<exedir>/../macros` default. After that the toolchain is self-contained:
 
 ```sh
 make -C ../libc370 install                   # populate the sysroot once

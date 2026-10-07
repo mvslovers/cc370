@@ -20,6 +20,40 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Added
+- **`-mrent` and `-Wwritable-data`: writable data in a reentrant module is
+  reported by the compiler** (#885). A reentrant load module is one copy
+  shared by every task that LINKs it, and cc370 keeps a C `static` or a
+  non-const global in the module itself, so such a definition is shared,
+  unsynchronised state. Under `-mrent` every definition that is not `const`
+  warns -- globals, `static` at file scope and inside functions, and
+  `const volatile` objects; `extern` declarations and string literals do
+  not, and `-fwritable-strings` warns once. `const char *p` is writable (the
+  pointer is), `char *const p` is not. `__stklen` is exempt: the startup
+  reads it as the stack size. The warning is on by default under `-mrent`,
+  an error under `-Werror`, and `-Wno-writable-data` switches it off.
+  `-mrent` changes no generated code. A build tool that marks a module
+  RENT passes `-mrent` to every translation unit of it; code that automatic
+  library call pulls from a library was compiled without it and is not
+  checked.
+
+### Fixed
+- **`install.sh` names a failed GitHub API call instead of reporting "no
+  libc370 release fits"** (#879). When the API's rate limit (60 requests an
+  hour per address) was used up, the release list came back empty and the
+  script said that no libc370 fitted, installed cc370 alone and ended with
+  rc 0. Since 1.4.0 a link needs libc370, so the result was a compiler that
+  could not link, with a message pointing at the wrong problem. Every API
+  call is now checked: a rate limit is named with the minutes until it
+  resets, any other HTTP status and a failed connection likewise, and the
+  script ends with rc 1. "No release fits" is kept for a list that was read
+  and had no match. `GITHUB_TOKEN` is sent to the API when set, and a
+  release list on one line is read whole. Run by zsh (`| zsh`), the script
+  skipped libc370 with the same message, because zsh does not split words;
+  it now turns that on. The 1.4.0 release's `install.sh` asset was replaced
+  with this version on 2026-10-05 (and its `SHA256SUMS` line with it); the
+  toolchain archives and packages were not changed.
+
 ## [1.4.0] - 2026-10-05
 
 ### Changed
