@@ -31,7 +31,8 @@ cc370 -std=gnu99 -Wall -O1 -o prog -flinker-output=xmit prog.c
     module, #cmd("PROG"), is made from this name: everything from the
     first period on is removed and the rest is put in upper case. A name
     that is not a valid member name, longer than eight characters for
-    example, is refused when the TRANSMIT file is written.],
+    example, is refused when the TRANSMIT or unloaded file, or a load map,
+    is written.],
   [#cmd("-flinker-output=xmit")], [writes the TRANSMIT file
     #cmd("prog.xmit") beside the load module.],
 )

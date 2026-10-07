@@ -237,8 +237,8 @@ what it is. B<--sparse-text> and B<--allow-unresolved> shape a link and are
 ignored by a pack, with a warning; B<--map> and B<--alias> are refused.
 
 Every operand after B<--pack> is a member to pack, and a pack links nothing. An
-object deck or archive named B<before> B<--pack>, and B<-l> or B<-L> anywhere on
-the command, are refused (RC=2), as is a B<--pack> naming no member; they used
+input file named B<before> B<--pack> (a member to pack as well as an object deck
+or archive), and B<-l> or B<-L> anywhere on the command, are refused (RC=2), as is a B<--pack> naming no member; they used
 to be dropped without a word.
 
 =item B<-v>, B<--verbose>
@@ -301,7 +301,7 @@ holds a block larger than B<--blocksize>, or an output could not be written.
 A usage error: the command line is wrong whatever the files hold. An unknown
 option, an option without its value, a value out of range or not a number, an
 invalid member or alias name, options that cannot be combined (B<--include>,
-an object deck, an archive, B<-l> or B<-L> with B<--pack>, or B<--pack> with no
+an input file before it, B<-l> or B<-L> with B<--pack>, or B<--pack> with no
 member), one name used twice in a library (a member, or an alias naming
 the member or given twice), more than 32 archives, or a B<--pack> input that is
 not a load module.
