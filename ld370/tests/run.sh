@@ -1435,6 +1435,11 @@ c807() {   # NAME WANT-RC GREP-ERE ARGS...   -- rc and a stderr pattern
     fi
 }
 c807 "--help prints the usage"                 0 "usage: ld370"            --help
+# #896: --help said a bare member packs at entry 0; since #850 its entry comes from its CESD
+c807 "--help: a bare member's entry is @@CRT0 or --entry" 0 "bare member packs at --entry NAME, else @@CRT0" --help
+"$LD" --help | grep -q "entry 0 (--entry is not honoured" \
+    && { echo "  FAIL: --help still says a bare member packs at entry 0"; fails=$((fails + 1)); } \
+    || echo "  OK: --help no longer says entry 0"
 c807 "an unknown option is refused"            2 "unknown option '--bogus'" --bogus -o "$TMP/x" "$TMP/s807.o"
 c807 "-e given last needs a value"             2 "-e needs a value"         -o "$TMP/x" "$TMP/s807.o" -e
 printf 'int main(void){return 0;}\n' > "$TMP/hello807.c"; rm -f "$TMP/T807"

@@ -38,6 +38,9 @@ neither number is mistaken for the other.
   checked.
 
 ### Fixed
+- **`ld370 --help` no longer says a bare member packs at entry 0** (#896).
+  Since 1.3.0 (#850) a bare member's entry is `--entry NAME`, else `@@CRT0`,
+  looked up in its CESD; the manual page already said so.
 - **`ld370` checks the member name it writes** (#895). The name from `-o`
   is the base name up to the first period (`-o upcase.lm` is `UPCASE`), but
   the validity check cut at the last one: `-o app.v1.lm -xmit` was refused
