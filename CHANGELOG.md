@@ -66,6 +66,11 @@ neither number is mistaken for the other.
   `@@CRT0` no longer has to sit at offset 0: the directory's entry points to
   it, and `ld370 --pack` takes a bare member's entry from its CESD (#850).
 
+The manuals ML01-0001 and ML01-0002 (Draft edition) and their `SHA256SUMS`
+lines were added to the 1.4.0 release on 2026-10-07. That addition changed
+no other asset; the `install.sh` asset had been replaced on 2026-10-05 (see
+[Unreleased]).
+
 ## [1.3.1] - 2026-10-05
 
 ### Fixed
