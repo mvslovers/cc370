@@ -856,5 +856,32 @@ grep -q 'fwritable-strings puts writable string literals into a reentrant module
     && echo "writable-data-strings: OK (-fwritable-strings under -mrent warned)" \
     || { echo "writable-data-strings: FAIL (no warning)"; fail=1; }
 
+# --- #890: a file-scope compound literal is a deferred static (DECL_COMDAT)
+# that wrapup emits only when its assembler name was marked referenced.  The
+# back end renamed it to @Vn without moving the assembler name, so a
+# reference marked @Vn and the literal was dropped: DC A(@V2), no @V2.
+cat > "$WORK/cl.c" <<'EOF'
+static int *cl = (int[]){1, 2};
+int *gl = (int[]){3, 4};
+static const int *ccl = (const int[]){5, 6};
+int *get(void) { return cl; }
+const int *getc(void) { return ccl; }
+EOF
+clfail=0
+for o in -O0 -O1; do
+    $CC1 -quiet $o "$WORK/cl.c" -o "$WORK/cl$o.s" 2>/dev/null
+    for v in $(sed -n 's/.*DC    A(\(@V[0-9]*\)).*/\1/p' "$WORK/cl$o.s"); do
+        grep -q "^$v  *EQU" "$WORK/cl$o.s" || { echo "compound-literal: FAIL ($o: $v referenced, never defined)"; clfail=1; }
+    done
+    $ROOT/as370/as370 -I $ROOT/macros -o "$WORK/cl.o" "$WORK/cl$o.s" >/dev/null 2>&1 \
+        || { echo "compound-literal: FAIL ($o: as370 rc $?)"; clfail=1; }
+done
+[ $clfail = 0 ] && echo "compound-literal: OK (every DC A(@Vn) defined, assembles at -O0 and -O1)" || fail=1
+$CC1 -quiet -O1 -mrent "$WORK/cl.c" -o "$WORK/cl2.s" 2>"$WORK/cl2.err"
+n=$(grep -c 'a compound literal is writable data' "$WORK/cl2.err")
+if [ "$n" = 2 ] && ! grep -q "'__[0-9]" "$WORK/cl2.err"; then
+    echo "compound-literal-rent: OK (two writable literals named as such, the const one not reported)"
+else echo "compound-literal-rent: FAIL ($n literal warnings: $(tr '\n' '|' < "$WORK/cl2.err"))"; fail=1; fi
+
 [ $fail = 0 ] && echo "ALL CC370 TESTS PASSED" || echo "FAILURES"
 exit $fail

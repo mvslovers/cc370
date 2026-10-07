@@ -674,7 +674,8 @@ cc370 keeps a C #cmd("static") or global variable in the module itself, so
 every such definition that is not #cmd("const") is state those tasks share
 without serialization. Under #cmd("-mrent") each one draws the warning
 #cmd("-Wwritable-data"): global variables, #cmd("static") variables at file
-scope and inside functions, and #cmd("const volatile") objects.
+scope and inside functions, compound literals at file scope such as
+#cmd("(int[]){1, 2}"), and #cmd("const volatile") objects.
 #cmd("const char *p") is writable, because the pointer is\;
 #cmd("char *const p") is not. Declarations (#cmd("extern")) and string
 literals draw no warning\; under #cmd("-fwritable-strings") the string
