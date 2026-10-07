@@ -720,9 +720,18 @@ file.]
 #mc("ld370: --alias applies to a link, not to --pack; build the member with --alias and -iebcopy, and pack that -- its aliases come along") \
 #mc("ld370: --name applies to a link, not to --pack; name a packed member as NAME=FILE") \
 #mc("ld370: --include names a link input; --pack takes members only") \
-#mc("ld370: --pack needs -o OUT (base name)")][
+#mc("ld370: --pack needs -o OUT (base name)") \
+#mc("ld370: --pack names no member to pack (ld370 --pack MEMBER... -o OUT)")][
   The options do not go together. Return code 2.
 ][Correct the command as the message says.]
+
+#msg[#mc("ld370: '")#mv("operand")#mc("' is a link input, but --pack links nothing; put --pack before the members to pack and leave objects, archives, -l and -L to a link")][
+  #mc("--pack") was given together with an object module or library named
+  before it, or with #mc("-l") or #mc("-L"). Every operand after
+  #mc("--pack") is a member to pack, and a pack links nothing, so the
+  operand would have been left out. Return code 2\; nothing is written.
+][Put #mc("--pack") before the members, and link the object modules in a
+  command of their own.]
 
 #msg[#mc("ld370: --pack: '")#mv("file")#mc("' is ")#mv("what")#mc(", not a load module; pack the member or its -iebcopy") \
 #mc("ld370: --pack: '")#mv("file")#mc("' is not a load module")][

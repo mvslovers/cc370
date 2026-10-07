@@ -252,6 +252,34 @@ case "$pw" in
 esac
 [ "$pw_fails" -eq 0 ] || fails=$((fails + 1))
 
+# #894: --pack links nothing, so a link input on the same command -- an object
+# or archive named before --pack, an -l or -L anywhere -- used to be dropped
+# without a word (rc 0, the library short a member).  --pack with no member at
+# all linked the earlier operands instead.  Both are refused, rc 2, nothing written.
+printf '\n=== --pack refuses link inputs and an empty pack (#894) ===\n'
+po_fails=0
+rm -f "$TMP/po1.xmit" "$TMP/po2.xmit" "$TMP/po3" "$TMP/po3.xmit" "$TMP/po4.xmit"
+"$LD" "$TMP/tiny.ld.bin" --pack "RLDT=$TMP/rldt.ld.bin" -o "$TMP/po1" -xmit 2>"$TMP/po1.err"; r=$?
+if [ $r = 2 ] && grep -q "tiny.ld.bin" "$TMP/po1.err" && [ ! -e "$TMP/po1.xmit" ]; then
+    echo "  OK: an operand before --pack is refused by name, rc 2, no XMIT"
+else echo "  FAIL: operand before --pack: rc $r, [$(cat "$TMP/po1.err")], xmit $( [ -e "$TMP/po1.xmit" ] && echo written || echo absent)"; po_fails=1; fi
+"$LD" --pack "TINY=$TMP/tiny.ld.bin" -L "$TMP" -o "$TMP/po2" -xmit 2>"$TMP/po2.err"; r=$?
+if [ $r = 2 ] && grep -q -- "-L" "$TMP/po2.err" && [ ! -e "$TMP/po2.xmit" ]; then
+    echo "  OK: -L with --pack is refused, rc 2"
+else echo "  FAIL: -L with --pack: rc $r, [$(cat "$TMP/po2.err")]"; po_fails=1; fi
+"$LD" --pack "TINY=$TMP/tiny.ld.bin" -lnosuch -o "$TMP/po4" -xmit 2>"$TMP/po4.err"; r=$?
+if [ $r = 2 ] && grep -q -- "-lnosuch" "$TMP/po4.err" && [ ! -e "$TMP/po4.xmit" ]; then
+    echo "  OK: -l with --pack is refused, rc 2 (not searched)"
+else echo "  FAIL: -l with --pack: rc $r, [$(cat "$TMP/po4.err")]"; po_fails=1; fi
+"$LD" -o "$TMP/po3" "$TMP/tiny.ld.bin" -xmit --pack 2>"$TMP/po3.err"; r=$?
+if [ $r = 2 ] && [ ! -e "$TMP/po3" ] && [ ! -e "$TMP/po3.xmit" ]; then
+    echo "  OK: --pack with no member is refused, rc 2, nothing linked"
+else echo "  FAIL: empty --pack: rc $r, [$(cat "$TMP/po3.err")]"; po_fails=1; fi
+"$LD" --pack "TINY=$TMP/tiny.ld.bin" "RLDT=$TMP/rldt.ld.bin" -o "$TMP/po5" -xmit 2>/dev/null \
+    && "$FI" "$TMP/po5.xmit" | grep -q 'member' \
+    && echo "  OK: --pack first still packs" || { echo "  FAIL: a correct --pack broke"; po_fails=1; }
+[ "$po_fails" -eq 0 ] || fails=$((fails + 1))
+
 # large-RLD object keeps its exported LD symbols.  parse_object used fixed
 # rld[512]/ld[64] arrays with no bounds check; an object with >512 RLD items
 # (large C cores -- rexx370's irx#pars/bcom/bifs/bvm) overflowed rld[] into the
