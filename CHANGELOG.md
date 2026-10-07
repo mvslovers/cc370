@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-07
+
 ### Added
 - **`-mrent` and `-Wwritable-data`: writable data in a reentrant module is
   reported by the compiler** (#885). A reentrant load module is one copy
@@ -36,6 +38,10 @@ neither number is mistaken for the other.
   RENT passes `-mrent` to every translation unit of it; code that automatic
   library call pulls from a library was compiled without it and is not
   checked.
+- **The manuals are attached to the release.** ML01-0001 (User's Guide)
+  and ML01-0002 (Command Reference), Draft edition, are built from the
+  tagged sources and attached as `ml01-0001-0.pdf` and `ml01-0002-0.pdf`,
+  listed in `SHA256SUMS` (#893).
 
 ### Fixed
 - **A compound literal at file scope is emitted** (#890). `static int *p =
