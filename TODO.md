@@ -142,9 +142,11 @@ front of you, the second is nineteen-twentieths unattributable.
   without `-mrent` over 356 libc370 sources. Follow-ups: mbt passes
   `-mrent` per `rent = true` and drops `mbtmoddata.py` (mvslovers/mbt#189);
   the as370 half, stores into the CSECT (#891).
-- #890, found on the way, pre-existing in 1.4.0: a file-scope
-  compound literal (`static int *p = (int[]){1, 2};`) is never emitted --
-  `DC A(@V2)` without `@V2`, as370 rc 8.
+- ~~#890 file-scope compound literal never emitted~~ **done** (#905): the
+  @Vn rename now moves DECL_ASSEMBLER_NAME too; also emits #590's table
+  under `-funit-at-a-time` (unit-at-a-time stays off, asm-ordering half).
+- Closed as already done (2026-10-07): #103 (CM max rule, by #843), #802
+  (ML01-0002 on main), #10 (cc370 side done; httpd/mbt move to `__premain`).
 
 ## cc370 1.4.0 released (2026-10-05)
 
