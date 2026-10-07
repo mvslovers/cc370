@@ -123,11 +123,11 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ## On main: 1.5.0-dev (2026-10-07)
 
-- **ld370, from the manuals review** -- next, in this order: #894 operands
-  before `--pack` dropped silently, rc 0 (silent wrong output: an installed
-  library is short a member); #895 the `-o` member name is written up to the
-  first period but checked up to the last; #896 `--help` still says a bare
-  member packs at entry 0 (false since #850).
+- **ld370, from the manuals review**: ~~#894~~ **done** (#899: an object,
+  archive, `-l` or `-L` on a `--pack` command, and an empty `--pack`, are
+  refused rc 2); ~~#895~~ **done** (#900: one name from `-o`, up to the first
+  period, for the check and every writer). Open: #896 `--help` still says a
+  bare member packs at entry 0 (false since #850).
 - **Manuals on main** (#803, `7fde748`): ML01-0001 User's Guide and
   ML01-0002 Command Reference, still Draft (MVS captures open). Agreed with
   libc370 and the Book session: docs travel with the code (a PR changing
