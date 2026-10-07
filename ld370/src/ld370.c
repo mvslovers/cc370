@@ -1790,6 +1790,16 @@ static int write_xmit1(const char *path, const char *name, const unsigned char *
     return write_xmit(path, &m, 1, dsn);
 }
 
+/* --pack with a link input (#894): every operand after --pack is a member,
+ * and objects, archives, -l and -L belong to a link, which a pack does not do. */
+static int pack_link_input(const char *what)
+{
+    fprintf(stderr, "ld370: '%s' is a link input, but --pack links nothing; put --pack "
+                    "before the members to pack and leave objects, archives, -l and -L "
+                    "to a link\n", what);
+    return 2;
+}
+
 /* derive an 8-char member name from a file path basename (strip dir + ext) */
 static const char *basename_member(const char *path)
 {
@@ -2166,6 +2176,7 @@ int main(int argc, char **argv)
     int nobjf = 0, npack = 0, nLdir = 0, pack_mode = 0, i, j;
     int want_xmit = 0, want_unload = 0;          /* -xmit/-iebcopy: no-arg format flags (additive) */
     char xmitbuf[2048], unlbuf[2048];            /* derived <out>.xmit / <out>.iebcopy names */
+    const char *link_input = NULL;               /* first object/archive/-l/-L: refused with --pack (#894) */
     FILE *f;
 
     for (i = 1; i < argc; i++) {
@@ -2208,17 +2219,29 @@ int main(int argc, char **argv)
             src_blksize = number_arg("--blocksize", argv[++i]);   /* "abc" said "0 out of range" (#807) */
             if (src_blksize < 0) return 2;
         }
-        else if (!strcmp(argv[i], "-L") && i + 1 < argc) Ldir[nLdir++] = argv[++i];
-        else if (!strncmp(argv[i], "-L", 2)) Ldir[nLdir++] = argv[i] + 2;
-        else if (!strcmp(argv[i], "-l") && i + 1 < argc) { int r = load_lib(argv[++i], Ldir, nLdir); if (r) return r; }
-        else if (!strncmp(argv[i], "-l", 2)) { int r = load_lib(argv[i] + 2, Ldir, nLdir); if (r) return r; }
+        /* -l and -L belong to a link.  After --pack they are refused before a
+         * library is searched; before it, after the loop (#894). */
+        else if (pack_mode && (!strncmp(argv[i], "-L", 2) || !strncmp(argv[i], "-l", 2)))
+            return pack_link_input(argv[i]);
+        else if (!strcmp(argv[i], "-L") && i + 1 < argc) { link_input = argv[i]; Ldir[nLdir++] = argv[++i]; }
+        else if (!strncmp(argv[i], "-L", 2)) { link_input = argv[i]; Ldir[nLdir++] = argv[i] + 2; }
+        else if (!strcmp(argv[i], "-l") && i + 1 < argc) { int r; link_input = argv[i + 1]; r = load_lib(argv[++i], Ldir, nLdir); if (r) return r; }
+        else if (!strncmp(argv[i], "-l", 2)) { int r; link_input = argv[i]; r = load_lib(argv[i] + 2, Ldir, nLdir); if (r) return r; }
         else if (argv[i][0] == '-' && argv[i][1]) {         /* was taken as an input file (#807) */
             fprintf(stderr, "ld370: unknown option '%s' (ld370 --help)\n", argv[i]);
             return 2;
         }
         else if (pack_mode) packspec[npack++] = argv[i];   /* member to pack */
-        else if (ends_with(argv[i], ".a")) { int r = load_archive(argv[i]); if (r) return r; }
-        else objfiles[nobjf++] = argv[i];
+        else if (ends_with(argv[i], ".a")) { int r; if (!link_input) link_input = argv[i]; r = load_archive(argv[i]); if (r) return r; }
+        else { if (!link_input) link_input = argv[i]; objfiles[nobjf++] = argv[i]; }
+    }
+    /* --pack links nothing.  An operand named before it went into the link
+     * list and the pack ignored it -- rc 0, the library one member short
+     * (#894); and --pack with no member at all linked the operands instead. */
+    if (pack_mode && link_input) return pack_link_input(link_input);
+    if (pack_mode && !npack) {
+        fprintf(stderr, "ld370: --pack names no member to pack (ld370 --pack MEMBER... -o OUT)\n");
+        return 2;
     }
     if (!dsn) dsn = "IBMUSER.HOST.LOAD";       /* INM_DSNAM default; RECEIVE DA(...) overrides */
 
