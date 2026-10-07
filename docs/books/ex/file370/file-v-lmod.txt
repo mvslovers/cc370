@@ -1,0 +1,12 @@
+$ file370 -v main.lm
+main.lm:
+    @000000  CESD      56 bytes
+    @000038  IDR       251 bytes
+    @000133  IDR       22 bytes
+    @000149  control   24 bytes
+    @000161  text      32 bytes
+    @000181  control   24 bytes  (MODEND)
+    CESD   1  MAIN      SD   addr=000000  len=00000C  seg=1
+    CESD   2  ADD1      SD   addr=000010  len=00000C  seg=1
+    CESD   3  ADD2      LR   addr=000016  owner=2  seg=1
+  MVS load module member -- 1 CESD, 2 IDR, 1 text record(s), 2 control, 1 w/RLD, MODEND, 409 bytes

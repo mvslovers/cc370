@@ -1,0 +1,14 @@
+$ file370 main.o libdemo.a main.lm demolib.iebcopy demolib.xmit
+main.o: OS/360 object deck -- 1 section(s) (first MAIN), 1 extern ref(s), 10B text, 1 RLD card(s)
+libdemo.a: ar370 archive -- 2 object member(s), 3 symbol(s)
+main.lm: MVS load module member -- 1 CESD, 2 IDR, 1 text record(s), 2 control, 1 w/RLD, MODEND, 409 bytes
+demolib.iebcopy: IEBCOPY unloaded PDS (RECFM=U load library) -- member ADD2, member MAIN, member SUB1
+demolib.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unload (3 members)
+$ file370 notes.txt
+notes.txt: data (not a recognized cc370 toolchain format)
+$ echo $?
+2
+$ file370 missing.o
+missing.o: No such file or directory
+$ echo $?
+1

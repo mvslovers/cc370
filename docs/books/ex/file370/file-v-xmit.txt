@@ -1,0 +1,43 @@
+$ file370 -v demolib.xmit
+demolib.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unload (3 members)
+    5 control record(s) (INMR01..INMR06), 1506 data byte(s)
+    INMR01
+      INMLRECL   80
+      INMFNODE   ORIGNODE
+      INMFUID    IBMUSER
+      INMTNODE   IBMUSER
+      INMTUID    DUMMY
+      INMFTIME   2026100423141600
+      INMNUMF    1
+    INMR02
+      INMUTILN   IEBCOPY
+      INMSIZE    890
+      INMDIR     10
+      INMLRECL   0
+      INMDSORG   PO
+      INMBLKSZ   15040
+      INMRECFM   U (X'C002')
+      INMDSNAM   IBMUSER.HOST.LOAD
+    INMR02
+      INMUTILN   INMCOPY
+      INMSIZE    1506
+      INMLRECL   15056
+      INMDSORG   PS
+      INMBLKSZ   15060
+      INMRECFM   VS (X'4802')
+    INMR03
+      INMSIZE    890
+      INMLRECL   80
+      INMDSORG   PS
+      INMRECFM   VBS, transmission records (X'0001')
+    INMR06
+    wrapped image:
+      (unload): IEBCOPY unloaded PDS (RECFM=U load library)
+    env header 328 bytes (COPYR1 X'CA6D0F' + COPYR2)
+    member ADD2     (alias)  ttr=000001  entry=000016  modlen=32  of MAIN  [RENT REUS EXEC AC=0]
+             ATR1=C2 ATR2=E2  AC=00  PDS2TTRT=000005  PDS2EPM=000000
+    member MAIN      ttr=000001  entry=000000  modlen=32  [RENT REUS EXEC AC=0]
+             ATR1=C2 ATR2=E2  AC=00  PDS2TTRT=000005
+    member SUB1      ttr=000008  entry=000000  modlen=8  [EXEC 1BLK NRLD AC=1]
+             ATR1=03 ATR2=F2  AC=01  PDS2TTRT=00000C
+    3 directory member entr(y/ies)

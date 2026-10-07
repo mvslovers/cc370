@@ -1,0 +1,11 @@
+$ as370 -o clock.o clock.asm
+         TIME  DEC                R0 = time, R1 = date
+ ERROR: Undefined operation code in line 5 (statement 9) - TIME
+ Assembler Done   1 Statement Flagged /   8 was Highest Severity
+$ echo $?
+8
+$ ls maclib
+TIME
+$ as370 -I maclib -o clock.o clock.asm
+$ echo $?
+0

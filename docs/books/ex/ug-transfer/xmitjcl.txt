@@ -1,0 +1,12 @@
+$ ls jcl
+receive.jcl
+runsumup.jcl
+update.jcl
+$ xmit370 create jcl -o sumjcl.xmit --dsn USER1.SUMUP.JCL --stats-date 2026-10-04
+$ echo $?
+0
+$ xmit370 list sumjcl.xmit | tail -n 4
+  3 member(s):
+    RECEIVE  TTR=000001     800 bytes v1.0 2026/277 00:00 10 lines USER1
+    RUNSUMUP TTR=000003     960 bytes v1.0 2026/277 00:00 12 lines USER1
+    UPDATE   TTR=000005    1440 bytes v1.0 2026/277 00:00 18 lines USER1

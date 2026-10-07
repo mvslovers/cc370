@@ -1,0 +1,5 @@
+$ dasm370 --format free sumup.o 2>/dev/null | grep -n -B2 -A1 0000BE
+58-         LR    6,15                     0000B8
+59-         SRDA  6,32(0)                  0000BA
+60:         DR    6,5                      0000BE
+61-         ST    7,92(13,0)               0000C0

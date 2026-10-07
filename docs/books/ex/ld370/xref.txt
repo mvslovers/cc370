@@ -1,0 +1,10 @@
+$ ld370 -o MAIN main.o -L. -ldemo --map - --xref
+LD370 MAP  MAIN  ENTRY 000000 (END card)  LENGTH 000030
+
+SECTION   TYPE  ORIGIN  LENGTH  SOURCE
+  ENTRY         ADDRESS
+  +OFFSET  CON  SYMBOL    ADDRESS  IN SECTION
+MAIN      SD    000000  00001C  main.o
+  +000018  V    ADD1      000020  in ADD1
+ADD1      SD    000020  00000C  ./libdemo.a(add1.o) autocall
+  ADD2          000026

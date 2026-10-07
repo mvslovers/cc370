@@ -1,0 +1,11 @@
+$ ar370 rc libsum.a addup.o report.o
+$ ar370 t libsum.a
+members:
+  addup.o          240 bytes
+  report.o         480 bytes
+symbol table: 2 symbol(s)
+  ADDUP     addup.o
+  REPORT    report.o
+$ cc370 -o sumup sumup.o -L. -lsum -Wl,--map,sumup.map
+$ echo $?
+0

@@ -1,0 +1,6 @@
+$ cc370 -c ebcdic.c
+ebcdic.c:3:2: warning: #warning "'A' is 193 (X'C1'), as on MVS"
+ebcdic.c:6:2: warning: #warning "the lower-case letters are not contiguous"
+ebcdic.c:9:2: warning: #warning "'~' lies between 'a' and 'z'"
+ebcdic.c:12:2: warning: #warning "the digits sort after the letters"
+ebcdic.c:15:2: warning: #warning "the lower-case letters sort before the upper-case ones"

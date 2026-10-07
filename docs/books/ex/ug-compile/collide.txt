@@ -1,0 +1,8 @@
+$ cc370 -std=gnu99 -Wall -O1 -c a.c b.c m.c
+$ cc370 -o m m.o a.o b.o
+ld370: warning: 'PRINT@HE' doubly defined: b.o defines it again (first definition kept)
+$ echo $?
+0
+$ cc370 -o m2 m.o b.o
+$ echo $?
+0

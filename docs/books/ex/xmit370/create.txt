@@ -1,0 +1,8 @@
+$ xmit370 create -v -o hello.xmit --dsn USER1.HELLO.SAMPLIB \
+    --userid USER1 --stats-date 2026-10-04T12:00:00 samplib
+HELLO         5 lines    1 block(s) TTR=000001  samplib/hello.asm
+PARMS         4 lines    1 block(s) TTR=000003  samplib/parms
+RUNHELLO      8 lines    1 block(s) TTR=000005  samplib/runhello.jcl
+hello.xmit: 3 member(s), 1 directory block(s), RECFM=FB LRECL=80 BLKSIZE=3120, 2400 bytes
+$ echo $?
+0

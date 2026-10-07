@@ -1,0 +1,18 @@
+//UPDATE   JOB (ACCT),'UPDATE SUMUP',CLASS=A,MSGCLASS=A,MSGLEVEL=(1,1)
+//*
+//* Receive into a new library, then copy its members into the
+//* existing library, replacing members of the same name
+//*
+//RECV     EXEC PGM=IKJEFT01,REGION=4096K
+//SYSTSPRT DD SYSOUT=*
+//SYSTSIN  DD *
+ RECEIVE INDSN('USER1.SUMUP.XMIT') -
+  DATASET('USER1.SUMUP.NEWLOAD')
+/*
+//COPY     EXEC PGM=IEBCOPY,COND=(4,LT,RECV)
+//SYSPRINT DD SYSOUT=*
+//NEW      DD DSN=USER1.SUMUP.NEWLOAD,DISP=SHR
+//OLD      DD DSN=USER1.SUMUP.LOAD,DISP=OLD
+//SYSIN    DD *
+  COPY OUTDD=OLD,INDD=((NEW,R))
+/*

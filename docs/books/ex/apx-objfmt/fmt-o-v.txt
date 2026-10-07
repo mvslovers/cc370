@@ -1,0 +1,8 @@
+fmt.o: OS/360 object deck -- 2 section(s) (first MAIN), 2 extern ref(s), 30B text, 1 RLD card(s)
+    7 card(s) of 80 bytes; 1 LD entr(y/ies)
+    ESD  --   ALT       LD  addr=000008
+    ESD    1  SUB       ER
+    ESD    2  OPT       WX
+    ESD    3  MAIN      SD  addr=000000  len=00001C
+    ESD    4  SECOND    SD  addr=000020  len=000006
+    END  entry at offset 000000

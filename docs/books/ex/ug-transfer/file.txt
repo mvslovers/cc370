@@ -1,0 +1,2 @@
+$ file370 sumlib.xmit
+sumlib.xmit: TSO XMIT/NETDATA -> USER1.SUMUP.LOAD, IEBCOPY, wraps IEBCOPY unload (2 members)

@@ -1,0 +1,35 @@
+  INMR01
+      INMLRECL   80
+      INMFNODE   ORIGNODE
+      INMFUID    USER1
+      INMTNODE   ORIGNODE
+      INMTUID    USER1
+      INMFTIME   2026100412000000
+      INMNUMF    1
+  INMR02
+      INMUTILN   IEBCOPY
+      INMSIZE    448
+      INMDIR     10
+      INMLRECL   80
+      INMDSORG   PO
+      INMBLKSZ   3120
+      INMRECFM   FB
+      INMDSNAM   USER1.DEMO.SOURCE
+  INMR02
+      INMUTILN   INMCOPY
+      INMSIZE    1064
+      INMLRECL   3136
+      INMDSORG   PS
+      INMBLKSZ   3140
+      INMRECFM   VS
+  INMR03
+      INMSIZE    448
+      INMLRECL   80
+      INMDSORG   PS
+      INMRECFM   ?
+  INMR06
+  environment header 328 bytes (COPYR1 52 + COPYR2)
+  source DCB: DSORG=PO RECFM=FB LRECL=80 BLKSIZE=3120 (unloaded 3140)
+  2 member(s):
+    HELLO    TTR=000001     160 bytes C=0F ud=30 v1.0 2026/277 12:00 2 lines USER1
+    README   TTR=000003     240 bytes C=0F ud=30 v1.0 2026/277 12:00 3 lines USER1

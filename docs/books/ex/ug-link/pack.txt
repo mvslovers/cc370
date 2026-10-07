@@ -1,0 +1,10 @@
+$ cc370 -o sumup sumup.o -L. -lsum -flinker-output=iebcopy
+$ ld370 -o GREET greet.o --rent --reus -iebcopy
+$ ld370 --pack sumup.iebcopy GREET.iebcopy -o sumlib --dsn USER1.SUMUP.LOAD
+$ echo $?
+0
+$ file370 -v sumlib.xmit | grep member
+sumlib.xmit: TSO XMIT/NETDATA -> USER1.SUMUP.LOAD, IEBCOPY, wraps IEBCOPY unload (2 members)
+    member GREET     ttr=000001  entry=000000  modlen=56  [RENT REUS EXEC 1BLK NRLD AC=0]
+    member SUMUP     ttr=000007  entry=0000F8  modlen=71240  [EXEC AC=0]
+    2 directory member entr(y/ies)

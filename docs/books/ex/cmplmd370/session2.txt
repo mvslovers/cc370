@@ -1,0 +1,14 @@
+$ as370 -o count5.o count5.asm
+$ cmplmd370 -v count5.o count.lm; echo $?
+count5.o vs count.lm
+  COUNT    1 byte(s) differ in 1 cluster(s) of 60 -- all in GENERATED TEXT
+      @000011   1  new 05  ref 04
+DIFFER
+1
+$ cmplmd370 --difout count.dif count5.o count.lm >/dev/null; cat count.dif
+>COUNT
+00001101
+$ cmplmd370 --difin count.dif count5.o count.lm; echo $?
+count5.o vs count.lm  (difin applied)
+IDENTICAL
+0

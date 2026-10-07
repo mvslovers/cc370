@@ -1,0 +1,23 @@
+$ cat h1.asm
+H        CSECT
+         BR    14
+         DS    CL4
+         DC    H'0'
+         END
+$ cat h2.asm
+H        CSECT
+         BR    14
+         DC    X'40404040'
+         DC    H'0'
+         END
+$ as370 -o h1.o h1.asm; as370 -o h2.o h2.asm
+$ cmplmd370 -v h1.o h2.o
+h1.o vs h2.o
+  H        4 byte(s) differ in 1 cluster(s) of 8 -- ALL in DS holes (no byte as370 wrote)
+      @000002   4  new 00000000  ref 40404040  (hole)
+DIFFER
+$ cmplmd370 -v h2.o h1.o
+h2.o vs h1.o
+  H        4 byte(s) differ in 1 cluster(s) of 8 -- all in GENERATED TEXT
+      @000002   4  new 40404040  ref 00000000
+DIFFER

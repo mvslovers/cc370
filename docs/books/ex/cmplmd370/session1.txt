@@ -1,0 +1,17 @@
+$ as370 -o count.o count.asm
+$ ld370 -o count.lm --name COUNT count.o -iebcopy
+$ ld370 -o countr.lm --name COUNT --rent --reus count.o -iebcopy
+$ cmplmd370 count.o count.lm; echo $?
+count.o vs count.lm
+IDENTICAL
+0
+$ cmplmd370 -v countr.lm count.lm; echo $?
+countr.lm vs count.lm
+  COUNT    identical (60 bytes, adcons cleared)
+IDENTICAL
+0
+$ cmp count.lm countr.lm; echo $?
+0
+$ file370 -v count.lm.iebcopy countr.lm.iebcopy | grep COUNT
+    member COUNT     ttr=000001  entry=000000  modlen=64  [EXEC AC=0]
+    member COUNT     ttr=000001  entry=000000  modlen=64  [RENT REUS EXEC AC=0]

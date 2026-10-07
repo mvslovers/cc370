@@ -1,0 +1,19 @@
+$ as370 -o add1.o add1.asm
+$ as370 -o sub1.o sub1.asm
+$ ar370 rc libdemo.a add1.o sub1.o
+$ ar370 t libdemo.a
+members:
+  add1.o           240 bytes
+  sub1.o           240 bytes
+symbol table: 3 symbol(s)
+  ADD1      add1.o
+  ADD2      add1.o
+  SUB1      sub1.o
+$ as370 -o main.o main.asm
+$ ld370 -o main.lm --name MAIN main.o -L . -l demo --map -
+LD370 MAP  MAIN  ENTRY 000000 (END card)  LENGTH 000020
+
+SECTION   TYPE  ORIGIN  LENGTH  SOURCE
+MAIN      SD    000000  00000C  main.o
+ADD1      SD    000010  00000C  ./libdemo.a(add1.o) autocall
+  ADD2          000016

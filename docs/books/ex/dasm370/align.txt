@@ -1,0 +1,13 @@
+ALIGN-DIFF COUNT
+  ref  COUNT        60 bytes    13 stmt  deck   count.o
+  cand COUNT        64 bytes    15 stmt  deck   count2.o
+CONSEQ  shift  00000A -> 00000A  L     2,34(0,12)                D1 34 -> 38  +4
+FINDING insert ref 000012 0 bytes (0 stmt)  cand 000012 2 bytes (1 stmt)  +2
+    cand 000012 LTR   2,2                       1222
+CONSEQ  shift  00001A -> 00001C  BCT   3,12(0,12)                D1 12 -> 14  +2
+FINDING insert ref 000028 0 bytes (0 stmt)  cand 00002A 2 bytes (1 stmt)  +2
+    cand 00002A DC    2 bytes                   0000
+CONSEQ  adcon  000028 -> 00002C  DC    A(00002C -> 000030) +4
+  shift set (3): +0 +2 +4
+  base: first BALR Rn,0 at 000004, first change at 000012 -> EXACT
+SUMMARY COUNT findings=2 ins=2 del=0 data=0 const=0 conseq=9 unchanged=4 shifts=3 edits=2 first=000012 refstmt=13 candstmt=15 reflen=60 candlen=64 base=exact align=ok

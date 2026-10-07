@@ -1,0 +1,6 @@
+$ file370 -v main.o
+main.o: OS/360 object deck -- 1 section(s) (first MAIN), 1 extern ref(s), 10B text, 1 RLD card(s)
+    5 card(s) of 80 bytes; 0 LD entr(y/ies)
+    ESD    1  MAIN      SD  addr=000000  len=00000C
+    ESD    2  ADD1      ER
+    END  entry at offset 000000

@@ -1,0 +1,4 @@
+$ cc370 -O1 -o hello hello.c
+hello.c:1:19: no include path in which to search for stdio.h
+$ echo $?
+1

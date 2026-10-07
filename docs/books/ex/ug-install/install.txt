@@ -1,0 +1,13 @@
+$ make install
+...
+installed tools -> $PREFIX/cc370/bin
+    (PATH links $PREFIX/bin,
+     tooldir links $PREFIX/libexec/cc370/1.4.0)
+...
+installed cc370 -> $PREFIX/bin/cc370 ;
+    cc1 -> $PREFIX/libexec/cc370/1.4.0/cc1
+installed macros -> $PREFIX/cc370/macros
+built build/runtime/libcc370rt.a (9 members)
+installed runtime -> $PREFIX/cc370/lib/libcc370rt.a
+...
+installed man pages -> $PREFIX/share/man/man1

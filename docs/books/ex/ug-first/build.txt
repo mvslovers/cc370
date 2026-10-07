@@ -1,0 +1,12 @@
+$ cc370 -Wall -O1 -o hello -flinker-output=xmit hello.c
+$ echo $?
+0
+$ ls
+hello
+hello.c
+hello.xmit
+$ file370 hello hello.xmit
+hello: MVS load module member -- 20 CESD, 2 IDR, 6 text record(s), 33 control, 27 w/RLD, MODEND, 83869 bytes
+hello.xmit: TSO XMIT/NETDATA -> IBMUSER.HOST.LOAD, IEBCOPY, wraps IEBCOPY unload (member HELLO)
+$ wc -c hello.xmit
+   86320 hello.xmit
