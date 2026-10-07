@@ -303,7 +303,9 @@ them might be shared. Give an attribute only when the module deserves it.
 A C program keeps its static variables in the load module itself, so it is
 not reentrant if it changes any of them. GREET changes none of its storage
 and can be marked #cmd("--rent --reus")\; CLOCK, which stores the date into
-itself, cannot.
+itself, cannot. From cc370 1.5.0 on, compile the sources of a module you
+mark #cmd("--rent") with #cmd("-mrent"): the compiler then warns about every
+writable variable the module would keep in itself.
 
 The attributes are part of the directory entry, so they reach MVS only
 through the transport files. Give them on the link that writes

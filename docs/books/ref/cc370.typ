@@ -660,7 +660,31 @@ As in any GCC, #cmd("-O1") replaces some library calls by cheaper ones: a
     after #cmd("COPY PDPTOP"), so that the object module holds the one
     section #cmd("UPCASE"), type #cmd("SD"), and no other. Without the
     option the module is one section without a name, type #cmd("PC").],
+  [#cmd("-mrent")], [declares that the translation unit goes into a
+    reentrant load module, and reports its writable data (see below). It
+    changes no generated code. From cc370 1.5.0 on.],
+  [#cmd("-mno-rent")], [the default: no such check.],
 )
+
+#idx("-mrent")#idx("-Wwritable-data")#idx("reentrant", "writable data")
+A reentrant load module is one copy that every task linking to it shares.
+cc370 keeps a C #cmd("static") or global variable in the module itself, so
+every such definition that is not #cmd("const") is state those tasks share
+without serialization. Under #cmd("-mrent") each one draws the warning
+#cmd("-Wwritable-data"): global variables, #cmd("static") variables at file
+scope and inside functions, and #cmd("const volatile") objects.
+#cmd("const char *p") is writable, because the pointer is\;
+#cmd("char *const p") is not. Declarations (#cmd("extern")) and string
+literals draw no warning\; under #cmd("-fwritable-strings") the string
+literals are writable too, and one warning says so. #cmd("__stklen") is
+exempt: the start-up reads it as the size of the stack.
+
+The warning is on by default under #cmd("-mrent"), an error under
+#cmd("-Werror"), and #cmd("-Wno-writable-data") turns it off. It sees only
+the translation unit being compiled: code that automatic library call
+takes from a library was compiled without it and is not checked. Give
+#cmd("-mrent") to every source of a module that is linked with
+#cmd("--rent").
 
 The options #cmd("-mpickax") and #cmd("-mno-pickax") of earlier releases are
 gone\; cc1 rejects them with #cmd("invalid option"), return code 1.

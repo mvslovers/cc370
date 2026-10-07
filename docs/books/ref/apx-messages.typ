@@ -225,6 +225,21 @@ MVS, and those of the driver itself.
 ][Remove the attribute from the definition. Declare the name weak only
   where it is referenced. #mc("-Wno-weak-definition") turns the warning off.]
 
+#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: '")#mv("name")#mc("' is writable data in a reentrant module [-Wwritable-data]")][
+  Under #mc("-mrent"), #mv("name") is a global or #mc("static") variable
+  that is not #mc("const"). The load module keeps it in itself, so in a
+  reentrant module every task that uses the module shares it (see
+  @cc370-target). The compilation continues.
+][Make the variable #mc("const"), move it into storage the program
+  obtains for each task, or do not mark the module reentrant.
+  #mc("-Wno-writable-data") turns the warning off.]
+
+#msg[#mv("file")#mc(":")#mv("line")#mc(": warning: -fwritable-strings puts writable string literals into a reentrant module [-Wwritable-data]")][
+  #mc("-mrent") and #mc("-fwritable-strings") are given together. The
+  string literals are then writable storage in the module, shared by every
+  task that uses it. The message appears once per compilation.
+][Leave out #mc("-fwritable-strings").]
+
 #msg[#mc("cc1: error: invalid option `")#mv("name")#mc("'")][
   #mc("-m")#mv("name") is not a target option of cc370 (see @cc370-target).
   #mc("-mpickax") and #mc("-mno-pickax") of earlier releases give this
