@@ -4,6 +4,7 @@
   title: "CC/370 Cross-Toolchain for MVS 3.8j",
   subtitle: "User's Guide",
   short-title: "CC/370 User's Guide",
+  product: "CC/370",
   number: "ML01-0001-0",
   date: "October 2026",
   authors: ("Mike Großmann",),
