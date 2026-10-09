@@ -104,7 +104,7 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" assets/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
-              --title "cc370 $GITHUB_REF_NAME" --notes-file notes.md assets/*
+              --title "CC/370 $GITHUB_REF_NAME" --notes-file notes.md assets/*
           fi
 
   homebrew:
