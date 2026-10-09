@@ -336,7 +336,7 @@ xmit370 Command”.
 
 #idx("mbt")
 The steps of this chapter are the same for every change you make, which
-makes them a candidate for a tool. MBT (mbt), the MVS build tool of the mvslovers
+makes them a candidate for a tool. MBT, the MVS build tool of the mvslovers
 project, builds a project with cc370, as370 and ld370 from a description in
 a file #cmd("project.toml"), and installs it with one command,
 #cmd("make deploy"), which:

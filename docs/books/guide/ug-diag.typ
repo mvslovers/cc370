@@ -12,7 +12,7 @@ listing and the load map, and how to go from the address of an abend back
 to the statement that caused it. It ends with the tools that inspect and
 compare what the build wrote.
 
-There is no source-level debugger for programs built with cc370, and the
+There is no source-level debugger for programs built with CC/370, and the
 compiler writes no line number information: #cmd("-g") is accepted and ends
 with the warning #cmd("target system does not support debug output"). The
 link between the C source and the running program is the assembler listing.

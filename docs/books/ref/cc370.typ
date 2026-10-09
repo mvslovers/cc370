@@ -274,7 +274,7 @@ with #cmd("-Wl,") (@cc370-passthru) and see Chapter 3 for their meaning.
 == Libraries and Start-Up Code <cc370-sysroot>
 
 #idx("sysroot")#idx("libc370")
-The toolchain is installed with its C library, LIBC/370, in a directory tree
+The toolchain is installed with its C library, LIBC/370 (libc370), in a directory tree
 of its own, #cmd("cc370/") under the installation prefix:
 
 #deflist(width: 1.4in,
@@ -623,7 +623,7 @@ them, but they are not equally proven on this target:
 
 #deflist(width: 1.1in,
   [#cmd("-O1")], [is the level the toolchain is validated at, and the level
-    MBT builds with by default. Use it for production code.],
+    MBT (mbt) builds with by default. Use it for production code.],
   [#cmd("-O0")], [generates larger and slower code, but code that is the
     easiest to follow in an assembler listing.],
   [#cmd("-Os")], [is experimental. The sources of the ecosystem compile and

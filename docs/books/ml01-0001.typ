@@ -32,7 +32,7 @@
 #heading(numbering: none)[About This Book] <about>
 
 This book shows how to write, build and run programs for MVS 3.8j with the
-CC/370 cross-toolchain: how to install it, how a C or assembler source
+CC/370 (cc370) cross-toolchain: how to install it, how a C or assembler source
 becomes a load module on the workstation, how the load module reaches MVS,
 and how to run it and find out what went wrong.
 

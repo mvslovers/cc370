@@ -147,7 +147,7 @@ result arrives complete. A build therefore needs no MVS system at all. MVS
 is needed to install and to test the program, and for nothing else.
 
 #idx("mbt")
-For a project of more than a few sources, the MBT build tool drives the
+For a project of more than a few sources, the MBT (mbt) build tool drives the
 toolchain from a description of the project, and its #cmd("make deploy")
 performs the upload and the #cmd("RECEIVE") in one command. This book uses
 the tools directly, so that you can see what each step does\; MBT is
