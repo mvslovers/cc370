@@ -121,7 +121,7 @@ directories, highest priority first:
 + #cmd("../libc370/macros") relative to the same directory.
 
 The last two are the macro libraries of the installed toolchain, so an
-installed as370 assembles a program that uses the libc370 and system macros
+installed as370 assembles a program that uses the LIBC/370 and system macros
 with no #cmd("-I") and no environment variable.
 
 Within a directory, as370 looks for the member name as written and then, if

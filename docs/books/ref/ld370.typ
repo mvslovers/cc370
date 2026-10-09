@@ -283,7 +283,7 @@ The entry point is taken, in this order of priority:
 A C program enters at #cmd("@@CRT0"), the start-up routine of the C library,
 not at the #cmd("@@MAIN") stub that the compiler names on the END record.
 The cc370 driver passes #cmd("--entry @@CRT0") when it links\; when you link
-a C program yourself, pass it too. With libc370 2.3.0 or later,
+a C program yourself, pass it too. With LIBC/370 2.3.0 or later,
 #cmd("@@CRT0") is a member of #cmd("libc.a") and comes into the module by
 automatic library call, after the object modules named on the command line.
 It is then not at offset 0\; the directory entry records where it is, and
@@ -452,7 +452,7 @@ these fields. To install the module:
 of an existing library, delete it first, or receive into a new library and
 copy the members with IEBCOPY.]
 
-The mbt build tool performs these steps with #cmd("make deploy"): it packs
+The MBT build tool performs these steps with #cmd("make deploy"): it packs
 the modules of a project into one TRANSMIT file, uploads it and receives it.
 
 == Packing Several Members <ld370-pack>
@@ -544,7 +544,7 @@ Every member written by ld370 carries two identification records:
   AMASPZAP notes the changes it makes to the module on MVS\;
 - a linkage editor record of 22 bytes, which names #cmd("LD370") as the
   program, with the version and release of the toolchain as version and
-  modification level (01 and 04 for cc370 1.4), and holds the date and time
+  modification level (01 and 04 for CC/370 1.4), and holds the date and time
   of the link.
 
 The translator records that IEWL copies from the END records of the object

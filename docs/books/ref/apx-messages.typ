@@ -217,7 +217,7 @@ MVS, and those of the driver itself.
 #msg[#mv("file")#mc(":")#mv("line")#mc(": warning: #pragma linkage has no effect: `")#mv("name")#mc("' is called with cc370's own linkage")][
   The source, or a header it includes from outside the sysroot, contains
   #mc("#pragma linkage"). Calls of #mv("name") use the ordinary cc370
-  linkage, a parameter list addressed by register 1. Older libc370
+  linkage, a parameter list addressed by register 1. Older LIBC/370
   headers carried the pragma\; installed in the sysroot they are system
   headers, and the warning is not shown.
 ][Remove the pragma from your source.]

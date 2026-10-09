@@ -26,7 +26,7 @@ The chapter begins with GREET, a program written entirely in assembler.
 MVS, @ug-run runs it, and @ug-diag finds the error that SUMUP still
 contains.
 
-Every option of as370 is described in the _cc370 Command Reference_,
+Every option of as370 is described in the _CC/370 Command Reference_,
 Chapter 2, “The as370 Command”.
 
 == Assembling a Program <ug-asm-assemble>

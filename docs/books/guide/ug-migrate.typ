@@ -3,9 +3,9 @@
 = Migrating from Other Compilers <ug-migrate>
 
 #idx("migration")
-This appendix is for programmers who bring existing C programs to cc370:
-from c2asm370 and its C library crent370, the predecessors of cc370 and
-libc370, from an earlier release of cc370, and from the other C compilers
+This appendix is for programmers who bring existing C programs to CC/370:
+from c2asm370 and its C library crent370, the predecessors of CC/370 and
+LIBC/370, from an earlier release of CC/370, and from the other C compilers
 for MVS 3.8j. It lists what has to change in the sources and in the build.
 The changes of the C library are described in more detail in the _libc370
 Programmer's Guide_.
@@ -13,8 +13,8 @@ Programmer's Guide_.
 == From c2asm370 and crent370 <ug-migrate-c2asm370>
 
 #idx("c2asm370")#idx("crent370")
-cc370 is the successor of c2asm370, and libc370 the successor of crent370,
-from which it was developed. c2asm370 was based on GCC 3.2.3\; cc370 is a
+CC/370 is the successor of c2asm370, and LIBC/370 the successor of crent370,
+from which it was developed. c2asm370 was based on GCC 3.2.3\; CC/370 is a
 fork of GCC 3.4.6, the last GCC that carried the System/370 machine
 description. c2asm370 is no longer developed: its last release, 1.x, is
 kept unchanged so that existing builds keep working.
@@ -25,11 +25,11 @@ kept unchanged so that existing builds keep working.
 The largest change is where the work is done. With c2asm370, the compiler
 wrote assembler source on the workstation, and the source was uploaded to
 MVS, assembled there by the MVS assembler and link-edited by IEWL. With
-cc370 all of it happens on the workstation:
+CC/370 all of it happens on the workstation:
 
 #tab(caption: [Where each step runs])[
   #table(columns: (1.1in, 1.4in, 1fr),
-    [Step], [c2asm370], [cc370],
+    [Step], [c2asm370], [CC/370],
     [Compile], [workstation], [workstation: cc370],
     [Assemble], [MVS: IFOX00], [workstation: as370, run by cc370],
     [Link], [MVS: IEWL], [workstation: ld370, run by cc370],
@@ -58,7 +58,7 @@ options:
   )
 ] <ug-migrate-iewl-tab>
 
-The differences between ld370 and IEWL are listed in the _cc370 Command
+The differences between ld370 and IEWL are listed in the _CC/370 Command
 Reference_, Chapter 3, “The ld370 Command”.
 
 === The Compiler
@@ -97,7 +97,7 @@ Reference_, Chapter 3, “The ld370 Command”.
   #cmd("PDP390") and #cmd("PDPORIG") are no longer installed with the C
   library.
 - Hand-written assembler that uses #cmd("PDPPRLG") and #cmd("PDPEPIL")
-  assembles unchanged. The macros now come with cc370 and generate the same
+  assembles unchanged. The macros now come with CC/370 and generate the same
   instructions as before, without calling #cmd("SAVE") and #cmd("RETURN").
 - as370 accepts the language of the MVS assembler, IFOX00, and writes the
   same object module, so other assembler sources assemble unchanged. The
@@ -107,13 +107,13 @@ Reference_, Chapter 3, “The ld370 Command”.
 
 #idx("migration", "C library")
 #idx("libc370", "headers")
-libc370 2.0 rearranged the headers of libc370 1.x, such as
+LIBC/370 2.0 rearranged the headers of LIBC/370 1.x, such as
 #cmd("clibwto.h"), into a tree, and a program that includes the MVS headers of the library has to
 change its #cmd("#include") lines. The names of the functions and what they
 do are, with few exceptions, unchanged. @ug-migrate-headers-tab lists the
 headers most often included.
 
-#tab(caption: [Headers of libc370 1.x and 2.x (selection)])[
+#tab(caption: [Headers of LIBC/370 1.x and 2.x (selection)])[
   #table(columns: (1.6in, 1fr),
     [1.x], [2.x],
     [#cmd("clibwto.h")], [#cmd("mvs/wto.h")],
@@ -143,10 +143,10 @@ compiler's run-time library #cmd("-lcc370rt") before #cmd("-lc"), as in
 @ug-link-manual. The routines the compiler calls for 64-bit arithmetic were
 moved there from the C library.
 
-== From an Earlier Release of cc370 <ug-migrate-cc370>
+== From an Earlier Release of CC/370 <ug-migrate-cc370>
 
 #idx("migration", "from earlier cc370")
-- *Module attributes.* Up to cc370 1.1, ld370 marked every module reentrant
+- *Module attributes.* Up to CC/370 1.1, ld370 marked every module reentrant
   and reusable unless told otherwise. Since 1.2 it marks a module with
   neither, as IEWL does. A module that needs the attributes must now ask for
   them with #cmd("--rent") and #cmd("--reus"), and a module that should not
@@ -157,12 +157,12 @@ moved there from the C library.
 - *Run-time library.* Since 1.1, the routines the compiler calls are in
   #cmd("libcc370rt.a"), which cc370 links by itself. A build that runs ld370
   directly adds #cmd("-lcc370rt") ahead of #cmd("-lc").
-- *Matching C library.* cc370 1.1 and later need libc370 2.1 or later, and
-  the libc370 headers stop the compile with #cmd("#error") when the compiler
-  is older than they require. cc370 1.4 needs libc370 2.3 or later, and
-  libc370 2.4 needs cc370 1.4.0 or later (@ug-install-versions). Update
+- *Matching C library.* CC/370 1.1 and later need LIBC/370 2.1 or later, and
+  the LIBC/370 headers stop the compile with #cmd("#error") when the compiler
+  is older than they require. CC/370 1.4 needs LIBC/370 2.3 or later, and
+  LIBC/370 2.4 needs CC/370 1.4.0 or later (@ug-install-versions). Update
   both together.
-- *No start-up object.* Up to cc370 1.3, every link began with the start-up
+- *No start-up object.* Up to CC/370 1.3, every link began with the start-up
   object #cmd("crt0.o"), so #cmd("@@CRT0") was at offset 0 of every C
   program. Since 1.4 the driver links no start-up object: #cmd("@@CRT0") is
   taken from #cmd("libc.a") by automatic library call and lies after the
@@ -170,7 +170,7 @@ moved there from the C library.
   (@ug-link-map). Anything that assumed the entry point at offset 0, such
   as a calculation of offsets from an abend (@ug-diag-abend), must take the
   offset from the load map. A build that runs ld370 itself no longer needs
-  to name #cmd("crt0.o"), and from libc370 2.4 on cannot: libc370 2.4 no
+  to name #cmd("crt0.o"), and from LIBC/370 2.4 on cannot: LIBC/370 2.4 no
   longer installs #cmd("crt0.o") and #cmd("crt1.o"), only #cmd("crtm.o").
   #cmd("-nostartfiles") has no effect any more.
 - *Packing a library.* Since 1.5, #cmd("ld370 --pack") refuses, with
@@ -192,7 +192,7 @@ moved there from the C library.
 == Notes for GCCMVS Users <ug-migrate-gccmvs>
 
 #idx("GCCMVS")
-cc370 descends from the GCC port for MVS known as GCCMVS, by way of the
+CC/370 descends from the GCC port for MVS known as GCCMVS, by way of the
 i370-gcc line of that compiler. The code it generates is of the same family:
 
 - Every function begins with #cmd("PDPPRLG") and ends with #cmd("PDPEPIL"),
@@ -202,22 +202,22 @@ i370-gcc line of that compiler. The code it generates is of the same family:
 
 What differs is everything around the compiler:
 
-- The C library is libc370, not the library of GCCMVS. Its start-up,
+- The C library is LIBC/370, not the library of GCCMVS. Its start-up,
   #cmd("@@CRT0"), its headers and its MVS functions are its own\; check each
-  call against the _libc370 Library Reference_.
+  call against the _LIBC/370 Library Reference_.
 - cc370 translates characters to EBCDIC as it writes its output, with
   #cmd("'\\n'") as #cmd("X'15'")\; a numeric escape such as #cmd("\\x25")
   stands for that byte unchanged.
 - The assembler source is not meant to be assembled on MVS, though it can be:
-  cc370 assembles and links on the workstation, and the toolchain ships the
+  CC/370 assembles and links on the workstation, and the toolchain ships the
   macros the generated code needs.
 
 == Notes for JCC Users <ug-migrate-jcc>
 
 #idx("JCC")
 JCC is a separate C compiler with its own library, and nothing of either is
-shared with cc370. Moving a program means rebuilding it with cc370 against
-libc370:
+shared with CC/370. Moving a program means rebuilding it with cc370 against
+LIBC/370:
 
 - Replace the build. JCC jobs or scripts that compile and link
   are replaced by cc370 on the workstation and a #cmd("RECEIVE") on MVS

@@ -250,5 +250,5 @@ The two comparisons that come up most often:
   @ug-diag-inspect-session does for ADDUP. Only the sections that differ
   need a closer look, with #cmd("cmplmd370 -v") or with dasm370.
 
-Chapters 5, 7, 8 and 9 of the _cc370 Command Reference_ describe file370,
+Chapters 5, 7, 8 and 9 of the _CC/370 Command Reference_ describe file370,
 dasm370, cmplmd370 and idrdump370 in full.

@@ -3,7 +3,7 @@
 = Glossary <ug-glossary>
 
 This glossary defines the terms of MVS and of the toolchain that you meet in
-this book and in the _cc370 Command Reference_. A term printed in _italics_
+this book and in the _CC/370 Command Reference_. A term printed in _italics_
 in a definition has an entry of its own.
 
 #let g(..items) = deflist(width: 1.45in, ..items.pos().enumerate().map(

@@ -3,7 +3,7 @@
 = Introducing the Toolchain <ug-intro>
 
 #idx("cc370 toolchain")
-The cc370 toolchain builds programs for MVS 3.8j on a workstation running
+The CC/370 toolchain builds programs for MVS 3.8j on a workstation running
 macOS or Linux. It compiles C, assembles System/370 assembler language,
 link-edits the result into an MVS load module and packs the load module into
 a file that MVS can receive. All of this happens on the workstation: the
@@ -21,7 +21,7 @@ and which do not.
 The toolchain consists of nine commands. Three of them form the chain that
 turns a source into a load module, and the cc370 driver runs them for you\;
 the others are utilities that you call yourself. @ug-intro-tools-tab lists
-them, with the chapter of the _cc370 Command Reference_ that describes each.
+them, with the chapter of the _CC/370 Command Reference_ that describes each.
 
 #tab(caption: [The commands of the toolchain])[
   #table(columns: (0.95in, 1fr, 0.75in),
@@ -53,15 +53,15 @@ them, with the chapter of the _cc370 Command Reference_ that describes each.
 ] <ug-intro-tools-tab>
 
 #idx("libc370")#idx("libcc370rt")#idx("sysroot")
-Two libraries complete the toolchain. *libc370* is the C library: the
+Two libraries complete the toolchain. *LIBC/370* (libc370) is the C library: the
 standard C functions, the start-up code that runs before #cmd("main"), and
 functions for the services of MVS. It is a project of its own, with its own
 releases, and is installed into the toolchain's directory tree, the
 _sysroot_, where the compiler finds its headers and the linkage editor its
-library without being told. *libcc370rt* comes with cc370 itself: it holds
+library without being told. *libcc370rt* comes with CC/370 itself: it holds
 the routines the compiler calls for operations that have no System/370
 instruction, such as the division of 64-bit integers. @ug-install describes
-how both are installed\; the _libc370 Programmer's Guide_ describes the C
+how both are installed\; the _LIBC/370 Programmer's Guide_ describes the C
 library.
 
 == From Source to Running Program <ug-intro-path>
@@ -147,10 +147,10 @@ result arrives complete. A build therefore needs no MVS system at all. MVS
 is needed to install and to test the program, and for nothing else.
 
 #idx("mbt")
-For a project of more than a few sources, the mbt build tool drives the
+For a project of more than a few sources, the MBT build tool drives the
 toolchain from a description of the project, and its #cmd("make deploy")
 performs the upload and the #cmd("RECEIVE") in one command. This book uses
-the tools directly, so that you can see what each step does\; mbt is
+the tools directly, so that you can see what each step does\; MBT is
 described in its own documentation.
 
 == Supported Systems <ug-intro-systems>
