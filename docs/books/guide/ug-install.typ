@@ -3,9 +3,9 @@
 = Installing the Toolchain <ug-install>
 
 #idx("installation")
-The toolchain is installed in two parts: cc370 itself, which is the compiler,
-the assembler, the linkage editor and the utilities, and libc370, the C
-library, which is installed into cc370's directory tree. This chapter shows
+The toolchain is installed in two parts: CC/370 itself, which is the compiler,
+the assembler, the linkage editor and the utilities, and LIBC/370, the C
+library, which is installed into the directory tree of CC/370. This chapter shows
 the ways to install both, what the installed tree contains, and how to check
 that it works.
 
@@ -14,8 +14,8 @@ that it works.
 #idx("installation", "methods")
 There are two ways to obtain the toolchain:
 
-- *Install a release.* Every release of cc370 publishes prebuilt toolchains
-  for macOS and Linux, and every release of libc370 publishes the library
+- *Install a release.* Every release of CC/370 publishes prebuilt toolchains
+  for macOS and Linux, and every release of LIBC/370 publishes the library
   ready to install. This is the quickest way, and the right one unless you
   intend to change the toolchain.
 - *Build from source.* You clone the repositories and build both parts on
@@ -27,9 +27,9 @@ Both ways give the same directory tree, described in @ug-install-tree.
 == Installing a Release <ug-install-release>
 
 #idx("install.sh")
-The installation script of the latest release installs cc370 and, beside
-it, the newest release of libc370 that declares itself compatible with that
-cc370:
+The installation script of the latest release installs CC/370 and, beside
+it, the newest release of LIBC/370 that declares itself compatible with that
+CC/370:
 
 ```
 curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
@@ -37,8 +37,8 @@ curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.s
 
 The script installs under #cmd("~/.local") unless the environment variable
 #cmd("PREFIX") names another directory, and checks each download against the
-checksums published with its release. When no libc370 release fits, it
-installs cc370 alone and says so. At the end it reminds you to add
+checksums published with its release. When no LIBC/370 release fits, it
+installs CC/370 alone and says so. At the end it reminds you to add
 #cmd("$PREFIX/bin") to your #cmd("PATH") if it is not there yet.
 
 The releases also come in other forms:
@@ -46,17 +46,17 @@ The releases also come in other forms:
 #deflist(width: 1.1in,
   [Tarball], [#cmd("cc370-")#var("version")#cmd("-")#var("os")#cmd("-")#var("arch")#cmd(".tar.gz")
     holds the whole installed tree. Unpack it anywhere and use its
-    #cmd("bin") directory\; the tree finds its own parts. Unpack the libc370
+    #cmd("bin") directory\; the tree finds its own parts. Unpack the LIBC/370
     tarball, #cmd("libc370-")#var("version")#cmd("-sysroot.tar.gz"), into
     the tree's #cmd("cc370") directory. On macOS, a tarball downloaded with
     a web browser is marked as quarantined: remove the mark with
     #cmd("xattr -d com.apple.quarantine") on the unpacked tree.],
   [Homebrew], [#cmd("brew trust mvslovers/tap"), then
-    #cmd("brew install mvslovers/tap/cc370"), which installs libc370 with
+    #cmd("brew install mvslovers/tap/cc370"), which installs LIBC/370 with
     it.],
   [Linux packages], [#cmd(".deb") and #cmd(".rpm") packages install the tree
-    under #cmd("/usr/lib/cc370"), with links in #cmd("/usr/bin"). cc370 and
-    libc370 depend on each other, so install the two packages together.],
+    under #cmd("/usr/lib/cc370"), with links in #cmd("/usr/bin"). CC/370 and
+    LIBC/370 depend on each other, so install the two packages together.],
 )
 
 == Building from Source <ug-install-build>
@@ -67,12 +67,12 @@ To build the toolchain you need, on the workstation:
 - a C compiler, used as #cmd("cc"): clang on macOS, gcc or clang on Linux\;
 - #cmd("make")\;
 - #cmd("pod2man"), which comes with Perl, for the manual pages\;
-- Python 3, for the build of libc370\;
+- Python 3, for the build of LIBC/370\;
 - #cmd("git"), to obtain the sources.
 
-Build cc370 first: libc370 is compiled with it.
+Build CC/370 first: LIBC/370 is compiled with it.
 
-+ Obtain the source of cc370:
++ Obtain the source of CC/370:
   ```
   git clone https://github.com/mvslovers/cc370.git
   cd cc370
@@ -88,15 +88,15 @@ Build cc370 first: libc370 is compiled with it.
   current workstation\; the other tools are built in seconds. The command
   ends with the lines in @ug-install-make-fig.
 + Make sure that #cmd("$PREFIX/bin") is in your #cmd("PATH"), so that the
-  shell finds #cmd("cc370") and the other commands. libc370 is built with
+  shell finds #cmd("cc370") and the other commands. LIBC/370 is built with
   the #cmd("cc370") it finds there.
-+ Obtain the source of libc370, build it and install it:
++ Obtain the source of LIBC/370, build it and install it:
   ```
   git clone https://github.com/mvslovers/libc370.git
   cd libc370
   make install
   ```
-  libc370 needs no #cmd("PREFIX"): it asks the #cmd("cc370") on your
+  LIBC/370 needs no #cmd("PREFIX"): it asks the #cmd("cc370") on your
   #cmd("PATH") where its tree is, and installs there. The output ends as in
   @ug-install-libc-fig.
 
@@ -136,7 +136,7 @@ directory, #cmd("cc370").
   cc370/                    the sysroot
     bin/                    the tools: as370 ld370 ar370 file370 xmit370
                               dasm370 cmplmd370 idrdump370
-    include/                the headers of libc370
+    include/                the headers of LIBC/370
     lib/                    libc.a, libcc370rt.a, crtm.o
     macros/                 the assembler macros
   libexec/cc370/version/
@@ -153,14 +153,14 @@ directory, #cmd("cc370").
   [#cmd("cc370/include")], [the headers of the C library. The compiler
     searches this directory without #cmd("-I").],
   [#cmd("cc370/lib")], [the C library #cmd("libc.a"), which comes from
-    libc370 and holds the start-up routine #cmd("@@CRT0") as well, and the
+    LIBC/370 and holds the start-up routine #cmd("@@CRT0") as well, and the
     run-time support library #cmd("libcc370rt.a"), which comes with cc370.
-    libc370 also installs the start-up object #cmd("crtm.o"), for a C module
+    LIBC/370 also installs the start-up object #cmd("crtm.o"), for a C module
     that a running C program calls\; a link uses it only when you name it. Every
     link searches this directory without #cmd("-L").],
   [#cmd("cc370/macros")], [the assembler macros: #cmd("PDPTOP"),
     #cmd("PDPPRLG") and #cmd("PDPEPIL"), which every module compiled by
-    cc370 uses and which come with cc370, and the macros of libc370 and the
+    cc370 uses and which come with CC/370, and the macros of LIBC/370 and the
     system macros it needs. as370 searches this directory without
     #cmd("-I").],
   [#cmd("libexec/cc370")], [the compiler proper, #cmd("cc1"), which only the
@@ -177,28 +177,28 @@ Without it the compiler finds neither the headers nor the C library, and
 every link fails with #cmd("cannot find -lc").]
 
 #idx("sysroot", "second")
-A libc370 that is kept in a directory tree of its own, as Homebrew keeps
+A LIBC/370 that is kept in a directory tree of its own, as Homebrew keeps
 it, can be linked into the tree as #cmd("cc370/libc370"). Its
 #cmd("include"), #cmd("lib") and #cmd("macros") directories are then
 searched after those of #cmd("cc370").
 
-=== Matching Versions of cc370 and libc370 <ug-install-versions>
+=== Matching Versions of CC/370 and LIBC/370 <ug-install-versions>
 
 #idx("libc370", "version")
-cc370 and libc370 are released separately, and each states the versions of
+CC/370 and LIBC/370 are released separately, and each states the versions of
 the other it works with, as @ug-install-versions-tab shows. Every header of
-libc370 checks the version of the compiler: compiled with a cc370 that is
+LIBC/370 checks the version of the compiler: compiled with a CC/370 that is
 too old, it stops with an error such as
-#cmd("libc370 needs cc370 1.4.0 or later"). cc370 1.4 in turn needs
-libc370 2.3.0 or later: since that release the start-up routine
-#cmd("@@CRT0") is a member of #cmd("libc.a"), and cc370 1.4 no longer links
-a start-up object of its own, so with an older libc370 a program with a
-#cmd("main") does not link. The packages of cc370 1.4 require libc370
+#cmd("libc370 needs cc370 1.4.0 or later"). CC/370 1.4 in turn needs
+LIBC/370 2.3.0 or later: since that release the start-up routine
+#cmd("@@CRT0") is a member of #cmd("libc.a"), and CC/370 1.4 no longer links
+a start-up object of its own, so with an older LIBC/370 a program with a
+#cmd("main") does not link. The packages of CC/370 1.4 require LIBC/370
 2.3.0.
 
-#tab(caption: [Matching versions of cc370 and libc370])[
+#tab(caption: [Matching versions of CC/370 and LIBC/370])[
   #table(columns: (1fr, 1fr),
-    [cc370], [libc370],
+    [CC/370], [LIBC/370],
     [1.1 to 1.3], [2.1.0 to 2.3.x],
     [1.4], [2.3.0 or later],
   )
@@ -206,7 +206,7 @@ a start-up object of its own, so with an older libc370 a program with a
 
 The installation script and the packages choose matching versions for
 you\; when you build from source, build both from their current sources.
-The figures of this book show cc370 1.4.0 with libc370 2.4.0.
+The figures of this book show CC/370 1.4.0 with LIBC/370 2.4.0.
 
 == Checking the Installation <ug-install-check>
 
@@ -217,7 +217,7 @@ Check a new installation with the commands in @ug-install-check-fig:
   and the commit it was built from. Every tool answers #cmd("--version"), or
   #cmd("-V"), with the same version and commit.
 + #cmd("cc370 -print-file-name=libc.a") shows where the driver finds the C
-  library. If it prints only #cmd("libc.a"), without a directory, libc370
+  library. If it prints only #cmd("libc.a"), without a directory, LIBC/370
   is not installed in this tree.
 + Compile and link a program. Any short program does\; the one used here
   is HELLO, shown in @ug-first-hello. The build must end with return code
@@ -229,12 +229,12 @@ Check a new installation with the commands in @ug-install-check-fig:
 ] <ug-install-check-fig>
 
 #idx("stdio.h", "not found")
-When libc370 is missing, the compiler cannot find even #cmd("<stdio.h>"),
-and says so in a message that does not mention libc370:
+When LIBC/370 is missing, the compiler cannot find even #cmd("<stdio.h>"),
+and says so in a message that does not mention LIBC/370:
 
 #screen(raw(read("../ex/ug-install/nolibc.txt")))
 
-Install libc370 as described in @ug-install-build or @ug-install-release,
+Install LIBC/370 as described in @ug-install-build or @ug-install-release,
 into the tree of the #cmd("cc370") on your #cmd("PATH").
 
 #idx("manual pages")
@@ -245,5 +245,5 @@ The manual pages are installed in #cmd("share/man/man1"). If
 #idx("uninstalling")
 To remove a toolchain built from source, run #cmd("make uninstall") in its
 source tree, with the same #cmd("PREFIX") as for the installation. It
-removes the files of cc370, but not those of libc370 in #cmd("cc370/include")
+removes the files of CC/370, but not those of LIBC/370 in #cmd("cc370/include")
 and #cmd("cc370/lib").

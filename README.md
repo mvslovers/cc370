@@ -1,6 +1,6 @@
-# cc370
+# CC/370 (cc370)
 
-A **host-native cross-toolchain for MVS 3.8j** (TK4-, TK5, MVS/CE): compile,
+CC/370 is a **host-native cross-toolchain for MVS 3.8j** (TK4-, TK5, MVS/CE): compile,
 assemble, link and package MVS programs entirely on the host (macOS / Linux), so
 the only thing that touches the mainframe is the finished load module.
 
@@ -30,8 +30,8 @@ drives (and which you can also run standalone); `file370` is a standalone
 inspector that reads the formats the others write, and `xmit370` packs the
 non-code half of a distribution — sample JCL, parameter members, macros — into
 the same TSO TRANSMIT envelope `ld370` ships load modules in. The C library it links against is
-**[libc370](https://github.com/mvslovers/libc370)**, installed into the cc370
-sysroot — see *Sysroot* below.
+**[LIBC/370 (libc370)](https://github.com/mvslovers/libc370)**, installed into the
+CC/370 sysroot — see *Sysroot* below.
 
 ## Install a release
 
@@ -41,16 +41,16 @@ Every release from 1.1.0 carries prebuilt toolchains (#523):
 curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
 ```
 
-installs cc370 into `~/.local` (`PREFIX=` to change it) **and libc370 beside
-it**: the newest libc370 release whose `libc370-<v>-metadata.json` accepts the
-cc370 just installed. Both downloads are checked against their release's
-`SHA256SUMS`. Without a fitting libc370 it installs cc370 alone and says so.
+installs CC/370 into `~/.local` (`PREFIX=` to change it) **and LIBC/370 beside
+it**: the newest LIBC/370 release whose `libc370-<v>-metadata.json` accepts the
+CC/370 just installed. Both downloads are checked against their release's
+`SHA256SUMS`. Without a fitting LIBC/370 it installs CC/370 alone and says so.
 The release list comes from the GitHub API, which allows 60 requests an hour
 per address; when that is used up `install.sh` says so and stops. Retry later,
 set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=` and
 `LIBC370_VERSION=`.
 
-| Platform | cc370 assets |
+| Platform | CC/370 assets |
 |---|---|
 | Linux amd64, arm64 | `cc370-<v>-linux-<arch>.tar.gz` (statically linked, any distribution), `cc370_<v>_<arch>.deb`, `cc370-<v>.<x86_64\|aarch64>.rpm` |
 | macOS arm64, Intel | `cc370-<v>-darwin-<arch>.tar.gz` (macOS 11 / 10.15 and later) |
@@ -58,28 +58,30 @@ set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=` and
 | Windows | WSL2 and the Linux assets (#698) |
 
 - **Tarball:** a relocatable tree; unpack it anywhere and use its `bin/`.
-  libc370's `libc370-<v>-sysroot.tar.gz` goes into the tree's `cc370/`
+  LIBC/370's `libc370-<v>-sysroot.tar.gz` goes into the tree's `cc370/`
   directory. A tarball downloaded with a browser on macOS needs
   `xattr -d com.apple.quarantine` on the unpacked tree; `install.sh` does
   not, curl sets no quarantine flag.
 - **Homebrew:** Homebrew 7 loads a formula's dependencies only from a tap
   you trust, so `brew trust mvslovers/tap` comes first; without it, the
-  install stops at libc370 ("untrusted tap").
+  install stops at LIBC/370 ("untrusted tap").
 - **`.deb` / `.rpm`:** the tree under `/usr/lib/cc370`, symlinks in
-  `/usr/bin` and `/usr/share/man/man1`. cc370 and libc370 depend on each
+  `/usr/bin` and `/usr/share/man/man1`. CC/370 and LIBC/370 depend on each
   other (below), so install the two packages together, e.g.
   `apt install ./cc370_1.1.0_amd64.deb ./libc370-dev_2.1.0_all.deb`.
 
-## Compatibility with libc370
+## Compatibility with LIBC/370
 
-cc370 and [libc370](https://github.com/mvslovers/libc370) are versioned
+CC/370 and [LIBC/370](https://github.com/mvslovers/libc370) are versioned
 separately; each states the range of the other it works with.
 
 | | needs |
 |---|---|
-| libc370 2.1.x | cc370 >= 1.1.0, < 2 (every header checks `__CC370__`) |
-| cc370 1.1.x | libc370 >= 2.1.0 (the `.deb` / `.rpm` dependencies) |
-| cc370 1.0.0 | libc370 <= 2.0.x |
+| LIBC/370 2.4.x and later | CC/370 >= 1.4.0, < 2 (every header checks `__CC370__`) |
+| LIBC/370 2.1.x - 2.3.x | CC/370 >= 1.1.0, < 2 |
+| CC/370 1.4.x and later | LIBC/370 >= 2.3.0 (the C startup `@@CRT0` is in `libc.a`; the `.deb` / `.rpm` dependencies) |
+| CC/370 1.1.x - 1.3.x | LIBC/370 >= 2.1.0 (the `.deb` / `.rpm` dependencies) |
+| CC/370 1.0.0 | LIBC/370 <= 2.0.x |
 
 Who owns what, why the ranges are what they are, and what a release of
 either project has to do: [internals/releasing.md](internals/releasing.md).
@@ -110,8 +112,8 @@ tests the compiler's version with the predefined `__CC370__`
 <prefix>/libexec/cc370/1.0.0/cc1            the compiler proper (driver-private)
 <prefix>/libexec/cc370/1.0.0/{as,ld,ar}     symlinks beside cc1; the driver's tooldir
 <prefix>/cc370/bin/{as370,ld370,ar370}      the real tool binaries
-<prefix>/cc370/{include,lib,macros}         the libc370 sysroot (headers, libc.a, crt*.o, macros)
-<prefix>/cc370/libc370/{include,lib,macros} optional: a libc370 kept in its own tree and
+<prefix>/cc370/{include,lib,macros}         the LIBC/370 sysroot (headers, libc.a, crtm.o, macros)
+<prefix>/cc370/libc370/{include,lib,macros} optional: a LIBC/370 kept in its own tree and
                                             linked in here (Homebrew), searched after the above
 <prefix>/lib/cc370/1.0.0/                    empty: GCC's libsubdir, but required (see below)
 ```
@@ -123,11 +125,11 @@ empty `lib/cc370/1.0.0/` is GCC's *libsubdir*: it holds no libgcc (we ship none)
 but the driver locates the whole `cc370/` sysroot — both `<stdio.h>` and `-lc` —
 via a path relative to it, so it must exist. Builds on x86-64 and ARM64.
 
-### Sysroot — where cc370 finds the libc
+### Sysroot — where CC/370 finds the libc
 
 cc370 searches `<prefix>/cc370/{include,lib}` by default (the `cc370` component is
 the target name, from `-dumpmachine`).
-[libc370](https://github.com/mvslovers/libc370) drops its headers, `libc.a` (which
+[LIBC/370](https://github.com/mvslovers/libc370) drops its headers, `libc.a` (which
 carries the C startup `@@CRT0` since 2.3.0), the nested startup `crtm.o` and the
 assembler macros all under `<prefix>/cc370/` (`include`, `lib`, `macros`); as370,
 whose real binary lives in `<prefix>/cc370/bin`, finds the macros via its
@@ -140,7 +142,7 @@ cc370 hello.c -o hello -flinker-output=xmit  # no -I, no -L, no -lc needed
 
 ## Optimization: `-O1`, and `-Os` as experimental
 
-**`-O1` is the validated level** and mbt's default.
+**`-O1` is the validated level** and MBT's default.
 
 **`-Os` is experimental.** It makes code about 5 % smaller across the ecosystem
 (rexx370 8.5 %). Three defects that kept it from even assembling are fixed:
@@ -186,7 +188,7 @@ Deep dives: [`CLAUDE.md`](CLAUDE.md) (architecture + gotchas),
 
 The compiler is a fork of GCC **3.4.6** — the last GCC to carry the i370 machine
 definition — for the `i370-ibm-mvspdp` target (`TARGET_PDPMAC`: HLASM/EBCDIC,
-`COPY PDPTOP` / `PDPPRLG` / `PDPEPIL`, [libc370](https://github.com/mvslovers/libc370)-compatible
+`COPY PDPTOP` / `PDPPRLG` / `PDPEPIL`, [LIBC/370](https://github.com/mvslovers/libc370)-compatible
 calling conventions), slimmed to that one target.
 
 It descends from the gccmvs / [i370-gcc](https://github.com/linas/i370-gcc) line

@@ -8,7 +8,7 @@ What is particular to it follows from the system it compiles for: the
 program runs in EBCDIC, its external names have eight characters, and it is
 link-edited into an MVS load module. This chapter shows how to compile a C
 program and what to keep in mind while writing one. The options are
-described in full in the _cc370 Command Reference_, Chapter 1, “The cc370
+described in full in the _CC/370 Command Reference_, Chapter 1, “The cc370
 Command”.
 
 == Compiling and Linking <ug-compile-basic>
@@ -125,7 +125,7 @@ which becomes its code page 037 value. A character beyond Latin-1, such as
 #cmd("€"), is an error in a literal\; in a comment it is allowed.
 
 Data that a program exchanges with an ASCII system, over a network for
-example, has to be translated explicitly. The _libc370 Programmer's Guide_
+example, has to be translated explicitly. The _LIBC/370 Programmer's Guide_
 describes the functions for this.
 
 == External Names <ug-compile-names>
@@ -187,7 +187,7 @@ proven on this target. @ug-compile-opt-tab says which to use.
   #table(columns: (0.8in, 1fr),
     [Level], [Use],
     [#cmd("-O1")], [For production code. It is the level at which the
-      toolchain is validated, and the default of the mbt build tool.],
+      toolchain is validated, and the default of the MBT build tool.],
     [#cmd("-O0")], [The default when no #cmd("-O") is given. The code is
       larger and slower, but follows the source most closely, which helps
       when you read it in an assembler listing or a dump.],
@@ -256,7 +256,7 @@ without being told. The headers are arranged in groups:
     headers for sockets.],
 )
 
-The _libc370 Programmer's Guide_ and the _libc370 Library Reference_
+The _LIBC/370 Programmer's Guide_ and the _LIBC/370 Library Reference_
 describe them.
 
 #idx("-I")

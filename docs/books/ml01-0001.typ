@@ -1,16 +1,16 @@
 #import "bookmaster/bookmaster.typ": *
 
 #show: book.with(
-  title: "cc370 Cross-Toolchain for MVS 3.8j",
+  title: "CC/370 Cross-Toolchain for MVS 3.8j",
   subtitle: "User's Guide",
-  short-title: "cc370 User's Guide",
+  short-title: "CC/370 User's Guide",
   number: "ML01-0001-0",
   date: "October 2026",
   authors: ("Mike Großmann",),
   edition: [
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
-    This edition applies to Version 1 Release 5 of the cc370
+    This edition applies to Version 1 Release 5 of the CC/370
     cross-toolchain (cc370 1.5.0) and to all subsequent releases and
     modifications until otherwise indicated in new editions.
 
@@ -24,7 +24,7 @@
   ],
 )
 
-#part("index.html", title: [cc370 User's Guide])[
+#part("index.html", title: [CC/370 User's Guide])[
 #titlepage()
 #contents()
 #figures()
@@ -32,12 +32,12 @@
 #heading(numbering: none)[About This Book] <about>
 
 This book shows how to write, build and run programs for MVS 3.8j with the
-cc370 cross-toolchain: how to install it, how a C or assembler source
+CC/370 (cc370) cross-toolchain: how to install it, how a C or assembler source
 becomes a load module on the workstation, how the load module reaches MVS,
 and how to run it and find out what went wrong.
 
 Every command and option is described in full in the companion volume, the
-_cc370 Command Reference_\; this book uses only what a task needs and points
+_CC/370 Command Reference_\; this book uses only what a task needs and points
 there for the rest.
 
 == Who Should Use This Book
@@ -68,9 +68,9 @@ can submit a job and read its output on MVS.
 == Related Publications
 
 #deflist(width: 1.35in,
-  [ML01-0002], [_cc370 Command Reference_],
-  [ML01-0003], [_libc370 Programmer's Guide_],
-  [ML01-0004], [_libc370 Library Reference_],
+  [ML01-0002], [_CC/370 Command Reference_],
+  [ML01-0003], [_LIBC/370 Programmer's Guide_],
+  [ML01-0004], [_LIBC/370 Library Reference_],
 )
 
 #mainmatter()

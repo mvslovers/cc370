@@ -12,7 +12,7 @@ listing and the load map, and how to go from the address of an abend back
 to the statement that caused it. It ends with the tools that inspect and
 compare what the build wrote.
 
-There is no source-level debugger for programs built with cc370, and the
+There is no source-level debugger for programs built with CC/370, and the
 compiler writes no line number information: #cmd("-g") is accepted and ends
 with the warning #cmd("target system does not support debug output"). The
 link between the C source and the running program is the assembler listing.
@@ -227,7 +227,7 @@ there too\; and dasm370 shows ADDUP as it is in the load module.
 A disassembly has no names except those of the external symbols, and shows
 operands in numeric form: the loop of ADDUP appears as
 #cmd("BCT 2,18(0,12)"), and its #cmd("BNP") as #cmd("BNH"), which is the
-same instruction. dasm370 can be told more with a hint file\; the _cc370
+same instruction. dasm370 can be told more with a hint file\; the _CC/370
 Command Reference_, Chapter 7, “The dasm370 Command”, describes it.
 
 The two comparisons that come up most often:
@@ -250,5 +250,5 @@ The two comparisons that come up most often:
   @ug-diag-inspect-session does for ADDUP. Only the sections that differ
   need a closer look, with #cmd("cmplmd370 -v") or with dasm370.
 
-Chapters 5, 7, 8 and 9 of the _cc370 Command Reference_ describe file370,
+Chapters 5, 7, 8 and 9 of the _CC/370 Command Reference_ describe file370,
 dasm370, cmplmd370 and idrdump370 in full.

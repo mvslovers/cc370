@@ -3,7 +3,7 @@
 = Writing Assembler Code <ug-asm>
 
 #idx("assembler language", "writing")
-Most programs for MVS 3.8j built with cc370 are written in C, but some
+Most programs for MVS 3.8j built with CC/370 are written in C, but some
 things are easier, or only possible, in assembler language: a short routine
 that uses an instruction the compiler does not generate, a system service
 that has no C interface, or an existing assembler module that you want to
@@ -26,7 +26,7 @@ The chapter begins with GREET, a program written entirely in assembler.
 MVS, @ug-run runs it, and @ug-diag finds the error that SUMUP still
 contains.
 
-Every option of as370 is described in the _cc370 Command Reference_,
+Every option of as370 is described in the _CC/370 Command Reference_,
 Chapter 2, “The as370 Command”.
 
 == Assembling a Program <ug-asm-assemble>

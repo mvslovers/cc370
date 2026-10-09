@@ -274,7 +274,7 @@ with #cmd("-Wl,") (@cc370-passthru) and see Chapter 3 for their meaning.
 == Libraries and Start-Up Code <cc370-sysroot>
 
 #idx("sysroot")#idx("libc370")
-The toolchain is installed with its C library, libc370, in a directory tree
+The toolchain is installed with its C library, LIBC/370 (libc370), in a directory tree
 of its own, #cmd("cc370/") under the installation prefix:
 
 #deflist(width: 1.4in,
@@ -283,7 +283,7 @@ of its own, #cmd("cc370/") under the installation prefix:
     searched first.],
   [#cmd("cc370/lib")], [#cmd("libc.a"), the C library, which also holds the
     start-up routine #cmd("@@CRT0")\; and #cmd("libcc370rt.a"), the run-time
-    support library. libc370 2.4.0 also installs the start-up object
+    support library. LIBC/370 2.4.0 also installs the start-up object
     #cmd("crtm.o"), which the driver does not use unless you name it.],
   [#cmd("cc370/macros")], [the assembler macros, among them #cmd("PDPTOP"),
     #cmd("PDPPRLG") and #cmd("PDPEPIL")\; see @as370-maclib.],
@@ -304,10 +304,10 @@ with #cmd("@@"), for example #cmd("@@DIVDI3"). ld370 takes from the
 libraries only the members the program needs.
 
 #idx("libc370", "version required")
-cc370 1.4 needs libc370 2.3.0 or later. Since that release the start-up
+CC/370 1.4 needs LIBC/370 2.3.0 or later. Since that release the start-up
 routine is a member of #cmd("libc.a")\; an older #cmd("libc.a") has none,
-and a program with a #cmd("main") does not link. The cc370 packages
-require libc370 2.3.0 for this reason. libc370 2.4.0 in turn requires cc370
+and a program with a #cmd("main") does not link. The CC/370 packages
+require LIBC/370 2.3.0 for this reason. LIBC/370 2.4.0 in turn requires CC/370
 1.4.0: every one of its headers stops the compile with
 #cmd("libc370 needs cc370 1.4.0 or later") under an older cc370.
 
@@ -324,9 +324,9 @@ calls #cmd("__premain") if the program defines it, opens the standard
 streams and calls #cmd("MAIN"), the C function #cmd("main"). A library named
 with #cmd("-l") is searched before the C library, so one that defines
 #cmd("@@START") replaces the routine of the C library without a message\;
-put work before #cmd("main") into #cmd("__premain") instead (libc370 2.4.0
-or later). The _cc370 User's Guide_ describes it under "Work Before main", the
-_libc370 Programmer's Guide_ under "Running Code Before main()".
+put work before #cmd("main") into #cmd("__premain") instead (LIBC/370 2.4.0
+or later). The _CC/370 User's Guide_ describes it under "Work Before main", the
+_LIBC/370 Programmer's Guide_ under "Running Code Before main()".
 
 #idx("CTHREAD")
 The start-up refers to #cmd("CTHREAD"), the thread driver of the C library,
@@ -355,7 +355,7 @@ The start-up can be changed in two ways:
   address of a parameter block, a halfword length and the text, in
   register 0, not in a register-1 parameter list, so a plain LINK is not
   enough. Link it with the start-up object #cmd("crtm.o") that
-  libc370 installs. It defines #cmd("@@CRT0"), so the library member is not
+  LIBC/370 installs. It defines #cmd("@@CRT0"), so the library member is not
   taken:
   ```
   cc370 -o sub sub.c $(cc370 -print-file-name=crtm.o)
@@ -363,7 +363,7 @@ The start-up can be changed in two ways:
   *Never use #cmd("crtm.o") for a program that MVS starts*, as a job step
   or a TSO command: without a C program before it on the same task there is
   no run time to use, and the module abends. How the two start-ups differ
-  is described in the _libc370 Programmer's Guide_, "The Start-Up
+  is described in the _LIBC/370 Programmer's Guide_, "The Start-Up
   Routines" in the chapter "Program Structure and Start-Up".
 - To link a module that does not use the C start-up at all, give
   #cmd("-e") #var("entry"). ld370 uses the last entry it is given, which is
@@ -402,7 +402,7 @@ escape the second question mark: #cmd("\"what?\\?!\"").#idx("trigraphs", "escapi
 Besides the macros of GCC 3.4.6, cc370 defines the macros in
 @cc370-macro-tab. #cmd("cc370 -dM -E - </dev/null") lists all of them.
 
-#tab(caption: [Macros predefined by cc370 1.5.0])[
+#tab(caption: [Macros predefined by CC/370 1.5.0])[
   #table(columns: (1.6in, 0.7in, 1fr),
     [Macro], [Value], [Meaning],
     [#cmd("__CC370__")], [#cmd("10500")], [the toolchain version: major
@@ -623,7 +623,7 @@ them, but they are not equally proven on this target:
 
 #deflist(width: 1.1in,
   [#cmd("-O1")], [is the level the toolchain is validated at, and the level
-    mbt builds with by default. Use it for production code.],
+    MBT (mbt) builds with by default. Use it for production code.],
   [#cmd("-O0")], [generates larger and slower code, but code that is the
     easiest to follow in an assembler listing.],
   [#cmd("-Os")], [is experimental. The sources of the ecosystem compile and
@@ -664,7 +664,7 @@ As in any GCC, #cmd("-O1") replaces some library calls by cheaper ones: a
     option the module is one section without a name, type #cmd("PC").],
   [#cmd("-mrent")], [declares that the translation unit goes into a
     reentrant load module, and reports its writable data (see below). It
-    changes no generated code. From cc370 1.5.0 on.],
+    changes no generated code. From CC/370 1.5.0 on.],
   [#cmd("-mno-rent")], [the default: no such check.],
 )
 

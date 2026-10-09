@@ -13,7 +13,7 @@ xmit370 has packed.
 The chapter describes three ways to copy the file, in order of preference:
 the mvsMF REST interface, FTP, and the IND\$FILE file transfer of a 3270
 terminal emulator. All three end the same way, with the TSO command
-#cmd("RECEIVE"). The last section shows how the mbt build tool does all of
+#cmd("RECEIVE"). The last section shows how the MBT build tool does all of
 it with one command.
 
 The examples install #cmd("sumlib.xmit"), the library with the members
@@ -267,7 +267,7 @@ loads with #cmd("IEB154I")\; check the members of the library afterwards.
 that exists. There are two ways to install a new level of a program:
 
 - Delete the library and receive it again, as in @ug-transfer-mvsmf. This is
-  the simple way when the library holds nothing else\; it is what mbt does.
+  the simple way when the library holds nothing else\; it is what MBT does.
 - Receive into a new library and copy its members into the existing one with
   IEBCOPY, which replaces members of the same name.
   @ug-transfer-update-jcl shows a job that does this.
@@ -329,14 +329,14 @@ RECEIVE INDSN('USER1.SUMJCL.XMIT') DATASET('USER1.SUMUP.JCL')
 
 The members can then be edited and submitted on MVS. The options of
 xmit370, and how it treats tabs, trailing blanks and characters outside
-ASCII, are described in the _cc370 Command Reference_, Chapter 6, “The
+ASCII, are described in the _CC/370 Command Reference_, Chapter 6, “The
 xmit370 Command”.
 
-== Automating the Steps with mbt <ug-transfer-mbt>
+== Automating the Steps with MBT <ug-transfer-mbt>
 
 #idx("mbt")
 The steps of this chapter are the same for every change you make, which
-makes them a candidate for a tool. mbt, the MVS build tool of the mvslovers
+makes them a candidate for a tool. MBT, the MVS build tool of the mvslovers
 project, builds a project with cc370, as370 and ld370 from a description in
 a file #cmd("project.toml"), and installs it with one command,
 #cmd("make deploy"), which:
@@ -349,7 +349,7 @@ a file #cmd("project.toml"), and installs it with one command,
   the staging data set into it with #cmd("RECEIVE"), in a region of 4096K\;
 + waits for the job, keeps its output, and deletes the staging data set.
 
-mbt reads the address of mvsMF, the user ID and the password from a file
+MBT reads the address of mvsMF, the user ID and the password from a file
 #cmd(".env") in the project, and the name of the target library from
 #cmd("project.toml"). It is being rewritten as a stand-alone tool, so its
 commands and files are not described here\; see the documentation in the

@@ -10,7 +10,7 @@ standard streams go, and what a return code and an abend look like.
 
 The examples run SUMUP and GREET from the library #cmd("USER1.SUMUP.LOAD")
 that @ug-transfer installed. The run time behaviour of a C program is
-described in full in the _libc370 Programmer's Guide_\; this chapter covers
+described in full in the _LIBC/370 Programmer's Guide_\; this chapter covers
 what you need to run one.
 
 == Running a Program in a Batch Job <ug-run-batch>
@@ -141,7 +141,7 @@ that reads #cmd("dd:INPUT") is run with a DD statement for it:
 Opening by DD name is the usual way in batch: the job, not the program,
 decides which data set is read, and MVS allocates it before the program
 starts. The forms of file names and the record formats a C program can read
-and write are described in the _libc370 Programmer's Guide_.
+and write are described in the _LIBC/370 Programmer's Guide_.
 
 #idx("environment variables")
 A C program can also be given environment variables, which it reads with

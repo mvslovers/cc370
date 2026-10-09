@@ -1,16 +1,16 @@
 #import "bookmaster/bookmaster.typ": *
 
 #show: book.with(
-  title: "cc370 Cross-Toolchain for MVS 3.8j",
+  title: "CC/370 Cross-Toolchain for MVS 3.8j",
   subtitle: "Command Reference",
-  short-title: "cc370 Command Reference",
+  short-title: "CC/370 Command Reference",
   number: "ML01-0002-0",
   date: "October 2026",
   authors: ("Mike Großmann",),
   edition: [
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
-    This edition applies to Version 1 Release 5 of the cc370
+    This edition applies to Version 1 Release 5 of the CC/370
     cross-toolchain (cc370 1.5.0) and to all subsequent releases and
     modifications until otherwise indicated in new editions.
 
@@ -21,21 +21,21 @@
   ],
 )
 
-#part("index.html", title: [cc370 Command Reference])[
+#part("index.html", title: [CC/370 Command Reference])[
 #titlepage()
 #contents()
 #figures()
 
 #heading(numbering: none)[About This Book] <about>
 
-This book describes the commands of the cc370 cross-toolchain: the C
+This book describes the commands of the CC/370 (cc370) cross-toolchain: the C
 compiler, the assembler, the linkage editor, the archiver and five utilities,
 all of which run on a workstation and produce programs for MVS 3.8j. For
 each command it gives the syntax, every option, the files it reads and
 writes, and its return codes.
 
 How the tools are used together, from the first program to its deployment on
-MVS, is the subject of the companion volume, the _cc370 User's Guide_.
+MVS, is the subject of the companion volume, the _CC/370 User's Guide_.
 
 == Who Should Use This Book
 
@@ -69,9 +69,9 @@ partitioned data sets, load modules and job control language.
 == Related Publications
 
 #deflist(width: 1.35in,
-  [ML01-0001], [_cc370 User's Guide_],
-  [ML01-0003], [_libc370 Programmer's Guide_],
-  [ML01-0004], [_libc370 Library Reference_],
+  [ML01-0001], [_CC/370 User's Guide_],
+  [ML01-0003], [_LIBC/370 Programmer's Guide_],
+  [ML01-0004], [_LIBC/370 Library Reference_],
 )
 
 == How to Read the Syntax Diagrams

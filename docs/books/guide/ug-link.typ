@@ -5,7 +5,7 @@
 #idx("linking")
 #idx("ld370")
 Linking turns object modules into a load module, the form in which MVS
-loads and runs a program. With cc370 the link runs on the workstation: ld370
+loads and runs a program. With CC/370 the link runs on the workstation: ld370
 takes the place of the MVS linkage editor, IEWL, and writes the load module
 together with the file that carries it to MVS. This chapter explains what a
 load module is made of, how a C program and an assembler program are
@@ -13,7 +13,7 @@ linked, how to build and use a library of your own, and how to put several
 programs into one load library.
 
 The examples continue with SUMUP and GREET from @ug-asm. Every option of
-ld370 and ar370 is described in the _cc370 Command Reference_, Chapter 3,
+ld370 and ar370 is described in the _CC/370 Command Reference_, Chapter 3,
 “The ld370 Command”, and Chapter 4, “The ar370 Command”.
 
 == What a Load Module Is <ug-link-lmod>
@@ -185,7 +185,7 @@ An unresolved ordinary reference, on the other hand, ends the link, as
 
 When two libraries define the same name, the first library given wins,
 unless its member would define a name the link already has (see the
-_cc370 Command Reference_, “Automatic Library Call”).
+_CC/370 Command Reference_, “Automatic Library Call”).
 Give your own libraries before the C library, which cc370 does by putting
 #cmd("-l") options of the command line ahead of its own.
 
@@ -205,7 +205,7 @@ called.
 
 *Do not define #cmd("@@START").* Put the work that must be done before
 #cmd("main") into the function #cmd("__premain"), declared in
-#cmd("<mvs/crt.h>") since libc370 2.4.0:
+#cmd("<mvs/crt.h>") since LIBC/370 2.4.0:
 
 ```
 #include <mvs/crt.h>
@@ -271,7 +271,7 @@ Three rules follow from how the linkage editor treats a weak reference:
 ] <ug-link-weak-fig>
 
 #cmd("__CC370_WEAK__") is defined when the compiler supports weak
-references\; a source that must also compile with an older cc370 can test
+references\; a source that must also compile with an older CC/370 can test
 it with #cmd("#ifdef").
 
 == Module Attributes <ug-link-attr>
@@ -305,7 +305,7 @@ them might be shared. Give an attribute only when the module deserves it.
 A C program keeps its static variables in the load module itself, so it is
 not reentrant if it changes any of them. GREET changes none of its storage
 and can be marked #cmd("--rent --reus")\; CLOCK, which stores the date into
-itself, cannot. From cc370 1.5.0 on, compile the sources of a module you
+itself, cannot. From CC/370 1.5.0 on, compile the sources of a module you
 mark #cmd("--rent") with #cmd("-mrent"): the compiler then warns about every
 writable variable those sources define. Code taken from a library by
 automatic library call is not checked, and #cmd("__stklen") is exempt.
