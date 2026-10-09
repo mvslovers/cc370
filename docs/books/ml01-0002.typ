@@ -21,6 +21,8 @@
   ],
 )
 
+#part("index.html", title: [cc370 Command Reference])[
+#titlepage()
 #contents()
 #figures()
 
@@ -92,22 +94,25 @@ that can be repeated. Keywords and options appear as they are typed; a
 variable, for which you supply a value, appears in _italics_.
 
 #mainmatter()
+]
 #set page(numbering: "1")
 
-#include "ref/cc370.typ"
-#include "ref/as370.typ"
-#include "ref/ld370.typ"
-#include "ref/ar370.typ"
-#include "ref/file370.typ"
-#include "ref/xmit370.typ"
-#include "ref/dasm370.typ"
-#include "ref/cmplmd370.typ"
-#include "ref/idrdump370.typ"
+#part("cc370.html", include "ref/cc370.typ")
+#part("as370.html", include "ref/as370.typ")
+#part("ld370.html", include "ref/ld370.typ")
+#part("ar370.html", include "ref/ar370.typ")
+#part("file370.html", include "ref/file370.typ")
+#part("xmit370.html", include "ref/xmit370.typ")
+#part("dasm370.html", include "ref/dasm370.typ")
+#part("cmplmd370.html", include "ref/cmplmd370.typ")
+#part("idrdump370.html", include "ref/idrdump370.typ")
 
 #show: appendices
-#include "ref/apx-objfmt.typ"
-#include "ref/apx-lmodfmt.typ"
-#include "ref/apx-messages.typ"
+#part("apx-objfmt.html", include "ref/apx-objfmt.typ")
+#part("apx-lmodfmt.html", include "ref/apx-lmodfmt.typ")
+#part("apx-messages.html", include "ref/apx-messages.typ")
 
+#part("index-terms.html", title: [Index])[
 #heading(numbering: none)[Index]
 #make-index()
+]

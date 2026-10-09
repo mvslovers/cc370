@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cc370 manuals</title>
+<link rel="stylesheet" href="bookmaster.css">
+<style>
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+.card { border-top: 6px solid var(--ink); padding: 1rem 0 0; }
+.card h3 { border: 0; margin: 0 0 .5rem; padding: 0; font-size: 1.35rem; }
+.card .num { color: var(--muted); font-family: 'IBM Plex Sans', sans-serif; font-size: .85rem; }
+.card ul { list-style: none; padding: 0; font-family: 'IBM Plex Sans', sans-serif; }
+main.landing { max-width: 60rem; margin: 0 auto; }
+</style>
+</head>
+<body class="bm-landing">
+<header class="bm-top"><a href="index.html">cc370</a><span class="num">mvslovers manuals</span></header>
+<main class="landing">
+<h2>cc370 for MVS 3.8j</h2>
+<p>The host-native cross-toolchain for MVS 3.8j: the C compiler, the assembler, the linkage editor, the archiver and five utilities, all running on a workstation. Two books describe it: the guide shows how to build and run programs, the reference describes every command.</p>
+<div class="cards">
+  <section class="card">
+    <h3>User's Guide</h3>
+    <p class="num">ML01-0001</p>
+    <p>Installing the toolchain, compiling, assembling and linking, getting programs onto MVS and running them, finding errors, migrating from earlier releases.</p>
+    <ul><li><a href="guide/index.html">Read online</a></li><li><a href="ml01-0001-0.pdf">Download PDF</a></li></ul>
+  </section>
+  <section class="card">
+    <h3>Command Reference</h3>
+    <p class="num">ML01-0002</p>
+    <p>Every command and option of cc370, as370, ld370, ar370, file370, xmit370, dasm370, cmplmd370 and idrdump370, the object and load module formats, and all messages.</p>
+    <ul><li><a href="reference/index.html">Read online</a></li><li><a href="ml01-0002-0.pdf">Download PDF</a></li></ul>
+  </section>
+</div>
+</main>
+</body>
+</html>
