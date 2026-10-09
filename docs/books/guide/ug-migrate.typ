@@ -7,7 +7,7 @@ This appendix is for programmers who bring existing C programs to CC/370:
 from c2asm370 and its C library crent370, the predecessors of CC/370 and
 LIBC/370, from an earlier release of CC/370, and from the other C compilers
 for MVS 3.8j. It lists what has to change in the sources and in the build.
-The changes of the C library are described in more detail in the _libc370
+The changes of the C library are described in more detail in the _LIBC/370
 Programmer's Guide_.
 
 == From c2asm370 and crent370 <ug-migrate-c2asm370>
@@ -222,7 +222,7 @@ LIBC/370:
 - Replace the build. JCC jobs or scripts that compile and link
   are replaced by cc370 on the workstation and a #cmd("RECEIVE") on MVS
   (@ug-transfer).
-- Check every library call that is not standard C against the _libc370
+- Check every library call that is not standard C against the _LIBC/370
   Library Reference_. The standard C functions behave as the C standard
   describes them\; MVS-specific services have their own names and headers in
   libc370.

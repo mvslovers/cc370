@@ -227,7 +227,7 @@ there too\; and dasm370 shows ADDUP as it is in the load module.
 A disassembly has no names except those of the external symbols, and shows
 operands in numeric form: the loop of ADDUP appears as
 #cmd("BCT 2,18(0,12)"), and its #cmd("BNP") as #cmd("BNH"), which is the
-same instruction. dasm370 can be told more with a hint file\; the _cc370
+same instruction. dasm370 can be told more with a hint file\; the _CC/370
 Command Reference_, Chapter 7, “The dasm370 Command”, describes it.
 
 The two comparisons that come up most often:
