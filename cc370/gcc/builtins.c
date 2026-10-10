@@ -2321,7 +2321,7 @@ expand_builtin_strstr (tree arglist, rtx target, enum machine_mode mode)
       /* New argument list transforming strstr(s1, s2) to
 	 strchr(s1, s2[0]).  */
       arglist =
-	build_tree_list (NULL_TREE, build_int_2 (p2[0], 0));
+	build_tree_list (NULL_TREE, build_int_2 (TARGET_STR_BYTE (p2[0]), 0));
       arglist = tree_cons (NULL_TREE, s1, arglist);
       return expand_expr (build_function_call_expr (fn, arglist),
 			  target, mode, EXPAND_NORMAL);
@@ -2490,7 +2490,7 @@ expand_builtin_strpbrk (tree arglist, rtx target, enum machine_mode mode)
       /* New argument list transforming strpbrk(s1, s2) to
 	 strchr(s1, s2[0]).  */
       arglist =
-	build_tree_list (NULL_TREE, build_int_2 (p2[0], 0));
+	build_tree_list (NULL_TREE, build_int_2 (TARGET_STR_BYTE (p2[0]), 0));
       arglist = tree_cons (NULL_TREE, s1, arglist);
       return expand_expr (build_function_call_expr (fn, arglist),
 			  target, mode, EXPAND_NORMAL);

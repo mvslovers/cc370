@@ -497,6 +497,39 @@ else
     echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
 fi
 
+# --- issue #916: strstr/strpbrk with a one-character needle fold to strchr ---
+# The fold passes the needle's byte as strchr's character argument, so it
+# is a string byte read as a value (#487) and must be the EBCDIC byte:
+# "}" is X'D0' (208), not the ASCII 125 -- which is X'7D', a quote in CP037.
+# The strchr line is the control: a character constant was always right.
+cat > "$WORK/ss.c" <<'EOF'
+char *strstr(const char *, const char *);
+char *strpbrk(const char *, const char *);
+char *strchr(const char *, int);
+char *t_ss(char *s)  { return strstr(s, "}"); }
+char *t_sa(char *s)  { return strstr(s, "a"); }
+char *t_snl(char *s) { return strstr(s, "\n"); }
+char *t_pb(char *s)  { return strpbrk(s, "}"); }
+char *t_pff(char *s) { return strpbrk(s, "\xFF"); }
+char *t_ch(char *s)  { return strchr(s, '}'); }
+EOF
+compile ss "$WORK/ss.c" "-std=gnu99 -O1"
+got=$(awk '/^\* X-func/{if (f) print s; f=$3; s=f ":"; next}
+           /=F.-?[0-9]+.|L +15,=V\(/{sub(/^[ \t]+/, ""); gsub(/[ \t]+/, " "); s=s " [" $0 "]"}
+           END{print s}' "$WORK/ss.s")
+want="t_ss: [MVC 92(4,13),=F'208'] [L 15,=V(STRCHR)]
+t_sa: [MVC 92(4,13),=F'129'] [L 15,=V(STRCHR)]
+t_snl: [MVC 92(4,13),=F'21'] [L 15,=V(STRCHR)]
+t_pb: [MVC 92(4,13),=F'208'] [L 15,=V(STRCHR)]
+t_pff: [MVC 92(4,13),=F'255'] [L 15,=V(STRCHR)]
+t_ch: [MVC 92(4,13),=F'208'] [L 15,=V(STRCHR)]"
+if [ "$got" = "$want" ]; then
+    echo "strstr-strpbrk-fold: OK (a one-character needle reaches strchr as EBCDIC)"
+else
+    echo "strstr-strpbrk-fold: FAIL"; echo "   got:"; echo "$got" | sed 's/^/      /'
+    echo "   want:"; echo "$want" | sed 's/^/      /'; fail=1
+fi
+
 # --- issue #485 (1): a wide character above 0xFF keeps its code point ---
 # Output maps every byte of a wide element, so a character above 0xFF that
 # comes from source text or a UCN must be pre-imaged, as a numeric escape
