@@ -150,7 +150,7 @@ front of you, the second is nineteen-twentieths unattributable.
   Mike), the CI pin to the tag, and the User's Guide's CLOCK example (it
   shows supplying `TIME` by hand).
 - ~~**release.yml, from mbt's review of maclib370's release workflow**~~
-  **done** (this PR) (model:
+  **done** (#927) (model:
   maclib370#4, 1495896): (1) re-tagging a published version runs `gh release
   upload --clobber` (`release.yml:104`) and replaces its assets silently -- for
   a tag without `-` it should fail (`… is released; its assets are not
