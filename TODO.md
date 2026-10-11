@@ -134,10 +134,12 @@ front of you, the second is nineteen-twentieths unattributable.
   assembles TIME with no `-I`, `strstr(s, "}")` folds to `=F'208'`. Release
   page reworked. `~/.local` updated to 1.6.0 + maclib370 1.0.0 + libc370
   2.7.0 at Mike's request.
-- **Next:** the removal gate for libc370 2.8.0 (IBM copies out of
-  `sysmac/`, libc370#494, branch `feat/494-hasp`): 12 projects with cc370
-  1.6.0 and maclib370 1.0.0 on both sides, libc370 2.7.0 against the
-  branch, scratch prefixes. On mbt's signal.
+- ~~Removal gate for libc370 2.8.0~~ **done** (2026-10-11, libc370#494 at
+  `0edf114` against v2.7.0, both built from source with cc370 1.6.0,
+  maclib370 1.0.0): libc370 2 of 756 objects differ (`@@aclose` +8 FREEPOOL,
+  `@@ver` version text); the 11 projects: no `.o`/`.a` differs; 146 load
+  modules = 24 IDR timestamp only, 119 `@@ACLOSE` +8, 3 (UFSD/FTPD/HTTPD)
+  `@@ACLOSE` +8 and `LIBC370@` +8. No finding; reported to mbt.
 - `internals/releasing.md`'s mirrored "Who owns what" row follows
   libc370's `feat/494-hasp` text; re-check it word for word when libc370
   merges.
