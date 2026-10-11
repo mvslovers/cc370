@@ -128,12 +128,12 @@ front of you, the second is nineteen-twentieths unattributable.
   from a scratch prefix seeded with GETMAIN/WTO/DCB copies took libc370
   2.8.1 and removed all three ("removed 3 macro files"), 16 macros left,
   TIME from maclib370. Release page reworked.
-- **Open: Homebrew on ubuntu-24.04-arm** fails "Broken pipe" 0.1 s into
-  installing maclib370 as cc370's dependency, before any download: 1.6.0
-  first attempt, 1.6.1 first attempt and re-run; green on the 1.6.0 re-run
-  and the dispatch run 38162288802. The other three hosts are always green.
-  The release itself is complete (formula pushed). Needs a run with
-  `--verbose`/`HOMEBREW_DEBUG` on that runner.
+- ~~Homebrew on ubuntu-24.04-arm "Broken pipe"~~ **done** (#939): a
+  Homebrew 7.0.7 bug (credential lookup runs `git credential-osxkeychain`
+  on Linux, EPIPE race; found by mbt, maclib370#8: 4/6 without a token,
+  0/6 with). homebrew.yml sets `HOMEBREW_GITHUB_API_TOKEN`; 3/3 dispatch
+  runs green with the token set on ARM. README and guide tell Linux users.
+  An upstream report to Homebrew/brew is Mike's call.
 
 ## cc370 1.6.0 released (2026-10-11)
 
