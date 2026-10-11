@@ -29,6 +29,13 @@ neither number is mistaken for the other.
   the C library and the prologue macros win over an IBM original of the same
   name; when it is absent, nothing changes. It has a reserved place in the
   search path like the other two.
+- **maclib370 is installed with CC/370.** The `.deb` depends on
+  `maclib370 (>= 1.0.0)` and the `.rpm` requires it; the Homebrew formula
+  depends on `mvslovers/tap/maclib370` and links it in as
+  `cc370/maclib370`; `install.sh` installs its latest release into
+  `$PREFIX/cc370/maclib370` (`MACLIB370_VERSION=` names one, `NO_MACLIB370=1`
+  leaves it out). maclib370 depends on nothing. A program using a system
+  macro such as `TIME` now assembles with no `-I`.
 
 ### Fixed
 - **`as370`: `A(name)` relocates against the section that holds `name`, even

@@ -15,12 +15,18 @@
 # the Breaks/Replaces and Conflicts: a libc370 before 2.1.0 cannot sit
 # beside it.
 #
+# maclib370 (SYS1.MACLIB and SYS1.AMODGEN of MVS 3.8j) installs into
+# /usr/lib/cc370/cc370/maclib370/macros, the directory as370 searches after
+# libc370's macros (mvslovers/mbt#234).  It depends on nothing, so there is
+# no cycle.
+#
 # nfpm comes from https://github.com/goreleaser/nfpm; CI installs it.
 set -eu
 tree=$1; arch=$2; out=$3
 here=$(cd "$(dirname "$0")" && pwd)
 ver=$(tr -d ' \t\r\n' < "$here/../VERSION")
 LIBC_MIN=2.3.0                      # @@CRT0 in libc.a, no startfile (libc370#159); was 2.1.0 (#523)
+MACLIB_MIN=1.0.0                    # the first release; as370 searches <sysroot>/maclib370/macros
 case $arch in
     amd64) rpmarch=x86_64 ;;
     arm64) rpmarch=aarch64 ;;
@@ -62,11 +68,13 @@ overrides:
   deb:
     depends:
       - libc370-dev (>= $LIBC_MIN)
+      - maclib370 (>= $MACLIB_MIN)
     replaces:
       - libc370-dev (<< $LIBC_MIN)
   rpm:
     depends:
       - libc370-devel >= $LIBC_MIN
+      - maclib370 >= $MACLIB_MIN
     conflicts:
       - libc370-devel < $LIBC_MIN
 deb:

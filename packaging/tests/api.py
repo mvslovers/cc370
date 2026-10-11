@@ -45,6 +45,8 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.send(401)
         if rest.startswith("repos/mvslovers/cc370/releases/latest"):
             return self.send(200, json.dumps({"tag_name": "v9.9.9"}).encode())
+        if rest.startswith("repos/mvslovers/maclib370/releases/latest"):
+            return self.send(200, json.dumps({"tag_name": "v1.0.0"}).encode())
         if rest.startswith("repos/mvslovers/libc370/releases"):
             return self.send(200, rels("1.0.0") if mode == "nofit"
                              else rels("2.0.0", "1.0.0"))

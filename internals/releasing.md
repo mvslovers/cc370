@@ -48,6 +48,15 @@ of it — and then the one it needs is released first.
    assembler in libc370, rexx370 and nsf370 (#688, #689).
 4. **The packages' libc370 minimum** (`LIBC_MIN` in `packaging/nfpm.sh`)
    rises only when cc370 itself needs a newer libc370.
+5. **maclib370** (SYS1.MACLIB and SYS1.AMODGEN of MVS 3.8j, mvslovers/mbt#234)
+   is a dependency of every package: `.deb` Depends / `.rpm` Requires
+   `maclib370 >= MACLIB_MIN` (`packaging/nfpm.sh`), Homebrew `depends_on`
+   plus the `cc370/maclib370` link, and `install.sh` takes its latest
+   release. It depends on nothing, so there is no cycle. Like libc370, a
+   maclib370 that cc370 needs is released **before** cc370: a new member
+   that a test or the guide relies on is a new maclib370 release first, then
+   `MACLIB_MIN` and the CI pin in `build.yml` (the `v<version>` tag of the
+   maclib370 clone) move with the cc370 release that needs it.
 5. **The release:**
    - a release PR sets `VERSION` to the plain number and dates the
      `CHANGELOG.md` section;

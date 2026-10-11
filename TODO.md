@@ -145,10 +145,13 @@ front of you, the second is nineteen-twentieths unattributable.
   `<exedir>/../maclib370/macros` is the third reserved slot, after libc370's;
   `run.sh` takes SPIE/TIME from `$MACLIB370/maclib` (either case); hello,
   litmove, arith, ksdsnatr run again (== IFOX00, also on Linux CI); CI pins
-  maclib370 to `5668cb1`. **Open, after maclib370 1.0.0:** the package
-  dependency (`.deb`/`.rpm`/Homebrew/`install.sh`; who packages is open with
-  Mike), the CI pin to the tag, and the User's Guide's CLOCK example (it
-  shows supplying `TIME` by hand).
+  maclib370 to `5668cb1`. ~~After maclib370 1.0.0: package dependency, CI
+  pin, guide~~ **done** (#PR): `.deb`/`.rpm` depend on `maclib370 >= 1.0.0`,
+  Homebrew `depends_on` + `cc370/maclib370` link, `install.sh` installs it;
+  CI pinned to `v1.0.0`; README, User's Guide (install chapter, CLOCK) and
+  `internals/releasing.md` updated. **For the release PR:** the
+  `ug-migrate.typ` row (maclib370 installed with CC/370, system macros
+  without `-I`); this release is the first to ship the slot (4d1fca9).
 - ~~**release.yml, from mbt's review of maclib370's release workflow**~~
   **done** (#927) (model:
   maclib370#4, 1495896): (1) re-tagging a published version runs `gh release

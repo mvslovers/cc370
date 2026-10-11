@@ -1,25 +1,31 @@
 #!/bin/sh
-# Install cc370 and a libc370 that fits it (#523):
+# Install cc370, maclib370 and a libc370 that fits it (#523):
 #
 #   curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
 #
 # into $PREFIX (default ~/.local), the layout `make install' gives: the
 # binaries in $PREFIX/bin, everything else in $PREFIX/cc370, $PREFIX/libexec
 # and $PREFIX/lib.  The libc370 sysroot (headers, libc.a, crt*.o, macros) goes
-# into $PREFIX/cc370, where cc370 searches.
+# into $PREFIX/cc370, where cc370 searches.  maclib370 (SYS1.MACLIB and
+# SYS1.AMODGEN of MVS 3.8j) goes into $PREFIX/cc370/maclib370, where as370
+# searches its macros/ after libc370's.
 #
 # Which libc370: the newest release whose libc370-<v>-metadata.json accepts
 # this cc370 (`requires.cc370', e.g. ">=1.1.0 <2"; libc370#326).  A libc370
-# without that file is not considered.
+# without that file is not considered.  maclib370 declares no cc370 range: the
+# latest release is taken.
 #
 # Settings (environment):
 #   PREFIX            install root                      ~/.local
 #   CC370_VERSION     cc370 release to install           the latest
 #   LIBC370_VERSION   libc370 release, skipping the match  the newest that fits
-#   NO_LIBC370=1      install cc370 only
+#   NO_LIBC370=1      install cc370 only (and maclib370)
+#   MACLIB370_VERSION maclib370 release to install       the latest
+#   NO_MACLIB370=1    leave maclib370 out
 #   LIBC370_RELEASES  the libc370 versions to consider, newest first (default
 #                     the GitHub release list; for a mirror or a test)
-#   CC370_BASE_URL / LIBC370_BASE_URL   where release assets are fetched
+#   CC370_BASE_URL / LIBC370_BASE_URL / MACLIB370_BASE_URL
+#                     where release assets are fetched
 #                     (default the GitHub releases; a file:// URL works)
 #   GITHUB_TOKEN      sent to the GitHub API if set: 5000 requests an hour
 #                     instead of 60 per address
@@ -35,6 +41,7 @@ GH=https://github.com/mvslovers
 API=${CC370_API_URL:-https://api.github.com}/repos/mvslovers
 CC370_BASE_URL=${CC370_BASE_URL:-$GH/cc370/releases/download}
 LIBC370_BASE_URL=${LIBC370_BASE_URL:-$GH/libc370/releases/download}
+MACLIB370_BASE_URL=${MACLIB370_BASE_URL:-$GH/maclib370/releases/download}
 
 say() { echo "install.sh: $*"; }
 die() { echo "install.sh: $*" >&2; exit 1; }
@@ -106,6 +113,35 @@ tar -C "$tmp/cc370" -xzf "$tmp/$tb"
 cp -R "$tmp/cc370/cc370-$v-$os-$arch/." "$PREFIX/"
 got=$("$PREFIX/bin/cc370" --version | head -1)
 say "installed: $got"
+
+# --- maclib370 ---------------------------------------------------------------
+# Replaced whole, so a member an older level had and this one dropped does not
+# linger.  Only that directory: the rest of $PREFIX/cc370 is cc370's and
+# libc370's.
+if [ "${NO_MACLIB370:-}" = 1 ]; then
+    say "maclib370 skipped (NO_MACLIB370=1)"
+else
+    if [ -n "${MACLIB370_VERSION:-}" ]; then
+        mlv=$MACLIB370_VERSION
+    else
+        api maclib370/releases/latest \
+            || die "cc370 $v is installed, maclib370 is NOT: $apierr (or name one with MACLIB370_VERSION=)"
+        mlv=$(tags | head -1)
+        [ -n "$mlv" ] || die "cc370 $v is installed, maclib370 is NOT: no tag_name in the answer"
+    fi
+    say "maclib370 $mlv"
+    mt=maclib370-$mlv.tar.gz
+    fetch "$MACLIB370_BASE_URL/v$mlv/$mt" "$tmp/$mt"
+    fetch "$MACLIB370_BASE_URL/v$mlv/SHA256SUMS" "$tmp/maclib370.sums"
+    verify "$tmp/$mt" "$tmp/maclib370.sums"
+    mkdir -p "$tmp/maclib370"
+    tar -C "$tmp/maclib370" -xzf "$tmp/$mt"
+    [ -d "$tmp/maclib370/macros" ] || die "$mt has no macros/"
+    rm -rf "$PREFIX/cc370/maclib370"
+    mkdir -p "$PREFIX/cc370/maclib370"
+    cp -R "$tmp/maclib370/." "$PREFIX/cc370/maclib370/"
+    say "installed maclib370 $mlv into $PREFIX/cc370/maclib370"
+fi
 
 [ "${NO_LIBC370:-}" = 1 ] && { say "libc370 skipped (NO_LIBC370=1)"; exit 0; }
 
