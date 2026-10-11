@@ -141,10 +141,14 @@ front of you, the second is nineteen-twentieths unattributable.
   `-I`/`AS370_MACLIB` directories is rc 16 with its name and no object; the
   built-in defaults have reserved slots (`NDEFLIB`, maclib370 will be the
   third). Tree gate: no deck changed.
-- **maclib370** (mvslovers/mbt#234), waiting for mbt's signal: as370 search
-  entry `<exedir>/../maclib370/macros` after libc370's; `run.sh`'s `SYS1MAC`
-  default to it and the `spie.macro`/`time.macro` guard to the real
-  (uppercase) names; hello, litmove, arith, ksdsnatr then run again.
+- ~~**maclib370** search path (mvslovers/mbt#234)~~ **done** (#924):
+  `<exedir>/../maclib370/macros` is the third reserved slot, after libc370's;
+  `run.sh` takes SPIE/TIME from `$MACLIB370/maclib` (either case); hello,
+  litmove, arith, ksdsnatr run again (== IFOX00, also on Linux CI); CI pins
+  maclib370 to `5668cb1`. **Open, after maclib370 1.0.0:** the package
+  dependency (`.deb`/`.rpm`/Homebrew/`install.sh`; who packages is open with
+  Mike), the CI pin to the tag, and the User's Guide's CLOCK example (it
+  shows supplying `TIME` by hand).
 
 - **ld370, from the manuals review**: ~~#894~~ **done** (#899: an object,
   archive, `-l` or `-L` on a `--pack` command, and an empty `--pack`, are
