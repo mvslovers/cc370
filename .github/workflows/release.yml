@@ -13,8 +13,12 @@
 # 4. The notes are the tag's CHANGELOG.md section
 #    (.github/scripts/changelog-section.py, libc370's script).  A tag without
 #    a section fails here, so no release goes out without notes.
-# 5. If the release already exists (made by hand, with curated notes), its
-#    notes are left exactly as they are.
+# 5. If the release already exists as a draft or a prerelease (made by
+#    hand, with curated notes), its notes are left exactly as they are and its
+#    assets are replaced.  A PUBLISHED release is never touched: re-pushing
+#    its tag fails, because `gh release upload --clobber` would swap the
+#    assets under everyone who already downloaded and checked them.  A tag
+#    with a '-' (v1.6.0-rc1) becomes a prerelease.
 # 6. The assets (#523): package.yml builds the four tarballs and the .deb and
 #    .rpm per Linux arch, each smoke-tested where it was built; this job adds
 #    install.sh and a SHA256SUMS over all of them and attaches the lot.
@@ -23,7 +27,8 @@
 # 7. Homebrew (#699): the formula is rendered from the release's SHA256SUMS
 #    and pushed to mvslovers/homebrew-tap with the tap's deploy key, which
 #    lives in the `release' environment and is handed only to v* tags.  Then
-#    homebrew.yml installs it from the tap on every host.
+#    homebrew.yml installs it from the tap on every host.  Not for a
+#    prerelease: the tap's formula is what `brew install` gives everyone.
 
 name: Release
 
@@ -99,16 +104,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME exists; its notes are left as they are."
+          if state=$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease \
+                       -q '"\(.isDraft) \(.isPrerelease)"' 2>/dev/null); then
+            if [ "$state" = "false false" ]; then
+              echo "::error::$GITHUB_REF_NAME is released; its assets are not replaced"
+              exit 1
+            fi
+            echo "Release $GITHUB_REF_NAME exists ($state = draft, prerelease); its notes are left as they are."
             gh release upload "$GITHUB_REF_NAME" assets/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" \
+            case $GITHUB_REF_NAME in *-*) pre=--prerelease ;; *) pre= ;; esac
+            gh release create "$GITHUB_REF_NAME" $pre \
               --title "CC/370 $GITHUB_REF_NAME" --notes-file notes.md assets/*
           fi
 
   homebrew:
     needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     environment: release
     steps:
