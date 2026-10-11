@@ -123,6 +123,15 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ## cc370 1.6.0 released; 1.6.1-dev on main (2026-10-11)
 
+- ~~#933 install.sh leaves libc370's removed IBM macro copies~~ **done**
+  (#934): deletes the names in libc370's `share/libc370/sysmac-removed.txt`
+  (from 2.8.1) before copying the sysroot. **Needs a release** to reach
+  users (1.6.1); until then libc370's 2.8.0 release page has the manual
+  command.
+- **CI after libc370 2.8.0** (#935): the test scripts search maclib370 after
+  libc370's own macros; without it the as370 suite failed and listref /
+  test-macros silently measured almost nothing (5 of 28).
+
 - **1.6.0** (tag on `9093664`, PR #930; Mike's go, mbt's plan). maclib370
   installed with CC/370 and searched as the third slot (#924, #928), #916
   (strstr/strpbrk fold, CHANGELOG entry added in the release PR), #919,
