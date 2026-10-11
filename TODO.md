@@ -121,7 +121,28 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## cc370 1.5.0 released; 1.5.1-dev on main (2026-10-07)
+## cc370 1.6.0 released; 1.6.1-dev on main (2026-10-11)
+
+- **1.6.0** (tag on `9093664`, PR #930; Mike's go, mbt's plan). maclib370
+  installed with CC/370 and searched as the third slot (#924, #928), #916
+  (strstr/strpbrk fold, CHANGELOG entry added in the release PR), #919,
+  #918, release guards (#927, #929). Release workflow green; the Homebrew
+  check on ubuntu-24.04-arm failed once with "Broken pipe" while installing
+  maclib370 and passed on re-run (the other three hosts green at once). The
+  formula's TIME-without-`-I` test ran on every host. 12 assets; install.sh
+  from a clean scratch prefix took maclib370 1.0.0 and libc370 2.7.0, as370
+  assembles TIME with no `-I`, `strstr(s, "}")` folds to `=F'208'`. Release
+  page reworked. `~/.local` updated to 1.6.0 + maclib370 1.0.0 + libc370
+  2.7.0 at Mike's request.
+- **Next:** the removal gate for libc370 2.8.0 (IBM copies out of
+  `sysmac/`, libc370#494, branch `feat/494-hasp`): 12 projects with cc370
+  1.6.0 and maclib370 1.0.0 on both sides, libc370 2.7.0 against the
+  branch, scratch prefixes. On mbt's signal.
+- `internals/releasing.md`'s mirrored "Who owns what" row follows
+  libc370's `feat/494-hasp` text; re-check it word for word when libc370
+  merges.
+
+## cc370 1.5.0 released (2026-10-07)
 
 - **1.5.0** (tag on `6512eef`, PR #909; Mike's go, mbt-4c's go after
   building six projects with 1.4.0 and 1.5.0: every library object
@@ -149,9 +170,8 @@ front of you, the second is nineteen-twentieths unattributable.
   pin, guide~~ **done** (#928): `.deb`/`.rpm` depend on `maclib370 >= 1.0.0`,
   Homebrew `depends_on` + `cc370/maclib370` link, `install.sh` installs it;
   CI pinned to `v1.0.0`; README, User's Guide (install chapter, CLOCK) and
-  `internals/releasing.md` updated. **For the release PR:** the
-  `ug-migrate.typ` row (maclib370 installed with CC/370, system macros
-  without `-I`); this release is the first to ship the slot (4d1fca9).
+  `internals/releasing.md` updated; the `ug-migrate.typ` rows went into the
+  1.6.0 release PR (#930).
 - ~~**release.yml, from mbt's review of maclib370's release workflow**~~
   **done** (#927) (model:
   maclib370#4, 1495896): (1) re-tagging a published version runs `gh release
