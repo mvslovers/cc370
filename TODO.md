@@ -137,9 +137,10 @@ front of you, the second is nineteen-twentieths unattributable.
   Not cosmetic -- IEWL linked X'1404' for X'0A02' (MVSTK5-REF JOB00356).
   cobc370 corpus 177 -> 184/184; tree gate no deck changed; oracle fixture
   `erldacon` (JOB00355).
-- **#918** open: a 17th macro library (`-I`, `AS370_MACLIB`, defaults) is
-  dropped silently; RC 16 with a message, reserved slots for the defaults,
-  limit stays 16.
+- ~~#918 a 17th macro library dropped~~ **done** (#922): one more than 16
+  `-I`/`AS370_MACLIB` directories is rc 16 with its name and no object; the
+  built-in defaults have reserved slots (`NDEFLIB`, maclib370 will be the
+  third). Tree gate: no deck changed.
 - **maclib370** (mvslovers/mbt#234), waiting for mbt's signal: as370 search
   entry `<exedir>/../maclib370/macros` after libc370's; `run.sh`'s `SYS1MAC`
   default to it and the `spie.macro`/`time.macro` guard to the real
