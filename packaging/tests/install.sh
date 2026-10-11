@@ -30,6 +30,12 @@ for lv in 2.0.0 1.0.0; do
     d=$R/libc370/v$lv; s=libc370-$lv-sysroot
     mkdir -p "$d" "$W/l$lv/$s/include" "$W/l$lv/$s/lib"
     echo "/* libc370 $lv */" > "$W/l$lv/$s/include/fake$lv.h"
+    mkdir -p "$W/l$lv/$s/macros" && echo '         MACRO' > "$W/l$lv/$s/macros/libmac.macro"
+    if [ $lv = 2.0.0 ]; then
+        mkdir -p "$W/l$lv/$s/share/libc370"
+        printf '# removed in 2.0.0\nGETMAIN.macro\r\n\nWTO.macro\n../escape.macro\nsub/x.macro\nlibmac.macro\n' \
+            > "$W/l$lv/$s/share/libc370/sysmac-removed.txt"
+    fi
     : > "$W/l$lv/$s/lib/libc.a"
     tar -C "$W/l$lv" -czf "$d/$s.tar.gz" "$s"
     (cd "$d" && sums "$s.tar.gz" > SHA256SUMS)
@@ -125,6 +131,30 @@ env PREFIX="$P" CC370_API_URL="http://127.0.0.1:$port/ok" CC370_BASE_URL="file:/
     sh "$INST" > "$W/out" 2>&1; rc=$?
 [ $rc = 0 ] && [ -f "$P/$M" ] && [ ! -e "$P/cc370/maclib370/macros/OLD.macro" ] \
     && ok "reinstall replaces maclib370 whole" || bad "reinstall: rc=$rc $(show)"
+
+# #933: an upgrade drops the IBM copies libc370 no longer ships, nothing else
+P=$W/p.up; rm -rf "$P"; mkdir -p "$P/cc370/macros" "$P/cc370/sub"
+for f in GETMAIN.macro WTO.macro OWN.macro; do echo old > "$P/cc370/macros/$f"; done
+echo keep > "$P/cc370/escape.macro"; echo keep > "$P/cc370/sub/x.macro"
+env PREFIX="$P" CC370_API_URL="http://127.0.0.1:$port/ok" CC370_BASE_URL="file://$R/cc370" \
+    LIBC370_BASE_URL="file://$R/libc370" MACLIB370_BASE_URL="file://$R/maclib370" \
+    MACLIB370_VERSION=1.0.0 NO_MACLIB370= NO_LIBC370= LIBC370_VERSION=2.0.0 GITHUB_TOKEN= CC370_VERSION=9.9.9 \
+    sh "$INST" > "$W/out" 2>&1; rc=$?
+M=$P/cc370/macros
+[ $rc = 0 ] && [ ! -e "$M/GETMAIN.macro" ] && [ ! -e "$M/WTO.macro" ] && [ -f "$M/OWN.macro" ] \
+    && [ -f "$M/libmac.macro" ] && [ -f "$P/cc370/escape.macro" ] && [ -f "$P/cc370/sub/x.macro" ] \
+    && has 'removed 2 macro files libc370 2.0.0 no longer ships' \
+    && ok "upgrade removes the listed IBM copies; own files, re-shipped names and paths kept" \
+    || bad "stale macros: rc=$rc $(show) | $(ls "$M" | tr '\n' ' ')"
+
+# a libc370 without the list removes nothing
+P=$W/p.nolist; rm -rf "$P"; mkdir -p "$P/cc370/macros"; echo old > "$P/cc370/macros/GETMAIN.macro"
+env PREFIX="$P" CC370_API_URL="http://127.0.0.1:$port/ok" CC370_BASE_URL="file://$R/cc370" \
+    LIBC370_BASE_URL="file://$R/libc370" MACLIB370_BASE_URL="file://$R/maclib370" \
+    MACLIB370_VERSION=1.0.0 NO_MACLIB370= NO_LIBC370= LIBC370_VERSION=1.0.0 GITHUB_TOKEN= CC370_VERSION=9.9.9 \
+    sh "$INST" > "$W/out" 2>&1; rc=$?
+[ $rc = 0 ] && [ -f "$P/cc370/macros/GETMAIN.macro" ] && ! has 'removed' \
+    && ok "no sysmac-removed.txt: nothing removed" || bad "nolist: rc=$rc $(show)"
 
 # a port nothing listens on: the stand-in's, after it is stopped
 kill $pid 2>/dev/null; wait $pid 2>/dev/null; pid=""

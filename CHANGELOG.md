@@ -20,6 +20,17 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Fixed
+- **`install.sh` removes the macro files a newer LIBC/370 no longer ships**
+  (#933). It copied the new sysroot over the old one and removed nothing,
+  so after an upgrade to LIBC/370 2.8 the 118 system macros it used to
+  carry stayed in `cc370/macros` and were found before maclib370's members
+  of the same name, without a message. From LIBC/370 2.8.1 the release
+  lists them (`share/libc370/sysmac-removed.txt`), and `install.sh` deletes
+  those files before it copies the new sysroot in, naming how many. Only
+  names on the list are touched. Homebrew and the `.deb`/`.rpm` packages
+  were not affected.
+
 ## [1.6.0] - 2026-10-11
 
 ### Added
