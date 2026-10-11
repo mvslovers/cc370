@@ -149,6 +149,14 @@ front of you, the second is nineteen-twentieths unattributable.
   dependency (`.deb`/`.rpm`/Homebrew/`install.sh`; who packages is open with
   Mike), the CI pin to the tag, and the User's Guide's CLOCK example (it
   shows supplying `TIME` by hand).
+- **release.yml, from mbt's review of maclib370's release workflow** (model:
+  maclib370#4, 1495896): (1) re-tagging a published version runs `gh release
+  upload --clobber` (`release.yml:104`) and replaces its assets silently -- for
+  a tag without `-` it should fail (`… is released; its assets are not
+  replaced`, exit 1), only a prerelease may be re-uploaded; (2) a tag with `-`
+  should be `gh release create --prerelease`, and the `homebrew` job
+  (`release.yml:110`, and `homebrew-check` behind it) should run only for tags
+  without `-`.
 
 - **ld370, from the manuals review**: ~~#894~~ **done** (#899: an object,
   archive, `-l` or `-L` on a `--pack` command, and an empty `--pack`, are
