@@ -14,6 +14,13 @@ cd "$(dirname "$0")/../.." || exit 2
 # used to point at crent370, the frozen v1.x libc, which no longer needs to be
 # checked out. Override with LIBC370=/path .
 LIBC370=${LIBC370:-../../libc370}
+# libc370 2.8 moved its SYS1.MACLIB copies to maclib370 (libc370#494): the
+# path is libc370's own directories, then maclib370's, as run.sh builds it.
+MACLIB370=${MACLIB370:-../../maclib370}
+MACINC="-I $LIBC370/maclib"
+for d in "$LIBC370/hasp" "$LIBC370/sysmac" "$MACLIB370/maclib" "$MACLIB370/amodgen"; do
+    [ -d "$d" ] && MACINC="$MACINC -I $d"
+done
 fail=0
 
 # Case 1 assembles a macro-library module and is the only case that needs the
@@ -23,7 +30,7 @@ fail=0
 # is the case that proves conditional statements inside a macro stay unlisted --
 # so a local run with libc370 present remains the real gate.
 have_libc=1
-[ -d "$LIBC370/maclib" ] && [ -d "$LIBC370/sysmac" ] || have_libc=0
+[ -d "$LIBC370/maclib" ] && { [ -d "$LIBC370/sysmac" ] || [ -d "$MACLIB370/maclib" ]; } || have_libc=0
 
 # --- case 1: tstlist -- general listing (ESD + SOURCE + RLD + XREF) ---------
 if [ $have_libc = 0 ]; then
@@ -32,7 +39,7 @@ else
 REF=tests/listref/ifox-listing-tstlist.txt
 OUT=/tmp/as370-listref.$$
 ASMDATE=06/18/26 ASMTIME=06.42 ./as370 tests/listref/tstlist.s \
-    -I "$LIBC370/maclib" -I "$LIBC370/sysmac" -a="$OUT" >/dev/null 2>&1 \
+    $MACINC -a="$OUT" >/dev/null 2>&1 \
     || { echo "listref tstlist: ASSEMBLE FAILED"; fail=1; }
 python3 - "$REF" "$OUT" <<'PY'
 import sys
@@ -395,9 +402,9 @@ done
 # `END ENT2'. Without an operand LOC is blank. as370 left it blank always. The
 # END row is compared on LOC alone: its statement number still moves in the
 # references case 12 does not hold.
-python3 - "$LIBC370" "$have_libc" <<'PYE' || fail=1
+python3 - "$MACINC" "$have_libc" <<'PYE' || fail=1
 import sys, re, glob, os, subprocess
-inc = ["-I", sys.argv[1] + "/maclib", "-I", sys.argv[1] + "/sysmac"] if sys.argv[2] == "1" else []
+inc = sys.argv[1].split() if sys.argv[2] == "1" else []
 endrow = lambda t: [l for l in t.split("\n") if re.match(r"^.{33} +[0-9]+[ +]+ +END\b", l)]
 n, bad = 0, []
 for ref in sorted(glob.glob("tests/listref/ifox-listing-*.txt")):
