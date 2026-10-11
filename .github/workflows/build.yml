@@ -76,13 +76,13 @@ jobs:
 
       # MACLIB370=../../maclib370 likewise: SYS1.MACLIB's SPIE and TIME for the
       # four cobc370 samples (hello, litmove, arith, ksdsnatr), which skip
-      # without them. Pinned to a commit until maclib370 has a release; move
-      # the pin to the tag then (mvslovers/mbt#234).
+      # without them. Pinned to a release tag, so a new maclib370 level is a
+      # deliberate change here (mvslovers/mbt#234).
       - name: Clone maclib370 (SYS1.MACLIB, pinned)
         working-directory: .
         run: |
           git clone https://github.com/mvslovers/maclib370.git maclib370
-          git -C maclib370 checkout --detach 5668cb1
+          git -C maclib370 checkout --detach v1.0.0
 
       - name: Install compilers
         working-directory: .

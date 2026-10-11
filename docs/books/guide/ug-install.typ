@@ -3,11 +3,12 @@
 = Installing the Toolchain <ug-install>
 
 #idx("installation")
-The toolchain is installed in two parts: CC/370 itself, which is the compiler,
-the assembler, the linkage editor and the utilities, and LIBC/370, the C
-library, which is installed into the directory tree of CC/370. This chapter shows
-the ways to install both, what the installed tree contains, and how to check
-that it works.
+The toolchain is installed in three parts: CC/370 itself, which is the
+compiler, the assembler, the linkage editor and the utilities\; LIBC/370, the
+C library\; and maclib370, the system macros #cmd("SYS1.MACLIB") and
+#cmd("SYS1.AMODGEN") of MVS 3.8j. The last two are installed into the
+directory tree of CC/370. This chapter shows the ways to install all three,
+what the installed tree contains, and how to check that it works.
 
 == Choosing a Way to Install <ug-install-choose>
 
@@ -15,12 +16,12 @@ that it works.
 There are two ways to obtain the toolchain:
 
 - *Install a release.* Every release of CC/370 publishes prebuilt toolchains
-  for macOS and Linux, and every release of LIBC/370 publishes the library
-  ready to install. This is the quickest way, and the right one unless you
+  for macOS and Linux, and every release of LIBC/370 and of maclib370
+  publishes its part ready to install. This is the quickest way, and the right one unless you
   intend to change the toolchain.
 - *Build from source.* You clone the repositories and build both parts on
-  your workstation. This takes a few minutes, and gives you the current
-  development level.
+  your workstation, and install maclib370 from its release. This takes a few
+  minutes, and gives you the current development level.
 
 Both ways give the same directory tree, described in @ug-install-tree.
 
@@ -28,8 +29,8 @@ Both ways give the same directory tree, described in @ug-install-tree.
 
 #idx("install.sh")
 The installation script of the latest release installs CC/370 and, beside
-it, the newest release of LIBC/370 that declares itself compatible with that
-CC/370:
+it, the latest release of maclib370 and the newest release of LIBC/370 that
+declares itself compatible with that CC/370:
 
 ```
 curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
@@ -38,7 +39,8 @@ curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.s
 The script installs under #cmd("~/.local") unless the environment variable
 #cmd("PREFIX") names another directory, and checks each download against the
 checksums published with its release. When no LIBC/370 release fits, it
-installs CC/370 alone and says so. At the end it reminds you to add
+installs CC/370 and maclib370 alone and says so. #cmd("NO_MACLIB370=1")
+leaves maclib370 out. At the end it reminds you to add
 #cmd("$PREFIX/bin") to your #cmd("PATH") if it is not there yet.
 
 The releases also come in other forms:
@@ -48,15 +50,19 @@ The releases also come in other forms:
     holds the whole installed tree. Unpack it anywhere and use its
     #cmd("bin") directory\; the tree finds its own parts. Unpack the LIBC/370
     tarball, #cmd("libc370-")#var("version")#cmd("-sysroot.tar.gz"), into
-    the tree's #cmd("cc370") directory. On macOS, a tarball downloaded with
+    the tree's #cmd("cc370") directory, and the maclib370 tarball,
+    #cmd("maclib370-")#var("version")#cmd(".tar.gz"), into
+    #cmd("cc370/maclib370"). On macOS, a tarball downloaded with
     a web browser is marked as quarantined: remove the mark with
     #cmd("xattr -d com.apple.quarantine") on the unpacked tree.],
   [Homebrew], [#cmd("brew trust mvslovers/tap"), then
-    #cmd("brew install mvslovers/tap/cc370"), which installs LIBC/370 with
-    it.],
+    #cmd("brew install mvslovers/tap/cc370"), which installs LIBC/370 and
+    maclib370 with it.],
   [Linux packages], [#cmd(".deb") and #cmd(".rpm") packages install the tree
     under #cmd("/usr/lib/cc370"), with links in #cmd("/usr/bin"). CC/370 and
-    LIBC/370 depend on each other, so install the two packages together.],
+    LIBC/370 depend on each other, so install the two packages together.
+    CC/370 also depends on the package #cmd("maclib370"), which installs into
+    #cmd("/usr/lib/cc370/cc370/maclib370").],
 )
 
 == Building from Source <ug-install-build>
@@ -99,6 +105,14 @@ Build CC/370 first: LIBC/370 is compiled with it.
   LIBC/370 needs no #cmd("PREFIX"): it asks the #cmd("cc370") on your
   #cmd("PATH") where its tree is, and installs there. The output ends as in
   @ug-install-libc-fig.
++ Install maclib370 from its release: download
+  #cmd("maclib370-")#var("version")#cmd(".tar.gz") from
+  #cmd("https://github.com/mvslovers/maclib370/releases") and unpack it into
+  the tree, for example:
+  ```
+  mkdir -p ~/.local/cc370/maclib370
+  tar -C ~/.local/cc370/maclib370 -xzf maclib370-1.0.0.tar.gz
+  ```
 
 #fig(caption: [The end of #cmd("make install") for cc370. The installation
   prefix is shown as #cmd("$PREFIX"), and the long lines are broken.])[
@@ -139,6 +153,7 @@ directory, #cmd("cc370").
     include/                the headers of LIBC/370
     lib/                    libc.a, libcc370rt.a, crtm.o
     macros/                 the assembler macros
+    maclib370/macros/       SYS1.MACLIB and SYS1.AMODGEN
   libexec/cc370/version/
     cc1                     the compiler proper
     as ld ar                links to ../../../cc370/bin
@@ -163,6 +178,11 @@ directory, #cmd("cc370").
     cc370 uses and which come with CC/370, and the macros of LIBC/370 and the
     system macros it needs. as370 searches this directory without
     #cmd("-I").],
+  [#cmd("cc370/maclib370")], [maclib370: the members of #cmd("SYS1.MACLIB")
+    and #cmd("SYS1.AMODGEN") of MVS 3.8j in #cmd("macros"), one file per
+    member. as370 searches #cmd("macros") without #cmd("-I"), after
+    #cmd("cc370/macros"), so a macro of LIBC/370 or of CC/370 wins over the
+    IBM original of the same name.],
   [#cmd("libexec/cc370")], [the compiler proper, #cmd("cc1"), which only the
     driver runs, and the links #cmd("as"), #cmd("ld") and #cmd("ar") by
     which the driver finds as370, ld370 and ar370. The directory is named
@@ -246,4 +266,4 @@ The manual pages are installed in #cmd("share/man/man1"). If
 To remove a toolchain built from source, run #cmd("make uninstall") in its
 source tree, with the same #cmd("PREFIX") as for the installation. It
 removes the files of CC/370, but not those of LIBC/370 in #cmd("cc370/include")
-and #cmd("cc370/lib").
+and #cmd("cc370/lib"), nor maclib370 in #cmd("cc370/maclib370").

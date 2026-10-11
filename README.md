@@ -31,7 +31,9 @@ inspector that reads the formats the others write, and `xmit370` packs the
 non-code half of a distribution — sample JCL, parameter members, macros — into
 the same TSO TRANSMIT envelope `ld370` ships load modules in. The C library it links against is
 **[LIBC/370 (libc370)](https://github.com/mvslovers/libc370)**, installed into the
-CC/370 sysroot — see *Sysroot* below.
+CC/370 sysroot — see *Sysroot* below. The system macros `as370` assembles with
+(SYS1.MACLIB and SYS1.AMODGEN of MVS 3.8j) are a package of their own,
+**[maclib370](https://github.com/mvslovers/maclib370)**, installed beside it.
 
 ## Install a release
 
@@ -41,25 +43,27 @@ Every release from 1.1.0 carries prebuilt toolchains (#523):
 curl -fsSL https://github.com/mvslovers/cc370/releases/latest/download/install.sh | sh
 ```
 
-installs CC/370 into `~/.local` (`PREFIX=` to change it) **and LIBC/370 beside
-it**: the newest LIBC/370 release whose `libc370-<v>-metadata.json` accepts the
-CC/370 just installed. Both downloads are checked against their release's
-`SHA256SUMS`. Without a fitting LIBC/370 it installs CC/370 alone and says so.
+installs CC/370 into `~/.local` (`PREFIX=` to change it) **and maclib370 and
+LIBC/370 beside it**: the latest maclib370 into `cc370/maclib370`, and the
+newest LIBC/370 release whose `libc370-<v>-metadata.json` accepts the CC/370
+just installed. Every download is checked against its release's `SHA256SUMS`.
+Without a fitting LIBC/370 it installs CC/370 and maclib370 alone and says so;
+`NO_MACLIB370=1` leaves maclib370 out, `MACLIB370_VERSION=` names one.
 The release list comes from the GitHub API, which allows 60 requests an hour
 per address; when that is used up `install.sh` says so and stops. Retry later,
-set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=` and
-`LIBC370_VERSION=`.
+set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=`,
+`MACLIB370_VERSION=` and `LIBC370_VERSION=`.
 
 | Platform | CC/370 assets |
 |---|---|
 | Linux amd64, arm64 | `cc370-<v>-linux-<arch>.tar.gz` (statically linked, any distribution), `cc370_<v>_<arch>.deb`, `cc370-<v>.<x86_64\|aarch64>.rpm` |
 | macOS arm64, Intel | `cc370-<v>-darwin-<arch>.tar.gz` (macOS 11 / 10.15 and later) |
-| Homebrew (macOS, Linux) | `brew trust mvslovers/tap`, then `brew install mvslovers/tap/cc370` -- pulls `mvslovers/tap/libc370` with it; `brew install mvslovers/tap/libc370` alone works too |
+| Homebrew (macOS, Linux) | `brew trust mvslovers/tap`, then `brew install mvslovers/tap/cc370` -- pulls `mvslovers/tap/libc370` and `mvslovers/tap/maclib370` with it; `brew install mvslovers/tap/libc370` alone works too |
 | Windows | WSL2 and the Linux assets (#698) |
 
 - **Tarball:** a relocatable tree; unpack it anywhere and use its `bin/`.
   LIBC/370's `libc370-<v>-sysroot.tar.gz` goes into the tree's `cc370/`
-  directory. A tarball downloaded with a browser on macOS needs
+  directory, maclib370's `maclib370-<v>.tar.gz` into `cc370/maclib370/`. A tarball downloaded with a browser on macOS needs
   `xattr -d com.apple.quarantine` on the unpacked tree; `install.sh` does
   not, curl sets no quarantine flag.
 - **Homebrew:** Homebrew 7 loads a formula's dependencies only from a tap
@@ -69,6 +73,8 @@ set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=` and
   `/usr/bin` and `/usr/share/man/man1`. CC/370 and LIBC/370 depend on each
   other (below), so install the two packages together, e.g.
   `apt install ./cc370_1.1.0_amd64.deb ./libc370-dev_2.1.0_all.deb`.
+  A CC/370 after 1.5.0 also depends on `maclib370` (>= 1.0.0), which installs
+  into `/usr/lib/cc370/cc370/maclib370`; add `./maclib370_1.0.0_all.deb`.
 
 ## Compatibility with LIBC/370
 
@@ -139,6 +145,11 @@ whose real binary lives in `<prefix>/cc370/bin`, finds the macros via its
 make -C ../libc370 install                   # populate the sysroot once
 cc370 hello.c -o hello -flinker-output=xmit  # no -I, no -L, no -lc needed
 ```
+
+The system macros come from maclib370: unpack its `maclib370-<v>.tar.gz` into
+`<prefix>/cc370/maclib370/`, and as370 searches its `macros/` after LIBC/370's
+(`<exedir>/../maclib370/macros`), so a LIBC/370 macro or a prologue macro wins
+over an IBM original of the same name.
 
 ## Optimization: `-O1`, and `-Os` as experimental
 

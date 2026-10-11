@@ -31,7 +31,7 @@ that says how serious they were.
   code 1. Compile with #cmd("-Wall"), and treat each warning as a question
   about your code.
 - *as370* reports each statement in error with its line number, as in
-  @ug-asm-clock-session. When as370 runs under cc370, a warning, return
+  @ug-asm-clock-fail. When as370 runs under cc370, a warning, return
   code 4, is shown and the build goes on\; return code 8 or higher fails
   it.
 - *ld370* reports, above all, external references that nothing defines.
