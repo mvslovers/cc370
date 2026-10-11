@@ -21,6 +21,16 @@ on:
       - 'packaging/homebrew/**'
       - '.github/workflows/homebrew.yml'
 
+# Homebrew 7 asks for GitHub credentials before it installs a tap's formula,
+# and on Linux it also runs `git credential-osxkeychain get', which does not
+# exist there: git exits at once, the write to its stdin races into an
+# unhandled EPIPE, and `brew install' dies with "Broken pipe" -- measured 4 of
+# 6 on ubuntu-24.04-arm (maclib370#8). With a token set the lookup does not
+# happen (0 of 6), and API requests are not rate-limited either. Read access
+# is all it needs.
+env:
+  HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+
 jobs:
   install:
     name: brew ${{ matrix.runner }}

@@ -61,7 +61,9 @@ The releases also come in other forms:
     #cmd("xattr -d com.apple.quarantine") on the unpacked tree.],
   [Homebrew], [#cmd("brew trust mvslovers/tap"), then
     #cmd("brew install mvslovers/tap/cc370"), which installs LIBC/370 and
-    maclib370 with it.],
+    maclib370 with it. If the installation stops with #cmd("Broken pipe") on
+    Linux, set #cmd("HOMEBREW_GITHUB_API_TOKEN") to a GitHub token with read
+    access, or run it again.],
   [Linux packages], [#cmd(".deb") and #cmd(".rpm") packages install the tree
     under #cmd("/usr/lib/cc370"), with links in #cmd("/usr/bin"). CC/370 and
     LIBC/370 depend on each other, so install the two packages together.

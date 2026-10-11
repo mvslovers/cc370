@@ -73,6 +73,10 @@ set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=`,
   you trust, so `brew trust mvslovers/tap` comes first; without it, the
   install stops at the first dependency, LIBC/370 or maclib370 ("untrusted
   tap"). The same holds for `brew install mvslovers/tap/libc370` on its own.
+  If `brew install` stops with "Broken pipe" on Linux, set
+  `HOMEBREW_GITHUB_API_TOKEN` (any GitHub token with read access) or run it
+  again: Homebrew looks for macOS keychain credentials there too, and that
+  lookup sometimes ends the install.
 - **`.deb` / `.rpm`:** the tree under `/usr/lib/cc370`, symlinks in
   `/usr/bin` and `/usr/share/man/man1`. CC/370 and LIBC/370 depend on each
   other (below), so install the two packages together, e.g.
