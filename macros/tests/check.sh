@@ -17,6 +17,13 @@
 # Default ROOT is the libc370 checkout ($LIBC370, ../libc370 beside this repo).
 cd "$(dirname "$0")/../.." || exit 2                  # -> the cc370 checkout
 LIBC370=${LIBC370:-../libc370}
+# libc370 2.8 moved its SYS1.MACLIB copies to maclib370 (libc370#494): both
+# sides search libc370's own directories, then maclib370's.
+MACLIB370=${MACLIB370:-../maclib370}
+MACINC="-I $LIBC370/maclib"
+for d in "$LIBC370/hasp" "$LIBC370/sysmac" "$MACLIB370/maclib" "$MACLIB370/amodgen"; do
+    [ -d "$d" ] && MACINC="$MACINC -I $d"
+done
 AS370=${AS370:-./as370/as370}
 [ -x "$AS370" ] || { echo "macros: $AS370 not built (make tools)"; exit 2; }
 [ -d "$LIBC370/maclib" ] || { echo "macros: libc370 not found at $LIBC370 (set LIBC370=)"; exit 2; }
@@ -32,8 +39,8 @@ find "$@" \( -name '*.s' -o -name '*.asm' \) -not -path '*/.git/*' -print0 2>/de
 checked=0; same=0; moved=0; neither=0; oneside=0
 while IFS= read -r src; do
     checked=$((checked + 1))
-    "$AS370" -I "$LIBC370/maclib" -I "$LIBC370/sysmac" -o "$TMP/old.obj" "$src" >/dev/null 2>&1; orc=$?
-    "$AS370" -I macros -I "$LIBC370/maclib" -I "$LIBC370/sysmac" -o "$TMP/new.obj" "$src" >/dev/null 2>&1; nrc=$?
+    "$AS370" $MACINC -o "$TMP/old.obj" "$src" >/dev/null 2>&1; orc=$?
+    "$AS370" -I macros $MACINC -o "$TMP/new.obj" "$src" >/dev/null 2>&1; nrc=$?
     if [ $orc -ge 8 ] && [ $nrc -ge 8 ]; then neither=$((neither + 1)); continue; fi
     if [ $orc -ge 8 ] || [ $nrc -ge 8 ]; then
         echo "macros: $src assembles on one side only (old rc $orc, new rc $nrc)"

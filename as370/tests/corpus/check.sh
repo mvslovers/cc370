@@ -93,7 +93,12 @@ modules() {
         grep -v '/wip/' | sed "s|^$LIBC370/||" | sort
 }
 
-MAC="-I $LIBC370/maclib -I $LIBC370/sysmac"
+# libc370's own directories, then maclib370's (libc370#494), as run.sh
+MACLIB370=${MACLIB370:-$(dirname "$LIBC370")/maclib370}
+MAC="-I $LIBC370/maclib"
+for d in "$LIBC370/hasp" "$LIBC370/sysmac" "$MACLIB370/maclib" "$MACLIB370/amodgen"; do
+    [ -d "$d" ] && MAC="$MAC -I $d"
+done
 moved=0; checked=0; base_only=0; head_only=0
 for rel in $(modules); do
     checked=$((checked + 1))

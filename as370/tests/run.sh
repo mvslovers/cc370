@@ -46,7 +46,20 @@ cd "$(dirname "$0")/.." || exit 2
 # absent. Override the checkout with LIBC370=/path (same name the Makefile and
 # tests/corpus/check.sh already use).
 LIBC370=${LIBC370:-../../libc370}
-MACLIB="-I $LIBC370/maclib -I $LIBC370/sysmac"
+# libc370 2.8 moved its vendored SYS1.MACLIB copies out of sysmac/ into
+# maclib370 (libc370#494, mvslovers/mbt#234), so the path follows the one an
+# installed as370 searches: libc370's own macros (maclib/, hasp/, and sysmac/
+# where an older checkout still has it), then maclib370's SYS1.MACLIB and
+# SYS1.AMODGEN. MACLIB370 is a sibling checkout like LIBC370.
+MACLIB370=${MACLIB370:-../../maclib370}
+LIBCMAC="-I $LIBC370/maclib"
+for d in "$LIBC370/hasp" "$LIBC370/sysmac"; do
+    [ -d "$d" ] && LIBCMAC="$LIBCMAC -I $d"
+done
+MACLIB=$LIBCMAC
+for d in "$MACLIB370/maclib" "$MACLIB370/amodgen"; do
+    [ -d "$d" ] && MACLIB="$MACLIB -I $d"
+done
 # sample8 (tinitvl, WTO) and sample9 (irxtmpw, XCTL->IHBINNRB) are real rexx370
 # modules that exercise the hardest macro paths — they guard against regressing
 # the byte-exact REXX corpus when changing the assembler for other projects.
@@ -2504,7 +2517,6 @@ rm -f /tmp/_f53.obj
 # failing, so a plain checkout stays green and the gap stays visible.  The
 # guard accepts either case: a capital name is what maclib370 ships, and a
 # case-sensitive file system (Linux CI) finds nothing under the lowercase one.
-MACLIB370=${MACLIB370:-../../maclib370}
 SYS1MAC=${SYS1MAC:-$MACLIB370/maclib}
 have_sys1mac() {
     { [ -f "$SYS1MAC/SPIE.macro" ] || [ -f "$SYS1MAC/spie.macro" ]; } &&
@@ -5064,7 +5076,9 @@ else
     t370=/tmp/_m370$$; mkdir -p $t370/bin $t370/maclib370
     cp ./as370 $t370/bin/as370
     ln -s "$(cd "$SYS1MAC" && pwd)" $t370/maclib370/macros
-    $t370/bin/as370 -v tests/hello.s $MACLIB -o $t370/h.obj 2>$t370/err; r=$?
+    # libc370's own directories only: SAVE, WTO, SPIE and TIME have to come
+    # from the slot, not from an -I naming maclib370.
+    $t370/bin/as370 -v tests/hello.s $LIBCMAC -o $t370/h.obj 2>$t370/err; r=$?
     hn=$(( ($(wc -c < tests/ref/hello.obj) / 80 - 1) * 80 ))
     head -c "$hn" $t370/h.obj > $t370/a; head -c "$hn" tests/ref/hello.obj > $t370/b
     if [ "$r" = 0 ] && cmp -s $t370/a $t370/b && grep -q "macro TIME from .*_m370$$/bin/../maclib370/macros/" $t370/err; then
