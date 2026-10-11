@@ -33,6 +33,15 @@ neither number is mistaken for the other.
   reference. Measured on 184 generated programs: 7 had such a constant, and
   all 184 decks now match IFOX00's. Across the 5,528 modules of the MVS 3.8j
   tree no deck changed.
+- **`as370`: a macro library beyond the limit is an error, and the
+  toolchain's own libraries are always searched** (#918). `-I` and
+  `AS370_MACLIB` together name at most 16 directories. A further
+  `AS370_MACLIB` entry was dropped without a word, so its macros were
+  undefined; a 17th `-I` left its directory to be read as a second source
+  file, rc 16 under a message about the wrong thing; and 16 entries pushed
+  `<exedir>/../macros` and `<exedir>/../libc370/macros` out of the path.
+  Now the directory beyond the limit is named, the run ends with rc 16 and
+  writes no object, and the two built-in libraries keep places of their own.
 
 ## [1.5.0] - 2026-10-07
 

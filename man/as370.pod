@@ -224,6 +224,10 @@ environment.
 
 =back
 
+B<-I> and C<$AS370_MACLIB> together name at most 16 directories. A
+directory beyond that ends the run with return code 16 and no object; the
+default libraries are always searched.
+
 =head1 EXIT STATUS
 
 Follows IFOX C<JERMSGCD>: B<0> clean, B<4> warning, B<8> error, B<12> severe,
