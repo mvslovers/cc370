@@ -132,6 +132,19 @@ front of you, the second is nineteen-twentieths unattributable.
   with a compound literal. Release page reworked.
 - Next for mbt: mvslovers/mbt#189 (pass `-mrent` for `rent = true`).
 
+- ~~#919 A(name) against the ER when name is also a label~~ **done** (#920):
+  R now names the label's section, in either order of `V()` and definition.
+  Not cosmetic -- IEWL linked X'1404' for X'0A02' (MVSTK5-REF JOB00356).
+  cobc370 corpus 177 -> 184/184; tree gate no deck changed; oracle fixture
+  `erldacon` (JOB00355).
+- **#918** open: a 17th macro library (`-I`, `AS370_MACLIB`, defaults) is
+  dropped silently; RC 16 with a message, reserved slots for the defaults,
+  limit stays 16.
+- **maclib370** (mvslovers/mbt#234), waiting for mbt's signal: as370 search
+  entry `<exedir>/../maclib370/macros` after libc370's; `run.sh`'s `SYS1MAC`
+  default to it and the `spie.macro`/`time.macro` guard to the real
+  (uppercase) names; hello, litmove, arith, ksdsnatr then run again.
+
 - **ld370, from the manuals review**: ~~#894~~ **done** (#899: an object,
   archive, `-l` or `-L` on a `--pack` command, and an empty `--pack`, are
   refused rc 2); ~~#895~~ **done** (#900: one name from `-o`, up to the first
