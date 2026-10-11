@@ -124,6 +124,11 @@ The last two are the macro libraries of the installed toolchain, so an
 installed as370 assembles a program that uses the LIBC/370 and system macros
 with no #cmd("-I") and no environment variable.
 
+#cmd("-I") and #cmd("AS370_MACLIB") together name at most 16 directories. A
+directory beyond that is an error of the invocation: as370 names it, ends with
+return code 16 and writes no object. The libraries of the toolchain are always
+searched, however many directories are named.
+
 Within a directory, as370 looks for the member name as written and then, if
 it contains capitals, in lowercase. For each spelling it tries the
 extensions #cmd(".macro"), #cmd(".copy"), #cmd(".mac") and #cmd(".asm"), and

@@ -3499,8 +3499,24 @@ static void aif_split(const char *opnd, char *cond, int condsz, char *seq, int s
 }
 
 /* ---- macro library (-I dirs): COPY members + macro lookup by name -------- */
-#define MAXMACLIB 16
+/* -I and AS370_MACLIB share MAXUSERLIB slots; the built-in defaults have
+ * slots of their own, so a full command line can never push them out.  A
+ * directory past the limit is the invocation's error (rc 16), not a silent
+ * drop: it used to vanish, and the first sign was an undefined macro, or a
+ * member resolved from the wrong library at rc 0 (#918). */
+#define MAXUSERLIB 16
+#define NDEFLIB    2          /* <exedir>/../macros, <exedir>/../libc370/macros */
+#define MAXMACLIB  (MAXUSERLIB + NDEFLIB)
 static char *maclib_dirs[MAXMACLIB]; static int nmaclib;
+static int add_user_maclib(char *dir, const char *from) {
+    if (nmaclib >= MAXUSERLIB) {
+        fprintf(stderr, "as370: too many macro libraries -- %s '%s' is beyond the limit of %d\n",
+                from, dir, MAXUSERLIB);
+        return 16;
+    }
+    maclib_dirs[nmaclib++] = dir;
+    return 0;
+}
 /* -v (#811): name the macro search path and each macro where it was found, on
  * stderr.  A wrong -I is the usual reason a macro goes undefined, and the path
  * actually taken is the one thing the diagnostic cannot show. */
@@ -9727,7 +9743,8 @@ static void usage(FILE *o) {
 "  the last is a built-in relocatable default -- the installed sysroot macro\n"
 "  library found from this executable's own path, so an installed as370\n"
 "  (<prefix>/<triple>/bin/as370) assembles with no -I and no environment.\n"
-"  AS370_MACLIB is a colon-separated override (the assembler C_INCLUDE_PATH).\n", o);
+"  AS370_MACLIB is a colon-separated override (the assembler C_INCLUDE_PATH).\n"
+"  -I and AS370_MACLIB name at most 16 directories together; one more is rc 16.\n", o);
 }
 /* The flagged-statement count IFOX00 prints: the two key spaces, minus the
  * statements counted in both.
@@ -9800,7 +9817,7 @@ int main(int argc, char **argv) {
         else if (!strncmp(argv[ai], "--stmts=", 8) && argv[ai][8]) stmt_fn = argv[ai] + 8;   /* one record per generated statement (#411) */
         else if (!strncmp(argv[ai], "--usings=", 9) && argv[ai][9]) use_fn = argv[ai] + 9;   /* the USING/DROP/PUSH/POP events as data (#393); usings[] is live state and holds nothing at the end */
         else if (!strcmp(argv[ai], "-d") && ai + 1 < argc) ++ai;   /* text-mode object: not yet implemented */
-        else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (nmaclib < MAXMACLIB) maclib_dirs[nmaclib++] = argv[++ai]; }
+        else if (!strcmp(argv[ai], "-I") && ai + 1 < argc) { if (add_user_maclib(argv[++ai], "-I")) optsev = 16; }
         else if (!strcmp(argv[ai], "--xref=short")) a_xref_short = 1;   /* IFOX PARM=XREF(SHORT) */
         else if (!strcmp(argv[ai], "--xref=full")) a_xref_short = 0;    /* IFOX PARM=XREF(FULL), the default */
         else if (!strncmp(argv[ai], "--sysparm=", 10)) scopy(g_sysparm, argv[ai] + 10, 95);   /* IFOX PARM=SYSPARM(...); default is the null string */
@@ -9852,17 +9869,17 @@ int main(int argc, char **argv) {
      * simply falls back to -I. */
     {
         const char *s = getenv("AS370_MACLIB");
-        while (s && *s && nmaclib < MAXMACLIB) {
+        while (s && *s) {
             const char *e = s; while (*e && *e != ':') e++;
             if (e > s) {
                 char *d = malloc((size_t)(e - s) + 1);
                 memcpy(d, s, (size_t)(e - s)); d[e - s] = 0;
-                maclib_dirs[nmaclib++] = d;
+                if (add_user_maclib(d, "AS370_MACLIB")) { optsev = 16; free(d); }
             }
             s = (*e == ':') ? e + 1 : e;
         }
     }
-    if (nmaclib < MAXMACLIB) {
+    {   /* the reserved NDEFLIB slots: always room, whatever -I and the env took */
         char exedir[PATH_MAX]; char macdir[PATH_MAX + 32];
         self_exe_dir(argv[0], exedir, sizeof exedir);
         snprintf(macdir, sizeof macdir, "%s/../macros", exedir);
@@ -9871,10 +9888,8 @@ int main(int argc, char **argv) {
          *    and linked into the sysroot as libc370/ (#726, the Homebrew
          *    layout).  After the sysroot's own macros, so cc370's prologue
          *    macros win over any copy. */
-        if (nmaclib < MAXMACLIB) {
-            snprintf(macdir, sizeof macdir, "%s/../libc370/macros", exedir);
-            maclib_dirs[nmaclib++] = strdup(macdir);
-        }
+        snprintf(macdir, sizeof macdir, "%s/../libc370/macros", exedir);
+        maclib_dirs[nmaclib++] = strdup(macdir);
     }
     if (!src) { usage(stderr); return 16; }                /* options given but no input file */
     if (g_verbose) {

@@ -5019,5 +5019,30 @@ if [ "$r" = 0 ] && [ "$(wc -c < /tmp/_el$$.obj)" = "$(wc -c < "$elref")" ] && cm
 else echo "erldacon: FAIL (rc $r, deck vs $elref)"; fail=1; fi
 rm -f /tmp/_el$$.obj /tmp/_el$$a /tmp/_el$$b
 
+# --- #918: a 17th macro library is an error, and never displaces the defaults --
+# An AS370_MACLIB entry past the 16th was dropped without a word (rc 8, the
+# macro undefined); a 17th -I left its directory to be read as a second source
+# file, rc 16 under the wrong message; and 16 user entries pushed
+# <exedir>/../macros and ../libc370/macros out of the path. The pre-fix binary
+# fails all three checks below.
+m918=/tmp/_918$$; mkdir -p $m918/m
+printf '         MACRO\n         MYMAC\n         DC    F%s7%s\n         MEND\n' "'" "'" > $m918/m/MYMAC.macro
+printf 'T        CSECT\n         MYMAC\n         END\n' > $m918/t.s
+i15=""; for k in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do i15="$i15 -I $m918/e$k"; done
+f918=0
+./as370 $m918/t.s $i15 -I $m918/m -o $m918/a.obj >/dev/null 2>&1
+[ $? = 0 ] && [ -s $m918/a.obj ] || { echo "maclib918: FAIL (16th -I not searched)"; f918=1; }
+./as370 -v $m918/t.s $i15 -I $m918/m -o /dev/null 2>&1 | grep -q 'macro path 18: .*/libc370/macros' \
+    || { echo "maclib918: FAIL (16 -I pushed the built-in defaults out)"; f918=1; }
+./as370 $m918/t.s $i15 -I $m918/e16 -I $m918/m -o $m918/b.obj >/dev/null 2>$m918/err; r=$?
+[ $r = 16 ] && [ ! -e $m918/b.obj ] && grep -q "too many macro libraries -- -I '$m918/m'" $m918/err \
+    || { echo "maclib918: FAIL (17th -I: rc $r, no message or an object written)"; f918=1; }
+AS370_MACLIB=$m918/x1:$m918/m ./as370 $m918/t.s $i15 -o $m918/c.obj >/dev/null 2>$m918/err; r=$?
+[ $r = 16 ] && [ ! -e $m918/c.obj ] && grep -q "AS370_MACLIB '$m918/m'" $m918/err \
+    || { echo "maclib918: FAIL (17th library from AS370_MACLIB: rc $r)"; f918=1; }
+[ $f918 = 0 ] && echo "maclib918: OK (16 libraries searched, the 17th is rc 16 with its name, defaults always kept)"
+fail=$((fail + f918))
+rm -rf $m918
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
