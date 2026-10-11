@@ -222,7 +222,20 @@ as370 (in F<I<prefix>/bin>) this resolves to F<I<prefix>/macros>, the macro
 library installed by B<libc370>, so as370 assembles with no B<-I> and no
 environment.
 
+=item 4.
+
+F<< <exedir>/../libc370/macros >> --- a libc370 installed in a tree of its
+own and linked into the sysroot as F<libc370>.
+
+=item 5.
+
+F<< <exedir>/../maclib370/macros >> --- SYS1.MACLIB and SYS1.AMODGEN of MVS
+3.8j, installed as the B<maclib370> package. Last, so libc370's macros and
+the prologue macros win over an IBM original of the same name.
+
 =back
+
+A directory that does not exist is skipped.
 
 B<-I> and C<$AS370_MACLIB> together name at most 16 directories. A
 directory beyond that ends the run with return code 16 and no object; the

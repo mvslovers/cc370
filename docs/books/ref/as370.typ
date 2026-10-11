@@ -118,11 +118,15 @@ directories, highest priority first:
 + the directories named by the environment variable #cmd("AS370_MACLIB"),
   separated by colons;#idx("AS370_MACLIB")
 + #cmd("../macros") relative to the directory that holds the as370 program;
-+ #cmd("../libc370/macros") relative to the same directory.
++ #cmd("../libc370/macros") relative to the same directory;
++ #cmd("../maclib370/macros") relative to the same directory: SYS1.MACLIB
+  and SYS1.AMODGEN of MVS 3.8j, installed as a package of their own.
 
-The last two are the macro libraries of the installed toolchain, so an
+The last three are the macro libraries of the installed toolchain, so an
 installed as370 assembles a program that uses the LIBC/370 and system macros
-with no #cmd("-I") and no environment variable.
+with no #cmd("-I") and no environment variable. They are searched in this
+order, so a LIBC/370 macro and the CC/370 prologue macros win over an IBM
+original of the same name. A directory that does not exist is skipped.
 
 #cmd("-I") and #cmd("AS370_MACLIB") together name at most 16 directories. A
 directory beyond that is an error of the invocation: as370 names it, ends with

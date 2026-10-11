@@ -2497,12 +2497,21 @@ rm -f /tmp/_f53.obj
 # else in this file -- the comparison stops before the END card.
 #
 # It needs SYS1.MACLIB's SPIE and TIME, which libc370's sysmac mirror does not
-# carry (mvslovers/libc370#155). Point SYS1MAC=<dir> at a SYS1.MACLIB extract to
-# run it; without them the fixture SKIPS rather than failing, so a plain checkout
-# stays green and the gap stays visible.
-SYS1MAC=${SYS1MAC:-$LIBC370/sysmac}
-if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
-    echo "hello: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+# carry (mvslovers/libc370#155). They come from maclib370 (mvslovers/mbt#234),
+# a sibling checkout like libc370 -- its maclib/ directory is SYS1.MACLIB
+# member for member, NAME.macro in capitals. Override with MACLIB370=<checkout>
+# or SYS1MAC=<dir>; without the two members the fixture SKIPS rather than
+# failing, so a plain checkout stays green and the gap stays visible.  The
+# guard accepts either case: a capital name is what maclib370 ships, and a
+# case-sensitive file system (Linux CI) finds nothing under the lowercase one.
+MACLIB370=${MACLIB370:-../../maclib370}
+SYS1MAC=${SYS1MAC:-$MACLIB370/maclib}
+have_sys1mac() {
+    { [ -f "$SYS1MAC/SPIE.macro" ] || [ -f "$SYS1MAC/spie.macro" ]; } &&
+    { [ -f "$SYS1MAC/TIME.macro" ] || [ -f "$SYS1MAC/time.macro" ]; }
+}
+if ! have_sys1mac; then
+    echo "hello: SKIPPED (needs SYS1.MACLIB SPIE + TIME from maclib370; set MACLIB370=<checkout> or SYS1MAC=<dir>)"
 elif ! ./as370 tests/hello.s $MACLIB -I "$SYS1MAC" -o /tmp/_hel.obj >/dev/null 2>&1; then
     echo "hello: ASSEMBLE FAILED"; fail=1
 else
@@ -2536,8 +2545,8 @@ rm -f /tmp/_hel.obj
 # as370 maps them per CP037 to X'BA'/X'BB', the table the mvslovers upload path
 # uses -- tracked as #74. Its companion arith became a full-deck fixture when
 # #64 (SRP) landed, and ksdsnatr is the third.
-if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
-    echo "litmove: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+if ! have_sys1mac; then
+    echo "litmove: SKIPPED (needs SYS1.MACLIB SPIE + TIME from maclib370; set MACLIB370=<checkout> or SYS1MAC=<dir>)"
 elif ! ./as370 tests/litmove.s $MACLIB -I "$SYS1MAC" -o /tmp/_lm.obj >/dev/null 2>&1; then
     echo "litmove: ASSEMBLE FAILED"; fail=1
 else
@@ -2585,8 +2594,8 @@ rm -f /tmp/_s64.s /tmp/_s64.obj /tmp/_s64.out
 # tests/ref/arith.obj is IFOX00's own deck for tests/arith.s -- the same
 # contributor, the same extraction path as hello. Five SRP occurrences and the
 # #61 origin rounding in one module, so it is the end-to-end regression for both.
-if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
-    echo "arith: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+if ! have_sys1mac; then
+    echo "arith: SKIPPED (needs SYS1.MACLIB SPIE + TIME from maclib370; set MACLIB370=<checkout> or SYS1MAC=<dir>)"
 elif ! ./as370 tests/arith.s $MACLIB -I "$SYS1MAC" -o /tmp/_ar.obj >/dev/null 2>&1; then
     echo "arith: ASSEMBLE FAILED"; fail=1
 else
@@ -2621,8 +2630,8 @@ rm -f /tmp/_ar.obj
 # later section.
 #
 # Same SPIE + TIME dependency as hello and arith, so it skips the same way.
-if [ ! -f "$SYS1MAC/spie.macro" ] || [ ! -f "$SYS1MAC/time.macro" ]; then
-    echo "ksdsnatr: SKIPPED (needs SYS1.MACLIB SPIE + TIME -- mvslovers/libc370#155; set SYS1MAC=<dir>)"
+if ! have_sys1mac; then
+    echo "ksdsnatr: SKIPPED (needs SYS1.MACLIB SPIE + TIME from maclib370; set MACLIB370=<checkout> or SYS1MAC=<dir>)"
 elif ! ./as370 tests/ksdsnatr.s $MACLIB -I "$SYS1MAC" -o /tmp/_ks.obj >/dev/null 2>&1; then
     echo "ksdsnatr: ASSEMBLE FAILED"; fail=1
 else
@@ -5043,6 +5052,26 @@ AS370_MACLIB=$m918/x1:$m918/m ./as370 $m918/t.s $i15 -o $m918/c.obj >/dev/null 2
 [ $f918 = 0 ] && echo "maclib918: OK (16 libraries searched, the 17th is rc 16 with its name, defaults always kept)"
 fail=$((fail + f918))
 rm -rf $m918
+
+# --- maclib370: <exedir>/../maclib370/macros is searched (mvslovers/mbt#234) ---
+# An installed as370 finds SYS1.MACLIB with no -I. A copy of the binary (the
+# path is resolved through symlinks, so a link would point back here) in a
+# tree with maclib370/macros beside bin/ assembles hello -- SPIE and TIME from
+# that slot only -- to IFOX00's deck. Skips like hello without maclib370.
+if ! have_sys1mac; then
+    echo "maclib370slot: SKIPPED (no maclib370; set MACLIB370=<checkout> or SYS1MAC=<dir>)"
+else
+    t370=/tmp/_m370$$; mkdir -p $t370/bin $t370/maclib370
+    cp ./as370 $t370/bin/as370
+    ln -s "$(cd "$SYS1MAC" && pwd)" $t370/maclib370/macros
+    $t370/bin/as370 -v tests/hello.s $MACLIB -o $t370/h.obj 2>$t370/err; r=$?
+    hn=$(( ($(wc -c < tests/ref/hello.obj) / 80 - 1) * 80 ))
+    head -c "$hn" $t370/h.obj > $t370/a; head -c "$hn" tests/ref/hello.obj > $t370/b
+    if [ "$r" = 0 ] && cmp -s $t370/a $t370/b && grep -q "macro TIME from .*_m370$$/bin/../maclib370/macros/" $t370/err; then
+        echo "maclib370slot: OK (SPIE/TIME from <exedir>/../maclib370/macros, hello == IFOX00 with no SYS1.MACLIB -I)"
+    else echo "maclib370slot: FAIL (rc $r, deck or macro source)"; fail=1; fi
+    rm -rf $t370
+fi
 
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
