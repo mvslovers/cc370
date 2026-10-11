@@ -15,7 +15,8 @@
 #
 # libc370 is checked out as a sibling because the as370 suite assembles four
 # samples against its macro libraries (maclib/sysmac -- PDPTOP, SAVE, RETURN).
-# Nothing is built from it; only the macro sources are read.
+# Nothing is built from it; only the macro sources are read. maclib370 is a
+# sibling for the same reason (SYS1.MACLIB members, see the clone step).
 #
 # Not included, and why:
 #   test-corpus  a fresh libc370 clone carries only the 27 hand-written
@@ -72,6 +73,16 @@ jobs:
       - name: Clone libc370 (macro libraries only)
         working-directory: .
         run: git clone --depth 1 https://github.com/mvslovers/libc370.git libc370
+
+      # MACLIB370=../../maclib370 likewise: SYS1.MACLIB's SPIE and TIME for the
+      # four cobc370 samples (hello, litmove, arith, ksdsnatr), which skip
+      # without them. Pinned to a commit until maclib370 has a release; move
+      # the pin to the tag then (mvslovers/mbt#234).
+      - name: Clone maclib370 (SYS1.MACLIB, pinned)
+        working-directory: .
+        run: |
+          git clone https://github.com/mvslovers/maclib370.git maclib370
+          git -C maclib370 checkout --detach 5668cb1
 
       - name: Install compilers
         working-directory: .

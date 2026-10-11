@@ -3505,7 +3505,7 @@ static void aif_split(const char *opnd, char *cond, int condsz, char *seq, int s
  * drop: it used to vanish, and the first sign was an undefined macro, or a
  * member resolved from the wrong library at rc 0 (#918). */
 #define MAXUSERLIB 16
-#define NDEFLIB    2          /* <exedir>/../macros, <exedir>/../libc370/macros */
+#define NDEFLIB    3          /* <exedir>/../macros, ../libc370/macros, ../maclib370/macros */
 #define MAXMACLIB  (MAXUSERLIB + NDEFLIB)
 static char *maclib_dirs[MAXMACLIB]; static int nmaclib;
 static int add_user_maclib(char *dir, const char *from) {
@@ -9739,9 +9739,10 @@ static void usage(FILE *o) {
 "                     from, and the summary line even when nothing was flagged\n"
 "\n"
 "macro search order (highest first):  -I dirs ; $AS370_MACLIB ; <exedir>/../macros ;\n"
-"  <exedir>/../libc370/macros (a libc370 linked in as <sysroot>/libc370, #726)\n"
-"  the last is a built-in relocatable default -- the installed sysroot macro\n"
-"  library found from this executable's own path, so an installed as370\n"
+"  <exedir>/../libc370/macros (a libc370 linked in as <sysroot>/libc370, #726) ;\n"
+"  <exedir>/../maclib370/macros (SYS1.MACLIB and SYS1.AMODGEN of MVS 3.8j)\n"
+"  the last three are built-in relocatable defaults -- the installed macro\n"
+"  libraries found from this executable's own path, so an installed as370\n"
 "  (<prefix>/<triple>/bin/as370) assembles with no -I and no environment.\n"
 "  AS370_MACLIB is a colon-separated override (the assembler C_INCLUDE_PATH).\n"
 "  -I and AS370_MACLIB name at most 16 directories together; one more is rc 16.\n", o);
@@ -9889,6 +9890,12 @@ int main(int argc, char **argv) {
          *    layout).  After the sysroot's own macros, so cc370's prologue
          *    macros win over any copy. */
         snprintf(macdir, sizeof macdir, "%s/../libc370/macros", exedir);
+        maclib_dirs[nmaclib++] = strdup(macdir);
+        /* 5. <exedir>/../maclib370/macros: SYS1.MACLIB and SYS1.AMODGEN of
+         *    MVS 3.8j as a package of their own (mvslovers/mbt#234).  Last,
+         *    so libc370's copies and cc370's prologue macros win over the
+         *    IBM originals of the same name. */
+        snprintf(macdir, sizeof macdir, "%s/../maclib370/macros", exedir);
         maclib_dirs[nmaclib++] = strdup(macdir);
     }
     if (!src) { usage(stderr); return 16; }                /* options given but no input file */

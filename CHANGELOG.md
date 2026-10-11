@@ -20,6 +20,16 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Added
+- **`as370` searches `<exedir>/../maclib370/macros`**, after
+  `<exedir>/../macros` and `<exedir>/../libc370/macros`. That is where the
+  SYS1.MACLIB and SYS1.AMODGEN of MVS 3.8j go when they are installed as a
+  package of their own, so an installed as370 then assembles a program using
+  any system macro with no `-I`. The directory comes last, so a macro of
+  the C library and the prologue macros win over an IBM original of the same
+  name; when it is absent, nothing changes. It has a reserved place in the
+  search path like the other two.
+
 ### Fixed
 - **`as370`: `A(name)` relocates against the section that holds `name`, even
   when `V(name)` also made it an external reference** (#919). A name both
