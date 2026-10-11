@@ -2137,6 +2137,16 @@ static void add_reloc(long at, const char *target, int isV, int len) {
      * nothing moves. */
     int rel = 0;
     if (s && isV) { int q; for (q = 0; q < nesdord; q++) if (esdord[q].s == s && esdord[q].role == ESD_ER) { rel = esdord[q].esdid; break; } }
+    /* The converse: an A-con names the DEFINITION.  A symbol first seen in V()
+     * keeps S_ER and the ER's ESDID after its label arrives (#285), so
+     * `V(COBDATE)' ahead of `COBDATE DS 0H' sent every A(COBDATE) against the
+     * ER -- and the stored value, already section-relative plus origin, was
+     * added to the ER's resolved address a second time: X'1404' for X'0A02'.
+     * The other order is the same defect: a label defined first stays S_REL
+     * and picks up the ER's ESDID from the V() that follows.  IFOX00
+     * relocates it against the section that holds the label (cobc370 corpus,
+     * 7 of 184 decks; cc370#919). */
+    if (!rel && s && !isV && s->defined && (s->type == S_ER || s->type == S_REL)) rel = sect_esdid_of(s->sect);
     if (!rel) rel = (s && s->esdid) ? s->esdid : 0;
     /* An alias carries no ESDID; the symbol it was equated to may.  Follow the
      * chain before falling back to the section, or an `A(alias-of-EXTRN)' is
