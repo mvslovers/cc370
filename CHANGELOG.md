@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-11
+
 ### Fixed
 - **`install.sh` removes the macro files a newer LIBC/370 no longer ships**
   (#933). It copied the new sysroot over the old one and removed nothing,
