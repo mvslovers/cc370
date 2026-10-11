@@ -63,7 +63,10 @@ set `GITHUB_TOKEN`, or name the releases with `CC370_VERSION=`,
 
 - **Tarball:** a relocatable tree; unpack it anywhere and use its `bin/`.
   LIBC/370's `libc370-<v>-sysroot.tar.gz` goes into the tree's `cc370/`
-  directory, maclib370's `maclib370-<v>.tar.gz` into `cc370/maclib370/`. A tarball downloaded with a browser on macOS needs
+  directory, maclib370's `maclib370-<v>.tar.gz` into `cc370/maclib370/`.
+  Over an older LIBC/370, first delete from `cc370/macros` the files named in
+  the new tarball's `share/libc370/sysmac-removed.txt`: an older copy left
+  there shadows maclib370's member. `install.sh` does that itself. A tarball downloaded with a browser on macOS needs
   `xattr -d com.apple.quarantine` on the unpacked tree; `install.sh` does
   not, curl sets no quarantine flag.
 - **Homebrew:** Homebrew 7 loads a formula's dependencies only from a tap

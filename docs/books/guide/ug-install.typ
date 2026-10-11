@@ -40,7 +40,8 @@ The script installs under #cmd("~/.local") unless the environment variable
 #cmd("PREFIX") names another directory, and checks each download against the
 checksums published with its release. When no LIBC/370 release fits, it
 installs CC/370 and maclib370 alone and says so. #cmd("NO_MACLIB370=1")
-leaves maclib370 out. At the end it reminds you to add
+leaves maclib370 out. Over an older LIBC/370 it first removes the macro
+files the new release no longer ships, as that release lists them. At the end it reminds you to add
 #cmd("$PREFIX/bin") to your #cmd("PATH") if it is not there yet.
 
 The releases also come in other forms:
@@ -52,7 +53,10 @@ The releases also come in other forms:
     tarball, #cmd("libc370-")#var("version")#cmd("-sysroot.tar.gz"), into
     the tree's #cmd("cc370") directory, and the maclib370 tarball,
     #cmd("maclib370-")#var("version")#cmd(".tar.gz"), into
-    #cmd("cc370/maclib370"). On macOS, a tarball downloaded with
+    #cmd("cc370/maclib370"). Over an older LIBC/370, first delete from
+    #cmd("cc370/macros") the files named in the new tarball's
+    #cmd("share/libc370/sysmac-removed.txt"): an older copy left there is
+    found before the member of maclib370. On macOS, a tarball downloaded with
     a web browser is marked as quarantined: remove the mark with
     #cmd("xattr -d com.apple.quarantine") on the unpacked tree.],
   [Homebrew], [#cmd("brew trust mvslovers/tap"), then

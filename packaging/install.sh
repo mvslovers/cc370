@@ -197,6 +197,25 @@ src=$tmp/libc370
 [ -d "$src/include" ] || src=$(find "$tmp/libc370" -mindepth 1 -maxdepth 1 -type d | head -1)
 [ -d "$src/include" ] && [ -d "$src/lib" ] || die "$st has no include/ and lib/"
 mkdir -p "$PREFIX/cc370"
+# Macros a release of libc370 no longer ships (from 2.8.1, libc370#498): an
+# older copy left in cc370/macros would shadow maclib370's member, which
+# as370 searches after it (#933).  Removed before the copy, so a name a later
+# libc370 ships again is restored by it.  A bare file name only: nothing
+# outside macros/ is touched.
+rl=$src/share/libc370/sysmac-removed.txt
+if [ -f "$rl" ] && [ -d "$PREFIX/cc370/macros" ]; then
+    nrm=0
+    while IFS= read -r m || [ -n "$m" ]; do
+        m=$(printf '%s' "$m" | tr -d '\r')
+        case $m in ''|'#'*|*/*|.|..) continue ;; esac
+        if [ -e "$PREFIX/cc370/macros/$m" ]; then
+            rm -f "$PREFIX/cc370/macros/$m" && nrm=$((nrm + 1))
+        fi
+    done < "$rl"
+    if [ "$nrm" -gt 0 ]; then
+        say "removed $nrm macro files libc370 $lv no longer ships from $PREFIX/cc370/macros"
+    fi
+fi
 cp -R "$src/." "$PREFIX/cc370/"
 say "installed libc370 $lv into $PREFIX/cc370"
 case ":$PATH:" in *":$PREFIX/bin:"*) ;; *) say "add $PREFIX/bin to PATH" ;; esac
