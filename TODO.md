@@ -121,7 +121,21 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## cc370 1.6.0 released; 1.6.1-dev on main (2026-10-11)
+## cc370 1.6.1 released; 1.6.2-dev on main (2026-10-11)
+
+- **1.6.1** (tag on `469e6f7`, PR #937; Mike's go): install.sh removes the
+  macro files a newer libc370 no longer ships (#933). 12 assets; install.sh
+  from a scratch prefix seeded with GETMAIN/WTO/DCB copies took libc370
+  2.8.1 and removed all three ("removed 3 macro files"), 16 macros left,
+  TIME from maclib370. Release page reworked.
+- **Open: Homebrew on ubuntu-24.04-arm** fails "Broken pipe" 0.1 s into
+  installing maclib370 as cc370's dependency, before any download: 1.6.0
+  first attempt, 1.6.1 first attempt and re-run; green on the 1.6.0 re-run
+  and the dispatch run 38162288802. The other three hosts are always green.
+  The release itself is complete (formula pushed). Needs a run with
+  `--verbose`/`HOMEBREW_DEBUG` on that runner.
+
+## cc370 1.6.0 released (2026-10-11)
 
 - ~~#933 install.sh leaves libc370's removed IBM macro copies~~ **done**
   (#934): deletes the names in libc370's `share/libc370/sysmac-removed.txt`
