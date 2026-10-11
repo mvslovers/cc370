@@ -14,7 +14,9 @@
 # compiler.
 #
 # libc370 is checked out as a sibling because the as370 suite assembles four
-# samples against its macro libraries (maclib/sysmac -- PDPTOP, SAVE, RETURN).
+# samples against its macro libraries (maclib/, hasp/ -- PDPTOP and the C
+# library's own); since libc370 2.8 the SYS1.MACLIB members they also need
+# (SAVE, RETURN, WTO, DCB) come from the maclib370 sibling.
 # Nothing is built from it; only the macro sources are read. maclib370 is a
 # sibling for the same reason (SYS1.MACLIB members, see the clone step).
 #

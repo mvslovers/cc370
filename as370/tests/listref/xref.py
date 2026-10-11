@@ -101,7 +101,11 @@ for ref in sorted(glob.glob(os.path.join(here, "ifox-listing-*.txt"))):
     fd, out = tempfile.mkstemp(); os.close(fd)
     cmd = [as370, src, "-a=" + out, "-o", os.devnull] + (["--xref=short"] if short else [])
     if os.path.isdir(os.path.join(libc, "maclib")):
-        cmd += ["-I", os.path.join(libc, "maclib"), "-I", os.path.join(libc, "sysmac")]
+        # libc370's own directories, then maclib370's (libc370#494), as run.sh
+        mlib = os.environ.get("MACLIB370", os.path.join(os.path.dirname(libc), "maclib370"))
+        for d in (os.path.join(libc, "maclib"), os.path.join(libc, "hasp"), os.path.join(libc, "sysmac"),
+                  os.path.join(mlib, "maclib"), os.path.join(mlib, "amodgen")):
+            if os.path.isdir(d): cmd += ["-I", d]
     subprocess.run(cmd, capture_output=True, env=dict(os.environ, ASMTIME=m.group(1), ASMDATE=m.group(2)))
     M = open(out, encoding="latin-1").read().split("\n"); os.unlink(out)
     r, mm = xref_pages(R), xref_pages(M)
