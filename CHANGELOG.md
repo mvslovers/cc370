@@ -20,6 +20,20 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Fixed
+- **`as370`: `A(name)` relocates against the section that holds `name`, even
+  when `V(name)` also made it an external reference** (#919). A name both
+  called through `V(name)` and defined in the same assembly (typically as an
+  `ENTRY` in a second CSECT) kept the external reference's ESD id, in either
+  order, and an `A(name)` was relocated against it. The constant already
+  holds the label's address, so the linkage editor added that address a
+  second time: measured with IEWL on MVS, X'1404' where IFOX00's deck gives
+  X'0A02', and ld370 links the same. The text was byte-identical and the
+  return code 0. A `V(name)` still relocates against the external
+  reference. Measured on 184 generated programs: 7 had such a constant, and
+  all 184 decks now match IFOX00's. Across the 5,528 modules of the MVS 3.8j
+  tree no deck changed.
+
 ## [1.5.0] - 2026-10-07
 
 ### Added

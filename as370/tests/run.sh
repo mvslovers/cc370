@@ -5004,5 +5004,20 @@ if [ "$r" = 0 ] && cmp -s /tmp/_wx$$a /tmp/_wx$$b; then echo "wxlate: OK (late W
 else echo "wxlate: FAIL (rc $r, deck vs $wxref)"; fail=1; fi
 rm -f /tmp/_wx$$.obj /tmp/_wx$$a /tmp/_wx$$b
 
+# --- #919: A(name) where name is both an ER (from V) and a label here ---------
+# The symbol keeps the ER's ESDID once its label arrives, in either order, and
+# A(name) relocated against the ER: the linker then added the label's address
+# to a value that already held it -- X'1404' for X'0A02' (IEWL, MVSTK5-REF
+# JOB00356).  IFOX00 relocates against the section holding the label.  Oracle:
+# MVSTK5-REF JOB00355, tests/ref/erldacon.obj (snapshots 1544/1554 either side).
+# The pre-fix binary misses six of the nine entries.
+./as370 tests/erldacon.s -o /tmp/_el$$.obj >/dev/null 2>&1; r=$?
+elref=tests/ref/erldacon.obj; eln=$(( ($(wc -c < "$elref") / 80 - 1) * 80 ))
+head -c "$eln" /tmp/_el$$.obj > /tmp/_el$$a; head -c "$eln" "$elref" > /tmp/_el$$b
+if [ "$r" = 0 ] && [ "$(wc -c < /tmp/_el$$.obj)" = "$(wc -c < "$elref")" ] && cmp -s /tmp/_el$$a /tmp/_el$$b; then
+    echo "erldacon: OK (A-con to an ER that is also a label relocates against its section -- deck == IFOX00)"
+else echo "erldacon: FAIL (rc $r, deck vs $elref)"; fail=1; fi
+rm -f /tmp/_el$$.obj /tmp/_el$$a /tmp/_el$$b
+
 [ $fail = 0 ] && echo "ALL SAMPLES BYTE-IDENTICAL TO IFOX00" || echo "FAILURES"
 exit $fail
