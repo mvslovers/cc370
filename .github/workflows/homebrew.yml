@@ -61,11 +61,13 @@ jobs:
           grep -q 'libcc370rt.a(@@divdi3.o)' t.map
           echo "linked; @@DIVDI3 from libcc370rt.a"
 
-  # libc370 named on its own, WITHOUT `brew trust': Homebrew 7 trusts a formula
-  # named on the command line, so this is expected to install.  Measured here
-  # rather than inferred -- both READMEs tell users it works.
+  # libc370 named on its own: it installs without cc370.  The tap is trusted
+  # first, as for cc370: Homebrew 7 trusts only the formula named on the
+  # command line, and libc370 depends on maclib370 from the same tap
+  # (libc370#491), which an untrusted tap refuses.  Until a libc370 with that
+  # dependency is released this ran without `brew trust' too (measured).
   libc370-alone:
-    name: brew libc370 alone, untrusted tap (${{ matrix.runner }})
+    name: brew libc370 alone (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -78,12 +80,13 @@ jobs:
             echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
           fi
 
-      - name: Install libc370 by name, no trust
+      - name: Install libc370 by name
         env:
           HOMEBREW_NO_AUTO_UPDATE: 1
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
           brew tap mvslovers/tap
+          brew trust mvslovers/tap
           brew install mvslovers/tap/libc370
           brew test mvslovers/tap/libc370
           brew list --versions libc370
