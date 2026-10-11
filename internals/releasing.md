@@ -56,6 +56,12 @@ of it — and then the one it needs is released first.
    - `release.yml` requires `VERSION` == tag, builds the compiler, runs the
      suites and `test-version-cc370`, and attaches the tarballs, `.deb` /
      `.rpm`, `install.sh` and `SHA256SUMS` (`package.yml`);
+   - a published release is final: re-pushing its tag fails (`… is released;
+     its assets are not replaced`) instead of swapping the assets under
+     everyone who downloaded them. A wrong release gets the next patch
+     version. A tag with a `-` (`v1.6.0-rc1`, `VERSION` the same) becomes a
+     prerelease: it may be re-tagged and re-uploaded, and gets no Homebrew
+     formula. A draft made by hand keeps its notes and receives the assets;
    - the manuals (ML01-0001, ML01-0002, `docs/books/`): before the release
      PR, the edition notice of both (`ml01-000N.typ`, "This edition applies
      to ...") names the release, and `guide/ug-migrate.typ` ("From an Earlier
