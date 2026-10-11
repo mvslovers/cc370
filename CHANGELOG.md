@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-11
+
 ### Added
 - **`as370` searches `<exedir>/../maclib370/macros`**, after
   `<exedir>/../macros` and `<exedir>/../libc370/macros`. That is where the
@@ -38,6 +40,15 @@ neither number is mistaken for the other.
   macro such as `TIME` now assembles with no `-I`.
 
 ### Fixed
+- **`cc370`: `strstr` and `strpbrk` with a one-character literal search for
+  the right byte** (#916). At `-O1` the compiler turns `strstr(s, "}")` and
+  `strpbrk(s, "}")` into `strchr(s, c)`, and took `c` as the host (ASCII)
+  value of the character instead of its EBCDIC one: `"}"` searched for
+  X'7D', a quote in CP037, instead of X'D0'. Every one-character needle
+  whose ASCII and EBCDIC codes differ was searched for wrongly, without a
+  diagnostic. The byte now goes through the same translation as every other
+  character constant. Code built with an earlier release that uses this
+  pattern needs a rebuild.
 - **`as370`: `A(name)` relocates against the section that holds `name`, even
   when `V(name)` also made it an external reference** (#919). A name both
   called through `V(name)` and defined in the same assembly (typically as an

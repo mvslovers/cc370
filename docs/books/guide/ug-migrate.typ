@@ -188,6 +188,16 @@ moved there from the C library.
   every writable variable the sources compiled with it define
   (@ug-link-attr)\; library code taken by automatic library call is not
   checked. Nothing changes without the option.
+- *System macros.* Since 1.6, #cmd("SYS1.MACLIB") and #cmd("SYS1.AMODGEN")
+  of MVS 3.8j are installed with the toolchain, as the package maclib370,
+  and as370 searches them after the macros of LIBC/370 (@ug-asm). A
+  program that uses a system macro such as #cmd("TIME") assembles with no
+  #cmd("-I"). A copy of #cmd("SYS1.MACLIB") you named with #cmd("-I") or
+  #cmd("AS370_MACLIB") is still searched first.
+- *strstr and strpbrk.* Up to 1.5, at #cmd("-O1"), #cmd("strstr(s, \"}\")")
+  and #cmd("strpbrk(s, \"}\")") with a one-character literal searched for
+  the ASCII value of the character, not its EBCDIC value. Rebuild a program
+  that uses this pattern with 1.6.
 
 == Notes for GCCMVS Users <ug-migrate-gccmvs>
 
