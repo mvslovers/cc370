@@ -146,7 +146,7 @@ front of you, the second is nineteen-twentieths unattributable.
   `run.sh` takes SPIE/TIME from `$MACLIB370/maclib` (either case); hello,
   litmove, arith, ksdsnatr run again (== IFOX00, also on Linux CI); CI pins
   maclib370 to `5668cb1`. ~~After maclib370 1.0.0: package dependency, CI
-  pin, guide~~ **done** (#PR): `.deb`/`.rpm` depend on `maclib370 >= 1.0.0`,
+  pin, guide~~ **done** (#928): `.deb`/`.rpm` depend on `maclib370 >= 1.0.0`,
   Homebrew `depends_on` + `cc370/maclib370` link, `install.sh` installs it;
   CI pinned to `v1.0.0`; README, User's Guide (install chapter, CLOCK) and
   `internals/releasing.md` updated. **For the release PR:** the
