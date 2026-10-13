@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-10-13
+
 ### Fixed
 - **`ld370`: a common area of the name of a control section binds to the
   control section, in either order** (#941). When an object with `NAME COM`
@@ -31,6 +33,13 @@ neither number is mistaken for the other.
   text). A common longer than the control section of its name is an error,
   as there (IEW0552): ld370 names both lengths, ends with rc 1 and writes no
   module.
+
+### Documentation
+- **Homebrew on Linux: "Broken pipe".** Homebrew 7 looks for macOS keychain
+  credentials on Linux too, and that lookup sometimes ends `brew install`
+  with "Broken pipe". The README and the User's Guide say what helps: set
+  `HOMEBREW_GITHUB_API_TOKEN` to any GitHub token with read access, or run
+  the command again.
 
 ## [1.6.1] - 2026-10-11
 

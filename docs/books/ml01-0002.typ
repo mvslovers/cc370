@@ -12,7 +12,7 @@
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
     This edition applies to Version 1 Release 6 of the CC/370
-    cross-toolchain (cc370 1.6.1) and to all subsequent releases and
+    cross-toolchain (cc370 1.6.2) and to all subsequent releases and
     modifications until otherwise indicated in new editions.
 
     Comments on this book may be addressed to the issue tracker of
