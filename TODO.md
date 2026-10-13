@@ -123,6 +123,13 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ## cc370 1.6.1 released; 1.6.2-dev on main (2026-10-11)
 
+- ~~#941 ld370: a COM after a CSECT of the same name turns it into a
+  common area~~ **done** (#942, 2026-10-13; reported by pl1c370). IEWL
+  oracle JOB00394 (snapshots 2019/2028 unchanged): SD kept in every order,
+  longer COM = IEW0552 CC 8 -> ld370 rc 1, no module. Text byte-identical
+  to IEWL for the three linking orders; 11 projects relinked: only the IDR
+  stamp moves, no IEW0552. Reaches users with the next release.
+
 - **1.6.1** (tag on `469e6f7`, PR #937; Mike's go): install.sh removes the
   macro files a newer libc370 no longer ships (#933). 12 assets; install.sh
   from a scratch prefix seeded with GETMAIN/WTO/DCB copies took libc370
