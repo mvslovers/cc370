@@ -194,9 +194,28 @@ static int g_new(const unsigned char *name)
 /* A common section is one area per NAME for the whole link, as long as the
  * longest contribution: CBLK of 0x0A and of 0x14 became one CBLK of 0x14
  * (MVSTK5-REF JOB00352, #837).  It belongs to no object; its origin is set
- * after them. */
-static void merge_common(int gi, long len)
+ * after them.
+ *
+ * A control section of the same name IS that area, whichever comes first:
+ * IEWL keeps the SD, its text and its place, and every COM reference binds
+ * to it.  A common longer than the SD is IEW0552, "COMMON EXCEEDED SIZE OF
+ * CONTROL SECTION WITH IDENTICAL NAME", CC 8, in both orders (MVSTK5-REF
+ * JOB00394, #941).  merge_common() used to turn an SD met by a LATER COM
+ * back into a common area, and the CSECT's data was gone, rc 0. */
+static int ncomerr = 0;                   /* IEW0552 cases: no module is written */
+static void common_too_long(int gi, long comlen, long sdlen, const char *where)
 {
+    fprintf(stderr, "ld370: error: common area %s (%ld bytes) exceeds the control section "
+                    "of the same name (%ld bytes); met in %s (IEWL IEW0552)\n",
+            mvs_nm(G[gi].name), comlen, sdlen, where);
+    ncomerr++;
+}
+static void merge_common(int gi, long len, const char *where)
+{
+    if (G[gi].is_sect && G[gi].type == T_SD) {    /* the CSECT stays; check the size */
+        if (len > G[gi].len) common_too_long(gi, len, G[gi].len, where);
+        return;
+    }
     if (!(G[gi].is_sect && G[gi].type == T_CM)) {
         G[gi].is_sect = 1; G[gi].type = T_CM; G[gi].len = 0; G[gi].def_obj = -1; G[gi].in_addr = 0;
     }
@@ -2561,8 +2580,13 @@ int main(int argc, char **argv)
                                 "definition is kept and this one dropped, as IEWL does\n",
                         mvs_nm(o->loc[j].name), O[i].src_path ? O[i].src_path : "an object");
             } else if (t == T_CM) {
-                merge_common(gi, o->loc[j].len);      /* one area per name, longest wins */
+                merge_common(gi, o->loc[j].len,       /* one area per name, longest wins */
+                             O[i].src_path ? O[i].src_path : "an object");
             } else if (is_sect_type(t)) {             /* a section definition */
+                /* an SD after the common of its name replaces it (#941) */
+                if (t == T_SD && G[gi].is_sect && G[gi].type == T_CM && G[gi].len > o->loc[j].len)
+                    common_too_long(gi, G[gi].len, o->loc[j].len,
+                                    O[i].src_path ? O[i].src_path : "an object");
                 G[gi].is_sect = 1; G[gi].type = t; G[gi].len = o->loc[j].len;
                 G[gi].def_obj = i; G[gi].in_addr = o->loc[j].addr;   /* its object + origin within it */
             }
@@ -2623,6 +2647,11 @@ int main(int argc, char **argv)
                 fprintf(stderr, "    %s\n", mvs_nm(G[i].name));
                 nunres++;
             }
+        if (ncomerr) {
+            fprintf(stderr, "ld370: %d common area(s) longer than their control section -- "
+                            "no module written\n", ncomerr);
+            return 1;
+        }
         if (nunres && !allow_unresolved) {
             fprintf(stderr, "ld370: %d unresolved external(s) -- the module would S0C4 "
                             "at runtime (each is a NULL adcon); add the defining object/"

@@ -858,6 +858,43 @@ PYCM
 then echo "  OK: CM sections allocated after the objects, longest contribution, text CSECTs only (== IEWL JOB00352)"
 else echo "  FAIL: CM layout differs from IEWL JOB00352"; fails=$((fails+1)); fi
 
+printf '\n=== #941: a COM of the name of a CSECT binds to the CSECT, in either order ===\n'
+# IEWL on MVSTK5-REF (JOB00394; maps + AMBLIST in fixtures/cs941.iewl.txt): the
+# SD keeps its place and its F'100' however many COMs of its name come before or
+# after it (L1 a+b+c, L2 b+c, L5 a+b); a COM longer than the SD is IEW0552, CC 8,
+# in both orders (L3 b+d, L4 d+b).  ld370 turned the SD into a common area when a
+# COM came AFTER it, and the 100 was gone at rc 0.
+for x in a b c d; do "$AS" -o "$TMP/cs941$x.o" "$FIX/cs941$x.s"; done
+cat > "$TMP/cs941.py" <<'PY941'
+import re, sys
+lm = open(sys.argv[1], "rb").read(); v = open(sys.argv[2]).read(); n = sys.argv[4]
+want = bytes.fromhex("".join("".join(m.split()[1:]) for m in
+        re.findall(r"^%s:\s+(0000[0-9A-F]0(?:\s+[0-9A-F]{8})+)\s*$" % n, open(sys.argv[3]).read(), re.M)))
+img = bytearray(len(want)); addr = None
+for o, k, ln in [(int(a, 16), k, int(b)) for a, k, b in re.findall(r"@([0-9A-F]{6})\s+(\w+)\s+(\d+) bytes", v)]:
+    if k == "control": addr = int.from_bytes(lm[o + 9:o + 12], "big")      # CCW 06 aaaaaa ff 00 cccc at +8
+    elif k == "text": img[addr:addr + ln] = lm[o:o + ln][:max(0, len(want) - addr)]
+sys.exit(0 if want and bytes(img) == want else 1)
+PY941
+c941=0
+for v in L1:abc L2:bc L5:ab; do
+    n=${v%%:*}; o=""; for x in $(echo "${v#*:}" | sed 's/./& /g'); do o="$o $TMP/cs941$x.o"; done
+    "$LD" -o "$TMP/$n.lm" --name "$n" --allow-unresolved $o 2>/dev/null
+    "$FI" -v "$TMP/$n.lm" > "$TMP/$n.v" 2>&1
+    if python3 "$TMP/cs941.py" "$TMP/$n.lm" "$TMP/$n.v" "$FIX/cs941.iewl.txt" "$n"
+    then echo "  OK: $n text == IEWL (COUNT SD with its F'100')"
+    else echo "  FAIL: $n text differs from IEWL JOB00394"; c941=1; fi
+done
+for v in L3:bd L4:db; do
+    n=${v%%:*}; o=""; for x in $(echo "${v#*:}" | sed 's/./& /g'); do o="$o $TMP/cs941$x.o"; done
+    rm -f "$TMP/$n.lm"
+    "$LD" -o "$TMP/$n.lm" --name "$n" --allow-unresolved $o 2>"$TMP/$n.err"; r=$?
+    if [ $r = 1 ] && [ ! -e "$TMP/$n.lm" ] && grep -q 'common area COUNT (8 bytes) exceeds the control section of the same name (4 bytes).*IEW0552' "$TMP/$n.err"
+    then echo "  OK: $n longer COM than CSECT is IEW0552, rc 1, no module"
+    else echo "  FAIL: $n rc $r: $(cat "$TMP/$n.err")"; c941=1; fi
+done
+fails=$((fails + c941))
+
 printf '\n=== #821: pack options, non-member input, write errors, rc classes ===\n'
 c821_fails=0
 c821() { if [ "$2" = "$3" ]; then echo "  OK: $1"; else echo "  FAIL: $1 (rc $3, want $2)"; c821_fails=1; fi; }

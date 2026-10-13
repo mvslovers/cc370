@@ -1,0 +1,507 @@
+IEWL (F64-level linkage editor) on MVSTK5-REF, JOB00394 (2026-10-13), PARM='LIST,MAP,XREF,LET,NCAL'.
+L1=a+b+c  L2=b+c  L3=b+d  L4=d+b  L5=a+b  (fixtures/cs941{a,b,c,d}.s, assembled by IFOX00 in the same job).
+
+ F64-LEVEL LINKAGE EDITOR OPTIONS SPECIFIED LIST,MAP,XREF,LET,NCAL
+          DEFAULT OPTION(S) USED -  SIZE=(231424,55296)
+                                                CROSS REFERENCE TABLE
+  CONTROL SECTION                       ENTRY
+    NAME    ORIGIN  LENGTH                NAME   LOCATION     NAME   LOCATION     NAME   LOCATION     NAME   LOCATION
+  MAINX         00      1C
+  NAMEX         20       8
+  SUBX          28      18
+  COUNT         40       4
+  SUBY          48       C
+  LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION             LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION
+       18            SUBX            SUBX                          10            COUNT           COUNT
+       14            NAMEX           NAMEX                         38            COUNT           COUNT
+       3C            NAMEX           NAMEX                         50            COUNT           COUNT
+ ENTRY ADDRESS       00
+ TOTAL LENGTH        58
+****L1        DOES NOT EXIST BUT HAS BEEN ADDED TO DATA SET
+AUTHORIZATION CODE IS         0.
+--- SYSPRINT ---
+ F64-LEVEL LINKAGE EDITOR OPTIONS SPECIFIED LIST,MAP,XREF,LET,NCAL
+          DEFAULT OPTION(S) USED -  SIZE=(231424,55296)
+                                                CROSS REFERENCE TABLE
+  CONTROL SECTION                       ENTRY
+    NAME    ORIGIN  LENGTH                NAME   LOCATION     NAME   LOCATION     NAME   LOCATION     NAME   LOCATION
+  SUBX          00      18
+  COUNT         18       4
+  NAMEX         20       8
+  SUBY          28       C
+  LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION             LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION
+       10            COUNT           COUNT                         14            NAMEX           NAMEX
+       30            COUNT           COUNT
+ ENTRY ADDRESS       00
+ TOTAL LENGTH        38
+****L2        NOW ADDED TO DATA SET
+AUTHORIZATION CODE IS         0.
+--- SYSPRINT ---
+ F64-LEVEL LINKAGE EDITOR OPTIONS SPECIFIED LIST,MAP,XREF,LET,NCAL
+          DEFAULT OPTION(S) USED -  SIZE=(231424,55296)
+IEW0552  COUNT
+                                                CROSS REFERENCE TABLE
+  CONTROL SECTION                       ENTRY
+    NAME    ORIGIN  LENGTH                NAME   LOCATION     NAME   LOCATION     NAME   LOCATION     NAME   LOCATION
+  SUBX          00      18
+  COUNT         18       4
+  NAMEX         20       8
+  SUBZ          28       C
+  LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION             LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION
+       10            COUNT           COUNT                         14            NAMEX           NAMEX
+       30            COUNT           COUNT
+ ENTRY ADDRESS       00
+ TOTAL LENGTH        38
+****L3        NOW ADDED TO DATA SET
+AUTHORIZATION CODE IS         0.
+                                             DIAGNOSTIC MESSAGE DIRECTORY
+   IEW0552 ERROR - COMMON PRINTED EXCEEDED SIZE OF CONTROL SECTION WITH IDENTICAL NAME.
+--- SYSPRINT ---
+ F64-LEVEL LINKAGE EDITOR OPTIONS SPECIFIED LIST,MAP,XREF,LET,NCAL
+          DEFAULT OPTION(S) USED -  SIZE=(231424,55296)
+IEW0552  COUNT
+                                                CROSS REFERENCE TABLE
+  CONTROL SECTION                       ENTRY
+    NAME    ORIGIN  LENGTH                NAME   LOCATION     NAME   LOCATION     NAME   LOCATION     NAME   LOCATION
+  SUBZ          00       C
+  SUBX          10      18
+  COUNT         28       4
+  NAMEX         30       8
+  LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION             LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION
+        8            COUNT           COUNT                         20            COUNT           COUNT
+       24            NAMEX           NAMEX
+ ENTRY ADDRESS       00
+ TOTAL LENGTH        38
+****L4        NOW ADDED TO DATA SET
+AUTHORIZATION CODE IS         0.
+                                             DIAGNOSTIC MESSAGE DIRECTORY
+   IEW0552 ERROR - COMMON PRINTED EXCEEDED SIZE OF CONTROL SECTION WITH IDENTICAL NAME.
+--- SYSPRINT ---
+ F64-LEVEL LINKAGE EDITOR OPTIONS SPECIFIED LIST,MAP,XREF,LET,NCAL
+          DEFAULT OPTION(S) USED -  SIZE=(231424,55296)
+                                                CROSS REFERENCE TABLE
+  CONTROL SECTION                       ENTRY
+    NAME    ORIGIN  LENGTH                NAME   LOCATION     NAME   LOCATION     NAME   LOCATION     NAME   LOCATION
+  MAINX         00      1C
+  NAMEX         20       8
+  SUBX          28      18
+  COUNT         40       4
+  LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION             LOCATION  REFERS TO SYMBOL  IN CONTROL SECTION
+       18            SUBX            SUBX                          10            COUNT           COUNT
+       14            NAMEX           NAMEX                         38            COUNT           COUNT
+       3C            NAMEX           NAMEX
+ ENTRY ADDRESS       00
+ TOTAL LENGTH        48
+****L5        NOW ADDED TO DATA SET
+AUTHORIZATION CODE IS         0.
+--- SYSPRINT ---
+ LISTLOAD OUTPUT=BOTH,MEMBER=(L1,L2,L3,L4,L5)
+                                  *****  M O D U L E   S U M M A R Y  *****
+         MEMBER NAME   L1                                   MAIN ENTRY POINT  000000
+                  ** ALIASES **                   SECONDARY ENTRY POINT ADDRESSES ASSOCIATED WITH ALIASES:
+------------------------------------------------------------------------------------------------------------------------
+                       ****   LINKAGE EDITOR ATTRIBUTES OF MODULE   ****
+                **   BIT  STATUS         BIT  STATUS         BIT  STATUS         BIT  STATUS   **
+                      0  NOT-RENT         1  NOT-REUS         2  NOT-OVLY         3  NOT-TEST
+                      4  NOT-OL           5  BLOCK            6  EXEC             7  MULTI-RCD
+                      8  NOT-DC           9  ZERO-ORG         10 EP-ZERO          11 RLD
+                      12 EDIT             13 NO-SYMS          14 F-LEVEL          15 NOT-REFR
+------------------------------------------------------------------------------------------------------------------------
+                                    MODULE SSI:  NONE
+                                    APFCODE      00000000
+                   *****LOAD MODULE PROCESSED BY VS LINKAGE EDITOR
+                                        LISTING OF LOAD MODULE L1                                          PAGE 0001
+RECORD# 1     TYPE 20 - CESD     ESDID 1                        ESD SIZE 80
+               CESD#    SYMBOL    TYPE     ADDRESS     SEGNUM   ID/LENGTH(DEC)   (HEX)
+                  1    MAINX     00(SD)     000000        1            28          1C
+                  2    SUBX      00(SD)     000028        1            24          18
+                  3    COUNT     00(SD)     000040        1             4           4
+                  4    NAMEX     00(SD)     000020        1             8           8
+                  5    SUBY      00(SD)     000048        1            12           C
+RECORD# 2     TYPE 80 - IDR    SUBTYPE 01                      DATA SIZE 248
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000
+RECORD# 3     TYPE 80 - IDR    SUBTYPE 02                      DATA SIZE 19
+            F5F7F5F2  E2C3F1F0  F4400308  26286F01  92001F
+RECORD# 4     TYPE 80 - IDR    SUBTYPE 84                      DATA SIZE 26
+            00010004  00020003  800500F5  F7F4F1E2  C3F1F0F3  40020126  286F
+RECORD# 5     TYPE 01 - CONTROL            CONTROL SIZE 20                       CCW 06000000 40000058
+                 CESD#   LENGTH
+                    1     0020
+                    4     0008
+                    2     0018
+                    3     0008
+                    5     0010
+RECORD# 6                                              T E X T
+            000000    5810F010 5820F014 5830F018 07FE0000    00000040 00000020 00000028 00000000
+            000020    C6D9D6D4 C1404040 5810F010 5820F014    07FE0000 00000000 00000040 00000020
+            000040    00000064 00000000 5810F008 07FE0000    00000040 00000000
+RECORD# 7     TYPE 0E - RLD                                     RLD SIZE 48
+              R-PTR  P-PTR    FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR
+                  2      1    1C 000018
+                  3      1    0C 000010
+                  4      1    0C 000014
+                  3      2    0C 000038
+                  4      2    0C 00003C
+                  3      5    0C 000050
+ ******END OF LOAD MODULE LISTING
+                             NUMERICAL MAP AND CROSS-REFERENCE LIST OF LOAD MODULE L1                          PAGE 0001
+                 CONTROL SECTION                                        ENTRY
+                  LMOD LOC     NAME      LENGTH  TYPE                    LMOD LOC  CSECT LOC      NAME
+                      00     MAINX          1C    SD
+                      20     NAMEX          08    SD
+                      28     SUBX           18    SD
+                      40     COUNT          04    SD
+                      48     SUBY           0C    SD
+------------------------------------------------------------------------------------------------------------------------
+      LMOD LOC  CSECT LOC    IN CSECT              REFERS TO SYMBOL  AT LMOD LOC  CSECT LOC    IN CSECT
+          10        10       MAINX                     COUNT               40         00       COUNT
+          14        14       MAINX                     NAMEX               20         00       NAMEX
+          18        18       MAINX                     SUBX                28         00       SUBX
+          38        10       SUBX                      COUNT               40         00       COUNT
+          3C        14       SUBX                      NAMEX               20         00       NAMEX
+          50        08       SUBY                      COUNT               40         00       COUNT
+LENGTH OF LOAD MODULE     58
+                                        ALPHABETICAL MAP OF LOAD MODULE L1                                     PAGE 0002
+           CONTROL SECTION                                        ENTRY
+               NAME     LMOD LOC   LENGTH  TYPE                      NAME    LMOD LOC  CSECT LOC  CSECT NAME
+             COUNT          40        04    SD
+             MAINX          00        1C    SD
+             NAMEX          20        08    SD
+             SUBX           28        18    SD
+             SUBY           48        0C    SD
+                               ALPHABETICAL CROSS-REFERENCE LIST OF LOAD MODULE L1                             PAGE 0003
+  SYMBOL   AT LMOD LOC  CSECT LOC    IN CSECT              IS REFERRED TO BY LMOD LOC  CSECT LOC    IN CSECT
+ COUNT           40         00       COUNT                               10                10       MAINX
+ COUNT           40         00       COUNT                               38                10       SUBX
+ COUNT           40         00       COUNT                               50                08       SUBY
+ NAMEX           20         00       NAMEX                               14                14       MAINX
+ NAMEX           20         00       NAMEX                               3C                14       SUBX
+ SUBX            28         00       SUBX                                18                18       MAINX
+******END OF MAP AND CROSS-REFERENCE LISTING
+                                  *****  M O D U L E   S U M M A R Y  *****
+         MEMBER NAME   L2                                   MAIN ENTRY POINT  000000
+                  ** ALIASES **                   SECONDARY ENTRY POINT ADDRESSES ASSOCIATED WITH ALIASES:
+------------------------------------------------------------------------------------------------------------------------
+                       ****   LINKAGE EDITOR ATTRIBUTES OF MODULE   ****
+                **   BIT  STATUS         BIT  STATUS         BIT  STATUS         BIT  STATUS   **
+                      0  NOT-RENT         1  NOT-REUS         2  NOT-OVLY         3  NOT-TEST
+                      4  NOT-OL           5  BLOCK            6  EXEC             7  MULTI-RCD
+                      8  NOT-DC           9  ZERO-ORG         10 EP-ZERO          11 RLD
+                      12 EDIT             13 NO-SYMS          14 F-LEVEL          15 NOT-REFR
+------------------------------------------------------------------------------------------------------------------------
+                                    MODULE SSI:  NONE
+                                    APFCODE      00000000
+                   *****LOAD MODULE PROCESSED BY VS LINKAGE EDITOR
+                                        LISTING OF LOAD MODULE L2                                          PAGE 0001
+RECORD# 1     TYPE 20 - CESD     ESDID 1                        ESD SIZE 64
+               CESD#    SYMBOL    TYPE     ADDRESS     SEGNUM   ID/LENGTH(DEC)   (HEX)
+                  1    SUBX      00(SD)     000000        1            24          18
+                  2    COUNT     00(SD)     000018        1             4           4
+                  3    NAMEX     00(SD)     000020        1             8           8
+                  4    SUBY      00(SD)     000028        1            12           C
+RECORD# 2     TYPE 80 - IDR    SUBTYPE 01                      DATA SIZE 248
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000
+RECORD# 3     TYPE 80 - IDR    SUBTYPE 02                      DATA SIZE 19
+            F5F7F5F2  E2C3F1F0  F4400308  26286F01  92001F
+RECORD# 4     TYPE 80 - IDR    SUBTYPE 84                      DATA SIZE 24
+            00010002  00038004  00F5F7F4  F1E2C3F1  F0F34002  0126286F
+RECORD# 5     TYPE 01 - CONTROL            CONTROL SIZE 16                       CCW 06000000 40000038
+                 CESD#   LENGTH
+                    1     0018
+                    2     0008
+                    3     0008
+                    4     0010
+RECORD# 6                                              T E X T
+            000000    5810F010 5820F014 07FE0000 00000000    00000018 00000020 00000064 00000000
+            000020    C6D9D6D4 C2404040 5810F008 07FE0000    00000018 00000000
+RECORD# 7     TYPE 0E - RLD                                     RLD SIZE 24
+              R-PTR  P-PTR    FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR
+                  2      1    0C 000010
+                  3      1    0C 000014
+                  2      4    0C 000030
+ ******END OF LOAD MODULE LISTING
+                             NUMERICAL MAP AND CROSS-REFERENCE LIST OF LOAD MODULE L2                          PAGE 0001
+                 CONTROL SECTION                                        ENTRY
+                  LMOD LOC     NAME      LENGTH  TYPE                    LMOD LOC  CSECT LOC      NAME
+                      00     SUBX           18    SD
+                      18     COUNT          04    SD
+                      20     NAMEX          08    SD
+                      28     SUBY           0C    SD
+------------------------------------------------------------------------------------------------------------------------
+      LMOD LOC  CSECT LOC    IN CSECT              REFERS TO SYMBOL  AT LMOD LOC  CSECT LOC    IN CSECT
+          10        10       SUBX                      COUNT               18         00       COUNT
+          14        14       SUBX                      NAMEX               20         00       NAMEX
+          30        08       SUBY                      COUNT               18         00       COUNT
+LENGTH OF LOAD MODULE     38
+                                        ALPHABETICAL MAP OF LOAD MODULE L2                                     PAGE 0002
+           CONTROL SECTION                                        ENTRY
+               NAME     LMOD LOC   LENGTH  TYPE                      NAME    LMOD LOC  CSECT LOC  CSECT NAME
+             COUNT          18        04    SD
+             NAMEX          20        08    SD
+             SUBX           00        18    SD
+             SUBY           28        0C    SD
+                               ALPHABETICAL CROSS-REFERENCE LIST OF LOAD MODULE L2                             PAGE 0003
+  SYMBOL   AT LMOD LOC  CSECT LOC    IN CSECT              IS REFERRED TO BY LMOD LOC  CSECT LOC    IN CSECT
+ COUNT           18         00       COUNT                               10                10       SUBX
+ COUNT           18         00       COUNT                               30                08       SUBY
+ NAMEX           20         00       NAMEX                               14                14       SUBX
+******END OF MAP AND CROSS-REFERENCE LISTING
+                                  *****  M O D U L E   S U M M A R Y  *****
+         MEMBER NAME   L3                                   MAIN ENTRY POINT  000000
+                  ** ALIASES **                   SECONDARY ENTRY POINT ADDRESSES ASSOCIATED WITH ALIASES:
+------------------------------------------------------------------------------------------------------------------------
+                       ****   LINKAGE EDITOR ATTRIBUTES OF MODULE   ****
+                **   BIT  STATUS         BIT  STATUS         BIT  STATUS         BIT  STATUS   **
+                      0  NOT-RENT         1  NOT-REUS         2  NOT-OVLY         3  NOT-TEST
+                      4  NOT-OL           5  BLOCK            6  EXEC             7  MULTI-RCD
+                      8  NOT-DC           9  ZERO-ORG         10 EP-ZERO          11 RLD
+                      12 EDIT             13 NO-SYMS          14 F-LEVEL          15 NOT-REFR
+------------------------------------------------------------------------------------------------------------------------
+                                    MODULE SSI:  NONE
+                                    APFCODE      00000000
+                   *****LOAD MODULE PROCESSED BY VS LINKAGE EDITOR
+                                        LISTING OF LOAD MODULE L3                                          PAGE 0001
+RECORD# 1     TYPE 20 - CESD     ESDID 1                        ESD SIZE 64
+               CESD#    SYMBOL    TYPE     ADDRESS     SEGNUM   ID/LENGTH(DEC)   (HEX)
+                  1    SUBX      00(SD)     000000        1            24          18
+                  2    COUNT     00(SD)     000018        1             4           4
+                  3    NAMEX     00(SD)     000020        1             8           8
+                  4    SUBZ      00(SD)     000028        1            12           C
+RECORD# 2     TYPE 80 - IDR    SUBTYPE 01                      DATA SIZE 248
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000
+RECORD# 3     TYPE 80 - IDR    SUBTYPE 02                      DATA SIZE 19
+            F5F7F5F2  E2C3F1F0  F4400308  26286F01  92001F
+RECORD# 4     TYPE 80 - IDR    SUBTYPE 84                      DATA SIZE 24
+            00010002  00038004  00F5F7F4  F1E2C3F1  F0F34002  0126286F
+RECORD# 5     TYPE 01 - CONTROL            CONTROL SIZE 16                       CCW 06000000 40000038
+                 CESD#   LENGTH
+                    1     0018
+                    2     0008
+                    3     0008
+                    4     0010
+RECORD# 6                                              T E X T
+            000000    5810F010 5820F014 07FE0000 00000000    00000018 00000020 00000064 00000000
+            000020    C6D9D6D4 C2404040 5810F008 07FE0000    00000018 00000000
+RECORD# 7     TYPE 0E - RLD                                     RLD SIZE 24
+              R-PTR  P-PTR    FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR
+                  2      1    0C 000010
+                  3      1    0C 000014
+                  2      4    0C 000030
+ ******END OF LOAD MODULE LISTING
+                             NUMERICAL MAP AND CROSS-REFERENCE LIST OF LOAD MODULE L3                          PAGE 0001
+                 CONTROL SECTION                                        ENTRY
+                  LMOD LOC     NAME      LENGTH  TYPE                    LMOD LOC  CSECT LOC      NAME
+                      00     SUBX           18    SD
+                      18     COUNT          04    SD
+                      20     NAMEX          08    SD
+                      28     SUBZ           0C    SD
+------------------------------------------------------------------------------------------------------------------------
+      LMOD LOC  CSECT LOC    IN CSECT              REFERS TO SYMBOL  AT LMOD LOC  CSECT LOC    IN CSECT
+          10        10       SUBX                      COUNT               18         00       COUNT
+          14        14       SUBX                      NAMEX               20         00       NAMEX
+          30        08       SUBZ                      COUNT               18         00       COUNT
+LENGTH OF LOAD MODULE     38
+                                        ALPHABETICAL MAP OF LOAD MODULE L3                                     PAGE 0002
+           CONTROL SECTION                                        ENTRY
+               NAME     LMOD LOC   LENGTH  TYPE                      NAME    LMOD LOC  CSECT LOC  CSECT NAME
+             COUNT          18        04    SD
+             NAMEX          20        08    SD
+             SUBX           00        18    SD
+             SUBZ           28        0C    SD
+                               ALPHABETICAL CROSS-REFERENCE LIST OF LOAD MODULE L3                             PAGE 0003
+  SYMBOL   AT LMOD LOC  CSECT LOC    IN CSECT              IS REFERRED TO BY LMOD LOC  CSECT LOC    IN CSECT
+ COUNT           18         00       COUNT                               10                10       SUBX
+ COUNT           18         00       COUNT                               30                08       SUBZ
+ NAMEX           20         00       NAMEX                               14                14       SUBX
+******END OF MAP AND CROSS-REFERENCE LISTING
+                                  *****  M O D U L E   S U M M A R Y  *****
+         MEMBER NAME   L4                                   MAIN ENTRY POINT  000000
+                  ** ALIASES **                   SECONDARY ENTRY POINT ADDRESSES ASSOCIATED WITH ALIASES:
+------------------------------------------------------------------------------------------------------------------------
+                       ****   LINKAGE EDITOR ATTRIBUTES OF MODULE   ****
+                **   BIT  STATUS         BIT  STATUS         BIT  STATUS         BIT  STATUS   **
+                      0  NOT-RENT         1  NOT-REUS         2  NOT-OVLY         3  NOT-TEST
+                      4  NOT-OL           5  BLOCK            6  EXEC             7  MULTI-RCD
+                      8  NOT-DC           9  ZERO-ORG         10 EP-ZERO          11 RLD
+                      12 EDIT             13 NO-SYMS          14 F-LEVEL          15 NOT-REFR
+------------------------------------------------------------------------------------------------------------------------
+                                    MODULE SSI:  NONE
+                                    APFCODE      00000000
+                   *****LOAD MODULE PROCESSED BY VS LINKAGE EDITOR
+                                        LISTING OF LOAD MODULE L4                                          PAGE 0001
+RECORD# 1     TYPE 20 - CESD     ESDID 1                        ESD SIZE 64
+               CESD#    SYMBOL    TYPE     ADDRESS     SEGNUM   ID/LENGTH(DEC)   (HEX)
+                  1    SUBZ      00(SD)     000000        1            12           C
+                  2    COUNT     00(SD)     000028        1             4           4
+                  3    SUBX      00(SD)     000010        1            24          18
+                  4    NAMEX     00(SD)     000030        1             8           8
+RECORD# 2     TYPE 80 - IDR    SUBTYPE 01                      DATA SIZE 248
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000
+RECORD# 3     TYPE 80 - IDR    SUBTYPE 02                      DATA SIZE 19
+            F5F7F5F2  E2C3F1F0  F4400308  26286F01  92001F
+RECORD# 4     TYPE 80 - IDR    SUBTYPE 84                      DATA SIZE 24
+            00010003  00028004  00F5F7F4  F1E2C3F1  F0F34002  0126286F
+RECORD# 5     TYPE 01 - CONTROL            CONTROL SIZE 16                       CCW 06000000 40000038
+                 CESD#   LENGTH
+                    1     0010
+                    3     0018
+                    2     0008
+                    4     0008
+RECORD# 6                                              T E X T
+            000000    5810F008 07FE0000 00000028 00000000    5810F010 5820F014 07FE0000 00000000
+            000020    00000028 00000030 00000064 00000000    C6D9D6D4 C2404040
+RECORD# 7     TYPE 0E - RLD                                     RLD SIZE 24
+              R-PTR  P-PTR    FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR
+                  2      1    0C 000008
+                  2      3    0C 000020
+                  4      3    0C 000024
+ ******END OF LOAD MODULE LISTING
+                             NUMERICAL MAP AND CROSS-REFERENCE LIST OF LOAD MODULE L4                          PAGE 0001
+                 CONTROL SECTION                                        ENTRY
+                  LMOD LOC     NAME      LENGTH  TYPE                    LMOD LOC  CSECT LOC      NAME
+                      00     SUBZ           0C    SD
+                      10     SUBX           18    SD
+                      28     COUNT          04    SD
+                      30     NAMEX          08    SD
+------------------------------------------------------------------------------------------------------------------------
+      LMOD LOC  CSECT LOC    IN CSECT              REFERS TO SYMBOL  AT LMOD LOC  CSECT LOC    IN CSECT
+          08        08       SUBZ                      COUNT               28         00       COUNT
+          20        10       SUBX                      COUNT               28         00       COUNT
+          24        14       SUBX                      NAMEX               30         00       NAMEX
+LENGTH OF LOAD MODULE     38
+                                        ALPHABETICAL MAP OF LOAD MODULE L4                                     PAGE 0002
+           CONTROL SECTION                                        ENTRY
+               NAME     LMOD LOC   LENGTH  TYPE                      NAME    LMOD LOC  CSECT LOC  CSECT NAME
+             COUNT          28        04    SD
+             NAMEX          30        08    SD
+             SUBX           10        18    SD
+             SUBZ           00        0C    SD
+                               ALPHABETICAL CROSS-REFERENCE LIST OF LOAD MODULE L4                             PAGE 0003
+  SYMBOL   AT LMOD LOC  CSECT LOC    IN CSECT              IS REFERRED TO BY LMOD LOC  CSECT LOC    IN CSECT
+ COUNT           28         00       COUNT                               08                08       SUBZ
+ COUNT           28         00       COUNT                               20                10       SUBX
+ NAMEX           30         00       NAMEX                               24                14       SUBX
+******END OF MAP AND CROSS-REFERENCE LISTING
+                                  *****  M O D U L E   S U M M A R Y  *****
+         MEMBER NAME   L5                                   MAIN ENTRY POINT  000000
+                  ** ALIASES **                   SECONDARY ENTRY POINT ADDRESSES ASSOCIATED WITH ALIASES:
+------------------------------------------------------------------------------------------------------------------------
+                       ****   LINKAGE EDITOR ATTRIBUTES OF MODULE   ****
+                **   BIT  STATUS         BIT  STATUS         BIT  STATUS         BIT  STATUS   **
+                      0  NOT-RENT         1  NOT-REUS         2  NOT-OVLY         3  NOT-TEST
+                      4  NOT-OL           5  BLOCK            6  EXEC             7  MULTI-RCD
+                      8  NOT-DC           9  ZERO-ORG         10 EP-ZERO          11 RLD
+                      12 EDIT             13 NO-SYMS          14 F-LEVEL          15 NOT-REFR
+------------------------------------------------------------------------------------------------------------------------
+                                    MODULE SSI:  NONE
+                                    APFCODE      00000000
+                   *****LOAD MODULE PROCESSED BY VS LINKAGE EDITOR
+                                        LISTING OF LOAD MODULE L5                                          PAGE 0001
+RECORD# 1     TYPE 20 - CESD     ESDID 1                        ESD SIZE 64
+               CESD#    SYMBOL    TYPE     ADDRESS     SEGNUM   ID/LENGTH(DEC)   (HEX)
+                  1    MAINX     00(SD)     000000        1            28          1C
+                  2    SUBX      00(SD)     000028        1            24          18
+                  3    COUNT     00(SD)     000040        1             4           4
+                  4    NAMEX     00(SD)     000020        1             8           8
+RECORD# 2     TYPE 80 - IDR    SUBTYPE 01                      DATA SIZE 248
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000  00000000
+            00000000  00000000
+RECORD# 3     TYPE 80 - IDR    SUBTYPE 02                      DATA SIZE 19
+            F5F7F5F2  E2C3F1F0  F4400308  26286F01  92001F
+RECORD# 4     TYPE 80 - IDR    SUBTYPE 84                      DATA SIZE 24
+            00010004  00028003  00F5F7F4  F1E2C3F1  F0F34002  0126286F
+RECORD# 5     TYPE 01 - CONTROL            CONTROL SIZE 16                       CCW 06000000 40000048
+                 CESD#   LENGTH
+                    1     0020
+                    4     0008
+                    2     0018
+                    3     0008
+RECORD# 6                                              T E X T
+            000000    5810F010 5820F014 5830F018 07FE0000    00000040 00000020 00000028 00000000
+            000020    C6D9D6D4 C1404040 5810F010 5820F014    07FE0000 00000000 00000040 00000020
+            000040    00000064 00000000
+RECORD# 7     TYPE 0E - RLD                                     RLD SIZE 40
+              R-PTR  P-PTR    FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR   FL  ADDR
+                  2      1    1C 000018
+                  3      1    0C 000010
+                  4      1    0C 000014
+                  3      2    0C 000038
+                  4      2    0C 00003C
+ ******END OF LOAD MODULE LISTING
+                             NUMERICAL MAP AND CROSS-REFERENCE LIST OF LOAD MODULE L5                          PAGE 0001
+                 CONTROL SECTION                                        ENTRY
+                  LMOD LOC     NAME      LENGTH  TYPE                    LMOD LOC  CSECT LOC      NAME
+                      00     MAINX          1C    SD
+                      20     NAMEX          08    SD
+                      28     SUBX           18    SD
+                      40     COUNT          04    SD
+------------------------------------------------------------------------------------------------------------------------
+      LMOD LOC  CSECT LOC    IN CSECT              REFERS TO SYMBOL  AT LMOD LOC  CSECT LOC    IN CSECT
+          10        10       MAINX                     COUNT               40         00       COUNT
+          14        14       MAINX                     NAMEX               20         00       NAMEX
+          18        18       MAINX                     SUBX                28         00       SUBX
+          38        10       SUBX                      COUNT               40         00       COUNT
+          3C        14       SUBX                      NAMEX               20         00       NAMEX
+LENGTH OF LOAD MODULE     48
+                                        ALPHABETICAL MAP OF LOAD MODULE L5                                     PAGE 0002
+           CONTROL SECTION                                        ENTRY
+               NAME     LMOD LOC   LENGTH  TYPE                      NAME    LMOD LOC  CSECT LOC  CSECT NAME
+             COUNT          40        04    SD
+             MAINX          00        1C    SD
+             NAMEX          20        08    SD
+             SUBX           28        18    SD
+                               ALPHABETICAL CROSS-REFERENCE LIST OF LOAD MODULE L5                             PAGE 0003
+  SYMBOL   AT LMOD LOC  CSECT LOC    IN CSECT              IS REFERRED TO BY LMOD LOC  CSECT LOC    IN CSECT
+ COUNT           40         00       COUNT                               10                10       MAINX
+ COUNT           40         00       COUNT                               38                10       SUBX
+ NAMEX           20         00       NAMEX                               14                14       MAINX
+ NAMEX           20         00       NAMEX                               3C                14       SUBX
+ SUBX            28         00       SUBX                                18                18       MAINX
+******END OF MAP AND CROSS-REFERENCE LISTING
+
+L1:                   3    COUNT     00(SD)     000040        1             4           4
+L1:             000000    5810F010 5820F014 5830F018 07FE0000    00000040 00000020 00000028 00000000
+L1:             000020    C6D9D6D4 C1404040 5810F010 5820F014    07FE0000 00000000 00000040 00000020
+L1:             000040    00000064 00000000 5810F008 07FE0000    00000040 00000000
+L2:                   2    COUNT     00(SD)     000018        1             4           4
+L2:             000000    5810F010 5820F014 07FE0000 00000000    00000018 00000020 00000064 00000000
+L2:             000020    C6D9D6D4 C2404040 5810F008 07FE0000    00000018 00000000
+L3:                   2    COUNT     00(SD)     000018        1             4           4
+L3:             000000    5810F010 5820F014 07FE0000 00000000    00000018 00000020 00000064 00000000
+L3:             000020    C6D9D6D4 C2404040 5810F008 07FE0000    00000018 00000000
+L4:                   2    COUNT     00(SD)     000028        1             4           4
+L4:             000000    5810F008 07FE0000 00000028 00000000    5810F010 5820F014 07FE0000 00000000
+L4:             000020    00000028 00000030 00000064 00000000    C6D9D6D4 C2404040
+L5:                   3    COUNT     00(SD)     000040        1             4           4
+L5:             000000    5810F010 5820F014 5830F018 07FE0000    00000040 00000020 00000028 00000000
+L5:             000020    C6D9D6D4 C1404040 5810F010 5820F014    07FE0000 00000000 00000040 00000020
+L5:             000040    00000064 00000000

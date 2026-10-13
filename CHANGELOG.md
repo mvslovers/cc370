@@ -20,6 +20,18 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Fixed
+- **`ld370`: a common area of the name of a control section binds to the
+  control section, in either order** (#941). When an object with `NAME COM`
+  came after one with `NAME CSECT`, ld370 turned the CSECT into a common area:
+  its text was dropped -- an initial value such as `DC F'100'` was gone -- and
+  every reference went to an empty area, rc 0. A common before the CSECT was
+  already right. Now the CSECT keeps its place and its data however the
+  objects are ordered, as the IBM linkage editor does (measured: identical
+  text). A common longer than the control section of its name is an error,
+  as there (IEW0552): ld370 names both lengths, ends with rc 1 and writes no
+  module.
+
 ## [1.6.1] - 2026-10-11
 
 ### Fixed
