@@ -121,7 +121,17 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
-## cc370 1.6.1 released; 1.6.2-dev on main (2026-10-11)
+## cc370 1.6.2 released; 1.6.3-dev on main (2026-10-13)
+
+- **1.6.2** (tag on `7b7506e`, PR #944; Mike's go): ld370 #941 (COM after
+  a CSECT of its name). First release run with the Homebrew token (#939):
+  ubuntu-24.04-arm green at the first attempt. One job, "brew libc370 alone
+  (macos-latest)", waited 15 min for a runner, was cancelled with no step
+  run, and was re-run. install.sh from a scratch prefix (libc370 2.10.3):
+  the #941 case links COUNT as SD from b.o; the longer COM is rc 1, IEW0552.
+  Release page reworked. pl1c370 tests its three-procedure case on it.
+
+## cc370 1.6.1 released (2026-10-11)
 
 - ~~#941 ld370: a COM after a CSECT of the same name turns it into a
   common area~~ **done** (#942, 2026-10-13; reported by pl1c370). IEWL
