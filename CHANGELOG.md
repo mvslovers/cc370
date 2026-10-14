@@ -20,6 +20,8 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-10-14
+
 ### Fixed
 - **`as370`/`dasm370`: `MVCK`, `MVCP` and `MVCS` encode their two registers**
   (#947). These three carry R1 and R3 in the second byte, written
