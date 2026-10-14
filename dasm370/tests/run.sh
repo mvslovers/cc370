@@ -1523,6 +1523,24 @@ twant "cand-side-True"          "a side given no export is null in the document,
 # once: `DS XL8 not covered by TXT' at 000000, ENT at 000008, the adcon at
 # 000010, `A(SECTB+X''14'')' instead of a label in the section, and the last six
 # bytes missing entirely.
+# ---- MVCK/MVCP/MVCS: two registers, not a length (cc370#947) -----------
+# A one-length reading round-trips perfectly, because as370 encoded these the
+# same wrong way, so the bytes AND the spelling are both asserted.
+"$A" tests/ssregs.s -o "$T/sr.obj" > "$T/sr.asm" 2>&1
+if [ $? -ge 8 ]; then fail "the MVCK fixture does not assemble"; head -3 "$T/sr.asm"; fi
+od -An -tx1 "$T/sr.obj" | tr -d ' \n' | grep -q d94320005000 && od -An -tx1 "$T/sr.obj" | tr -d ' \n' | grep -q da47a010b020dbf020005000 \
+    && pass "as370 writes R1 and R3 as two nibbles: D943, DA47, DBF0" \
+    || fail "as370 must write R1 and R3 as two nibbles (D943, DA47, DBF0)"
+"$D" --format free "$T/sr.obj" -o "$T/sr.s" 2>/dev/null
+grep -qE '^[^ ]* +MVCK +0\(4,2\),0\(5\),3' "$T/sr.s" && pass "MVCK: R1 in the operand, R3 as its own operand" || { fail "MVCK must decode as 0(4,2),0(5),3"; grep MVCK "$T/sr.s"; }
+grep -qE '^ +MVCP +16\(4,10\),32\(11\),7' "$T/sr.s" && pass "MVCP: the same two registers" || { fail "MVCP must decode as 16(4,10),32(11),7"; grep MVCP "$T/sr.s"; }
+grep -qE '^ +MVCS +0\(15,2\),0\(5\),0' "$T/sr.s" && pass "MVCS: R1 15 and R3 0, the nibble edges" || { fail "MVCS must decode as 0(15,2),0(5),0"; grep MVCS "$T/sr.s"; }
+"$D" "$T/sr.obj" -o "$T/sr2.s" 2>/dev/null
+"$A" "$T/sr2.s" -o "$T/sr2.obj" > /dev/null 2>&1
+n=$(( ($(wc -c < "$T/sr.obj") / 80 - 1) * 80 ))
+head -c $n "$T/sr.obj" > "$T/sr.cut"; head -c $n "$T/sr2.obj" > "$T/sr2.cut"
+cmp -s "$T/sr.cut" "$T/sr2.cut" && pass "the MVCK fixture round-trips byte-identically" || fail "the MVCK fixture does not round-trip"
+
 "$A" tests/twosect.s -o "$T/ts.obj" > "$T/ts.asm" 2>&1
 if [ $? -ge 8 ]; then fail "the two-section fixture does not assemble"; head -3 "$T/ts.asm"; fi
 "$D" --csect SECTB "$T/ts.obj" -o "$T/ts-b.s" 2>"$T/ts-b.err"

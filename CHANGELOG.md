@@ -20,6 +20,19 @@ neither number is mistaken for the other.
 
 ## [Unreleased]
 
+### Fixed
+- **`as370`/`dasm370`: `MVCK`, `MVCP` and `MVCS` encode their two registers**
+  (#947). These three carry R1 and R3 in the second byte, written
+  `D1(R1,B1),D2(B2),R3`. as370 took the R1 subscript for a length, wrote it
+  minus one across the whole byte and never read R3: `MVCK 0(4,2),0(5),3`
+  came out `D903 2000 5000` where the machine needs `D943 2000 5000`, at
+  rc 0. A missing R3 now fails at severity 12, and an R1 or R3 outside 0-15
+  at severity 8. dasm370 decoded the same byte as a length, so a disassembly
+  now reads `MVCK 0(4,2),0(5),3` instead of `MVCK 0(68,2),0(5)`; the bytes
+  reassemble unchanged either way. Assembler XF does not know these three
+  instructions, so their encoding follows the Principles of Operation.
+  `TPROT` was not affected.
+
 ## [1.6.2] - 2026-10-13
 
 ### Fixed

@@ -205,6 +205,17 @@ struct opc {
  * that on the first build, which is the third-consumer property doing its job. */
 static inline int opc_ss_two_length(int op) { return (op & 0xF0) == 0xF0 && op != 0xF0; }
 static inline int opc_ss_srp(int op)        { return op == 0xF0; }
+/* MVCK, MVCP and MVCS are the fourth SS shape: byte 1 holds two REGISTERS, R1
+ * (the true length, in a register) high and R3 (the key, or the access key for
+ * MVCP/MVCS) low, written D1(R1,B1),D2(B2),R3.  Neither nibble is a length, so
+ * neither is stored minus one.  They used to take the one-length path, which
+ * wrote R1-1 across the whole byte and never read R3: `MVCK 0(4,2),0(5),3'
+ * came out D903 2000 5000 where the machine needs D943 2000 5000 (cc370#947).
+ *
+ * IFOX00 does not know these three -- genop.asm has no entry for them -- so
+ * unlike every other SS shape here this one is NOT pinned to IFOX00 and cannot
+ * be; the encoding is the Principles of Operation's. */
+static inline int opc_ss_regs(int op)       { return op == 0xD9 || op == 0xDA || op == 0xDB; }
 
 static const struct opc optab[] = {
     { "AR", F_RR, 0x1A, 0, 1, OPD_PRIMARY, OPC_APP },
