@@ -1056,6 +1056,14 @@ static int operands(const struct opc *o, const unsigned char *b, long a, char *o
             addr_l(a, d1, l1, b1, t1, sizeof t1);
             addr_b(a, d2, b2, t2, sizeof t2);
             snprintf(out, n, "%s,%s,%d", t1, t2, b[1] & 0xf);
+        } else if (opc_ss_regs(o->op)) {
+            /* MVCK/MVCP/MVCS: R1 and R3, two registers and no length.  Read
+             * as a one-length SS, D943 came back as `MVCK 0(68,2),0(5)', which
+             * round-trips -- because the assembler was wrong the same way
+             * (cc370#947). */
+            addr_l(a, d1, (b[1] >> 4) & 0xf, b1, t1, sizeof t1);
+            addr_b(a, d2, b2, t2, sizeof t2);
+            snprintf(out, n, "%s,%s,%d", t1, t2, b[1] & 0xf);
         } else if (opc_ss_two_length(o->op)) {
             l1 = ((b[1] >> 4) & 0xf) + 1;
             l2 = (b[1] & 0xf) + 1;

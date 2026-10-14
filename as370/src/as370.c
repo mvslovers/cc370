@@ -6959,6 +6959,24 @@ static void do_pass(int pass, char **lines, int nlines) {
                             note_operr("SRP needs a third operand, the rounding digit (IFOX00 IFO177)", 12, i);
                         }
                         lenb = (int)((((len1 ? (len1 - 1) & 0xf : 0) << 4)) | (i3 & 0xf));
+                    } else if (opc_ss_regs(o->op)) {
+                        /* MVCK/MVCP/MVCS D1(R1,B1),D2(B2),R3: two REGISTERS, written
+                         * as they are -- not minus one, and never an implied length,
+                         * since a register the programmer did not name is a guess
+                         * (cc370#947). Not IFOX00's: it does not know these three. */
+                        long r1 = (ns >= 1 && !(se1 & 1)) ? sub[0] : -1;
+                        int r3 = -1;
+                        if (r1 < 0 || r1 > 15) {
+                            note_operr("R1 must be written as a register 0-15, D1(R1,B1)", 8, i); r1 = 0;
+                        }
+                        if (nf >= 3 && F[2][0]) {
+                            r3 = using_reg(F[2]);
+                            if (r3 < 0) { note_operr("R3 must be an absolute register 0-15", 8, i); r3 = 0; }
+                        } else {
+                            note_operr("needs a third operand, the R3 register", 12, i); r3 = 0;
+                        }
+                        if (nf > 3) note_operr("too many operands (IFOX00 IFO211)", 12, i);
+                        lenb = (int)((r1 << 4) | r3);
                     } else
                     lenb = twol ? (((len1 ? (len1 - 1) & 0xf : 0) << 4) | (len2 ? (len2 - 1) & 0xf : 0))
                                 : (len1 ? (len1 - 1) & 0xff : 0);

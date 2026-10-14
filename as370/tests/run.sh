@@ -1130,6 +1130,31 @@ else
     echo "opcodes_370: FAIL (TPROT/IPTE: rc $r, IFO211 x$n211, deck vs tests/ref/tprotipte.obj)"; fail=1
 fi
 rm -f /tmp/_tp56.obj /tmp/_tp56.out /tmp/_tp56a /tmp/_tp56b
+# MVCK, MVCP and MVCS carry two REGISTERS in byte 1, R1 high and R3 low, and
+# neither is a length. They took the one-length SS path, which wrote R1-1
+# across the byte and never read R3: `MVCK 0(4,2),0(5),3' came out D903 where
+# the machine needs D943, and a missing R3 assembled at rc 0 (cc370#947).
+# IFOX00 does not know the three, so the bytes are pinned to the POPS format.
+if ! ./as370 tests/mvckregs.s -o /tmp/_mk947.obj >/dev/null 2>&1; then
+    echo "mvck_regs: ASSEMBLE FAILED"; fail=1
+else
+    hex=$(od -An -tx1 /tmp/_mk947.obj | tr -d ' \n')
+    if echo "$hex" | grep -q d94320005000d947a010b020da4320005000db4320005000d943c026c02edbf020005000; then
+        echo "mvck_regs: OK (R1 and R3 as two nibbles, MVCK/MVCP/MVCS)"
+    else
+        echo "mvck_regs: FAIL (encoding not as pinned)"; fail=1
+    fi
+fi
+rm -f /tmp/_mk947.obj
+# The negative controls: a missing R3 is severity 12, an R1 or R3 outside 0-15
+# and an omitted R1 are severity 8 -- never a register filled in for the writer.
+for c in '0(4,2),0(5):12' '0(4,2),0(5),16:8' '0(16,2),0(5),3:8' 'A,B,3:8'; do
+    printf '%s\n' 'T        CSECT' '         USING T,12' "         MVCK  ${c%:*}" 'A        DS    CL8' 'B        DS    CL8' '         END' > /tmp/_mk947n.s
+    ./as370 /tmp/_mk947n.s -o /tmp/_mk947n.obj >/dev/null 2>&1; r=$?
+    if [ "$r" = "${c##*:}" ]; then echo "mvck_regs: OK (MVCK ${c%:*} -> rc $r)"
+    else echo "mvck_regs: FAIL (MVCK ${c%:*} -> rc $r, want ${c##*:})"; fail=1; fi
+done
+rm -f /tmp/_mk947n.s /tmp/_mk947n.obj
 # BRXH and BRXLE are ESA/390 and IFOX00 does not know them (genop.asm has
 # WRD/RDD at X'84'/X'85', no BRX*).  as370 took them as F_SI -- R1 dropped,
 # the target written as a base and displacement, rc 0 -- until #56 dropped the
