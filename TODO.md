@@ -121,6 +121,18 @@ front of you, the second is nineteen-twentieths unattributable.
 
 ---
 
+## cc370 1.6.3 released; 1.6.4-dev on main (2026-10-14)
+
+- **1.6.3** (tag on `802dde1`, PR #949; Mike's go): as370/dasm370 #947
+  (MVCK/MVCP/MVCS lost R1 and R3; reported by oftpd, earlier met by nsf370).
+  No IFOX00 oracle -- Assembler XF has no entry for the three -- so pinned to
+  POPS. Tree-wide gate 5246 -> 5246, all 5528 decks identical; 16 stage-1a
+  sections with MVCK reassemble identically through dasm370. All release
+  jobs green at the first attempt, Homebrew checks included. install.sh from
+  a scratch prefix (libc370 2.11.0): MVCK D943, missing R3 severity 12.
+  ~/.local updated to 1.6.3 on Mike's request, cc370 only (NO_LIBC370,
+  NO_MACLIB370). Release page reworked.
+
 ## cc370 1.6.2 released; 1.6.3-dev on main (2026-10-13)
 
 - **1.6.2** (tag on `7b7506e`, PR #944; Mike's go): ld370 #941 (COM after
