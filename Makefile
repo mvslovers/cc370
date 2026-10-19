@@ -1,21 +1,26 @@
 # cc370 -- host-native MVS cross-toolchain build + install.
 #
-# One driver (cc370) plus five standalone tools
-# (as370 / ld370 / ar370 / file370 / xmit370).
-# file370 is the read-only inspector (`file`/objdump for the toolchain formats)
-# and xmit370 packs a host directory into a TSO TRANSMIT file (and reads one
-# back); neither is invoked by the driver, so they get a PATH link but no
-# tooldir link.
+# One driver (cc370) plus eight standalone tools
+# (as370 / ld370 / ar370 / file370 / xmit370 / cmplmd370 / dasm370 / idrdump370).
+# as370, ld370 and ar370 also get tooldir links, where the driver looks them up.
+# The other five get a PATH link only: file370 is the read-only inspector
+# (`file`/objdump for the toolchain formats), xmit370 packs a host directory
+# into a TSO TRANSMIT file (and reads one back), cmplmd370 compares an object
+# deck against a CSECT of a load module byte for byte, dasm370 disassembles one
+# CSECT of an object deck back into as370 source, and idrdump370 walks a load
+# module's IDR chain.
 # Clean cc370-branded layout under $(PREFIX): everything for the target lives in
 # one cc370/ tree; only the user-facing binaries sit on PATH.  (The
 # i370-ibm-mvspdp triple is an internal config.sub alias; nothing here carries it.)
 #
 #   bin/cc370                      the driver (the only "driver")
-#   bin/{as370,ld370,ar370,file370,xmit370} symlinks -> ../cc370/bin/* (PATH access)
+#   bin/{as370,ld370,ar370,file370,xmit370,cmplmd370,dasm370,idrdump370}
+#                                  symlinks -> ../cc370/bin/* (PATH access)
 #   libexec/cc370/1.0.0/cc1        the compiler proper (driver-private)
 #   libexec/cc370/1.0.0/{as,ld,ar} symlinks beside cc1; the driver's tooldir,
 #                                  where it looks up as/ld/ar by short name
-#   cc370/bin/{as370,ld370,ar370,file370,xmit370}  the real tool binaries
+#   cc370/bin/{as370,ld370,ar370,file370,xmit370,cmplmd370,dasm370,idrdump370}
+#                                  the real tool binaries
 #   cc370/{include,lib,macros}     the libc370 sysroot (headers, libc.a, crt*.o,
 #                                  + macros; as370 finds them via <exedir>/../macros)
 #   lib/cc370/1.0.0/               EMPTY but REQUIRED -- this is GCC's libsubdir
@@ -25,11 +30,11 @@
 #                                  it; remove it and the link fails ("cannot find
 #                                  -lc"). Created by install-compiler. Leave it be.
 #
-#   make / make all build the whole toolchain (cc370 + the five tools + man)
-#   make tools      only as370 / ld370 / ar370 / file370 / xmit370   [fast]
+#   make / make all build the whole toolchain (cc370 + the eight tools + runtime + man)
+#   make tools      only the eight standalone tools                  [fast]
 #   make compiler   configure + build the driver (cc370) and cc1   [slow]
 #   make install    build (if needed) + install everything into $(PREFIX)
-#   make test       host-side regression suites (as370 + cc370 + xmit370)
+#   make test       host-side regression suites (cc370 + every tool but ld370)
 #   make clean / uninstall / help
 
 PREFIX  ?= $(HOME)/.local
@@ -85,8 +90,9 @@ CC1     := $(BUILD)/gcc/cc1
 .PHONY: FORCE all tools compiler man install install-tools install-compiler install-man \
         test test-as370 test-listref test-libcorpus test-cc370 test-corpus test-xmit370 test-cmplmd370 \
         test-dasm370 test-ar370 test-sysroot test-driver test-install dist test-version test-macros install-macros runtime test-runtime-host install-runtime clean uninstall help
-# `make` / `make all` builds the whole toolchain (cc370 + as370/ld370/ar370 + man).
-# `make tools` is the fast path that builds only the three standalone tools.
+# `make` / `make all` builds the whole toolchain (cc370 + the eight tools in
+# $(TOOLS) + runtime + man). `make tools` is the fast path that builds only the
+# eight tools.
 all: tools compiler runtime man
 
 $(VERHDR): FORCE
