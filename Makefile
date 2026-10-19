@@ -3,11 +3,12 @@
 # One driver (cc370) plus eight standalone tools
 # (as370 / ld370 / ar370 / file370 / xmit370 / cmplmd370 / dasm370 / idrdump370).
 # as370, ld370 and ar370 also get tooldir links, where the driver looks them up.
-# The other five get a PATH link only: file370 is the read-only inspector (`file`/objdump for the
-# toolchain formats), xmit370 packs a host directory into a TSO TRANSMIT file
-# (and reads one back), cmplmd370 compares an object deck against a CSECT of a
-# load module byte for byte, dasm370 disassembles one CSECT of an object deck
-# back into as370 source, and idrdump370 walks a load module's IDR chain.
+# The other five get a PATH link only: file370 is the read-only inspector
+# (`file`/objdump for the toolchain formats), xmit370 packs a host directory
+# into a TSO TRANSMIT file (and reads one back), cmplmd370 compares an object
+# deck against a CSECT of a load module byte for byte, dasm370 disassembles one
+# CSECT of an object deck back into as370 source, and idrdump370 walks a load
+# module's IDR chain.
 # Clean cc370-branded layout under $(PREFIX): everything for the target lives in
 # one cc370/ tree; only the user-facing binaries sit on PATH.  (The
 # i370-ibm-mvspdp triple is an internal config.sub alias; nothing here carries it.)
